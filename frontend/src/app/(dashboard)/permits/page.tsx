@@ -4,23 +4,7 @@ import { useRouter } from 'next/navigation'
 import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
 import type { Project } from '@/types'
-
-const STATES = ['NC','CA','TX','FL','NY','GA','VA','WA','CO','AZ','IL','OH','PA']
-const COUNTIES: Record<string, string[]> = {
-  NC: ['Wake','Mecklenburg','Guilford','Durham','Forsyth'],
-  CA: ['Los Angeles','San Diego','Orange','Riverside','San Bernardino'],
-  TX: ['Harris','Dallas','Tarrant','Bexar','Travis'],
-  FL: ['Miami-Dade','Broward','Palm Beach','Hillsborough','Orange'],
-  NY: ['Kings','Queens','New York','Suffolk','Nassau'],
-}
-const CITIES: Record<string, string[]> = {
-  Wake:       ['Raleigh','Cary','Apex','Holly Springs','Fuquay-Varina'],
-  Mecklenburg:['Charlotte','Matthews','Mint Hill','Huntersville','Cornelius'],
-  Guilford:   ['Greensboro','High Point','Jamestown'],
-  Harris:     ['Houston','Pasadena','Baytown','Katy','Sugar Land'],
-  'Los Angeles':['Los Angeles','Long Beach','Glendale','Burbank','Pasadena'],
-  Dallas:     ['Dallas','Irving','Garland','Plano','Mesquite'],
-}
+import { STATES, COUNTIES, CITIES } from '@/lib/jurisdictions'
 
 const REQUIRED_DOCS: Record<string, string[]> = {
   default: [
@@ -167,7 +151,7 @@ export default function PermitsPage() {
                     className="w-full bg-[#0a1628] border border-[#1a2a3a] focus:border-blue-500/50 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none"
                   >
                     <option value="">Select state…</option>
-                    {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    {STATES.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
                   </select>
                 </div>
                 <div>
