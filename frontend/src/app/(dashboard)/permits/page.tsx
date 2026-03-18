@@ -320,16 +320,12 @@ export default function PermitsPage() {
                       Generate Permit Packet
                     </button>
                   )}
-                  {(submitStatus === 'ready' || submitStatus === 'idle') && (
+                  {submitStatus === 'ready' && (
                     <button
-                      onClick={submitStatus === 'ready' ? handleSubmit : handleGenerate}
-                      disabled={submitStatus === 'idle'}
-                      className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all"
+                      onClick={handleSubmit}
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all"
                     >
-                      {submitStatus === 'submitting'
-                        ? <span className="flex items-center gap-2"><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="white" strokeWidth="4"/><path className="opacity-75" fill="white" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Submitting…</span>
-                        : 'Submit to Jurisdiction'
-                      }
+                      Submit to Jurisdiction
                     </button>
                   )}
                   {submitStatus === 'submitting' && (
