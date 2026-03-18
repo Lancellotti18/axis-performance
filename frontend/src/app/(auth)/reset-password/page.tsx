@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -10,20 +10,6 @@ export default function ResetPasswordPage() {
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [ready, setReady] = useState(false)
-
-  // Supabase sends the user back with a session in the URL hash.
-  // We listen for the PASSWORD_RECOVERY event to know we're in reset mode.
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') setReady(true)
-    })
-    // Also check if there's already an active session from the magic link
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setReady(true)
-    })
-    return () => subscription.unsubscribe()
-  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -41,6 +27,10 @@ export default function ResetPasswordPage() {
     }
   }
 
+  const strength = password.length === 0 ? 0 : password.length >= 12 ? 4 : password.length >= 8 ? 3 : password.length >= 6 ? 2 : 1
+  const strengthColor = ['', 'bg-red-400', 'bg-yellow-400', 'bg-blue-400', 'bg-green-400'][strength]
+  const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong'][strength]
+
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4 bg-cover bg-center bg-no-repeat"
@@ -49,7 +39,6 @@ export default function ResetPasswordPage() {
       <div className="absolute inset-0 bg-[#1a3a6b]/70 backdrop-blur-sm" />
       <div className="relative z-10 w-full max-w-sm">
 
-        {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2.5 mb-4">
             <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -66,60 +55,57 @@ export default function ResetPasswordPage() {
         </div>
 
         <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-8 shadow-2xl">
-          {!ready ? (
-            <div className="text-center py-4">
-              <svg className="animate-spin text-white/40 mx-auto mb-3" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-              </svg>
-              <p className="text-white/50 text-sm">Verifying reset link…</p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-1.5">New Password</label>
-                <input
-                  type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)}
-                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all"
-                  placeholder="Min. 6 characters"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-1.5">Confirm New Password</label>
-                <input
-                  type="password" required minLength={6} value={confirm} onChange={e => setConfirm(e.target.value)}
-                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all"
-                  placeholder="Repeat password"
-                />
-              </div>
-
-              {/* Password strength hint */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-1.5">New Password</label>
+              <input
+                type="password" required minLength={6} value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all"
+                placeholder="Min. 6 characters"
+                autoFocus
+              />
               {password.length > 0 && (
-                <div className="flex gap-1">
-                  {[1,2,3,4].map(i => (
-                    <div key={i} className={`h-1 flex-1 rounded-full transition-all ${
-                      password.length >= i * 3
-                        ? password.length >= 12 ? 'bg-green-400' : password.length >= 8 ? 'bg-yellow-400' : 'bg-red-400'
-                        : 'bg-white/10'
-                    }`} />
-                  ))}
+                <div className="mt-2 space-y-1">
+                  <div className="flex gap-1">
+                    {[1,2,3,4].map(i => (
+                      <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-300 ${i <= strength ? strengthColor : 'bg-white/10'}`} />
+                    ))}
+                  </div>
+                  <p className={`text-xs ${strengthColor.replace('bg-', 'text-')}`}>{strengthLabel}</p>
                 </div>
               )}
+            </div>
 
-              {error && (
-                <div className="bg-red-500/20 border border-red-400/30 rounded-xl px-4 py-3 text-red-200 text-sm">
-                  {error}
-                </div>
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-1.5">Confirm Password</label>
+              <input
+                type="password" required minLength={6} value={confirm}
+                onChange={e => setConfirm(e.target.value)}
+                className={`w-full bg-white/10 border rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 transition-all ${
+                  confirm.length > 0 && confirm !== password ? 'border-red-400/50' : 'border-white/20 focus:border-white/40'
+                }`}
+                placeholder="Repeat password"
+              />
+              {confirm.length > 0 && confirm !== password && (
+                <p className="text-red-300 text-xs mt-1">Passwords don&apos;t match</p>
               )}
-              <button
-                type="submit" disabled={loading}
-                className="w-full bg-white text-blue-700 font-bold py-3 rounded-xl hover:bg-blue-50 disabled:opacity-50 transition-all duration-200 shadow-lg mt-2"
-              >
-                {loading ? 'Updating…' : 'Update Password'}
-              </button>
-            </form>
-          )}
+            </div>
+
+            {error && (
+              <div className="bg-red-500/20 border border-red-400/30 rounded-xl px-4 py-3 text-red-200 text-sm">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || (confirm.length > 0 && confirm !== password)}
+              className="w-full bg-white text-blue-700 font-bold py-3 rounded-xl hover:bg-blue-50 disabled:opacity-50 transition-all duration-200 shadow-lg mt-2"
+            >
+              {loading ? 'Updating password…' : 'Update Password'}
+            </button>
+          </form>
 
           <p className="text-center text-white/40 text-sm mt-6">
             <Link href="/login" className="text-white/60 hover:text-white transition-colors">
