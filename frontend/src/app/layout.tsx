@@ -5,13 +5,13 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'BuildAI — AI-Powered Blueprint Analysis',
-  description: 'Upload blueprints, get instant material lists, cost estimates, and detailed construction reports powered by AI.',
-  keywords: ['blueprint analysis', 'construction estimating', 'AI', 'material takeoff'],
-  authors: [{ name: 'BuildAI' }],
+  title: 'Axis Performance — AI Blueprint & Permit Platform',
+  description: 'Upload blueprints, get instant room detection, material lists, cost estimates, compliance checks, and automated permit filing.',
+  keywords: ['blueprint analysis', 'permit filing', 'construction estimating', 'AI', 'material takeoff'],
+  authors: [{ name: 'Axis Performance' }],
   openGraph: {
-    title: 'BuildAI — AI-Powered Blueprint Analysis',
-    description: 'Analyze blueprints in minutes. Get material lists, cost estimates, and reports.',
+    title: 'Axis Performance — AI Blueprint & Permit Platform',
+    description: 'Analyze blueprints in minutes. File permits automatically.',
     type: 'website',
   },
 }
