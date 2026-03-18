@@ -24,10 +24,8 @@ export default function RegisterPage() {
       return
     }
 
-    // Auto sign-in after registration
     const { error: signInError } = await signIn(email, password)
     if (signInError) {
-      // Email confirmation may be required — send them to login
       router.push('/login?registered=1')
     } else {
       router.push('/dashboard')
@@ -35,53 +33,77 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
+    <div
+      className="min-h-screen flex items-center justify-center px-4 bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: "url('/blueprint-hero.png')" }}
+    >
+      {/* Overlay */}
+      <div className="absolute inset-0 bg-[#1a3a6b]/70 backdrop-blur-sm" />
+
+      <div className="relative z-10 w-full max-w-sm">
+        {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white">BuildAI</h1>
-          <p className="text-slate-400 mt-2">Create your free account</p>
+          <Link href="/" className="inline-flex items-center gap-2.5 mb-4">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <rect x="2" y="2" width="24" height="24" rx="4" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" />
+              <line x1="7" y1="8" x2="21" y2="8" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="7" y1="12" x2="17" y2="12" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="7" y1="16" x2="19" y2="16" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="7" y1="20" x2="14" y2="20" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span className="text-lg font-bold text-white tracking-tight">Axis Performance</span>
+          </Link>
+          <h1 className="text-2xl font-black text-white">Create your account</h1>
+          <p className="text-white/50 text-sm mt-1">Start automating your blueprint workflow</p>
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8">
+
+        {/* Card */}
+        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-8 shadow-2xl">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Full Name</label>
+              <label className="block text-sm font-medium text-white/80 mb-1.5">Full Name</label>
               <input
                 type="text" required value={fullName} onChange={e => setFullName(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all"
                 placeholder="John Smith"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
+              <label className="block text-sm font-medium text-white/80 mb-1.5">Email</label>
               <input
                 type="email" required value={email} onChange={e => setEmail(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all"
                 placeholder="you@company.com"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
+              <label className="block text-sm font-medium text-white/80 mb-1.5">Password</label>
               <input
                 type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all"
                 placeholder="Min. 6 characters"
               />
             </div>
+
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">
+              <div className="bg-red-500/20 border border-red-400/30 rounded-xl px-4 py-3 text-red-200 text-sm">
                 {error}
               </div>
             )}
+
             <button
               type="submit" disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors"
+              className="w-full bg-white text-blue-700 font-bold py-3 rounded-xl hover:bg-blue-50 disabled:opacity-50 transition-all duration-200 shadow-lg mt-2"
             >
               {loading ? 'Creating account...' : 'Create Account'}
             </button>
           </form>
-          <p className="text-center text-slate-400 text-sm mt-6">
+
+          <p className="text-center text-white/40 text-sm mt-6">
             Already have an account?{' '}
-            <Link href="/login" className="text-blue-400 hover:text-blue-300">Sign in</Link>
+            <Link href="/login" className="text-white/80 hover:text-white font-medium underline underline-offset-2">
+              Sign in
+            </Link>
           </p>
         </div>
       </div>

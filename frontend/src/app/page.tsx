@@ -258,12 +258,20 @@ export default function HomePage() {
           <span className="text-base font-bold tracking-tight text-white">Axis Performance</span>
         </div>
 
-        <Link
-          href="/login"
-          className="text-white text-sm font-medium px-5 py-2 rounded-lg border border-white/30 hover:border-white/70 hover:bg-white/10 transition-all duration-200"
-        >
-          Sign In
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/login"
+            className="text-white text-sm font-medium px-5 py-2 rounded-lg border border-white/30 hover:border-white/70 hover:bg-white/10 transition-all duration-200"
+          >
+            Sign In
+          </Link>
+          <Link
+            href="/register"
+            className="bg-white text-blue-700 text-sm font-bold px-5 py-2 rounded-lg hover:bg-blue-50 transition-all duration-200 shadow-md shadow-black/20"
+          >
+            Sign Up
+          </Link>
+        </div>
       </motion.nav>
 
       {/* ── HERO ────────────────────────────────────────────────────────────── */}
