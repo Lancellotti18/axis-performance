@@ -4,225 +4,6 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { motion, useAnimation, useInView } from "framer-motion";
 
-// ─── Real Blueprint Background ────────────────────────────────────────────────
-
-function BlueprintBackground() {
-  return (
-    <svg
-      className="absolute inset-0 w-full h-full"
-      xmlns="http://www.w3.org/2000/svg"
-      preserveAspectRatio="xMidYMid slice"
-    >
-      <defs>
-        {/* Fine grid — 20px */}
-        <pattern id="fine" width="20" height="20" patternUnits="userSpaceOnUse">
-          <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="0.4" />
-        </pattern>
-        {/* Major grid — 100px */}
-        <pattern id="major" width="100" height="100" patternUnits="userSpaceOnUse">
-          <rect width="100" height="100" fill="url(#fine)" />
-          <path d="M 100 0 L 0 0 0 100" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="0.8" />
-        </pattern>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="1.5" result="blur" />
-          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
-      </defs>
-
-      {/* Blueprint blue fill */}
-      <rect width="100%" height="100%" fill="#1a56a0" />
-      {/* Grid overlay */}
-      <rect width="100%" height="100%" fill="url(#major)" />
-
-      {/* ── FLOOR PLAN — left side ─────────────────────────────────────── */}
-      {/* Outer walls */}
-      <motion.rect x="60" y="120" width="320" height="260" rx="0"
-        fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="3"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 0.4 }} />
-
-      {/* Interior wall — vertical split */}
-      <motion.line x1="220" y1="120" x2="220" y2="310"
-        stroke="rgba(255,255,255,0.7)" strokeWidth="2"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.7 }} />
-
-      {/* Interior wall — horizontal */}
-      <motion.line x1="60" y1="260" x2="220" y2="260"
-        stroke="rgba(255,255,255,0.7)" strokeWidth="2"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.8 }} />
-
-      {/* Interior wall — right block */}
-      <motion.line x1="220" y1="230" x2="380" y2="230"
-        stroke="rgba(255,255,255,0.7)" strokeWidth="2"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.9 }} />
-
-      {/* Door arcs */}
-      <motion.path d="M 220 310 Q 245 310 245 285" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 1.1 }} />
-      <motion.line x1="220" y1="310" x2="220" y2="285"
-        stroke="rgba(255,255,255,0.4)" strokeWidth="0.8"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2, delay: 1.1 }} />
-
-      <motion.path d="M 60 260 Q 60 235 85 235" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 1.2 }} />
-      <motion.line x1="60" y1="235" x2="85" y2="235"
-        stroke="rgba(255,255,255,0.4)" strokeWidth="0.8"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2, delay: 1.2 }} />
-
-      {/* Windows — tick marks */}
-      {([
-        [120, 120, 160, 120],
-        [280, 120, 320, 120],
-        [60, 160, 60, 200],
-        [380, 145, 380, 185],
-        [380, 285, 380, 325],
-      ] as [number,number,number,number][]).map(([x1,y1,x2,y2], i) => (
-        <motion.g key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 1.3 + i * 0.05 }}>
-          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="white" strokeWidth="4" />
-          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#1a56a0" strokeWidth="2" />
-        </motion.g>
-      ))}
-
-      {/* Room labels */}
-      <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 1.6 }}>
-        <text x="128" y="195" fill="rgba(255,255,255,0.7)" fontSize="9" fontFamily="monospace" textAnchor="middle">BEDROOM</text>
-        <text x="128" y="207" fill="rgba(255,255,255,0.5)" fontSize="7" fontFamily="monospace" textAnchor="middle">12&apos;-0&quot; × 14&apos;-0&quot;</text>
-        <text x="305" y="175" fill="rgba(255,255,255,0.7)" fontSize="9" fontFamily="monospace" textAnchor="middle">LIVING ROOM</text>
-        <text x="305" y="187" fill="rgba(255,255,255,0.5)" fontSize="7" fontFamily="monospace" textAnchor="middle">16&apos;-0&quot; × 18&apos;-0&quot;</text>
-        <text x="128" y="240" fill="rgba(255,255,255,0.7)" fontSize="9" fontFamily="monospace" textAnchor="middle">BATHROOM</text>
-        <text x="305" y="325" fill="rgba(255,255,255,0.7)" fontSize="9" fontFamily="monospace" textAnchor="middle">KITCHEN</text>
-        <text x="305" y="337" fill="rgba(255,255,255,0.5)" fontSize="7" fontFamily="monospace" textAnchor="middle">14&apos;-0&quot; × 12&apos;-0&quot;</text>
-      </motion.g>
-
-      {/* Floor plan label */}
-      <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 1.8 }}>
-        <text x="220" y="406" fill="rgba(255,255,255,0.6)" fontSize="10" fontFamily="monospace" textAnchor="middle" letterSpacing="2">FLOOR PLAN</text>
-        <line x1="100" y1="398" x2="150" y2="398" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
-        <line x1="290" y1="398" x2="340" y2="398" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
-      </motion.g>
-
-      {/* ── DIMENSION LINES ───────────────────────────────────────────── */}
-      <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 1.9 }}>
-        {/* Width */}
-        <line x1="60" y1="430" x2="380" y2="430" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-        <line x1="60" y1="424" x2="60" y2="436" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-        <line x1="380" y1="424" x2="380" y2="436" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-        <text x="220" y="445" fill="rgba(255,255,255,0.5)" fontSize="8" fontFamily="monospace" textAnchor="middle">32&apos;-0&quot;</text>
-        {/* Height */}
-        <line x1="28" y1="120" x2="28" y2="380" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-        <line x1="22" y1="120" x2="34" y2="120" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-        <line x1="22" y1="380" x2="34" y2="380" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-        <text x="16" y="255" fill="rgba(255,255,255,0.5)" fontSize="8" fontFamily="monospace" textAnchor="middle" transform="rotate(-90, 16, 255)">26&apos;-0&quot;</text>
-      </motion.g>
-
-      {/* ── ELEVATION VIEW — right side ───────────────────────────────── */}
-      {/* Ground line */}
-      <motion.line x1="460" y1="360" x2="780" y2="360"
-        stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.5 }} />
-
-      {/* Foundation block */}
-      <motion.rect x="500" y="350" width="240" height="12" rx="0"
-        fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.6 }} />
-      {/* Hatch foundation */}
-      {[0,1,2,3,4,5].map(i => (
-        <motion.line key={i} x1={500 + i*40} y1="362" x2={500 + i*40 - 10} y2="350"
-          stroke="rgba(255,255,255,0.3)" strokeWidth="0.8"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2, delay: 0.65 }} />
-      ))}
-
-      {/* Walls */}
-      <motion.line x1="500" y1="350" x2="500" y2="210"
-        stroke="rgba(255,255,255,0.8)" strokeWidth="2"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 0.8 }} />
-      <motion.line x1="740" y1="350" x2="740" y2="210"
-        stroke="rgba(255,255,255,0.8)" strokeWidth="2"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 0.9 }} />
-
-      {/* Roof */}
-      <motion.line x1="480" y1="210" x2="620" y2="130"
-        stroke="rgba(255,255,255,0.9)" strokeWidth="2.5"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 1.2 }} />
-      <motion.line x1="760" y1="210" x2="620" y2="130"
-        stroke="rgba(255,255,255,0.9)" strokeWidth="2.5"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 1.2 }} />
-      <motion.line x1="480" y1="210" x2="760" y2="210"
-        stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 1.3 }} />
-
-      {/* Chimney */}
-      <motion.rect x="680" y="140" width="24" height="45" rx="0"
-        fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 1.4 }} />
-
-      {/* Front door (elevation) */}
-      <motion.rect x="590" y="290" width="46" height="62"
-        fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="1.5"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 1.5 }} />
-      <motion.circle cx="628" cy="321" r="3" fill="rgba(255,255,255,0.7)"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2, delay: 1.6 }} />
-
-      {/* Windows (elevation) */}
-      {([[520,265,60,45],[660,265,60,45]] as [number,number,number,number][]).map(([x,y,w,h], i) => (
-        <motion.g key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 1.5 + i * 0.05 }}>
-          <rect x={x} y={y} width={w} height={h} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="1.5" />
-          <line x1={x + w/2} y1={y} x2={x + w/2} y2={y + h} stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-          <line x1={x} y1={y + h/2} x2={x + w} y2={y + h/2} stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-        </motion.g>
-      ))}
-
-      {/* Elevation dimension lines */}
-      <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 2.0 }}>
-        <line x1="780" y1="210" x2="800" y2="210" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
-        <line x1="780" y1="360" x2="800" y2="360" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
-        <line x1="796" y1="210" x2="796" y2="360" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
-        <text x="810" y="293" fill="rgba(255,255,255,0.45)" fontSize="8" fontFamily="monospace">12&apos;-0&quot;</text>
-
-        <line x1="620" y1="100" x2="620" y2="125" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-        <circle cx="620" cy="128" r="3" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8" />
-        <text x="628" y="120" fill="rgba(255,255,255,0.45)" fontSize="8" fontFamily="monospace">RIDGE</text>
-      </motion.g>
-
-      {/* Elevation label */}
-      <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 2.1 }}>
-        <text x="620" y="406" fill="rgba(255,255,255,0.6)" fontSize="10" fontFamily="monospace" textAnchor="middle" letterSpacing="2">FRONT ELEVATION</text>
-        <line x1="490" y1="398" x2="540" y2="398" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
-        <line x1="700" y1="398" x2="750" y2="398" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
-      </motion.g>
-
-      {/* ── TITLE BLOCK — bottom right ──────────────────────────────────── */}
-      <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 2.3 }}>
-        <rect x="590" y="440" width="220" height="55" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
-        <line x1="590" y1="455" x2="810" y2="455" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-        <line x1="590" y1="467" x2="810" y2="467" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-        <line x1="700" y1="440" x2="700" y2="495" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-        <text x="700" y="451" fill="rgba(255,255,255,0.6)" fontSize="8" fontFamily="monospace" textAnchor="middle" letterSpacing="1">AXIS PERFORMANCE</text>
-        <text x="648" y="463" fill="rgba(255,255,255,0.4)" fontSize="7" fontFamily="monospace" textAnchor="middle">SCALE: 1/4&quot; = 1&apos;-0&quot;</text>
-        <text x="755" y="463" fill="rgba(255,255,255,0.4)" fontSize="7" fontFamily="monospace" textAnchor="middle">SHEET A-1</text>
-        <text x="648" y="480" fill="rgba(255,255,255,0.4)" fontSize="7" fontFamily="monospace" textAnchor="middle">DATE: 03.18.2026</text>
-        <text x="755" y="480" fill="rgba(255,255,255,0.4)" fontSize="7" fontFamily="monospace" textAnchor="middle">REV: 00</text>
-        <text x="700" y="491" fill="rgba(255,255,255,0.3)" fontSize="6" fontFamily="monospace" textAnchor="middle">RESIDENTIAL FLOOR PLAN + ELEVATION</text>
-      </motion.g>
-
-      {/* ── NORTH ARROW ──────────────────────────────────────────────────── */}
-      <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 2.2 }}>
-        <circle cx="430" cy="460" r="18" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
-        <line x1="430" y1="448" x2="430" y2="472" stroke="rgba(255,255,255,0.6)" strokeWidth="1" />
-        <polygon points="430,442 425,454 430,450 435,454" fill="rgba(255,255,255,0.8)" />
-        <text x="430" y="440" fill="rgba(255,255,255,0.7)" fontSize="9" fontFamily="monospace" textAnchor="middle" fontWeight="bold">N</text>
-      </motion.g>
-
-      {/* ── DETAIL CALLOUTS ───────────────────────────────────────────────── */}
-      <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 2.0 }}>
-        <circle cx="380" cy="120" r="12" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="0.8" />
-        <line x1="380" y1="108" x2="380" y2="132" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
-        <text x="380" y="123" fill="rgba(255,255,255,0.6)" fontSize="8" fontFamily="monospace" textAnchor="middle" fontWeight="bold">A</text>
-        <text x="380" y="133" fill="rgba(255,255,255,0.35)" fontSize="6" fontFamily="monospace" textAnchor="middle">3/A2</text>
-      </motion.g>
-    </svg>
-  );
-}
-
 // ─── Scroll Indicator ─────────────────────────────────────────────────────────
 
 function ScrollIndicator() {
@@ -236,7 +17,7 @@ function ScrollIndicator() {
       className="flex flex-col items-center gap-1 cursor-pointer mt-10"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ delay: 2.6 }}
+      transition={{ delay: 1.8 }}
     >
       <motion.div
         animate={{ y: [0, 5, 0] }}
@@ -244,10 +25,10 @@ function ScrollIndicator() {
         className="flex flex-col items-center gap-0.5"
       >
         <svg width="18" height="11" viewBox="0 0 18 11" fill="none">
-          <path d="M1 1L9 9L17 1" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M1 1L9 9L17 1" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         <svg width="24" height="14" viewBox="0 0 24 14" fill="none">
-          <path d="M1 1L12 12L23 1" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M1 1L12 12L23 1" stroke="rgba(255,255,255,0.35)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </motion.div>
       <span className="text-xs text-white/30 font-mono tracking-widest uppercase mt-1">scroll</span>
@@ -463,8 +244,8 @@ export default function HomePage() {
       <motion.nav
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-4 bg-[#1a56a0]/80 backdrop-blur-md border-b border-white/10"
+        transition={{ duration: 0.5, delay: 1.0 }}
+        className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-4 bg-[#1a56a0]/70 backdrop-blur-md border-b border-white/10"
       >
         <div className="flex items-center gap-2.5">
           <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
@@ -486,31 +267,35 @@ export default function HomePage() {
       </motion.nav>
 
       {/* ── HERO ────────────────────────────────────────────────────────────── */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden pt-20">
+      <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
 
-        {/* Blueprint unroll reveal */}
+        {/* Blueprint unroll reveal — slides from left to right off screen */}
         <motion.div
-          className="absolute inset-0 bg-[#1a56a0] origin-left z-10"
+          className="absolute inset-0 bg-[#1a56a0] origin-left z-20"
           initial={{ scaleX: 1 }}
           animate={{ scaleX: 0 }}
-          transition={{ duration: 1.0, ease: [0.76, 0, 0.24, 1] }}
+          transition={{ duration: 1.1, ease: [0.76, 0, 0.24, 1] }}
         />
 
-        {/* Full-screen blueprint background */}
-        <div className="absolute inset-0">
-          <BlueprintBackground />
-        </div>
+        {/* Hero background image */}
+        <div
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: "url('/blueprint-hero.png')" }}
+        />
 
-        {/* Darkening vignette so text is readable */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_70%_at_50%_50%,rgba(10,40,90,0.55),transparent)] pointer-events-none" />
+        {/* Dark overlay so text is crisp */}
+        <div className="absolute inset-0 bg-[#1a3a6b]/55" />
+
+        {/* Subtle vignette */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_75%_65%_at_50%_50%,transparent,rgba(10,30,70,0.45))] pointer-events-none" />
 
         {/* Hero text */}
-        <div className="relative z-20 flex flex-col items-center text-center px-6">
+        <div className="relative z-10 flex flex-col items-center text-center px-6 pt-20">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 1.2 }}
-            className="inline-flex items-center gap-2 bg-white/10 border border-white/25 text-white text-xs font-semibold px-4 py-2 rounded-full mb-6 tracking-widest uppercase"
+            className="inline-flex items-center gap-2 bg-white/10 border border-white/25 text-white text-xs font-semibold px-4 py-2 rounded-full mb-6 tracking-widest uppercase backdrop-blur-sm"
           >
             <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
             AI-Powered Blueprint Platform
@@ -521,7 +306,7 @@ export default function HomePage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 1.4 }}
             className="text-6xl sm:text-7xl font-black tracking-tight mb-6 leading-none"
-            style={{ textShadow: "0 2px 30px rgba(0,0,0,0.4)" }}
+            style={{ textShadow: "0 2px 40px rgba(0,0,0,0.6)" }}
           >
             Axis
             <br />
@@ -534,7 +319,8 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 1.7 }}
-            className="text-white/75 text-lg max-w-md mb-10 leading-relaxed"
+            className="text-white/80 text-lg max-w-md mb-10 leading-relaxed"
+            style={{ textShadow: "0 1px 12px rgba(0,0,0,0.5)" }}
           >
             Upload a blueprint. Get instant room detection, material lists, cost
             estimates, compliance checks — and automatic permit filing.
@@ -548,13 +334,13 @@ export default function HomePage() {
           >
             <Link
               href="/register"
-              className="bg-white text-blue-700 font-bold px-8 py-3.5 rounded-xl text-base transition-all duration-200 hover:bg-blue-50 hover:shadow-lg hover:shadow-black/30"
+              className="bg-white text-blue-700 font-bold px-8 py-3.5 rounded-xl text-base transition-all duration-200 hover:bg-blue-50 hover:shadow-lg hover:shadow-black/40"
             >
               Get Started Free
             </Link>
             <Link
               href="/login"
-              className="bg-white/10 hover:bg-white/20 border border-white/30 text-white font-semibold px-8 py-3.5 rounded-xl text-base transition-all duration-200"
+              className="bg-white/10 hover:bg-white/20 border border-white/30 backdrop-blur-sm text-white font-semibold px-8 py-3.5 rounded-xl text-base transition-all duration-200"
             >
               Sign In
             </Link>
