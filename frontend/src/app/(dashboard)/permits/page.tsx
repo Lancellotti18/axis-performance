@@ -6,6 +6,65 @@ import { api } from '@/lib/api'
 import type { Project } from '@/types'
 import { STATES, COUNTIES, CITIES } from '@/lib/jurisdictions'
 
+// Permit office lookup by state → county/city
+const PERMIT_OFFICES: Record<string, { name: string; address: string; phone: string; portal: string }> = {
+  // Format: "STATE_County" or "STATE" as fallback
+  'NC_Mecklenburg': { name: 'Mecklenburg County Building Standards Dept.', address: '2145 Suttle Ave, Charlotte, NC 28208', phone: '(704) 336-3821', portal: 'https://meckpermit.com' },
+  'NC_Wake': { name: 'Wake County Permits & Inspections', address: '337 S Salisbury St, Raleigh, NC 27601', phone: '(919) 856-6222', portal: 'https://raleighnc.gov/permits' },
+  'NC_Guilford': { name: 'Guilford County Planning & Development', address: '400 W Market St, Greensboro, NC 27401', phone: '(336) 641-3606', portal: 'https://guilfordcountync.gov' },
+  'CA_Los Angeles': { name: 'LA County Dept. of Regional Planning', address: '320 W Temple St, Los Angeles, CA 90012', phone: '(213) 974-6411', portal: 'https://lacounty.gov/permits' },
+  'CA_San Diego': { name: 'San Diego Development Services Dept.', address: '1222 First Ave, San Diego, CA 92101', phone: '(619) 446-5000', portal: 'https://sandiego.gov/development-services' },
+  'CA_Orange': { name: 'Orange County Planning & Design', address: '300 N Flower St, Santa Ana, CA 92703', phone: '(714) 834-2555', portal: 'https://ocplanning.net' },
+  'TX_Harris': { name: 'Harris County Permit Office', address: '10555 Northwest Fwy, Houston, TX 77092', phone: '(713) 274-3800', portal: 'https://hcpid.org' },
+  'TX_Dallas': { name: 'Dallas Development Services Dept.', address: '320 E Jefferson Blvd, Dallas, TX 75203', phone: '(214) 948-4480', portal: 'https://dallascityhall.com/permits' },
+  'TX_Travis': { name: 'Austin Development Services Dept.', address: '6310 Wilhelmina Delco Dr, Austin, TX 78752', phone: '(512) 974-2380', portal: 'https://austintexas.gov/permits' },
+  'FL_Miami-Dade': { name: 'Miami-Dade Building Dept.', address: '111 NW 1st St, Miami, FL 33128', phone: '(786) 315-2000', portal: 'https://miamidade.gov/permits' },
+  'FL_Broward': { name: 'Broward County Building Services', address: '1 N University Dr, Plantation, FL 33324', phone: '(954) 765-4500', portal: 'https://broward.org/permits' },
+  'FL_Orange': { name: 'Orange County Building & Planning', address: '201 S Rosalind Ave, Orlando, FL 32801', phone: '(407) 836-5550', portal: 'https://ocfl.net/permits' },
+  'NY_Kings': { name: 'NYC Dept. of Buildings – Brooklyn', address: '210 Joralemon St, Brooklyn, NY 11201', phone: '(718) 802-3675', portal: 'https://nyc.gov/dob' },
+  'NY_Queens': { name: 'NYC Dept. of Buildings – Queens', address: '120-55 Queens Blvd, Kew Gardens, NY 11424', phone: '(718) 286-8800', portal: 'https://nyc.gov/dob' },
+  'NY_New York': { name: 'NYC Dept. of Buildings – Manhattan', address: '280 Broadway, New York, NY 10007', phone: '(212) 393-2550', portal: 'https://nyc.gov/dob' },
+  'GA_Fulton': { name: 'Fulton County Community Development', address: '141 Pryor St SW, Atlanta, GA 30303', phone: '(404) 612-7200', portal: 'https://fultoncountyga.gov/permits' },
+  'GA_Gwinnett': { name: 'Gwinnett County Building Inspections', address: '446 W Crogan St, Lawrenceville, GA 30046', phone: '(678) 377-4100', portal: 'https://gwinnettcounty.com/permits' },
+  'IL_Cook': { name: 'Cook County Dept. of Building & Zoning', address: '69 W Washington St, Chicago, IL 60602', phone: '(312) 603-0500', portal: 'https://cookcountyil.gov/permits' },
+  'OH_Franklin': { name: 'Columbus Building & Zoning Services', address: '111 N Front St, Columbus, OH 43215', phone: '(614) 645-7433', portal: 'https://columbus.gov/permits' },
+  'PA_Philadelphia': { name: 'Philadelphia Dept. of Licenses & Inspections', address: '1401 JFK Blvd, Philadelphia, PA 19102', phone: '(215) 686-2400', portal: 'https://phl.gov/permits' },
+  'PA_Allegheny': { name: 'Allegheny County Building Permits', address: '436 Grant St, Pittsburgh, PA 15219', phone: '(412) 350-4234', portal: 'https://allegheny.county.us/permits' },
+  'WA_King': { name: 'King County Dept. of Local Services', address: '35030 SE Douglas St, Snoqualmie, WA 98065', phone: '(206) 477-1060', portal: 'https://kingcounty.gov/permits' },
+  'AZ_Maricopa': { name: 'Maricopa County Planning & Development', address: '301 W Jefferson St, Phoenix, AZ 85003', phone: '(602) 506-3301', portal: 'https://maricopa.gov/permits' },
+  'CO_El Paso': { name: 'El Paso County Building Dept.', address: '2880 International Circle, Colorado Springs, CO 80910', phone: '(719) 520-6300', portal: 'https://elpasoco.com/permits' },
+  'CO_Denver': { name: 'Denver Community Planning & Development', address: '201 W Colfax Ave, Denver, CO 80202', phone: '(720) 865-2705', portal: 'https://denvergov.org/permits' },
+  'VA_Fairfax': { name: 'Fairfax County Land Development Services', address: '12055 Government Center Pkwy, Fairfax, VA 22035', phone: '(703) 222-0801', portal: 'https://fairfaxcounty.gov/permits' },
+  'TN_Shelby': { name: 'Memphis & Shelby County Office of Construction', address: '6465 Mullins Station Rd, Memphis, TN 38134', phone: '(901) 222-8300', portal: 'https://memphistn.gov/permits' },
+  'TN_Davidson': { name: 'Nashville Metro Codes Administration', address: '800 Second Ave S, Nashville, TN 37210', phone: '(615) 862-6500', portal: 'https://nashville.gov/permits' },
+  'MO_Jackson': { name: 'Kansas City Dept. of Codes Administration', address: '414 E 12th St, Kansas City, MO 64106', phone: '(816) 513-1500', portal: 'https://kcmo.gov/permits' },
+  'OR_Multnomah': { name: 'Portland Bureau of Development Services', address: '1900 SW 4th Ave, Portland, OR 97201', phone: '(503) 823-7300', portal: 'https://portland.gov/bds/permits' },
+  'NV_Clark': { name: 'Clark County Building Dept.', address: '4701 W Russell Rd, Las Vegas, NV 89118', phone: '(702) 455-3000', portal: 'https://clarkcountynv.gov/permits' },
+  'MI_Wayne': { name: 'Wayne County Building Authority', address: '400 Monroe St, Detroit, MI 48226', phone: '(313) 224-5600', portal: 'https://buildingdetroit.org/permits' },
+  'MA_Suffolk': { name: 'Boston Inspectional Services Dept.', address: '1010 Massachusetts Ave, Boston, MA 02118', phone: '(617) 635-5300', portal: 'https://boston.gov/permits' },
+  'MN_Hennepin': { name: 'Hennepin County Building Inspections', address: '300 S 6th St, Minneapolis, MN 55487', phone: '(612) 348-3000', portal: 'https://hennepin.us/permits' },
+  'SC_Greenville': { name: 'Greenville County Codes Enforcement', address: '301 University Ridge, Greenville, SC 29601', phone: '(864) 467-7425', portal: 'https://greenvillecounty.org/permits' },
+  'SC_Charleston': { name: 'Charleston County Building Inspections', address: '4045 Bridge View Dr, North Charleston, SC 29405', phone: '(843) 202-7258', portal: 'https://charlestoncounty.org/permits' },
+  'UT_Salt Lake': { name: 'Salt Lake County Building Services', address: '2001 S State St, Salt Lake City, UT 84190', phone: '(385) 468-6700', portal: 'https://slco.org/permits' },
+  'KY_Jefferson': { name: 'Louisville Metro Dept. of Codes & Regulations', address: '444 S 5th St, Louisville, KY 40202', phone: '(502) 574-3321', portal: 'https://louisvilleky.gov/permits' },
+  'KY_Fayette': { name: 'Lexington Division of Building Inspection', address: '200 E Main St, Lexington, KY 40507', phone: '(859) 258-3770', portal: 'https://lexingtonky.gov/permits' },
+  'LA_East Baton Rouge': { name: 'Baton Rouge-EBR Building Permits', address: '222 St. Louis St, Baton Rouge, LA 70802', phone: '(225) 389-3084', portal: 'https://brgov.com/permits' },
+  'LA_Jefferson': { name: 'Jefferson Parish Dept. of Inspection & Code Enforcement', address: '1221 Elmwood Park Blvd, Elmwood, LA 70123', phone: '(504) 736-6957', portal: 'https://jeffparish.net/permits' },
+  'LA_Orleans': { name: 'New Orleans Dept. of Safety & Permits', address: '1300 Perdido St, New Orleans, LA 70112', phone: '(504) 658-7100', portal: 'https://nola.gov/permits' },
+}
+
+function getPermitOffice(stateCode: string, countyName: string) {
+  return (
+    PERMIT_OFFICES[`${stateCode}_${countyName}`] ||
+    PERMIT_OFFICES[stateCode] || {
+      name: `${countyName} County Building Department`,
+      address: `Contact your local ${countyName} County government office`,
+      phone: 'See county website',
+      portal: `https://www.${countyName.toLowerCase().replace(/\s+/g, '')}.gov`,
+    }
+  )
+}
+
 const REQUIRED_DOCS: Record<string, string[]> = {
   default: [
     'Completed permit application (Form BP-1)',
@@ -32,6 +91,8 @@ export default function PermitsPage() {
   const [city, setCity] = useState('')
   const [checklist, setChecklist] = useState<Record<string, boolean>>({})
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle')
+  const [officeConfirmed, setOfficeConfirmed] = useState<boolean | null>(null)
+  const [customOffice, setCustomOffice] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -57,8 +118,8 @@ export default function PermitsPage() {
     }
   }, [step])
 
-  const counties = state ? (COUNTIES[state] || ['General County']) : []
-  const cities = county ? (CITIES[county] || ['General City']) : []
+  const counties = state ? (COUNTIES[state] || []) : []
+  const cities = (state && county) ? (CITIES[state]?.[county] || []) : []
   const allChecked = Object.values(checklist).length > 0 && Object.values(checklist).every(Boolean)
   const checkedCount = Object.values(checklist).filter(Boolean).length
   const docs = REQUIRED_DOCS.default
@@ -147,7 +208,7 @@ export default function PermitsPage() {
                   <label className="text-[#4a6a8a] text-xs font-semibold uppercase tracking-wider block mb-2">State</label>
                   <select
                     value={state}
-                    onChange={e => { setState(e.target.value); setCounty(''); setCity('') }}
+                    onChange={e => { setState(e.target.value); setCounty(''); setCity(''); setOfficeConfirmed(null); setCustomOffice('') }}
                     className="w-full bg-[#0a1628] border border-[#1a2a3a] focus:border-blue-500/50 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none"
                   >
                     <option value="">Select state…</option>
@@ -158,7 +219,7 @@ export default function PermitsPage() {
                   <label className="text-[#4a6a8a] text-xs font-semibold uppercase tracking-wider block mb-2">County</label>
                   <select
                     value={county}
-                    onChange={e => { setCounty(e.target.value); setCity('') }}
+                    onChange={e => { setCounty(e.target.value); setCity(''); setOfficeConfirmed(null); setCustomOffice('') }}
                     disabled={!state}
                     className="w-full bg-[#0a1628] border border-[#1a2a3a] focus:border-blue-500/50 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none disabled:opacity-40"
                   >
@@ -179,16 +240,76 @@ export default function PermitsPage() {
                   </select>
                 </div>
               </div>
-              {state && county && (
-                <div className="flex items-center gap-2 bg-blue-600/10 border border-blue-500/20 rounded-xl px-4 py-3 text-sm text-blue-300 mt-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  Jurisdiction: <strong>{city || county}, {state}</strong> — permit portal detected
-                </div>
-              )}
+              {state && county && (() => {
+                const office = getPermitOffice(state, county)
+                return (
+                  <div className="space-y-3 mt-2">
+                    {/* Auto-detected permit office */}
+                    <div className="bg-[#0a1628] border border-[#1a2a3a] rounded-xl p-4 space-y-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        <span className="text-blue-400 text-xs font-semibold uppercase tracking-wider">Permit Filing Office</span>
+                        <span className="ml-auto text-[#4a6a8a] text-xs">Auto-detected for {city || county}, {state}</span>
+                      </div>
+                      <div>
+                        <div className="text-white font-semibold text-sm">{office.name}</div>
+                        <div className="text-[#4a6a8a] text-xs mt-1">{office.address}</div>
+                        <div className="flex items-center gap-4 mt-2">
+                          <span className="text-[#4a6a8a] text-xs">{office.phone}</span>
+                          <a href={office.portal} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-xs hover:text-blue-300 underline underline-offset-2">{office.portal}</a>
+                        </div>
+                      </div>
+                      {/* Verification checkbox */}
+                      <div className="border-t border-[#1a2a3a] pt-3">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <div
+                            onClick={() => { setOfficeConfirmed(true); setCustomOffice('') }}
+                            className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
+                              officeConfirmed === true ? 'bg-green-500 border-green-500' : 'border-[#2a3a4a] bg-[#0a1628]'
+                            }`}
+                          >
+                            {officeConfirmed === true && (
+                              <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                            )}
+                          </div>
+                          <span className="text-white/80 text-sm">Yes, this is the correct filing office for my project</span>
+                        </label>
+                        <label className="flex items-center gap-3 cursor-pointer mt-2">
+                          <div
+                            onClick={() => setOfficeConfirmed(false)}
+                            className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
+                              officeConfirmed === false ? 'bg-yellow-500 border-yellow-500' : 'border-[#2a3a4a] bg-[#0a1628]'
+                            }`}
+                          >
+                            {officeConfirmed === false && (
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            )}
+                          </div>
+                          <span className="text-white/80 text-sm">No, I need to use a different office</span>
+                        </label>
+                        {officeConfirmed === false && (
+                          <div className="mt-3 space-y-2">
+                            <label className="text-[#4a6a8a] text-xs font-semibold uppercase tracking-wider block">Correct Filing Office</label>
+                            <input
+                              type="text"
+                              value={customOffice}
+                              onChange={e => setCustomOffice(e.target.value)}
+                              placeholder="e.g. City of Charlotte Building Permits, 123 Main St…"
+                              className="w-full bg-[#0a1628] border border-yellow-500/40 focus:border-yellow-500/70 rounded-xl px-4 py-2.5 text-white text-sm placeholder-white/20 focus:outline-none transition-all"
+                              autoFocus
+                            />
+                            <p className="text-[#4a6a8a] text-xs">Enter the name and address of the correct permit office. This will be used when your packet is submitted.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
               <div className="flex justify-end pt-2">
                 <button
                   onClick={() => setStep(2)}
-                  disabled={!state || !county}
+                  disabled={!state || !county || officeConfirmed === null || (officeConfirmed === false && !customOffice.trim())}
                   className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-all"
                 >
                   Continue →
@@ -255,8 +376,8 @@ export default function PermitsPage() {
                 {[
                   { label: 'Project', value: project?.name || '—' },
                   { label: 'Jurisdiction', value: `${city || county}, ${state}` },
+                  { label: 'Filing Office', value: customOffice || getPermitOffice(state, county).name },
                   { label: 'Documents', value: `${docs.length} items confirmed` },
-                  { label: 'Submission Method', value: 'Online portal (eTRAKiT)' },
                 ].map(row => (
                   <div key={row.label} className="bg-[#0a1628] border border-[#1a2a3a] rounded-xl px-4 py-3">
                     <div className="text-[#4a6a8a] text-xs font-semibold uppercase tracking-wider mb-1">{row.label}</div>
