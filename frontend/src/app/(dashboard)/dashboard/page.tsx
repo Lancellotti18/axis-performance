@@ -6,36 +6,128 @@ import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
 import type { Project } from '@/types'
 
-function StatCard({ label, value, sub, color, icon }: { label: string; value: string | number; sub?: string; color: string; icon: React.ReactNode }) {
+function StatCard({
+  label, value, sub, trend, trendUp, iconBg, icon,
+}: {
+  label: string
+  value: string | number
+  sub?: string
+  trend?: string
+  trendUp?: boolean
+  iconBg: string
+  icon: React.ReactNode
+}) {
   return (
-    <div className={`bg-[#0f1e30] border border-[#1a2a3a] rounded-xl p-5 hover:border-[#2a3a4a] transition-all duration-200 group`}>
-      <div className="flex items-start justify-between mb-4">
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color}`}>
+    <div
+      className="rounded-[18px] bg-white p-5 flex flex-col gap-3 hover:shadow-md transition-all duration-200"
+      style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}
+    >
+      <div className="flex items-start justify-between">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
           {icon}
         </div>
+        {trend && (
+          <span className={`text-xs font-semibold flex items-center gap-0.5 ${trendUp ? 'text-emerald-500' : 'text-red-400'}`}>
+            {trendUp ? '↑' : '↓'} {trend}
+          </span>
+        )}
       </div>
-      <div className="text-2xl font-black text-white mb-0.5">{value}</div>
-      <div className="text-[#4a6a8a] text-sm">{label}</div>
-      {sub && <div className="text-xs text-[#3a5a7a] mt-1">{sub}</div>}
+      <div>
+        <div className="text-2xl font-black text-slate-800 leading-none mb-1">{value}</div>
+        <div className="text-slate-400 text-sm">{label}</div>
+        {sub && <div className="text-slate-300 text-xs mt-0.5">{sub}</div>}
+      </div>
     </div>
   )
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    complete:   'bg-green-500/10 text-green-400 border border-green-500/20',
-    processing: 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20',
-    pending:    'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20',
-    failed:     'bg-red-500/10 text-red-400 border border-red-500/20',
+  const styles: Record<string, string> = {
+    complete:   'bg-emerald-50 text-emerald-600 border border-emerald-200',
+    processing: 'bg-amber-50 text-amber-600 border border-amber-200',
+    pending:    'bg-amber-50 text-amber-600 border border-amber-200',
+    failed:     'bg-red-50 text-red-500 border border-red-200',
   }
   const labels: Record<string, string> = {
     complete: 'Complete', processing: 'Processing', pending: 'Processing', failed: 'Failed',
   }
+  const dots: Record<string, string> = {
+    complete: 'bg-emerald-500', processing: 'bg-amber-400 animate-pulse', pending: 'bg-amber-400 animate-pulse', failed: 'bg-red-400',
+  }
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${map[status] || 'bg-slate-500/10 text-slate-400 border border-slate-500/20'}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${status === 'complete' ? 'bg-green-400' : status === 'failed' ? 'bg-red-400' : 'bg-yellow-400 animate-pulse'}`} />
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${styles[status] || 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dots[status] || 'bg-slate-400'}`} />
       {labels[status] || status}
     </span>
+  )
+}
+
+function ProjectCard({ project }: { project: Project }) {
+  return (
+    <div
+      className="rounded-[20px] bg-white overflow-hidden group transition-all duration-200 hover:-translate-y-1 cursor-pointer"
+      style={{
+        boxShadow: '0 2px 12px rgba(59,130,246,0.08)',
+        border: '1px solid rgba(219,234,254,0.8)',
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 32px rgba(59,130,246,0.16)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 12px rgba(59,130,246,0.08)' }}
+    >
+      {/* Blueprint thumbnail */}
+      <div className="h-[100px] flex items-center justify-center relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)' }}>
+        {/* Mini grid */}
+        <svg className="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id={`g-${project.id}`} width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#2563eb" strokeWidth="0.5"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill={`url(#g-${project.id})`} />
+        </svg>
+        {/* Blueprint icon */}
+        <div className="relative z-10 w-12 h-12 rounded-xl bg-white/70 backdrop-blur-sm flex items-center justify-center shadow-sm">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/>
+          </svg>
+        </div>
+      </div>
+
+      {/* Card body */}
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="text-slate-800 font-semibold text-sm leading-tight line-clamp-1">{project.name}</div>
+          <StatusBadge status={project.status} />
+        </div>
+        {project.description && (
+          <div className="text-slate-400 text-xs mb-3 line-clamp-1">{project.description}</div>
+        )}
+
+        {/* Bottom row */}
+        <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+          <div className="text-slate-400 text-xs">
+            {new Date(project.updated_at || project.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </div>
+          {/* Hover action buttons */}
+          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-2 group-hover:translate-x-0">
+            <Link
+              href={`/projects/${project.id}`}
+              className="text-xs text-blue-600 hover:text-blue-800 font-semibold px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 transition-all"
+              onClick={e => e.stopPropagation()}
+            >
+              Open
+            </Link>
+            <Link
+              href="/permits"
+              className="text-xs text-slate-500 hover:text-slate-700 font-medium px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 transition-all"
+              onClick={e => e.stopPropagation()}
+            >
+              Submit
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -44,6 +136,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const [fabOpen, setFabOpen] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -61,167 +154,151 @@ export default function DashboardPage() {
 
   const complete = projects.filter(p => p.status === 'complete').length
   const processing = projects.filter(p => p.status === 'processing' || p.status === 'pending').length
+  const pendingPermits = 0
   const recent = projects.slice(0, 6)
   const name = user?.user_metadata?.full_name?.split(' ')[0] || 'there'
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto animate-[fadeIn_0.3s_ease]" style={{ animationFillMode: 'both' }}>
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
 
-      {/* Header */}
-      <div className="flex items-start justify-between mb-8">
+      {/* ── HERO STRIP ──────────────────────────────────────────────── */}
+      <div
+        className="rounded-[20px] px-8 py-6 flex items-center justify-between mb-8 relative overflow-hidden"
+        style={{
+          background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 24px rgba(59,130,246,0.12)',
+          minHeight: 120,
+        }}
+      >
+        {/* Inner glow */}
+        <div className="absolute top-0 left-0 w-48 h-48 rounded-full opacity-30 pointer-events-none" style={{ background: 'radial-gradient(circle, #93c5fd, transparent)', transform: 'translate(-30%, -40%)' }} />
         <div>
-          <h1 className="text-2xl font-black text-white">Good morning, {name} 👋</h1>
-          <p className="text-[#4a6a8a] text-sm mt-1">Here&apos;s your project overview for today.</p>
+          <h1 className="text-2xl font-black text-slate-800 leading-tight">Welcome back, {name}</h1>
+          <p className="text-blue-600/80 text-sm mt-1 font-medium">
+            {pendingPermits > 0
+              ? `You have ${pendingPermits} permit${pendingPermits > 1 ? 's' : ''} ready for submission`
+              : projects.length === 0
+              ? 'Upload your first blueprint to get started'
+              : `${complete} project${complete !== 1 ? 's' : ''} complete · ${processing} in progress`}
+          </p>
         </div>
         <Link
           href="/projects/new"
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/25"
+          className="flex items-center gap-2 bg-white text-blue-600 font-bold px-5 py-2.5 rounded-full text-sm transition-all duration-200 hover:scale-[1.03] flex-shrink-0"
+          style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.18)' }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Upload Blueprint
         </Link>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      {/* ── STATS ROW ───────────────────────────────────────────────── */}
+      <div className="grid grid-cols-4 gap-5 mb-8">
         <StatCard
           label="Active Projects" value={projects.length}
           sub={`${complete} complete`}
-          color="bg-blue-500/15 text-blue-400"
-          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>}
+          trend="12%" trendUp
+          iconBg="bg-blue-50 text-blue-500"
+          icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>}
         />
         <StatCard
-          label="Pending Permits" value={0}
+          label="Pending Permits" value={pendingPermits}
           sub="No submissions yet"
-          color="bg-yellow-500/15 text-yellow-400"
-          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12l2 2 4-4"/></svg>}
+          iconBg="bg-amber-50 text-amber-500"
+          icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12l2 2 4-4"/></svg>}
         />
         <StatCard
           label="Issues Detected" value={0}
           sub="Across all projects"
-          color="bg-red-500/15 text-red-400"
-          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>}
+          iconBg="bg-red-50 text-red-400"
+          icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>}
         />
         <StatCard
-          label="Est. Project Value" value="—"
+          label="Total Project Value" value="—"
           sub="Awaiting analysis"
-          color="bg-green-500/15 text-green-400"
-          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>}
+          iconBg="bg-emerald-50 text-emerald-500"
+          icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>}
         />
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
-
-        {/* Recent Projects */}
-        <div className="col-span-8">
-          <div className="bg-[#0f1e30] border border-[#1a2a3a] rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#1a2a3a]">
-              <h2 className="text-white font-bold text-sm">Recent Projects</h2>
-              <Link href="/projects" className="text-blue-400 hover:text-blue-300 text-xs font-medium transition-colors">View all →</Link>
-            </div>
-
-            {loading ? (
-              <div className="p-8 text-center text-[#4a6a8a] text-sm">Loading projects…</div>
-            ) : recent.length === 0 ? (
-              <div className="p-16 text-center">
-                <div className="w-14 h-14 bg-blue-600/10 border border-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                  </svg>
-                </div>
-                <div className="text-white font-semibold mb-1">No projects yet</div>
-                <div className="text-[#4a6a8a] text-sm mb-4">Upload your first blueprint to get started</div>
-                <Link href="/projects/new" className="inline-block bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-all">
-                  Upload Blueprint
-                </Link>
-              </div>
-            ) : (
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-[#1a2a3a]">
-                    {['Project Name', 'Status', 'Last Updated', 'Actions'].map(h => (
-                      <th key={h} className={`text-left text-[10px] font-semibold text-[#4a6a8a] uppercase tracking-wider px-5 py-3 ${h === 'Actions' ? 'text-right' : ''}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {recent.map((p, i) => (
-                    <tr key={p.id} className={`hover:bg-white/[0.02] transition-colors ${i < recent.length - 1 ? 'border-b border-[#1a2a3a]' : ''}`}>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-blue-600/10 border border-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                            </svg>
-                          </div>
-                          <div>
-                            <div className="text-white text-sm font-medium">{p.name}</div>
-                            {p.description && <div className="text-[#4a6a8a] text-xs mt-0.5 truncate max-w-[180px]">{p.description}</div>}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3.5"><StatusBadge status={p.status} /></td>
-                      <td className="px-5 py-3.5 text-[#4a6a8a] text-xs">{new Date(p.updated_at || p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Link href={`/projects/${p.id}`} className="text-xs text-[#4a6a8a] hover:text-blue-400 transition-colors px-2 py-1 rounded hover:bg-blue-500/10">View</Link>
-                          <Link href={`/projects/${p.id}`} className="text-xs text-[#4a6a8a] hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/5">Export</Link>
-                          <Link href="/permits" className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors px-2 py-1 rounded hover:bg-blue-500/10">Submit Permit</Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+      {/* ── PROJECTS SECTION ────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-black text-slate-800">Your Projects</h2>
+          <Link href="/projects" className="text-blue-500 hover:text-blue-700 text-sm font-semibold transition-colors">
+            View All →
+          </Link>
         </div>
 
-        {/* Quick Actions */}
-        <div className="col-span-4 space-y-4">
-          <div className="bg-[#0f1e30] border border-[#1a2a3a] rounded-xl p-5">
-            <h2 className="text-white font-bold text-sm mb-4">Quick Actions</h2>
-            <div className="space-y-2">
-              {[
-                { href: '/projects/new', label: 'Upload New Blueprint', icon: '📤', desc: 'Analyze a new PDF' },
-                { href: '/reports', label: 'Generate Report', icon: '📊', desc: 'Export project data' },
-                { href: '/permits', label: 'Submit Pending Permit', icon: '📑', desc: 'File with jurisdiction' },
-              ].map(a => (
-                <Link
-                  key={a.href}
-                  href={a.href}
-                  className="flex items-center gap-3 p-3 bg-white/[0.03] hover:bg-white/[0.06] border border-[#1a2a3a] hover:border-[#2a3a4a] rounded-xl transition-all duration-150 group"
-                >
-                  <span className="text-xl">{a.icon}</span>
-                  <div>
-                    <div className="text-white text-sm font-medium group-hover:text-blue-300 transition-colors">{a.label}</div>
-                    <div className="text-[#4a6a8a] text-xs">{a.desc}</div>
-                  </div>
-                </Link>
-              ))}
-            </div>
+        {loading ? (
+          <div className="grid grid-cols-3 gap-5">
+            {[1,2,3].map(i => (
+              <div key={i} className="h-[220px] rounded-[20px] bg-white animate-pulse" style={{ border: '1px solid rgba(219,234,254,0.8)' }} />
+            ))}
           </div>
+        ) : recent.length === 0 ? (
+          <div
+            className="rounded-[20px] bg-white py-16 flex flex-col items-center justify-center text-center"
+            style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}
+          >
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              </svg>
+            </div>
+            <div className="text-slate-800 font-bold text-base mb-1">No projects yet</div>
+            <div className="text-slate-400 text-sm mb-5">Upload your first blueprint to get started</div>
+            <Link
+              href="/projects/new"
+              className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-2.5 rounded-full text-sm transition-all hover:scale-[1.03]"
+              style={{ boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
+            >
+              Upload Blueprint
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-5">
+            {recent.map(p => <ProjectCard key={p.id} project={p} />)}
+          </div>
+        )}
+      </div>
 
-          {/* Status summary */}
-          <div className="bg-[#0f1e30] border border-[#1a2a3a] rounded-xl p-5">
-            <h2 className="text-white font-bold text-sm mb-4">Processing Status</h2>
-            <div className="space-y-3">
-              {[
-                { label: 'Complete', count: complete, color: 'bg-green-500' },
-                { label: 'Processing', count: processing, color: 'bg-yellow-500 animate-pulse' },
-                { label: 'Total', count: projects.length, color: 'bg-blue-500' },
-              ].map(s => (
-                <div key={s.label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${s.color}`} />
-                    <span className="text-[#64748b] text-sm">{s.label}</span>
-                  </div>
-                  <span className="text-white text-sm font-bold">{s.count}</span>
-                </div>
-              ))}
-            </div>
+      {/* ── FLOATING ACTION BUTTON ──────────────────────────────────── */}
+      <div className="fixed bottom-8 right-8 flex flex-col items-end gap-3" style={{ zIndex: 50 }}>
+        {fabOpen && (
+          <div className="flex flex-col items-end gap-2 animate-[fadeIn_0.2s_ease]">
+            {[
+              { href: '/projects/new', label: 'Upload Blueprint', icon: '📤' },
+              { href: '/reports',      label: 'Generate Report',  icon: '📊' },
+              { href: '/permits',      label: 'Submit Permit',    icon: '📑' },
+            ].map(a => (
+              <Link
+                key={a.href}
+                href={a.href}
+                onClick={() => setFabOpen(false)}
+                className="flex items-center gap-2.5 bg-white text-slate-700 font-semibold text-sm px-4 py-2.5 rounded-full shadow-lg hover:shadow-xl hover:scale-[1.03] transition-all duration-150"
+                style={{ border: '1px solid rgba(219,234,254,0.9)' }}
+              >
+                <span>{a.icon}</span>
+                {a.label}
+              </Link>
+            ))}
           </div>
-        </div>
+        )}
+        <button
+          onClick={() => setFabOpen(o => !o)}
+          className="w-14 h-14 rounded-full text-white font-bold text-2xl flex items-center justify-center transition-all duration-200 hover:scale-110"
+          style={{
+            background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+            boxShadow: '0 6px 24px rgba(59,130,246,0.4)',
+            transform: fabOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+          }}
+        >
+          +
+        </button>
       </div>
     </div>
   )
