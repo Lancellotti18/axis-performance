@@ -4,13 +4,14 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export async function apiRequest<T>(
   path: string,
-  options?: RequestInit
+  options?: RequestInit,
+  timeoutMs = 12000
 ): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession()
   const token = session?.access_token
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 60000)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   let res: Response
   try {
@@ -45,7 +46,7 @@ export const api = {
       apiRequest<any>(`/api/v1/projects/?user_id=${userId}`, {
         method: 'POST',
         body: JSON.stringify(payload),
-      }),
+      }, 60000),
     get: (id: string) =>
       apiRequest<any>(`/api/v1/projects/${id}`),
     delete: (id: string) =>

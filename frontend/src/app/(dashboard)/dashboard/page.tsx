@@ -143,11 +143,11 @@ export default function DashboardPage() {
       const u = await getUser()
       if (!u) { router.push('/login'); return }
       setUser(u)
+      setLoading(false)
       try {
         const data = await api.projects.list(u.id)
         setProjects(data || [])
       } catch {}
-      setLoading(false)
     }
     load()
   }, [router])
