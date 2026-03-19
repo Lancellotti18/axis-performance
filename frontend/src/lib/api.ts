@@ -10,7 +10,7 @@ export async function apiRequest<T>(
   const token = session?.access_token
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 15000)
+  const timer = setTimeout(() => controller.abort(), 60000)
 
   let res: Response
   try {
