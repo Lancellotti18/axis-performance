@@ -15,10 +15,13 @@ class EstimateAdjust(BaseModel):
 @router.get("/{project_id}")
 async def get_estimate(project_id: str):
     db = get_supabase()
-    result = db.table("cost_estimates").select("*").eq("project_id", project_id).single().execute()
-    if not result.data:
+    try:
+        result = db.table("cost_estimates").select("*").eq("project_id", project_id).single().execute()
+        if not result.data:
+            return None
+        estimate = result.data
+    except Exception:
         return None
-    estimate = result.data
 
     # Fetch material estimates via blueprint -> analysis chain
     bp = db.table("blueprints").select("id").eq("project_id", project_id).limit(1).execute()
