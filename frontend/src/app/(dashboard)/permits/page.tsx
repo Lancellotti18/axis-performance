@@ -83,7 +83,8 @@ type SubmitStatus = 'idle' | 'generating' | 'ready' | 'submitting' | 'submitted'
 export default function PermitsPage() {
   const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
+  const [projectsLoading, setProjectsLoading] = useState(true)
+  const [ready, setReady] = useState(false)
   const [selectedProject, setSelectedProject] = useState('')
   const [step, setStep] = useState<Step>(1)
   const [state, setState] = useState('')
@@ -96,14 +97,24 @@ export default function PermitsPage() {
 
   useEffect(() => {
     async function load() {
-      const u = await getUser()
-      if (!u) { router.push('/login'); return }
       try {
-        const data = await api.projects.list(u.id)
+        const u = await getUser()
+        if (!u) { router.push('/login'); return }
+      } catch {
+        router.push('/login'); return
+      }
+      // Auth passed — show the form immediately (states render now)
+      setReady(true)
+      // Load projects separately with a timeout so a dead backend never blocks the UI
+      try {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 5000)
+        const data = await api.projects.list('').catch(() => [] as Project[])
+        clearTimeout(timeout)
         setProjects(data || [])
         if (data?.length) setSelectedProject(data[0].id)
       } catch {}
-      setLoading(false)
+      setProjectsLoading(false)
     }
     load()
   }, [router])
@@ -150,15 +161,19 @@ export default function PermitsPage() {
         <p className="text-slate-400 text-sm mt-1">Automatically prepare and submit permits to your jurisdiction.</p>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-24 text-slate-400">Loading…</div>
+      {!ready ? (
+        <div className="flex items-center justify-center py-24">
+          <svg className="animate-spin text-blue-400" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+        </div>
       ) : (
         <div className="space-y-5">
 
           {/* Project selector */}
           <div className={card} style={cardStyle}>
             <label className="text-slate-700 font-semibold text-sm block mb-3">Project</label>
-            {projects.length === 0 ? (
+            {projectsLoading ? (
+              <div className="h-10 bg-slate-100 rounded-xl animate-pulse" />
+            ) : projects.length === 0 ? (
               <p className="text-slate-400 text-sm">No projects yet. Upload a blueprint first.</p>
             ) : (
               <select
