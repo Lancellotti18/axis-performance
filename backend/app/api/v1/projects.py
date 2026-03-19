@@ -57,6 +57,18 @@ async def get_project(project_id: str):
     return result.data
 
 
+@router.patch("/{project_id}")
+async def update_project(project_id: str, payload: dict):
+    db = get_supabase()
+    allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region")}
+    if not allowed:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    result = db.table("projects").update(allowed).eq("id", project_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return result.data[0]
+
+
 @router.delete("/{project_id}")
 async def delete_project(project_id: str):
     db = get_supabase()

@@ -49,6 +49,11 @@ export const api = {
       }, 60000),
     get: (id: string) =>
       apiRequest<any>(`/api/v1/projects/${id}`),
+    rename: (id: string, name: string) =>
+      apiRequest<any>(`/api/v1/projects/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      }),
     delete: (id: string) =>
       apiRequest<any>(`/api/v1/projects/${id}`, { method: 'DELETE' }),
   },

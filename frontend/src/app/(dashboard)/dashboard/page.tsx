@@ -62,10 +62,43 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function ProjectCard({ project }: { project: Project }) {
+function ProjectCard({
+  project,
+  onDelete,
+  onRename,
+}: {
+  project: Project
+  onDelete: (id: string) => void
+  onRename: (id: string, name: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draftName, setDraftName] = useState(project.name)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  async function saveRename() {
+    const trimmed = draftName.trim()
+    if (!trimmed || trimmed === project.name) { setEditing(false); return }
+    setSaving(true)
+    try {
+      await api.projects.rename(project.id, trimmed)
+      onRename(project.id, trimmed)
+    } catch {}
+    setSaving(false)
+    setEditing(false)
+  }
+
+  async function handleDelete() {
+    try {
+      await api.projects.delete(project.id)
+      onDelete(project.id)
+    } catch {}
+    setConfirmDelete(false)
+  }
+
   return (
     <div
-      className="rounded-[20px] bg-white overflow-hidden group transition-all duration-200 hover:-translate-y-1 cursor-pointer"
+      className="rounded-[20px] bg-white overflow-hidden group transition-all duration-200 hover:-translate-y-1 cursor-pointer relative"
       style={{
         boxShadow: '0 2px 12px rgba(59,130,246,0.08)',
         border: '1px solid rgba(219,234,254,0.8)',
@@ -73,8 +106,47 @@ function ProjectCard({ project }: { project: Project }) {
       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 32px rgba(59,130,246,0.16)' }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 12px rgba(59,130,246,0.08)' }}
     >
+      {/* Delete confirm overlay */}
+      {confirmDelete && (
+        <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-20 flex flex-col items-center justify-center gap-3 rounded-[20px] p-4">
+          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+            </svg>
+          </div>
+          <div className="text-slate-700 font-semibold text-sm text-center">Delete this project?</div>
+          <div className="text-slate-400 text-xs text-center">This cannot be undone.</div>
+          <div className="flex gap-2">
+            <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-medium hover:bg-slate-200 transition-all">Cancel</button>
+            <button onClick={handleDelete} className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition-all">Delete</button>
+          </div>
+        </div>
+      )}
+
       {/* Blueprint thumbnail */}
       <div className="h-[100px] flex items-center justify-center relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)' }}>
+        {/* Action icons — top right */}
+        <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-150 z-10">
+          <button
+            onClick={e => { e.stopPropagation(); setEditing(true); setDraftName(project.name) }}
+            className="w-7 h-7 rounded-lg bg-white/80 backdrop-blur-sm flex items-center justify-center hover:bg-white transition-all shadow-sm"
+            title="Rename"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
+            className="w-7 h-7 rounded-lg bg-white/80 backdrop-blur-sm flex items-center justify-center hover:bg-red-50 hover:stroke-red-500 transition-all shadow-sm"
+            title="Delete"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+            </svg>
+          </button>
+        </div>
+
         {/* Mini grid */}
         <svg className="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -96,7 +168,19 @@ function ProjectCard({ project }: { project: Project }) {
       {/* Card body */}
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="text-slate-800 font-semibold text-sm leading-tight line-clamp-1">{project.name}</div>
+          {editing ? (
+            <input
+              autoFocus
+              value={draftName}
+              onChange={e => setDraftName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') { setEditing(false); setDraftName(project.name) } }}
+              onBlur={saveRename}
+              disabled={saving}
+              className="text-slate-800 font-semibold text-sm leading-tight border-b border-blue-400 outline-none bg-transparent flex-1 min-w-0"
+            />
+          ) : (
+            <div className="text-slate-800 font-semibold text-sm leading-tight line-clamp-1">{project.name}</div>
+          )}
           <StatusBadge status={project.status} />
         </div>
         {project.description && (
@@ -151,6 +235,14 @@ export default function DashboardPage() {
     }
     load()
   }, [router])
+
+  function handleDelete(id: string) {
+    setProjects(prev => prev.filter(p => p.id !== id))
+  }
+
+  function handleRename(id: string, newName: string) {
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, name: newName } : p))
+  }
 
   const complete = projects.filter(p => p.status === 'complete').length
   const processing = projects.filter(p => p.status === 'processing' || p.status === 'pending').length
@@ -261,7 +353,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-5">
-            {recent.map(p => <ProjectCard key={p.id} project={p} />)}
+            {recent.map(p => <ProjectCard key={p.id} project={p} onDelete={handleDelete} onRename={handleRename} />)}
           </div>
         )}
       </div>

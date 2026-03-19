@@ -63,13 +63,19 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
     estimator = MaterialEstimator()
     materials = estimator.estimate_all(structured_data)
 
-    # 10. Cost estimation
+    # 10. Get region for pricing
     project = db.table("projects").select("*").eq("id", project_id).single().execute().data
     region = project.get("region", "US-TX")
+
+    # 11. Enrich with real-time pricing from Tavily
+    from app.services.pricing_service import enrich_materials_with_pricing
+    materials = enrich_materials_with_pricing(materials, region)
+
+    # 12. Cost estimation
     cost_engine = CostEngine()
     costs = cost_engine.calculate(materials, region)
 
-    # 11. Save materials + costs
+    # 13. Save materials + costs
     save_estimates(db, analysis_id, project_id, materials, costs)
 
     return {"analysis_id": analysis_id}
@@ -198,9 +204,14 @@ def save_analysis(db, blueprint_id: str, data: dict) -> str:
 
 
 def save_estimates(db, analysis_id: str, project_id: str, materials: list, costs: dict):
+    import json as _json
+    rows = []
     for item in materials:
-        item["analysis_id"] = analysis_id
-    db.table("material_estimates").insert(materials).execute()
+        row = {k: v for k, v in item.items() if k != "vendor_options"}
+        row["analysis_id"] = analysis_id
+        row["vendor_options"] = _json.dumps(item.get("vendor_options", []))
+        rows.append(row)
+    db.table("material_estimates").insert(rows).execute()
     db.table("cost_estimates").insert({
         "project_id": project_id,
         "materials_total": costs["materials_total"],
