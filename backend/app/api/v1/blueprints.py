@@ -84,16 +84,19 @@ async def create_blueprint(
 
 
 @router.post("/{blueprint_id}/analyze")
-async def trigger_analysis(blueprint_id: str):
-    """Queue a blueprint for AI analysis."""
+def trigger_analysis(blueprint_id: str):
+    """Run blueprint AI analysis synchronously."""
+    from app.services.ai_pipeline import run_analysis_pipeline
+    from fastapi import HTTPException
+    db = get_supabase()
     try:
-        from app.workers.tasks import analyze_blueprint
-        task = analyze_blueprint.delay(blueprint_id)
-        return {"job_id": task.id, "status": "queued"}
-    except Exception as e:
-        db = get_supabase()
         db.table("blueprints").update({"status": "processing"}).eq("id", blueprint_id).execute()
-        return {"job_id": "local", "status": "queued", "note": str(e)}
+        result = run_analysis_pipeline(blueprint_id)
+        db.table("blueprints").update({"status": "complete"}).eq("id", blueprint_id).execute()
+        return {"job_id": result["analysis_id"], "status": "complete"}
+    except Exception as e:
+        db.table("blueprints").update({"status": "failed"}).eq("id", blueprint_id).execute()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{blueprint_id}/status")
