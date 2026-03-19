@@ -5,7 +5,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 export async function apiRequest<T>(
   path: string,
   options?: RequestInit,
-  timeoutMs = 12000
+  timeoutMs = 60000
 ): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession()
   const token = session?.access_token

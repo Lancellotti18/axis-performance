@@ -4,6 +4,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { getUser, signOut } from '@/lib/auth'
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
 const NAV = [
   { href: '/dashboard',    label: 'Dashboard',       icon: IconDashboard },
   { href: '/projects',     label: 'Projects',        icon: IconProjects },
@@ -71,6 +73,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (!u) router.push('/login')
       else setUser(u)
     })
+    // Wake up backend on every page load so it's ready when needed
+    fetch(`${API_BASE}/health`).catch(() => {})
   }, [router])
 
   async function handleSignOut() {
