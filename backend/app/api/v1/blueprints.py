@@ -24,6 +24,7 @@ def get_s3_client():
 
 @router.get("/upload-url")
 async def get_upload_url(
+    request: Request,
     project_id: str = Query(...),
     filename: str = Query(...),
     content_type: str = Query(...),
@@ -31,8 +32,9 @@ async def get_upload_url(
     """Return a presigned URL for direct browser upload to S3/R2."""
     if not settings.AWS_ACCESS_KEY_ID:
         key = f"blueprints/{project_id}/{uuid.uuid4()}/{filename}"
+        base_url = str(request.base_url).rstrip("/")
         return {
-            "upload_url": f"http://localhost:8000/api/v1/blueprints/dev-upload/{key}",
+            "upload_url": f"{base_url}/api/v1/blueprints/dev-upload/{key}",
             "key": key,
             "dev_mode": True,
         }
