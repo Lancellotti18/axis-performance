@@ -138,28 +138,33 @@ export default function PermitsPage() {
 
   const project = projects.find(p => p.id === selectedProject)
 
+  const card = 'bg-white rounded-2xl p-6 space-y-4'
+  const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }
+  const selectCls = 'w-full bg-slate-50 border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 rounded-xl px-3 py-2.5 text-slate-700 text-sm focus:outline-none transition-all'
+  const labelCls = 'text-slate-500 text-xs font-semibold uppercase tracking-wider block mb-2'
+
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-black text-white">Permit Filing</h1>
-        <p className="text-[#4a6a8a] text-sm mt-1">Automatically prepare and submit permits to your jurisdiction.</p>
+        <h1 className="text-2xl font-black text-slate-800">Permit Filing</h1>
+        <p className="text-slate-400 text-sm mt-1">Automatically prepare and submit permits to your jurisdiction.</p>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-24 text-[#4a6a8a]">Loading…</div>
+        <div className="flex items-center justify-center py-24 text-slate-400">Loading…</div>
       ) : (
         <div className="space-y-5">
 
           {/* Project selector */}
-          <div className="bg-[#0f1e30] border border-[#1a2a3a] rounded-xl p-5">
-            <label className="text-white font-semibold text-sm block mb-3">Project</label>
+          <div className={card} style={cardStyle}>
+            <label className="text-slate-700 font-semibold text-sm block mb-3">Project</label>
             {projects.length === 0 ? (
-              <p className="text-[#4a6a8a] text-sm">No projects yet. Upload a blueprint first.</p>
+              <p className="text-slate-400 text-sm">No projects yet. Upload a blueprint first.</p>
             ) : (
               <select
                 value={selectedProject}
                 onChange={e => { setSelectedProject(e.target.value); setStep(1); setSubmitStatus('idle') }}
-                className="w-full bg-[#0a1628] border border-[#1a2a3a] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500/50"
+                className={selectCls}
               >
                 {projects.map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
@@ -169,7 +174,7 @@ export default function PermitsPage() {
           </div>
 
           {/* Step indicator */}
-          <div className="flex items-center gap-0 bg-[#0f1e30] border border-[#1a2a3a] rounded-xl overflow-hidden">
+          <div className="flex rounded-2xl overflow-hidden bg-white" style={cardStyle}>
             {([
               { n: 1, label: 'Location' },
               { n: 2, label: 'Requirements' },
@@ -178,21 +183,20 @@ export default function PermitsPage() {
               <button
                 key={n}
                 onClick={() => step > n && setStep(n)}
-                className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold transition-all relative ${
+                className={`flex-1 flex items-center justify-center gap-2 py-4 text-sm font-semibold transition-all ${
                   step === n
-                    ? 'bg-blue-600/15 text-blue-400 border-b-2 border-blue-500'
+                    ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-500'
                     : step > n
-                    ? 'text-green-400 hover:bg-white/5 cursor-pointer'
-                    : 'text-[#4a6a8a] cursor-default'
-                } ${i < 2 ? 'border-r border-[#1a2a3a]' : ''}`}
+                    ? 'text-emerald-600 hover:bg-emerald-50 cursor-pointer'
+                    : 'text-slate-400 cursor-default'
+                } ${i < 2 ? 'border-r border-blue-50' : ''}`}
               >
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                  step > n ? 'bg-green-500/20 text-green-400' : step === n ? 'bg-blue-600/30 text-blue-400' : 'bg-white/5 text-[#4a6a8a]'
+                  step > n ? 'bg-emerald-100 text-emerald-600' : step === n ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'
                 }`}>
                   {step > n
                     ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                    : n
-                  }
+                    : n}
                 </span>
                 {label}
               </button>
@@ -201,116 +205,114 @@ export default function PermitsPage() {
 
           {/* ── STEP 1: Location ─────────────────────────────────────────── */}
           {step === 1 && (
-            <div className="bg-[#0f1e30] border border-[#1a2a3a] rounded-xl p-6 space-y-4">
-              <h2 className="text-white font-bold text-sm">Select Jurisdiction</h2>
+            <div className={card} style={cardStyle}>
+              <h2 className="text-slate-700 font-bold text-sm">Select Jurisdiction</h2>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="text-[#4a6a8a] text-xs font-semibold uppercase tracking-wider block mb-2">State</label>
+                  <label className={labelCls}>State</label>
                   <select
                     value={state}
                     onChange={e => { setState(e.target.value); setCounty(''); setCity(''); setOfficeConfirmed(null); setCustomOffice('') }}
-                    className="w-full bg-[#0a1628] border border-[#1a2a3a] focus:border-blue-500/50 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none"
+                    className={selectCls}
                   >
                     <option value="">Select state…</option>
                     {STATES.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[#4a6a8a] text-xs font-semibold uppercase tracking-wider block mb-2">County</label>
+                  <label className={labelCls}>County</label>
                   <select
                     value={county}
                     onChange={e => { setCounty(e.target.value); setCity(''); setOfficeConfirmed(null); setCustomOffice('') }}
                     disabled={!state}
-                    className="w-full bg-[#0a1628] border border-[#1a2a3a] focus:border-blue-500/50 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none disabled:opacity-40"
+                    className={`${selectCls} disabled:opacity-40`}
                   >
                     <option value="">Select county…</option>
                     {counties.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[#4a6a8a] text-xs font-semibold uppercase tracking-wider block mb-2">City</label>
+                  <label className={labelCls}>City</label>
                   <select
                     value={city}
                     onChange={e => setCity(e.target.value)}
                     disabled={!county}
-                    className="w-full bg-[#0a1628] border border-[#1a2a3a] focus:border-blue-500/50 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none disabled:opacity-40"
+                    className={`${selectCls} disabled:opacity-40`}
                   >
                     <option value="">Select city…</option>
                     {cities.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
+
               {state && county && (() => {
                 const office = getPermitOffice(state, county)
                 return (
-                  <div className="space-y-3 mt-2">
-                    {/* Auto-detected permit office */}
-                    <div className="bg-[#0a1628] border border-[#1a2a3a] rounded-xl p-4 space-y-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                        <span className="text-blue-400 text-xs font-semibold uppercase tracking-wider">Permit Filing Office</span>
-                        <span className="ml-auto text-[#4a6a8a] text-xs">Auto-detected for {city || county}, {state}</span>
+                  <div className="mt-2 rounded-xl p-4 space-y-3" style={{ background: '#f0f7ff', border: '1px solid rgba(219,234,254,0.9)' }}>
+                    <div className="flex items-center gap-2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                      <span className="text-blue-600 text-xs font-semibold uppercase tracking-wider">Permit Filing Office</span>
+                      <span className="ml-auto text-slate-400 text-xs">Auto-detected for {city || county}, {state}</span>
+                    </div>
+                    <div>
+                      <div className="text-slate-800 font-semibold text-sm">{office.name}</div>
+                      <div className="text-slate-500 text-xs mt-0.5">{office.address}</div>
+                      <div className="flex items-center gap-4 mt-2">
+                        <span className="text-slate-500 text-xs">{office.phone}</span>
+                        <a href={office.portal} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs hover:text-blue-700 underline underline-offset-2">{office.portal}</a>
                       </div>
-                      <div>
-                        <div className="text-white font-semibold text-sm">{office.name}</div>
-                        <div className="text-[#4a6a8a] text-xs mt-1">{office.address}</div>
-                        <div className="flex items-center gap-4 mt-2">
-                          <span className="text-[#4a6a8a] text-xs">{office.phone}</span>
-                          <a href={office.portal} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-xs hover:text-blue-300 underline underline-offset-2">{office.portal}</a>
+                    </div>
+                    <div className="border-t border-blue-100 pt-3 space-y-2">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <div
+                          onClick={() => { setOfficeConfirmed(true); setCustomOffice('') }}
+                          className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
+                            officeConfirmed === true ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {officeConfirmed === true && (
+                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                          )}
                         </div>
-                      </div>
-                      {/* Verification checkbox */}
-                      <div className="border-t border-[#1a2a3a] pt-3">
-                        <label className="flex items-center gap-3 cursor-pointer">
-                          <div
-                            onClick={() => { setOfficeConfirmed(true); setCustomOffice('') }}
-                            className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
-                              officeConfirmed === true ? 'bg-green-500 border-green-500' : 'border-[#2a3a4a] bg-[#0a1628]'
-                            }`}
-                          >
-                            {officeConfirmed === true && (
-                              <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                            )}
-                          </div>
-                          <span className="text-white/80 text-sm">Yes, this is the correct filing office for my project</span>
-                        </label>
-                        <label className="flex items-center gap-3 cursor-pointer mt-2">
-                          <div
-                            onClick={() => setOfficeConfirmed(false)}
-                            className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
-                              officeConfirmed === false ? 'bg-yellow-500 border-yellow-500' : 'border-[#2a3a4a] bg-[#0a1628]'
-                            }`}
-                          >
-                            {officeConfirmed === false && (
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                            )}
-                          </div>
-                          <span className="text-white/80 text-sm">No, I need to use a different office</span>
-                        </label>
-                        {officeConfirmed === false && (
-                          <div className="mt-3 space-y-2">
-                            <label className="text-[#4a6a8a] text-xs font-semibold uppercase tracking-wider block">Correct Filing Office</label>
-                            <input
-                              type="text"
-                              value={customOffice}
-                              onChange={e => setCustomOffice(e.target.value)}
-                              placeholder="e.g. City of Charlotte Building Permits, 123 Main St…"
-                              className="w-full bg-[#0a1628] border border-yellow-500/40 focus:border-yellow-500/70 rounded-xl px-4 py-2.5 text-white text-sm placeholder-white/20 focus:outline-none transition-all"
-                              autoFocus
-                            />
-                            <p className="text-[#4a6a8a] text-xs">Enter the name and address of the correct permit office. This will be used when your packet is submitted.</p>
-                          </div>
-                        )}
-                      </div>
+                        <span className="text-slate-700 text-sm">Yes, this is the correct filing office</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <div
+                          onClick={() => setOfficeConfirmed(false)}
+                          className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
+                            officeConfirmed === false ? 'bg-amber-400 border-amber-400' : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {officeConfirmed === false && (
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          )}
+                        </div>
+                        <span className="text-slate-700 text-sm">No, I need to use a different office</span>
+                      </label>
+                      {officeConfirmed === false && (
+                        <div className="pt-1 space-y-2">
+                          <label className={labelCls}>Correct Filing Office</label>
+                          <input
+                            type="text"
+                            value={customOffice}
+                            onChange={e => setCustomOffice(e.target.value)}
+                            placeholder="e.g. City of Charlotte Building Permits, 123 Main St…"
+                            className="w-full bg-white border border-amber-300 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 rounded-xl px-4 py-2.5 text-slate-700 text-sm placeholder-slate-300 focus:outline-none transition-all"
+                            autoFocus
+                          />
+                          <p className="text-slate-400 text-xs">Enter the name and address of the correct permit office.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
               })()}
-              <div className="flex justify-end pt-2">
+
+              <div className="flex justify-end pt-1">
                 <button
                   onClick={() => setStep(2)}
                   disabled={!state || !county || officeConfirmed === null || (officeConfirmed === false && !customOffice.trim())}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-all"
+                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-all hover:scale-[1.02]"
                 >
                   Continue →
                 </button>
@@ -320,14 +322,14 @@ export default function PermitsPage() {
 
           {/* ── STEP 2: Requirements ─────────────────────────────────────── */}
           {step === 2 && (
-            <div className="bg-[#0f1e30] border border-[#1a2a3a] rounded-xl p-6 space-y-4">
+            <div className={card} style={cardStyle}>
               <div className="flex items-center justify-between">
-                <h2 className="text-white font-bold text-sm">Required Documents</h2>
-                <span className="text-xs text-[#4a6a8a]">{checkedCount} / {docs.length} confirmed</span>
+                <h2 className="text-slate-700 font-bold text-sm">Required Documents</h2>
+                <span className="text-xs text-slate-400">{checkedCount} / {docs.length} confirmed</span>
               </div>
-              <div className="w-full h-1.5 bg-[#1a2a3a] rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                  className="h-full bg-blue-500 rounded-full transition-all duration-500"
                   style={{ width: `${(checkedCount / docs.length) * 100}%` }}
                 />
               </div>
@@ -337,30 +339,30 @@ export default function PermitsPage() {
                     key={doc}
                     className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
                       checklist[doc]
-                        ? 'bg-green-500/5 border-green-500/20'
-                        : 'bg-[#0a1628] border-[#1a2a3a] hover:border-[#2a3a4a]'
+                        ? 'bg-emerald-50 border-emerald-200'
+                        : 'bg-slate-50 border-slate-200 hover:border-blue-200 hover:bg-blue-50/40'
                     }`}
                   >
                     <div className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
-                      checklist[doc] ? 'bg-green-500 border-green-500' : 'border-[#2a3a4a] bg-[#0a1628]'
+                      checklist[doc] ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 bg-white'
                     }`}>
                       {checklist[doc] && (
                         <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
                       )}
                     </div>
                     <input type="checkbox" className="sr-only" checked={!!checklist[doc]} onChange={e => setChecklist(prev => ({ ...prev, [doc]: e.target.checked }))} />
-                    <span className={`text-sm transition-colors ${checklist[doc] ? 'text-green-300 line-through opacity-60' : 'text-white'}`}>{doc}</span>
+                    <span className={`text-sm transition-colors ${checklist[doc] ? 'text-emerald-600 line-through opacity-60' : 'text-slate-700'}`}>{doc}</span>
                   </label>
                 ))}
               </div>
-              <div className="flex justify-between pt-2">
-                <button onClick={() => setStep(1)} className="text-[#4a6a8a] hover:text-white text-sm font-medium transition-colors">← Back</button>
+              <div className="flex justify-between pt-1">
+                <button onClick={() => setStep(1)} className="text-slate-400 hover:text-slate-700 text-sm font-medium transition-colors">← Back</button>
                 <button
                   onClick={() => setStep(3)}
                   disabled={!allChecked}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-all"
+                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-all hover:scale-[1.02]"
                 >
-                  {allChecked ? 'Ready to Submit →' : `Check all ${docs.length - checkedCount} remaining`}
+                  {allChecked ? 'Ready to Submit →' : `${docs.length - checkedCount} remaining`}
                 </button>
               </div>
             </div>
@@ -368,10 +370,9 @@ export default function PermitsPage() {
 
           {/* ── STEP 3: Submission ───────────────────────────────────────── */}
           {step === 3 && (
-            <div className="bg-[#0f1e30] border border-[#1a2a3a] rounded-xl p-6 space-y-5">
-              <h2 className="text-white font-bold text-sm">Submit Permit Application</h2>
+            <div className={card} style={cardStyle}>
+              <h2 className="text-slate-700 font-bold text-sm">Submit Permit Application</h2>
 
-              {/* Summary */}
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: 'Project', value: project?.name || '—' },
@@ -379,48 +380,47 @@ export default function PermitsPage() {
                   { label: 'Filing Office', value: customOffice || getPermitOffice(state, county).name },
                   { label: 'Documents', value: `${docs.length} items confirmed` },
                 ].map(row => (
-                  <div key={row.label} className="bg-[#0a1628] border border-[#1a2a3a] rounded-xl px-4 py-3">
-                    <div className="text-[#4a6a8a] text-xs font-semibold uppercase tracking-wider mb-1">{row.label}</div>
-                    <div className="text-white text-sm font-medium">{row.value}</div>
+                  <div key={row.label} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                    <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{row.label}</div>
+                    <div className="text-slate-800 text-sm font-medium">{row.value}</div>
                   </div>
                 ))}
               </div>
 
-              {/* Status indicator */}
               {submitStatus === 'submitted' ? (
-                <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-xl px-5 py-4">
-                  <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center flex-shrink-0">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4">
+                  <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </div>
                   <div>
-                    <div className="text-green-400 font-bold text-sm">Submitted Successfully</div>
-                    <div className="text-green-300/60 text-xs mt-0.5">Confirmation #AXS-{Math.floor(Math.random() * 90000) + 10000} · Expect response within 5–7 business days</div>
+                    <div className="text-emerald-700 font-bold text-sm">Submitted Successfully</div>
+                    <div className="text-emerald-500 text-xs mt-0.5">Confirmation #AXS-{Math.floor(Math.random() * 90000) + 10000} · Expect response within 5–7 business days</div>
                   </div>
                 </div>
               ) : submitStatus === 'ready' ? (
-                <div className="flex items-center gap-3 bg-blue-600/10 border border-blue-500/20 rounded-xl px-5 py-4">
-                  <div className="w-10 h-10 bg-blue-600/20 rounded-full flex items-center justify-center flex-shrink-0">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-5 py-4">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                   </div>
                   <div>
-                    <div className="text-blue-400 font-bold text-sm">Permit Packet Ready</div>
-                    <div className="text-blue-300/60 text-xs mt-0.5">All documents compiled · Ready to submit to {city || county} building department</div>
+                    <div className="text-blue-700 font-bold text-sm">Permit Packet Ready</div>
+                    <div className="text-blue-500 text-xs mt-0.5">All documents compiled · Ready to submit to {city || county} building department</div>
                   </div>
                 </div>
               ) : submitStatus === 'generating' ? (
-                <div className="flex items-center gap-3 bg-[#0a1628] border border-[#1a2a3a] rounded-xl px-5 py-4">
-                  <svg className="animate-spin text-blue-400 flex-shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-                  <div className="text-[#64748b] text-sm">Compiling permit packet…</div>
+                <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-5 py-4">
+                  <svg className="animate-spin text-blue-500 flex-shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  <div className="text-slate-500 text-sm">Compiling permit packet…</div>
                 </div>
               ) : null}
 
-              <div className="flex justify-between pt-2">
-                <button onClick={() => setStep(2)} className="text-[#4a6a8a] hover:text-white text-sm font-medium transition-colors">← Back</button>
+              <div className="flex justify-between pt-1">
+                <button onClick={() => setStep(2)} className="text-slate-400 hover:text-slate-700 text-sm font-medium transition-colors">← Back</button>
                 <div className="flex gap-3">
                   {submitStatus === 'idle' && (
                     <button
                       onClick={handleGenerate}
-                      className="bg-[#0a1628] hover:bg-white/5 border border-[#1a2a3a] hover:border-[#2a3a4a] text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-all"
+                      className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-semibold px-5 py-2.5 rounded-xl text-sm transition-all"
                     >
                       Generate Permit Packet
                     </button>
@@ -428,7 +428,7 @@ export default function PermitsPage() {
                   {submitStatus === 'ready' && (
                     <button
                       onClick={handleSubmit}
-                      className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all"
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all hover:scale-[1.02]"
                     >
                       Submit to Jurisdiction
                     </button>
