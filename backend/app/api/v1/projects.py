@@ -29,6 +29,8 @@ async def list_projects(user_id: str = Query(...)):
 @router.post("/")
 async def create_project(payload: ProjectCreate, user_id: str = Query(...)):
     db = get_supabase()
+    # Ensure profile exists (auto-create if missing)
+    db.table("profiles").upsert({"id": user_id}, on_conflict="id").execute()
     result = db.table("projects").insert({
         "user_id": user_id,
         "name": payload.name,
