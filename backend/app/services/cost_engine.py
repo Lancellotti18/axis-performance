@@ -18,7 +18,7 @@ MATERIAL_INDEX = {
     "US-WA": 1.15, "DEFAULT": 1.0,
 }
 
-LABOR_HOURS_PER_SQFT = 1.8  # average hours per sqft for residential
+LABOR_HOURS_PER_SQFT = 0.9  # average hours per sqft for residential new construction
 
 
 class CostEngine:
