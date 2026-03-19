@@ -50,7 +50,11 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
     rooms = reconstruct_rooms(image, scale, detections)
 
     # 7. Claude API validation + enrichment
-    structured_data = claude_validate(image_bytes, rooms, detections, ocr_results)
+    # Convert processed numpy image back to JPEG bytes for Claude
+    import cv2 as _cv2
+    _, jpeg_buf = _cv2.imencode(".jpg", image)
+    jpeg_bytes = jpeg_buf.tobytes()
+    structured_data = claude_validate(jpeg_bytes, rooms, detections, ocr_results)
 
     # 8. Save analysis
     analysis_id = save_analysis(db, blueprint_id, structured_data)
