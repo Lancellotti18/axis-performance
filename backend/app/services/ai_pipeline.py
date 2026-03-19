@@ -166,7 +166,20 @@ Return ONLY valid JSON."""
         ],
     )
 
-    return json.loads(response.content[0].text)
+    text = response.content[0].text.strip()
+    # Extract JSON if Claude wrapped it in markdown code blocks
+    if "```" in text:
+        start = text.find("{", text.find("```"))
+        end = text.rfind("}") + 1
+        text = text[start:end]
+    elif text.startswith("{"):
+        pass
+    else:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start != -1:
+            text = text[start:end]
+    return json.loads(text)
 
 
 def save_analysis(db, blueprint_id: str, data: dict) -> str:
