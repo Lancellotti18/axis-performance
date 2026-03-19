@@ -68,146 +68,174 @@ const ISO_COLORS = [
 
 function Blueprint3D({ analysis }: { analysis: any }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [rotY, setRotY] = useState(Math.PI / 4)
+  const [rotY, setRotY] = useState(0.6)   // ~35 degrees — good default view
   const [zoom, setZoom] = useState(1)
   const dragging = useRef(false)
   const lastX = useRef(0)
-  const rooms: any[] = analysis?.rooms || []
 
-  const placedRooms = useMemo(() => {
-    if (!rooms.length) return []
-    const sorted = [...rooms].sort((a: any, b: any) => (b.sqft || 0) - (a.sqft || 0))
-    const UNIT = 0.5
-    const totalSqft = sorted.reduce((s: number, r: any) => s + (r.sqft || 100), 0)
-    const maxRowW = Math.sqrt(totalSqft) * UNIT * 1.3
-    const placed: { room: any; x: number; z: number; w: number; d: number }[] = []
-    let rowX = 0, rowZ = 0, rowMaxD = 0
-    for (const room of sorted) {
-      const w = (room.dimensions?.width  || Math.sqrt(room.sqft || 100)) * UNIT
-      const d = (room.dimensions?.height || Math.sqrt(room.sqft || 100)) * UNIT
-      if (rowX + w > maxRowW && placed.length > 0) { rowZ += rowMaxD + 0.8; rowX = 0; rowMaxD = 0 }
-      placed.push({ room, x: rowX, z: rowZ, w, d })
-      rowX += w + 0.4
-      rowMaxD = Math.max(rowMaxD, d)
+  // Build normalised room list (always in feet)
+  const roomsFt = useMemo(() => {
+    const raw: any[] = analysis?.rooms || []
+    const totalSqft = Number(analysis?.total_sqft) || 1200
+    // If no rooms detected, synthesise a single box from total_sqft
+    if (!raw.length) {
+      const s = Math.sqrt(totalSqft)
+      return [{ name: 'Building Area', sqft: totalSqft, w: s * 1.3, d: s * 0.8 }]
     }
-    return placed
-  }, [rooms])
+    return raw.map((r: any) => {
+      const sqft = Number(r.sqft) || 120
+      const w = Number(r.dimensions?.width)  || Math.sqrt(sqft) * 1.2
+      const d = Number(r.dimensions?.height) || Math.sqrt(sqft) * 0.85
+      return { name: String(r.name || 'Room'), sqft, w, d }
+    })
+  }, [analysis?.rooms, analysis?.total_sqft])
+
+  // Layout: flow rooms left-to-right, wrap when row is full
+  const { placed, worldW, worldD } = useMemo(() => {
+    const sorted = [...roomsFt].sort((a, b) => b.sqft - a.sqft)
+    const totalSqft = sorted.reduce((s, r) => s + r.sqft, 0)
+    const maxRowW = Math.sqrt(totalSqft) * 1.5   // feet
+    const GAP = 2  // 2 ft gap between rooms
+    const placed: { room: typeof roomsFt[0]; x: number; z: number; w: number; d: number }[] = []
+    let rowX = 0, rowZ = 0, rowMaxD = 0, maxW = 0
+    for (const room of sorted) {
+      if (rowX + room.w > maxRowW && placed.length > 0) {
+        rowZ += rowMaxD + GAP; rowX = 0; rowMaxD = 0
+      }
+      placed.push({ room, x: rowX, z: rowZ, w: room.w, d: room.d })
+      rowX += room.w + GAP
+      rowMaxD = Math.max(rowMaxD, room.d)
+      maxW = Math.max(maxW, rowX)
+    }
+    return { placed, worldW: maxW, worldD: rowZ + rowMaxD }
+  }, [roomsFt])
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
     if (!ctx) return
-    const W = canvas.width, H = canvas.height
-    ctx.clearRect(0, 0, W, H)
-    const bg = ctx.createLinearGradient(0, 0, 0, H)
+
+    const CW = canvas.width, CH = canvas.height
+    ctx.clearRect(0, 0, CW, CH)
+
+    // Background
+    const bg = ctx.createLinearGradient(0, 0, 0, CH)
     bg.addColorStop(0, '#eef6ff'); bg.addColorStop(1, '#f8faff')
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, CW, CH)
 
-    if (!placedRooms.length) {
-      ctx.fillStyle = '#94a3b8'; ctx.font = '14px system-ui'; ctx.textAlign = 'center'
-      ctx.fillText('No room data available — run analysis first', W / 2, H / 2)
-      return
-    }
+    const cosR = Math.cos(rotY), sinR = Math.sin(rotY)
+    const WALL_H = 9  // 9 feet ceiling
 
-    const SCALE = 38 * zoom
-    const WALL_H = 3.2
-    const cx = W / 2, cy = H * 0.58
+    // Auto-scale: fit the projected layout into the canvas
+    // Projected X span = (worldW * |cosR| + worldD * |sinR|)
+    // Projected Y span = WALL_H * 0.55 + (worldW * |sinR| + worldD * |cosR|) * 0.45
+    const projX = worldW * Math.abs(cosR) + worldD * Math.abs(sinR)
+    const projY = WALL_H * 0.55 + (worldW * Math.abs(sinR) + worldD * Math.abs(cosR)) * 0.45
+    const BASE_SCALE = Math.min(CW * 0.75 / Math.max(projX, 1), CH * 0.75 / Math.max(projY, 1))
+    const SCALE = BASE_SCALE * zoom
+
+    // Centre of layout in world space
+    const midX = worldW / 2, midZ = worldD / 2
+    const midRX = midX * cosR - midZ * sinR
+    const midRZ = midX * sinR + midZ * cosR
+    const cx = CW / 2 - midRX * SCALE
+    const cy = CH * 0.55 + midRZ * 0.45 * SCALE
 
     function project(wx: number, wy: number, wz: number) {
-      const rx = wx * Math.cos(rotY) - wz * Math.sin(rotY)
-      const rz = wx * Math.sin(rotY) + wz * Math.cos(rotY)
-      return { x: cx + rx * SCALE, y: cy - wy * SCALE + rz * 0.45 * SCALE }
+      const rx = wx * cosR - wz * sinR
+      const rz = wx * sinR + wz * cosR
+      return { x: cx + rx * SCALE, y: cy - wy * SCALE * 0.55 + rz * SCALE * 0.45 }
     }
 
-    const sorted = [...placedRooms].sort((a, b) => {
-      const da = (a.x + a.w / 2) * Math.sin(rotY) + (a.z + a.d / 2) * Math.cos(rotY)
-      const db = (b.x + b.w / 2) * Math.sin(rotY) + (b.z + b.d / 2) * Math.cos(rotY)
+    function drawPoly(pts: {x:number,y:number}[], fill: string, alpha = 1) {
+      ctx.globalAlpha = alpha
+      ctx.beginPath()
+      ctx.moveTo(pts[0].x, pts[0].y)
+      for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y)
+      ctx.closePath()
+      ctx.fillStyle = fill; ctx.fill()
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.2; ctx.stroke()
+      ctx.globalAlpha = 1
+    }
+
+    // Painter's algorithm: draw far rooms first
+    const depthSorted = [...placed].sort((a, b) => {
+      const da = (a.x + a.w / 2) * sinR + (a.z + a.d / 2) * cosR
+      const db = (b.x + b.w / 2) * sinR + (b.z + b.d / 2) * cosR
       return db - da
     })
 
-    for (let i = 0; i < sorted.length; i++) {
-      const pr = sorted[i]
-      const origIdx = placedRooms.indexOf(pr)
-      const colors = ISO_COLORS[origIdx % ISO_COLORS.length]
+    depthSorted.forEach((pr, i) => {
+      const origIdx = placed.indexOf(pr)
+      const [c0, c1, c2] = ISO_COLORS[origIdx % ISO_COLORS.length]
       const { x, z, w, d } = pr
       const p = [
-        project(x,   0,      z),
-        project(x+w, 0,      z),
-        project(x+w, 0,      z+d),
-        project(x,   0,      z+d),
-        project(x,   WALL_H, z),
-        project(x+w, WALL_H, z),
-        project(x+w, WALL_H, z+d),
-        project(x,   WALL_H, z+d),
+        project(x,   0,       z),      // 0 front-left-bot
+        project(x+w, 0,       z),      // 1 front-right-bot
+        project(x+w, 0,       z+d),    // 2 back-right-bot
+        project(x,   0,       z+d),    // 3 back-left-bot
+        project(x,   WALL_H,  z),      // 4 front-left-top
+        project(x+w, WALL_H,  z),      // 5 front-right-top
+        project(x+w, WALL_H,  z+d),    // 6 back-right-top
+        project(x,   WALL_H,  z+d),    // 7 back-left-top
       ]
 
-      function poly(pts: {x:number,y:number}[], fill: string, stroke = 'rgba(255,255,255,0.35)') {
-        ctx.beginPath()
-        ctx.moveTo(pts[0].x, pts[0].y)
-        for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y)
-        ctx.closePath()
-        ctx.fillStyle = fill; ctx.fill()
-        ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke()
-      }
-
       // floor
-      poly([p[0],p[1],p[2],p[3]], colors[0])
-
-      const showFront = Math.cos(rotY) > 0
-      const showRight = Math.sin(rotY) > 0
-
-      // front/back wall
-      if (showFront) poly([p[0],p[1],p[5],p[4]], colors[1])
-      else           poly([p[3],p[2],p[6],p[7]], colors[1])
-
+      drawPoly([p[0],p[1],p[2],p[3]], c0)
+      // front/back wall (whichever faces camera)
+      if (cosR > 0) drawPoly([p[0],p[1],p[5],p[4]], c1)
+      else          drawPoly([p[3],p[2],p[6],p[7]], c1)
       // left/right wall
-      if (showRight) poly([p[1],p[2],p[6],p[5]], colors[2])
-      else           poly([p[0],p[3],p[7],p[4]], colors[2])
+      if (sinR > 0) drawPoly([p[1],p[2],p[6],p[5]], c2)
+      else          drawPoly([p[0],p[3],p[7],p[4]], c2)
+      // open ceiling (semi-transparent)
+      drawPoly([p[4],p[5],p[6],p[7]], c0, 0.4)
 
-      // top (semi-transparent)
-      ctx.globalAlpha = 0.55
-      poly([p[4],p[5],p[6],p[7]], colors[0], 'rgba(100,150,255,0.4)')
-      ctx.globalAlpha = 1
-
-      // label
-      const lp = project(x + w / 2, WALL_H + 0.3, z + d / 2)
+      // label above the box
+      const lp = project(x + w / 2, WALL_H + 2, z + d / 2)
       ctx.textAlign = 'center'
+      const fs = Math.max(9, Math.round(11 * Math.sqrt(zoom)))
+      ctx.font = `bold ${fs}px system-ui`
       ctx.fillStyle = '#1e3a5f'
-      ctx.font = `bold ${Math.max(9, Math.round(11 * zoom))}px system-ui`
       ctx.fillText(pr.room.name, lp.x, lp.y)
-      ctx.font = `${Math.max(7, Math.round(9 * zoom))}px system-ui`
+      ctx.font = `${Math.max(7, fs - 2)}px system-ui`
       ctx.fillStyle = '#3b6494'
-      if (pr.room.sqft) ctx.fillText(`${Math.round(pr.room.sqft)} sqft`, lp.x, lp.y + Math.round(13 * zoom))
-    }
+      ctx.fillText(`${Math.round(pr.room.sqft)} sq ft`, lp.x, lp.y + fs + 1)
+    })
 
-    // compass rose
-    ctx.font = '11px system-ui'; ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'center'
-    ctx.fillText('↻ drag to rotate  ·  scroll to zoom', W / 2, H - 12)
-  }, [placedRooms, rotY, zoom])
+    // Hint text
+    ctx.globalAlpha = 0.45
+    ctx.font = '11px system-ui'; ctx.fillStyle = '#475569'; ctx.textAlign = 'center'
+    ctx.fillText('Drag to rotate  ·  Scroll to zoom', CW / 2, CH - 10)
+    ctx.globalAlpha = 1
+  }, [placed, worldW, worldD, rotY, zoom])
+
+  const btnCls = 'text-xs text-slate-500 hover:text-blue-600 font-medium px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-blue-50 transition-all border border-slate-200 hover:border-blue-200'
 
   return (
     <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
-      <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
+      <div className="px-5 py-3.5 border-b flex items-center justify-between" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
         <span className="text-slate-800 font-bold text-sm">3D Floor Plan</span>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setRotY(r => r - Math.PI / 4)} className="text-xs text-slate-500 hover:text-blue-600 font-medium px-2 py-1 rounded-lg bg-slate-50 hover:bg-blue-50 transition-all">← Rotate</button>
-          <button onClick={() => setZoom(z => Math.max(0.3, z - 0.15))} className="text-xs text-slate-500 hover:text-blue-600 font-medium px-2 py-1 rounded-lg bg-slate-50 hover:bg-blue-50 transition-all">Zoom −</button>
-          <button onClick={() => setZoom(z => Math.min(3, z + 0.15))} className="text-xs text-slate-500 hover:text-blue-600 font-medium px-2 py-1 rounded-lg bg-slate-50 hover:bg-blue-50 transition-all">Zoom +</button>
-          <button onClick={() => setRotY(r => r + Math.PI / 4)} className="text-xs text-slate-500 hover:text-blue-600 font-medium px-2 py-1 rounded-lg bg-slate-50 hover:bg-blue-50 transition-all">Rotate →</button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setRotY(r => r - 0.35)} className={btnCls}>← Rotate</button>
+          <button onClick={() => setRotY(r => r + 0.35)} className={btnCls}>Rotate →</button>
+          <button onClick={() => setZoom(z => Math.max(0.4, z - 0.2))} className={btnCls}>Zoom −</button>
+          <button onClick={() => setZoom(z => Math.min(3, z + 0.2))} className={btnCls}>Zoom +</button>
+          <button onClick={() => { setRotY(0.6); setZoom(1) }} className={btnCls}>Reset</button>
         </div>
       </div>
       <canvas
         ref={canvasRef}
         width={860}
-        height={500}
+        height={520}
         className="w-full cursor-grab active:cursor-grabbing select-none"
         style={{ display: 'block', touchAction: 'none' }}
         onMouseDown={e => { dragging.current = true; lastX.current = e.clientX }}
-        onMouseMove={e => { if (!dragging.current) return; setRotY(r => r + (e.clientX - lastX.current) * 0.012); lastX.current = e.clientX }}
+        onMouseMove={e => { if (!dragging.current) return; setRotY(r => r + (e.clientX - lastX.current) * 0.013); lastX.current = e.clientX }}
         onMouseUp={() => { dragging.current = false }}
         onMouseLeave={() => { dragging.current = false }}
-        onWheel={e => { e.preventDefault(); setZoom(z => Math.max(0.3, Math.min(3, z - e.deltaY * 0.001))) }}
+        onWheel={e => { e.preventDefault(); setZoom(z => Math.max(0.4, Math.min(3, z - e.deltaY * 0.001))) }}
       />
     </div>
   )
@@ -623,34 +651,46 @@ export default function ProjectPage() {
                                   {/* Vendor options expanded */}
                                   {isExpanded && vendors.length > 0 && (
                                     <div className="px-5 pb-4 bg-slate-50/60">
-                                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 pt-3">Purchase Options</div>
+                                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 pt-3">Where to Buy</div>
                                       <div className="grid gap-2">
-                                        {sortedVendors.map((v: any, vi: number) => (
-                                          <a
-                                            key={vi}
-                                            href={v.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border hover:border-blue-300 hover:shadow-sm transition-all group"
-                                            style={{ borderColor: 'rgba(219,234,254,0.9)' }}
-                                            onClick={e => e.stopPropagation()}
-                                          >
-                                            <div className="flex items-center gap-3">
-                                              {vi === 0 && sortMode === 'lowest_price' && (
-                                                <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">LOWEST</span>
-                                              )}
-                                              {vi === 0 && sortMode === 'best_value' && (
-                                                <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">BEST VALUE</span>
-                                              )}
-                                              <span className="text-slate-700 text-sm font-semibold">{v.vendor}</span>
-                                              {v.note && <span className="text-slate-400 text-xs">({v.note})</span>}
+                                        {sortedVendors.map((v: any, vi: number) => {
+                                          // Ensure URL is always valid — fall back to vendor search
+                                          const buyUrl = v.url && v.url.startsWith('http')
+                                            ? v.url
+                                            : `https://www.google.com/search?q=${encodeURIComponent(`${m.item_name} ${v.vendor} buy`)}`
+                                          return (
+                                            <div
+                                              key={vi}
+                                              className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border"
+                                              style={{ borderColor: 'rgba(219,234,254,0.9)' }}
+                                            >
+                                              <div className="flex items-center gap-2 min-w-0">
+                                                {vi === 0 && (
+                                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${sortMode === 'lowest_price' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                    {sortMode === 'lowest_price' ? 'LOWEST' : 'BEST VALUE'}
+                                                  </span>
+                                                )}
+                                                <div className="min-w-0">
+                                                  <div className="text-slate-700 text-sm font-semibold truncate">{v.vendor}</div>
+                                                  {v.note && <div className="text-slate-400 text-xs">{v.note}</div>}
+                                                </div>
+                                              </div>
+                                              <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                                                <span className="text-slate-800 font-black text-sm">{formatMoneyExact(v.price)}</span>
+                                                <a
+                                                  href={buyUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  onClick={e => e.stopPropagation()}
+                                                  className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all whitespace-nowrap"
+                                                >
+                                                  Buy Now
+                                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                                </a>
+                                              </div>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                              <span className="text-slate-800 font-black text-sm">{formatMoneyExact(v.price)}</span>
-                                              <svg className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                                            </div>
-                                          </a>
-                                        ))}
+                                          )
+                                        })}
                                       </div>
                                     </div>
                                   )}
