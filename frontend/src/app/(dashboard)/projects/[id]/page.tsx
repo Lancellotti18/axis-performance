@@ -96,7 +96,7 @@ function Blueprint3D({ analysis }: { analysis: any }) {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
     if (!ctx) return
     const W = canvas.width, H = canvas.height
     ctx.clearRect(0, 0, W, H)
