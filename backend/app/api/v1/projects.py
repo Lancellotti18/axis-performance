@@ -11,6 +11,8 @@ class ProjectCreate(BaseModel):
     description: Optional[str] = None
     region: Optional[str] = "US-TX"
     blueprint_type: Optional[str] = "residential"
+    city: Optional[str] = None
+    zip_code: Optional[str] = None
 
 
 @router.get("/")
@@ -37,6 +39,8 @@ async def create_project(payload: ProjectCreate, user_id: str = Query(...)):
         "description": payload.description,
         "region": payload.region,
         "blueprint_type": payload.blueprint_type,
+        "city": payload.city,
+        "zip_code": payload.zip_code,
         "status": "pending",
     }).execute()
     return result.data[0]
@@ -60,7 +64,7 @@ async def get_project(project_id: str):
 @router.patch("/{project_id}")
 async def update_project(project_id: str, payload: dict):
     db = get_supabase()
-    allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region")}
+    allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region", "city", "zip_code")}
     if not allowed:
         raise HTTPException(status_code=400, detail="No valid fields to update")
     result = db.table("projects").update(allowed).eq("id", project_id).execute()

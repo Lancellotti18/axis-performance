@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { ComplianceCheck, ComplianceItem, ComplianceSeverity } from '@/types'
+import Blueprint3DViewer from './Blueprint3DViewer'
 
 type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'compliance' | 'permits'
 type SortMode = 'lowest_price' | 'best_value'
@@ -54,189 +55,99 @@ const RISK_BANNER: Record<string, string> = {
   high:   'bg-red-50 border-red-200 text-red-700',
 }
 
-// ── Isometric 3D floor plan renderer ─────────────────────────────────────────
-const ISO_COLORS = [
-  ['#bfdbfe','#93c5fd','#60a5fa'],
-  ['#bbf7d0','#86efac','#4ade80'],
-  ['#fde68a','#fcd34d','#fbbf24'],
-  ['#fecdd3','#fda4af','#fb7185'],
-  ['#e9d5ff','#d8b4fe','#c084fc'],
-  ['#a5f3fc','#67e8f9','#22d3ee'],
-  ['#fed7aa','#fdba74','#fb923c'],
-  ['#d1fae5','#6ee7b7','#34d399'],
-]
+function PermitPortalSection({ project, projectId }: { project: any; projectId: string }) {
+  const [portal, setPortal] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+  const [searched, setSearched] = useState(false)
 
-function Blueprint3D({ analysis }: { analysis: any }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [rotY, setRotY] = useState(0.6)   // ~35 degrees — good default view
-  const [zoom, setZoom] = useState(1)
-  const dragging = useRef(false)
-  const lastX = useRef(0)
+  async function search() {
+    setLoading(true)
+    try {
+      const city = project?.city || ''
+      const state = project?.region?.replace('US-', '') || ''
+      const result = await api.permits.searchPortal(city, state, project?.blueprint_type || 'residential')
+      setPortal(result)
+      setSearched(true)
+    } catch (err) { console.error(err) }
+    setLoading(false)
+  }
 
-  // Build normalised room list (always in feet)
-  const roomsFt = useMemo(() => {
-    const raw: any[] = analysis?.rooms || []
-    const totalSqft = Number(analysis?.total_sqft) || 1200
-    // If no rooms detected, synthesise a single box from total_sqft
-    if (!raw.length) {
-      const s = Math.sqrt(totalSqft)
-      return [{ name: 'Building Area', sqft: totalSqft, w: s * 1.3, d: s * 0.8 }]
-    }
-    return raw.map((r: any) => {
-      const sqft = Number(r.sqft) || 120
-      const w = Number(r.dimensions?.width)  || Math.sqrt(sqft) * 1.2
-      const d = Number(r.dimensions?.height) || Math.sqrt(sqft) * 0.85
-      return { name: String(r.name || 'Room'), sqft, w, d }
-    })
-  }, [analysis?.rooms, analysis?.total_sqft])
-
-  // Layout: flow rooms left-to-right, wrap when row is full
-  const { placed, worldW, worldD } = useMemo(() => {
-    const sorted = [...roomsFt].sort((a, b) => b.sqft - a.sqft)
-    const totalSqft = sorted.reduce((s, r) => s + r.sqft, 0)
-    const maxRowW = Math.sqrt(totalSqft) * 1.5   // feet
-    const GAP = 2  // 2 ft gap between rooms
-    const placed: { room: typeof roomsFt[0]; x: number; z: number; w: number; d: number }[] = []
-    let rowX = 0, rowZ = 0, rowMaxD = 0, maxW = 0
-    for (const room of sorted) {
-      if (rowX + room.w > maxRowW && placed.length > 0) {
-        rowZ += rowMaxD + GAP; rowX = 0; rowMaxD = 0
-      }
-      placed.push({ room, x: rowX, z: rowZ, w: room.w, d: room.d })
-      rowX += room.w + GAP
-      rowMaxD = Math.max(rowMaxD, room.d)
-      maxW = Math.max(maxW, rowX)
-    }
-    return { placed, worldW: maxW, worldD: rowZ + rowMaxD }
-  }, [roomsFt])
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
-    if (!ctx) return
-
-    const CW = canvas.width, CH = canvas.height
-    ctx.clearRect(0, 0, CW, CH)
-
-    // Background
-    const bg = ctx.createLinearGradient(0, 0, 0, CH)
-    bg.addColorStop(0, '#eef6ff'); bg.addColorStop(1, '#f8faff')
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, CW, CH)
-
-    const cosR = Math.cos(rotY), sinR = Math.sin(rotY)
-    const WALL_H = 9  // 9 feet ceiling
-
-    // Auto-scale: fit the projected layout into the canvas
-    // Projected X span = (worldW * |cosR| + worldD * |sinR|)
-    // Projected Y span = WALL_H * 0.55 + (worldW * |sinR| + worldD * |cosR|) * 0.45
-    const projX = worldW * Math.abs(cosR) + worldD * Math.abs(sinR)
-    const projY = WALL_H * 0.55 + (worldW * Math.abs(sinR) + worldD * Math.abs(cosR)) * 0.45
-    const BASE_SCALE = Math.min(CW * 0.75 / Math.max(projX, 1), CH * 0.75 / Math.max(projY, 1))
-    const SCALE = BASE_SCALE * zoom
-
-    // Centre of layout in world space
-    const midX = worldW / 2, midZ = worldD / 2
-    const midRX = midX * cosR - midZ * sinR
-    const midRZ = midX * sinR + midZ * cosR
-    const cx = CW / 2 - midRX * SCALE
-    const cy = CH * 0.55 + midRZ * 0.45 * SCALE
-
-    function project(wx: number, wy: number, wz: number) {
-      const rx = wx * cosR - wz * sinR
-      const rz = wx * sinR + wz * cosR
-      return { x: cx + rx * SCALE, y: cy - wy * SCALE * 0.55 + rz * SCALE * 0.45 }
-    }
-
-    function drawPoly(pts: {x:number,y:number}[], fill: string, alpha = 1) {
-      ctx.globalAlpha = alpha
-      ctx.beginPath()
-      ctx.moveTo(pts[0].x, pts[0].y)
-      for (let j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y)
-      ctx.closePath()
-      ctx.fillStyle = fill; ctx.fill()
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.2; ctx.stroke()
-      ctx.globalAlpha = 1
-    }
-
-    // Painter's algorithm: draw far rooms first
-    const depthSorted = [...placed].sort((a, b) => {
-      const da = (a.x + a.w / 2) * sinR + (a.z + a.d / 2) * cosR
-      const db = (b.x + b.w / 2) * sinR + (b.z + b.d / 2) * cosR
-      return db - da
-    })
-
-    depthSorted.forEach((pr, i) => {
-      const origIdx = placed.indexOf(pr)
-      const [c0, c1, c2] = ISO_COLORS[origIdx % ISO_COLORS.length]
-      const { x, z, w, d } = pr
-      const p = [
-        project(x,   0,       z),      // 0 front-left-bot
-        project(x+w, 0,       z),      // 1 front-right-bot
-        project(x+w, 0,       z+d),    // 2 back-right-bot
-        project(x,   0,       z+d),    // 3 back-left-bot
-        project(x,   WALL_H,  z),      // 4 front-left-top
-        project(x+w, WALL_H,  z),      // 5 front-right-top
-        project(x+w, WALL_H,  z+d),    // 6 back-right-top
-        project(x,   WALL_H,  z+d),    // 7 back-left-top
-      ]
-
-      // floor
-      drawPoly([p[0],p[1],p[2],p[3]], c0)
-      // front/back wall (whichever faces camera)
-      if (cosR > 0) drawPoly([p[0],p[1],p[5],p[4]], c1)
-      else          drawPoly([p[3],p[2],p[6],p[7]], c1)
-      // left/right wall
-      if (sinR > 0) drawPoly([p[1],p[2],p[6],p[5]], c2)
-      else          drawPoly([p[0],p[3],p[7],p[4]], c2)
-      // open ceiling (semi-transparent)
-      drawPoly([p[4],p[5],p[6],p[7]], c0, 0.4)
-
-      // label above the box
-      const lp = project(x + w / 2, WALL_H + 2, z + d / 2)
-      ctx.textAlign = 'center'
-      const fs = Math.max(9, Math.round(11 * Math.sqrt(zoom)))
-      ctx.font = `bold ${fs}px system-ui`
-      ctx.fillStyle = '#1e3a5f'
-      ctx.fillText(pr.room.name, lp.x, lp.y)
-      ctx.font = `${Math.max(7, fs - 2)}px system-ui`
-      ctx.fillStyle = '#3b6494'
-      ctx.fillText(`${Math.round(pr.room.sqft)} sq ft`, lp.x, lp.y + fs + 1)
-    })
-
-    // Hint text
-    ctx.globalAlpha = 0.45
-    ctx.font = '11px system-ui'; ctx.fillStyle = '#475569'; ctx.textAlign = 'center'
-    ctx.fillText('Drag to rotate  ·  Scroll to zoom', CW / 2, CH - 10)
-    ctx.globalAlpha = 1
-  }, [placed, worldW, worldD, rotY, zoom])
-
-  const btnCls = 'text-xs text-slate-500 hover:text-blue-600 font-medium px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-blue-50 transition-all border border-slate-200 hover:border-blue-200'
+  const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }
 
   return (
-    <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
-      <div className="px-5 py-3.5 border-b flex items-center justify-between" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
-        <span className="text-slate-800 font-bold text-sm">3D Floor Plan</span>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setRotY(r => r - 0.35)} className={btnCls}>← Rotate</button>
-          <button onClick={() => setRotY(r => r + 0.35)} className={btnCls}>Rotate →</button>
-          <button onClick={() => setZoom(z => Math.max(0.4, z - 0.2))} className={btnCls}>Zoom −</button>
-          <button onClick={() => setZoom(z => Math.min(3, z + 0.2))} className={btnCls}>Zoom +</button>
-          <button onClick={() => { setRotY(0.6); setZoom(1) }} className={btnCls}>Reset</button>
+    <div className="space-y-4">
+      {/* Project location info */}
+      <div className="bg-white rounded-2xl p-5" style={cardStyle}>
+        <h3 className="text-slate-800 font-bold text-sm mb-3">Project Location</h3>
+        <div className="space-y-1">
+          {[
+            { label: 'City', value: project?.city || '—' },
+            { label: 'State', value: project?.region?.replace('US-', '') || '—' },
+            { label: 'Project Type', value: project?.blueprint_type || 'residential' },
+          ].map(row => (
+            <div key={row.label} className="flex justify-between py-2 border-b last:border-0" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+              <span className="text-slate-400 text-sm">{row.label}</span>
+              <span className="text-slate-800 text-sm font-semibold capitalize">{row.value}</span>
+            </div>
+          ))}
         </div>
       </div>
-      <canvas
-        ref={canvasRef}
-        width={860}
-        height={520}
-        className="w-full cursor-grab active:cursor-grabbing select-none"
-        style={{ display: 'block', touchAction: 'none' }}
-        onMouseDown={e => { dragging.current = true; lastX.current = e.clientX }}
-        onMouseMove={e => { if (!dragging.current) return; setRotY(r => r + (e.clientX - lastX.current) * 0.013); lastX.current = e.clientX }}
-        onMouseUp={() => { dragging.current = false }}
-        onMouseLeave={() => { dragging.current = false }}
-        onWheel={e => { e.preventDefault(); setZoom(z => Math.max(0.4, Math.min(3, z - e.deltaY * 0.001))) }}
-      />
+
+      {!searched ? (
+        <div className="bg-white rounded-2xl p-10 text-center" style={cardStyle}>
+          <div className="w-16 h-16 bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+          </div>
+          <div className="text-slate-800 font-bold text-lg mb-2">Find Your Permit Portal</div>
+          <div className="text-slate-400 text-sm mb-6 leading-relaxed">
+            We'll search for the official building permit submission portal for {project?.city ? `${project.city}` : 'your city'}.
+          </div>
+          <button
+            onClick={search}
+            disabled={loading}
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition-all disabled:opacity-50"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                Searching…
+              </>
+            ) : 'Find Permit Portal →'}
+          </button>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl p-6" style={cardStyle}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+            </div>
+            <div>
+              <div className="text-slate-800 font-bold text-sm">{portal?.portal_name || 'Building Permit Portal Found'}</div>
+              <div className="text-slate-400 text-xs">{project?.city}, {project?.region?.replace('US-', '')}</div>
+            </div>
+          </div>
+          {portal?.instructions && (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4">
+              <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Instructions</div>
+              <p className="text-slate-700 text-sm leading-relaxed">{portal.instructions}</p>
+            </div>
+          )}
+          {portal?.portal_url && (
+            <a
+              href={portal.portal_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition-all"
+            >
+              Open Official Permit Portal
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+          )}
+          <button onClick={() => { setSearched(false); setPortal(null) }} className="ml-3 text-slate-400 text-sm hover:text-slate-600 transition-colors">
+            Search again
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -259,6 +170,13 @@ export default function ProjectPage() {
   const [sortMode, setSortMode]       = useState<SortMode>('lowest_price')
   const [expandedMaterial, setExpandedMaterial] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [editingMaterial, setEditingMaterial] = useState<string | null>(null)  // material id being edited
+  const [editDraft, setEditDraft] = useState<any>({})  // draft values for editing
+  const [materialChanges, setMaterialChanges] = useState<Record<string, any>>({})  // pending changes keyed by id
+  const [savingMaterials, setSavingMaterials] = useState(false)
+  const [searchingPrices, setSearchingPrices] = useState<string | null>(null)  // item id searching
+  const [addingMaterial, setAddingMaterial] = useState(false)
+  const [newMaterial, setNewMaterial] = useState({ item_name: '', category: 'lumber', quantity: 0, unit: 'each', unit_cost: 0 })
 
   const loadData = useCallback(async () => {
     try {
@@ -293,6 +211,58 @@ export default function ProjectPage() {
 
   async function handleMarkupUpdate() {
     try { await api.estimates.update(projectId, { markup_pct: markup }); await loadData() } catch {}
+  }
+
+  async function handleSaveMaterials() {
+    if (Object.keys(materialChanges).length === 0) return
+    setSavingMaterials(true)
+    try {
+      await Promise.all(
+        Object.entries(materialChanges).map(([id, changes]) =>
+          api.materials.update(projectId, id, changes)
+        )
+      )
+      setMaterialChanges({})
+      await loadData()
+    } catch (err) { console.error(err) }
+    setSavingMaterials(false)
+  }
+
+  async function handleDeleteMaterial(id: string) {
+    try {
+      await api.materials.delete(projectId, id)
+      await loadData()
+    } catch (err) { console.error(err) }
+  }
+
+  async function handleAddMaterial() {
+    if (!newMaterial.item_name.trim()) return
+    try {
+      await api.materials.add(projectId, {
+        ...newMaterial,
+        total_cost: newMaterial.quantity * newMaterial.unit_cost,
+      })
+      setAddingMaterial(false)
+      setNewMaterial({ item_name: '', category: 'lumber', quantity: 0, unit: 'each', unit_cost: 0 })
+      await loadData()
+    } catch (err) { console.error(err) }
+  }
+
+  async function handleSearchPrices(material: any) {
+    setSearchingPrices(material.id)
+    try {
+      const result = await api.materials.searchPrices({
+        item_name: material.item_name,
+        category: material.category,
+        unit_cost: material.unit_cost,
+        region: project?.region || 'US-TX',
+        city: project?.city || '',
+      })
+      // Update that material's vendor_options locally
+      setAnalysis((prev: any) => prev)  // trigger re-render - data is in estimate
+      await loadData()
+    } catch (err) { console.error(err) }
+    setSearchingPrices(null)
   }
 
   const isProcessing = blueprintStatus === 'processing' || blueprintStatus === 'pending'
@@ -498,6 +468,7 @@ export default function ProjectPage() {
                       {[
                         { label: 'Type',          value: project?.blueprint_type || 'Residential' },
                         { label: 'Region',        value: project?.region || '—' },
+                        { label: 'City',          value: project?.city || '—' },
                         { label: 'Total Area',    value: analysis?.total_sqft ? `${analysis.total_sqft.toLocaleString()} sqft` : '—' },
                         { label: 'Rooms',         value: analysis?.rooms?.length || '—' },
                         { label: 'Materials',     value: materials.length || '—' },
@@ -557,6 +528,21 @@ export default function ProjectPage() {
                         </button>
                       ))}
                     </div>
+                    {Object.keys(materialChanges).length > 0 && (
+                      <button
+                        onClick={handleSaveMaterials}
+                        disabled={savingMaterials}
+                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all disabled:opacity-50"
+                      >
+                        {savingMaterials ? 'Saving…' : `Save Changes (${Object.keys(materialChanges).length})`}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setAddingMaterial(v => !v)}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all"
+                    >
+                      + Add Item
+                    </button>
                     <button
                       onClick={() => api.reports.download(projectId, 'csv').then(({ download_url }) => window.open(download_url)).catch(() => {})}
                       className="flex items-center gap-2 bg-white border text-slate-600 text-sm font-medium px-4 py-2 rounded-xl transition-all hover:border-blue-300 hover:text-blue-600"
@@ -591,6 +577,28 @@ export default function ProjectPage() {
                   })}
                 </div>
 
+                {addingMaterial && (
+                  <div className="bg-white rounded-2xl p-5 mb-4 border-2 border-dashed border-blue-200" style={cardStyle}>
+                    <div className="text-sm font-bold text-slate-700 mb-3">Add New Material</div>
+                    <div className="grid grid-cols-5 gap-3">
+                      <input placeholder="Item name" value={newMaterial.item_name} onChange={e => setNewMaterial(p => ({...p, item_name: e.target.value}))}
+                        className="col-span-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                      <select value={newMaterial.category} onChange={e => setNewMaterial(p => ({...p, category: e.target.value}))}
+                        className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+                        {Object.entries(CATEGORY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                      </select>
+                      <input type="number" placeholder="Qty" value={newMaterial.quantity || ''} onChange={e => setNewMaterial(p => ({...p, quantity: Number(e.target.value)}))}
+                        className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                      <input type="number" placeholder="Unit cost $" value={newMaterial.unit_cost || ''} onChange={e => setNewMaterial(p => ({...p, unit_cost: Number(e.target.value)}))}
+                        className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={handleAddMaterial} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all">Add</button>
+                      <button onClick={() => setAddingMaterial(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-semibold px-4 py-2 rounded-xl transition-all">Cancel</button>
+                    </div>
+                  </div>
+                )}
+
                 {!materials.length ? (
                   <div className="bg-white rounded-2xl p-12 text-center text-slate-400" style={cardStyle}>No materials estimated yet.</div>
                 ) : (
@@ -623,30 +631,82 @@ export default function ProjectPage() {
                               const sortedVendors = sortMode === 'lowest_price'
                                 ? [...vendors].sort((a, b) => a.price - b.price)
                                 : vendors
-                              const isExpanded = expandedMaterial === `${cat}-${i}`
+                              const matKey = m.id || `${cat}-${i}`
+                              const isExpanded = expandedMaterial === matKey
+                              const isEditing = editingMaterial === matKey
 
                               return (
-                                <div key={i}>
+                                <div key={matKey} className="group">
                                   {/* Material row */}
-                                  <button
-                                    className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-blue-50/40 transition-colors text-left"
-                                    onClick={() => setExpandedMaterial(isExpanded ? null : `${cat}-${i}`)}
+                                  <div
+                                    className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-blue-50/40 transition-colors cursor-pointer"
+                                    onClick={() => setExpandedMaterial(isExpanded ? null : matKey)}
                                   >
                                     <div className="flex-1 min-w-0">
-                                      <div className="text-slate-800 text-sm font-semibold">{m.item_name}</div>
-                                      <div className="text-slate-400 text-xs mt-0.5">{m.quantity?.toLocaleString()} {m.unit}</div>
+                                      {isEditing ? (
+                                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                          <input
+                                            value={editDraft.item_name ?? m.item_name}
+                                            onChange={e => setEditDraft((p: any) => ({...p, item_name: e.target.value}))}
+                                            className="bg-white border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500 w-40"
+                                          />
+                                          <input type="number"
+                                            value={editDraft.quantity ?? m.quantity}
+                                            onChange={e => setEditDraft((p: any) => ({...p, quantity: Number(e.target.value)}))}
+                                            className="bg-white border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500 w-20"
+                                            placeholder="Qty"
+                                          />
+                                          <input type="number"
+                                            value={editDraft.unit_cost ?? m.unit_cost}
+                                            onChange={e => setEditDraft((p: any) => ({...p, unit_cost: Number(e.target.value)}))}
+                                            className="bg-white border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500 w-24"
+                                            placeholder="Unit cost"
+                                          />
+                                          <button
+                                            onClick={e => { e.stopPropagation(); setMaterialChanges((p: any) => ({...p, [m.id]: editDraft})); setEditingMaterial(null) }}
+                                            className="text-xs bg-blue-600 text-white px-2 py-1 rounded-lg hover:bg-blue-700"
+                                          >Save</button>
+                                          <button
+                                            onClick={e => { e.stopPropagation(); setEditingMaterial(null) }}
+                                            className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-lg hover:bg-slate-200"
+                                          >Cancel</button>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <div className="text-slate-800 text-sm font-semibold">{(materialChanges[m.id]?.item_name) ?? m.item_name}</div>
+                                          <div className="text-slate-400 text-xs mt-0.5">{(materialChanges[m.id]?.quantity ?? m.quantity)?.toLocaleString()} {m.unit}</div>
+                                        </>
+                                      )}
                                     </div>
-                                    <div className="text-right flex-shrink-0">
-                                      <div className="text-slate-800 font-bold text-sm">{formatMoneyExact(m.unit_cost)} / {m.unit}</div>
-                                      <div className="text-blue-600 font-black text-sm">{formatMoney(m.total_cost)}</div>
-                                    </div>
-                                    {vendors.length > 0 && (
+                                    {!isEditing && (
+                                      <div className="text-right flex-shrink-0">
+                                        <div className="text-slate-800 font-bold text-sm">{formatMoneyExact(materialChanges[m.id]?.unit_cost ?? m.unit_cost)} / {m.unit}</div>
+                                        <div className="text-blue-600 font-black text-sm">{formatMoney(m.total_cost)}</div>
+                                      </div>
+                                    )}
+                                    {vendors.length > 0 && !isEditing && (
                                       <div className="text-xs text-blue-500 font-semibold flex-shrink-0 flex items-center gap-1">
                                         {vendors.length} sources
                                         <svg className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
                                       </div>
                                     )}
-                                  </button>
+                                    <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        onClick={e => { e.stopPropagation(); setEditingMaterial(matKey); setEditDraft({ item_name: m.item_name, quantity: m.quantity, unit_cost: m.unit_cost }) }}
+                                        className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-all"
+                                        title="Edit"
+                                      >
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                      </button>
+                                      <button
+                                        onClick={e => { e.stopPropagation(); handleDeleteMaterial(m.id) }}
+                                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all"
+                                        title="Delete"
+                                      >
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                                      </button>
+                                    </div>
+                                  </div>
 
                                   {/* Vendor options expanded */}
                                   {isExpanded && vendors.length > 0 && (
@@ -692,6 +752,29 @@ export default function ProjectPage() {
                                           )
                                         })}
                                       </div>
+                                    </div>
+                                  )}
+
+                                  {/* Search for Live Prices */}
+                                  {isExpanded && (
+                                    <div className="px-5 pb-3 bg-slate-50/60">
+                                      <button
+                                        onClick={e => { e.stopPropagation(); handleSearchPrices(m) }}
+                                        disabled={searchingPrices === m.id}
+                                        className="flex items-center gap-2 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-all border border-blue-200 disabled:opacity-50"
+                                      >
+                                        {searchingPrices === m.id ? (
+                                          <>
+                                            <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                                            Searching nearby prices…
+                                          </>
+                                        ) : (
+                                          <>
+                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                            Search for Live Prices
+                                          </>
+                                        )}
+                                      </button>
                                     </div>
                                   )}
                                 </div>
@@ -858,7 +941,7 @@ export default function ProjectPage() {
                 </div>
                 {analysis ? (
                   <>
-                    <Blueprint3D analysis={analysis} />
+                    <Blueprint3DViewer analysis={analysis} />
                     {analysis.rooms?.length > 0 && (
                       <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
                         <h3 className="text-slate-800 font-bold text-sm mb-3">Rooms Detected</h3>
@@ -978,19 +1061,12 @@ export default function ProjectPage() {
 
             {/* ── PERMITS ───────────────────────────────────────────────── */}
             {tab === 'permits' && (
-              <div className="max-w-xl">
-                <div className="bg-white rounded-2xl p-10 text-center" style={cardStyle}>
-                  <div className="w-16 h-16 bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
-                  </div>
-                  <div className="text-slate-800 font-bold text-lg mb-2">Ready to File a Permit?</div>
-                  <div className="text-slate-400 text-sm mb-6 leading-relaxed">
-                    Go to the Permits page to select your jurisdiction, confirm required documents, and submit your application.
-                  </div>
-                  <Link href="/permits" className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition-all">
-                    Go to Permit Filing →
-                  </Link>
+              <div className="max-w-2xl space-y-5">
+                <div>
+                  <h2 className="text-slate-800 font-bold text-lg">Permit Applications</h2>
+                  <p className="text-slate-400 text-xs mt-0.5">Find and submit your building permit for {project?.city ? `${project.city}, ` : ''}{project?.region}</p>
                 </div>
+                <PermitPortalSection project={project} projectId={projectId} />
               </div>
             )}
           </div>

@@ -61,7 +61,7 @@ export const api = {
   projects: {
     list: (userId: string) =>
       apiRequest<any[]>(`/api/v1/projects/?user_id=${userId}`),
-    create: (payload: { name: string; description?: string; region?: string; blueprint_type?: string }, userId: string) =>
+    create: (payload: { name: string; description?: string; region?: string; blueprint_type?: string; city?: string; zip_code?: string }, userId: string) =>
       apiRequest<any>(`/api/v1/projects/?user_id=${userId}`, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -108,6 +108,33 @@ export const api = {
       apiRequest<any>(`/api/v1/reports/${projectId}/generate`, { method: 'POST' }),
     download: (projectId: string, format: string) =>
       apiRequest<{ download_url: string }>(`/api/v1/reports/${projectId}/download?format=${format}`),
+  },
+  materials: {
+    add: (projectId: string, item: { item_name: string; category: string; quantity: number; unit: string; unit_cost: number; total_cost: number }) =>
+      apiRequest<any>(`/api/v1/materials/${projectId}/add`, {
+        method: 'POST',
+        body: JSON.stringify(item),
+      }),
+    update: (projectId: string, itemId: string, item: any) =>
+      apiRequest<any>(`/api/v1/materials/${projectId}/items/${itemId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(item),
+      }),
+    delete: (projectId: string, itemId: string) =>
+      apiRequest<any>(`/api/v1/materials/${projectId}/items/${itemId}`, { method: 'DELETE' }),
+    searchPrices: (payload: { item_name: string; category: string; unit_cost: number; region: string; city?: string }) =>
+      apiRequest<{ options: any[] }>(`/api/v1/materials/search-prices`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, 30000),
+  },
+  permits: {
+    searchPortal: (city: string, state: string, projectType: string) => {
+      const params = new URLSearchParams({ city, state, project_type: projectType })
+      return apiRequest<{ portal_url: string | null; portal_name: string | null; instructions: string | null; source: string }>(
+        `/api/v1/permits/portal-search?${params}`
+      )
+    },
   },
   compliance: {
     getForRegion: (regionCode: string, projectType: string, city?: string) => {

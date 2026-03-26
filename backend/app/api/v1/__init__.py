@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import projects, blueprints, analyses, estimates, reports, billing, compliance
+from app.api.v1 import projects, blueprints, analyses, estimates, reports, billing, compliance, materials, permits
 
 router = APIRouter()
 
@@ -10,3 +10,5 @@ router.include_router(estimates.router, prefix="/estimates", tags=["estimates"])
 router.include_router(reports.router, prefix="/reports", tags=["reports"])
 router.include_router(billing.router, prefix="/billing", tags=["billing"])
 router.include_router(compliance.router, prefix="/compliance", tags=["compliance"])
+router.include_router(materials.router, prefix="/materials", tags=["materials"])
+router.include_router(permits.router, prefix="/permits", tags=["permits"])

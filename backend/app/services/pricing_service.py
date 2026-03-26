@@ -81,12 +81,14 @@ def _vendor_from_url(url: str) -> str:
 
 
 def _search_material_prices(client: TavilyClient, item_name: str,
-                             category: str, region: str, base_price: float) -> List[dict]:
+                             category: str, region: str, base_price: float, city: str = "") -> List[dict]:
     """Search Tavily for real prices for a given material."""
     template = SEARCH_TEMPLATES.get(category, '{item} price buy 2024')
     query    = template.format(item=item_name)
 
     # Add region context for local suppliers
+    if city:
+        query += f" near {city}"
     state = region.replace("US-", "") if region else ""
     if state:
         query += f" {state}"
@@ -170,7 +172,7 @@ def _fallback_options(item_name: str, base_price: float) -> List[dict]:
     ]
 
 
-def enrich_materials_with_pricing(materials: List[dict], region: str) -> List[dict]:
+def enrich_materials_with_pricing(materials: List[dict], region: str, city: str = "") -> List[dict]:
     """
     Add real-time vendor pricing options to each material item.
     Falls back to estimated prices if Tavily search fails.
@@ -195,7 +197,7 @@ def enrich_materials_with_pricing(materials: List[dict], region: str) -> List[di
         base_price = material["unit_cost"]
 
         if item_name not in seen_items:
-            options = _search_material_prices(client, item_name, category, region, base_price)
+            options = _search_material_prices(client, item_name, category, region, base_price, city=city)
             seen_items[item_name] = options
         else:
             options = seen_items[item_name]
