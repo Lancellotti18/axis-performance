@@ -25,17 +25,17 @@ PRIORITY_RETAILERS = [
 
 # Search queries for each material category
 SEARCH_TEMPLATES = {
-    "lumber":       '{item} lumber price site:homedepot.com OR site:lowes.com OR site:menards.com 2024',
-    "sheathing":    '{item} price site:homedepot.com OR site:lowes.com 2024',
-    "drywall":      '{item} drywall price site:homedepot.com OR site:lowes.com 2024',
-    "insulation":   '{item} insulation price site:homedepot.com OR site:lowes.com 2024',
-    "roofing":      '{item} roofing price site:homedepot.com OR site:lowes.com 2024',
-    "concrete":     '{item} price site:homedepot.com OR site:lowes.com 2024',
-    "flooring":     '{item} flooring price site:homedepot.com OR site:lowes.com 2024',
-    "doors_windows":'{item} price site:homedepot.com OR site:lowes.com 2024',
-    "electrical":   '{item} electrical price site:homedepot.com OR site:lowes.com 2024',
-    "plumbing":     '{item} plumbing price site:homedepot.com OR site:lowes.com 2024',
-    "finishing":    '{item} price site:homedepot.com OR site:lowes.com 2024',
+    "lumber":        'buy {item} price per board foot home depot lowes 2024',
+    "sheathing":     'buy {item} sheet price home depot lowes 2024',
+    "drywall":       'buy {item} drywall sheet price home depot lowes 2024',
+    "insulation":    'buy {item} insulation price per roll batt home depot lowes 2024',
+    "roofing":       'buy {item} roofing price per square home depot lowes 2024',
+    "concrete":      'buy {item} bag price home depot lowes 2024',
+    "flooring":      'buy {item} flooring price per sq ft home depot lowes 2024',
+    "doors_windows": 'buy {item} price home depot lowes 2024',
+    "electrical":    'buy {item} electrical price home depot lowes 2024',
+    "plumbing":      'buy {item} plumbing price home depot lowes 2024',
+    "finishing":     'buy {item} price home depot lowes 2024',
 }
 
 # Price pattern matchers
@@ -117,14 +117,23 @@ def _search_material_prices(client: TavilyClient, item_name: str,
             continue
 
         if price:
+            # Score URL quality: product pages score higher than search/category pages
+            is_product_page = any(p in url for p in ['/p/', '/product/', '/item/', 'itemId=', 'productId=', '/N-'])
             options.append({
-                "vendor":    vendor,
-                "price":     price,
-                "url":       url,
-                "is_local":  False,
-                "note":      "",
+                "vendor":        vendor,
+                "price":         price,
+                "url":           url,
+                "is_local":      False,
+                "note":          "",
+                "_is_product":   is_product_page,
             })
             seen_vendors.add(vendor)
+
+    # Sort product pages to the top within each price tier
+    options.sort(key=lambda x: (not x.get("_is_product", False), x["price"]))
+    # Remove internal scoring field
+    for o in options:
+        o.pop("_is_product", None)
 
     # If we didn't find enough options, fill with fallback
     if len(options) < 2:
@@ -144,30 +153,31 @@ def _search_material_prices(client: TavilyClient, item_name: str,
 
 def _fallback_options(item_name: str, base_price: float) -> List[dict]:
     """Generate plausible price options when search fails."""
+    encoded = item_name.replace(' ', '+')
     return [
         {
             "vendor":   "Home Depot",
             "price":    round(base_price * 0.98, 2),
-            "url":      f"https://www.homedepot.com/s/{item_name.replace(' ', '+')}",
+            "url":      f"https://www.homedepot.com/s/{encoded}",
             "is_local": False,
             "tag":      "lowest_price",
-            "note":     "Estimated price",
+            "note":     "Estimated — click to see current prices",
         },
         {
             "vendor":   "Lowe's",
             "price":    round(base_price * 1.02, 2),
-            "url":      f"https://www.lowes.com/search?searchTerm={item_name.replace(' ', '+')}",
+            "url":      f"https://www.lowes.com/search?searchTerm={encoded}",
             "is_local": False,
             "tag":      "best_value",
-            "note":     "Estimated price",
+            "note":     "Estimated — click to see current prices",
         },
         {
             "vendor":   "Menards",
             "price":    round(base_price * 0.95, 2),
-            "url":      f"https://www.menards.com/main/search.html?search={item_name.replace(' ', '+')}",
+            "url":      f"https://www.menards.com/main/search.html?search={encoded}",
             "is_local": False,
             "tag":      "",
-            "note":     "Estimated price",
+            "note":     "Estimated — click to see current prices",
         },
     ]
 

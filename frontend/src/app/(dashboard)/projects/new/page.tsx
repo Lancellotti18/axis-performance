@@ -73,7 +73,7 @@ export default function NewProjectPage() {
 
       setStage('creating-project')
       const region = stateCode ? `US-${stateCode}` : 'US-TX'
-      const project = await api.projects.create({ name, region, blueprint_type: blueprintType }, user.id)
+      const project = await api.projects.create({ name, region, blueprint_type: blueprintType, city: city || undefined }, user.id)
 
       const locationStr = [city, county, stateCode].filter(Boolean).join(', ')
       api.compliance.triggerForProject(project.id, locationStr || undefined).catch(() => {})

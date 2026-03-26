@@ -105,7 +105,15 @@ def preprocess_image(image_bytes: bytes, filename: str = "") -> np.ndarray:
 
 
 def download_file(key: str) -> bytes:
-    """Download file from local dev storage or S3."""
+    """Download file from Supabase Storage (URL), local disk, or S3."""
+    import requests as _requests
+
+    # Supabase Storage or any HTTP URL
+    if key.startswith("http://") or key.startswith("https://"):
+        resp = _requests.get(key, timeout=60)
+        resp.raise_for_status()
+        return resp.content
+
     # Dev mode: read from local disk
     if not settings.AWS_ACCESS_KEY_ID:
         local_path = f"/app/uploads/{key}"

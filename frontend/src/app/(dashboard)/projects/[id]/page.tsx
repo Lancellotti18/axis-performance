@@ -416,14 +416,17 @@ export default function ProjectPage() {
                         <defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="#2563eb" strokeWidth="0.5"/></pattern></defs>
                         <rect width="100%" height="100%" fill="url(#grid)" />
                       </svg>
-                      {analysis?.overlay_url ? (
-                        <img src={analysis.overlay_url} alt="Blueprint" className="w-full h-full object-contain" />
-                      ) : (
-                        <div className="text-center relative z-10">
-                          <svg width="48" height="48" className="mx-auto mb-3 opacity-40" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                          <p className="text-blue-600 text-sm font-medium">Blueprint Analyzed</p>
-                        </div>
-                      )}
+                      {(() => {
+                        const imgUrl = analysis?.overlay_url || project?.blueprints?.[0]?.file_url
+                        return imgUrl && imgUrl.startsWith('http') ? (
+                          <img src={imgUrl} alt="Blueprint" className="w-full h-full object-contain" />
+                        ) : (
+                          <div className="text-center relative z-10">
+                            <svg width="48" height="48" className="mx-auto mb-3 opacity-40" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <p className="text-blue-600 text-sm font-medium">Blueprint Analyzed</p>
+                          </div>
+                        )
+                      })()}
                     </div>
                   </div>
 

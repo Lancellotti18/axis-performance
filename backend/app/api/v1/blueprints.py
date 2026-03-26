@@ -29,18 +29,36 @@ async def get_upload_url(
     filename: str = Query(...),
     content_type: str = Query(...),
 ):
-    """Return a presigned URL for direct browser upload to S3/R2."""
+    """Return a presigned URL for direct browser upload to S3/R2 or Supabase Storage."""
+    key = f"blueprints/{project_id}/{uuid.uuid4()}/{filename}"
+
+    # Supabase Storage path (without the bucket name prefix)
+    storage_path = f"{project_id}/{uuid.uuid4()}/{filename}"
+
     if not settings.AWS_ACCESS_KEY_ID:
-        key = f"blueprints/{project_id}/{uuid.uuid4()}/{filename}"
-        base_url = str(request.base_url).rstrip("/")
-        return {
-            "upload_url": f"{base_url}/api/v1/blueprints/dev-upload/{key}",
-            "key": key,
-            "dev_mode": True,
-        }
+        # Use Supabase Storage
+        db = get_supabase()
+        try:
+            result = db.storage.from_("blueprints").create_signed_upload_url(storage_path)
+            signed_url = result.get("signedUrl") or result.get("signed_url") or result.get("signedURL")
+            if not signed_url:
+                raise RuntimeError(f"No signed URL in response: {result}")
+            public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/blueprints/{storage_path}"
+            return {
+                "upload_url": signed_url,
+                "key": public_url,
+                "storage": "supabase",
+            }
+        except Exception as e:
+            # Fallback to local dev upload
+            base_url = str(request.base_url).rstrip("/")
+            return {
+                "upload_url": f"{base_url}/api/v1/blueprints/dev-upload/{key}",
+                "key": key,
+                "dev_mode": True,
+            }
 
     s3 = get_s3_client()
-    key = f"blueprints/{project_id}/{uuid.uuid4()}/{filename}"
     url = s3.generate_presigned_url(
         "put_object",
         Params={
