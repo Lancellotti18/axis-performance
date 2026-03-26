@@ -2,39 +2,58 @@ import { supabase } from './supabase'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal })
+    clearTimeout(timer)
+    return res
+  } catch (err: any) {
+    clearTimeout(timer)
+    throw err
+  }
+}
+
 export async function apiRequest<T>(
   path: string,
   options?: RequestInit,
-  timeoutMs = 60000
+  timeoutMs = 90000   // 90s — Render free tier cold starts can take 75s
 ): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession()
   const token = session?.access_token
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const fetchOptions: RequestInit = {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  }
 
   let res: Response
   try {
-    res = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options?.headers,
-      },
-    })
+    res = await fetchWithTimeout(`${API_BASE}${path}`, fetchOptions, timeoutMs)
   } catch (err: any) {
-    clearTimeout(timer)
-    if (err.name === 'AbortError') throw new Error('Request timed out. The server may be unavailable.')
-    throw new Error('Network error. Please check your connection.')
+    if (err.name === 'AbortError') {
+      // Auto-retry once — the cold start may have finished during the first attempt
+      try {
+        res = await fetchWithTimeout(`${API_BASE}${path}`, fetchOptions, timeoutMs)
+      } catch (retryErr: any) {
+        if (retryErr.name === 'AbortError') throw new Error('Server is taking too long to respond. Please try again in a moment.')
+        throw new Error('Network error. Please check your connection.')
+      }
+    } else {
+      throw new Error('Network error. Please check your connection.')
+    }
   }
-  clearTimeout(timer)
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || `HTTP ${res.status}`)
+
+  if (!res!.ok) {
+    const text = await res!.text()
+    throw new Error(text || `HTTP ${res!.status}`)
   }
-  return res.json()
+  return res!.json()
 }
 
 // Projects

@@ -67,14 +67,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const [user, setUser] = useState<any>(null)
   const [signingOut, setSigningOut] = useState(false)
+  const [serverWaking, setServerWaking] = useState(false)
+  const [wakingSeconds, setWakingSeconds] = useState(0)
 
   useEffect(() => {
     getUser().then(u => {
       if (!u) router.push('/login')
       else setUser(u)
     })
-    // Wake up backend on every page load so it's ready when needed
-    fetch(`${API_BASE}/health`).catch(() => {})
+
+    // Ping health — if it takes >4s, server is cold — show banner
+    let bannerTimer: ReturnType<typeof setTimeout>
+    let countInterval: ReturnType<typeof setInterval>
+    const start = Date.now()
+
+    bannerTimer = setTimeout(() => {
+      setServerWaking(true)
+      setWakingSeconds(0)
+      countInterval = setInterval(() => {
+        setWakingSeconds(Math.round((Date.now() - start) / 1000))
+      }, 1000)
+    }, 4000)
+
+    fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(90000) })
+      .then(() => {
+        clearTimeout(bannerTimer)
+        clearInterval(countInterval)
+        setServerWaking(false)
+      })
+      .catch(() => {
+        clearTimeout(bannerTimer)
+        clearInterval(countInterval)
+        setServerWaking(false)
+      })
+
+    return () => { clearTimeout(bannerTimer); clearInterval(countInterval) }
   }, [router])
 
   async function handleSignOut() {
@@ -88,7 +115,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     : user?.email?.slice(0, 2).toUpperCase() ?? '?'
 
   return (
-    <div className="flex h-screen overflow-hidden font-sans" style={{ background: 'linear-gradient(135deg, #eef6ff 0%, #ffffff 100%)' }}>
+    <div className="flex flex-col h-screen overflow-hidden font-sans" style={{ background: 'linear-gradient(135deg, #eef6ff 0%, #ffffff 100%)' }}>
+
+      {/* Server wake-up banner */}
+      {serverWaking && (
+        <div className="flex items-center justify-center gap-3 bg-amber-50 border-b border-amber-200 px-6 py-2.5 text-amber-800 text-sm font-medium flex-shrink-0" style={{ zIndex: 100 }}>
+          <svg className="animate-spin flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+          Server is waking up from sleep — this takes ~30–60 seconds.
+          <span className="text-amber-600 font-normal">({wakingSeconds}s elapsed)</span>
+          Your requests will go through automatically once it's ready.
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
 
       {/* Blueprint grid overlay */}
       <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
@@ -177,8 +216,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* ── MAIN AREA ─────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 relative" style={{ zIndex: 1 }}>
+        {/* ── MAIN AREA ─────────────────────────────────────────────────────── */}
+        <div className="flex-1 flex flex-col min-w-0 relative" style={{ zIndex: 1 }}>
 
         {/* Top bar — 70px */}
         <header
@@ -223,6 +262,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 overflow-y-auto">
           {children}
         </main>
+        </div>
       </div>
     </div>
   )
