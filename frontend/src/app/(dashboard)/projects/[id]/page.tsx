@@ -408,7 +408,7 @@ export default function ProjectPage() {
                     <div className="flex items-center justify-between px-5 py-3.5 border-b" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
                       <span className="text-slate-800 font-semibold text-sm">Blueprint</span>
                       {analysis?.confidence && (
-                        <span className="text-xs text-slate-400">AI Confidence: <span className="text-emerald-600 font-semibold">{Math.round(analysis.confidence * 100)}%</span></span>
+                        <span className="text-xs text-slate-400">Analysis Quality: <span className="text-emerald-600 font-semibold">{Math.round(analysis.confidence * 100)}%</span></span>
                       )}
                     </div>
                     <div className="aspect-[4/3] flex items-center justify-center relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}>
