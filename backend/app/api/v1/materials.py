@@ -100,3 +100,14 @@ async def search_prices(req: PriceSearchRequest):
         logger.warning(f"Price search failed: {e}")
         from app.services.pricing_service import _fallback_options
         return {"options": _fallback_options(req.item_name, req.unit_cost)}
+
+
+@router.post("/validate-link")
+async def validate_material_link(payload: dict):
+    """Validate a vendor product URL."""
+    from app.services.link_validator import validate_product_url
+    url = payload.get("url", "")
+    product_name = payload.get("product_name", "")
+    expected_price = float(payload.get("expected_price", 0))
+    result = validate_product_url(url, product_name, expected_price)
+    return result

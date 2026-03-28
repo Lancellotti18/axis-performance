@@ -95,6 +95,9 @@ async def fetch_permit_form(project_id: str):
     project_type = proj.get("blueprint_type") or "residential"
     region = proj.get("region") or "US-TX"
 
+    if not city:
+        raise HTTPException(status_code=400, detail="Project has no city set. Please update your project with the full city name.")
+
     # Load estimate for cost
     est_row = db.table("cost_estimates").select("grand_total, labor_hours").eq("project_id", project_id).limit(1).execute()
     est = est_row.data[0] if est_row.data else {}
@@ -106,6 +109,10 @@ async def fetch_permit_form(project_id: str):
         an = db.table("analyses").select("total_sqft").eq("blueprint_id", bp.data[0]["id"]).limit(1).execute()
         if an.data:
             total_sqft = an.data[0].get("total_sqft") or 0
+
+    # Jurisdiction detection — only proceed with verified .gov source
+    from app.services.jurisdiction_service import detect_jurisdiction
+    jurisdiction = detect_jurisdiction(city, state, project_type=project_type)
 
     # Check cache
     cache = db.table("permit_form_cache") \
@@ -119,11 +126,14 @@ async def fetch_permit_form(project_id: str):
     raw_fields = None
 
     if cache.data and cache.data[0].get("form_fields"):
-        form_url = cache.data[0].get("form_url")
+        form_url = cache.data[0].get("form_url") or jurisdiction.get("permit_form_url")
         raw_fields = cache.data[0]["form_fields"]
     else:
-        # Search for the actual PDF form
-        form_url, raw_fields = _find_and_analyze_form(city, state, project_type)
+        # Use jurisdiction-validated form URL if available
+        gov_form_url = jurisdiction.get("permit_form_url")
+        form_url, raw_fields = _find_and_analyze_form(
+            city, state, project_type, gov_form_url=gov_form_url
+        )
         # Cache it
         try:
             db.table("permit_form_cache").upsert({
@@ -152,15 +162,35 @@ async def fetch_permit_form(project_id: str):
         "state": state,
         "project_type": project_type,
         "fields": filled,
+        "jurisdiction": {
+            "found": jurisdiction.get("found", False),
+            "authority_name": jurisdiction.get("authority_name"),
+            "authority_type": jurisdiction.get("authority_type"),
+            "gov_url": jurisdiction.get("gov_url"),
+            "submission_method": jurisdiction.get("submission_method", "unknown"),
+            "submission_email": jurisdiction.get("submission_email"),
+            "error": jurisdiction.get("error"),
+            "fallback_search_url": jurisdiction.get("fallback_search_url"),
+        },
     }
 
 
-def _find_and_analyze_form(city: str, state: str, project_type: str):
+def _find_and_analyze_form(city: str, state: str, project_type: str, gov_form_url: str = None):
     """Use Tavily to find the PDF form, then Claude Vision to extract all fields."""
     import anthropic, base64
 
     form_url = None
     pdf_bytes = None
+
+    # Prefer jurisdiction-validated gov URL
+    if gov_form_url:
+        try:
+            resp = _requests.get(gov_form_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code == 200 and (b"%PDF" in resp.content[:8] or "pdf" in resp.headers.get("content-type", "")):
+                form_url = gov_form_url
+                pdf_bytes = resp.content
+        except Exception as e:
+            logger.warning(f"Gov form URL fetch failed: {e}")
 
     if settings.TAVILY_API_KEY:
         try:
@@ -298,21 +328,29 @@ def _standard_fields(city: str, state: str, project_type: str) -> list:
 
 
 def _prefill_fields(raw_fields: list, data: dict) -> list:
-    """Map known project data onto form fields by key matching."""
+    """Map known project data onto form fields. Each field gets a 'status' key."""
     KEY_MAP = {
-        "city":             data.get("city", ""),
-        "state":            data.get("state", ""),
-        "project_name":     data.get("project_name", ""),
-        "project_type":     data.get("project_type", "").capitalize(),
+        "city":              data.get("city", ""),
+        "state":             data.get("state", ""),
+        "project_name":      data.get("project_name", ""),
+        "project_type":      data.get("project_type", "").capitalize(),
         "project_description": f"{data.get('project_type','').capitalize()} construction — {data.get('total_sqft','')} sq ft",
-        "total_sqft":       data.get("total_sqft", ""),
-        "estimated_cost":   data.get("estimated_cost", ""),
-        "region":           data.get("region", ""),
+        "total_sqft":        data.get("total_sqft", ""),
+        "estimated_cost":    data.get("estimated_cost", ""),
+        "region":            data.get("region", ""),
     }
     result = []
     for f in raw_fields:
         field = dict(f)
-        field["value"] = KEY_MAP.get(field.get("key", ""), "")
+        auto_value = KEY_MAP.get(field.get("key", ""), "")
+        field["value"] = auto_value
+        # Status: auto_filled | needs_input
+        if auto_value:
+            field["status"] = "auto_filled"
+        elif field.get("required"):
+            field["status"] = "needs_input"
+        else:
+            field["status"] = "optional"
         result.append(field)
     return result
 
@@ -484,3 +522,14 @@ def _generate_clean_pdf(fields: list, project_id: str) -> bytes:
 
     doc.build(story)
     return buf.getvalue()
+
+
+@router.post("/validate-link")
+async def validate_product_link(payload: dict):
+    """Validate a product URL: verify it's a real product page with matching price."""
+    from app.services.link_validator import validate_product_url
+    url = payload.get("url", "")
+    product_name = payload.get("product_name", "")
+    expected_price = float(payload.get("expected_price", 0))
+    result = validate_product_url(url, product_name, expected_price)
+    return result

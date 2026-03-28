@@ -63,19 +63,23 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
   const [step, setStep] = useState<'portal' | 'form' | 'review'>('portal')
   const [portal, setPortal] = useState<any>(null)
   const [portalLoading, setPortalLoading] = useState(false)
+  const [portalError, setPortalError] = useState<string | null>(null)
 
   // Form state
-  const [formData, setFormData] = useState<any>(null)   // { form_url, fields, city, state }
+  const [formData, setFormData] = useState<any>(null)   // { form_url, fields, city, state, jurisdiction }
   const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
 
   // Contractor profile
   const [contractorProfile, setContractorProfile] = useState<any>({})
   const [saveProfile, setSaveProfile] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
+  const [profileSaved, setProfileSaved] = useState(false)
 
   // PDF generation
   const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [downloaded, setDownloaded] = useState(false)
 
   // Load contractor profile on mount
   useEffect(() => {
@@ -104,17 +108,22 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
 
   async function handleFindPortal() {
     setPortalLoading(true)
+    setPortalError(null)
     try {
-      const city = project?.city || ''
+      const city  = project?.city || ''
       const state = project?.region?.replace('US-', '') || ''
+      if (!city) { setPortalError('This project has no city set. Edit the project to add a city.'); setPortalLoading(false); return }
       const result = await api.permits.searchPortal(city, state, project?.blueprint_type || 'residential')
       setPortal(result)
-    } catch (err) { console.error(err) }
+    } catch (err: any) {
+      setPortalError(err.message || 'Search failed. Please try again.')
+    }
     setPortalLoading(false)
   }
 
   async function handleFetchForm() {
     setFormLoading(true)
+    setFormError(null)
     try {
       const data = await api.permits.fetchForm(projectId)
       setFormData(data)
@@ -125,7 +134,9 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
       }
       setFieldValues(vals)
       setStep('form')
-    } catch (err) { console.error(err) }
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to fetch permit form. Please try again.')
+    }
     setFormLoading(false)
   }
 
@@ -136,13 +147,14 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
       const user = await getUser()
       if (!user) return
       await api.contractorProfile.save(user.id, {
-        company_name: fieldValues.contractor_name || '',
-        license_number: fieldValues.license_number || '',
-        phone: fieldValues.contractor_phone || '',
-        email: fieldValues.contractor_email || '',
-        address: fieldValues.contractor_address || '',
+        company_name:   fieldValues.contractor_name    || '',
+        license_number: fieldValues.license_number     || '',
+        phone:          fieldValues.contractor_phone   || '',
+        email:          fieldValues.contractor_email   || '',
+        address:        fieldValues.contractor_address || '',
       })
-    } catch (err) { console.error(err) }
+      setProfileSaved(true)
+    } catch {}
     setSavingProfile(false)
   }
 
@@ -178,7 +190,11 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
       a.download = `permit_application_${project?.name?.replace(/\s+/g, '_') || 'application'}.pdf`
       a.click()
       URL.revokeObjectURL(url)
-    } catch (err) { console.error(err) }
+      setDownloaded(true)
+      setStep('review')
+    } catch (err: any) {
+      setFormError(err.message || 'PDF generation failed.')
+    }
     setGeneratingPdf(false)
   }
 
@@ -261,24 +277,55 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
               </div>
               <button onClick={handleFindPortal} disabled={portalLoading}
                 className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition-all disabled:opacity-50">
-                {portalLoading ? <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Searching…</> : 'Find Permit Portal →'}
+                {portalLoading ? <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Searching .gov sources…</> : 'Find Permit Portal →'}
               </button>
+              {portalError && (
+                <div className="mt-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm">{portalError}</div>
+              )}
             </div>
           ) : (
             <div className="bg-white rounded-2xl p-6 space-y-4" style={cardStyle}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${portal.portal_url ? 'bg-emerald-50 border border-emerald-100' : 'bg-amber-50 border border-amber-100'}`}>
+                  {portal.portal_url
+                    ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+                    : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  }
                 </div>
                 <div>
-                  <div className="text-slate-800 font-bold text-sm">{portal.portal_name || 'Permit Portal Found'}</div>
+                  <div className="text-slate-800 font-bold text-sm">{portal.portal_name || (portal.portal_url ? 'Permit Portal Found' : 'Permit Portal Not Found')}</div>
                   <div className="text-slate-400 text-xs">{project?.city}, {project?.region?.replace('US-', '')}</div>
                 </div>
               </div>
+
+              {!portal.portal_url && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <div className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-1">Not Found</div>
+                  <p className="text-amber-800 text-sm">No verified .gov permit portal found for this jurisdiction. Do not proceed with unverified sources.</p>
+                  <a href={`https://www.google.com/search?q=${encodeURIComponent(`${project?.city} ${project?.region?.replace('US-','')} building permit official`)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 mt-3 text-amber-700 font-semibold text-sm hover:text-amber-900 transition-colors">
+                    Search manually →
+                  </a>
+                </div>
+              )}
               {portal.instructions && (
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
                   <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Portal Instructions</div>
                   <p className="text-slate-700 text-sm leading-relaxed">{portal.instructions}</p>
+                </div>
+              )}
+              {formLoading && (
+                <div className="space-y-2 animate-pulse">
+                  <div className="h-3 bg-slate-100 rounded-full w-3/4" />
+                  <div className="h-3 bg-slate-100 rounded-full w-1/2" />
+                  <div className="h-3 bg-slate-100 rounded-full w-2/3" />
+                </div>
+              )}
+              {formError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm flex items-center justify-between gap-3">
+                  <span>{formError}</span>
+                  <button onClick={handleFetchForm} className="text-red-600 font-bold text-xs underline whitespace-nowrap">Retry</button>
                 </div>
               )}
               <div className="flex items-center gap-3 pt-1">
@@ -291,12 +338,28 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
                 )}
                 <button onClick={handleFetchForm} disabled={formLoading}
                   className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-xl text-sm transition-all disabled:opacity-50">
-                  {formLoading ? <><svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Fetching Form…</> : 'Prepare Application →'}
+                  {formLoading ? <><svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Analyzing Form…</> : 'Prepare Application →'}
                 </button>
               </div>
             </div>
           )}
         </>
+      )}
+
+      {/* Step 2 — Fill form (loading skeleton) */}
+      {step === 'form' && !formData && (
+        <div className="space-y-4">
+          {[1,2,3].map(i => (
+            <div key={i} className="bg-white rounded-2xl p-5 animate-pulse" style={cardStyle}>
+              <div className="h-4 w-32 bg-slate-200 rounded mb-4" />
+              <div className="grid grid-cols-2 gap-4">
+                {[1,2,3,4].map(j => (
+                  <div key={j}><div className="h-3 w-24 bg-slate-100 rounded mb-2"/><div className="h-9 bg-slate-100 rounded-xl"/></div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Step 2: Fill Form */}
@@ -313,6 +376,61 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
             <button onClick={() => setStep('portal')} className="text-slate-400 text-sm hover:text-slate-600 transition-colors">← Back</button>
           </div>
 
+          {/* Jurisdiction card */}
+          {formData.jurisdiction && (
+            formData.jurisdiction.found ? (
+              <div className="bg-white rounded-2xl p-4 flex items-start gap-3" style={cardStyle}>
+                <div className="w-9 h-9 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-slate-800 font-bold text-sm">{formData.jurisdiction.authority_name}</span>
+                    {formData.jurisdiction.authority_type && (
+                      <span className="text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-100 rounded-full px-2 py-0.5 capitalize">{formData.jurisdiction.authority_type}</span>
+                    )}
+                    {formData.jurisdiction.submission_method && formData.jurisdiction.submission_method !== 'unknown' && (
+                      <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 capitalize ${
+                        formData.jurisdiction.submission_method === 'web_form' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                        formData.jurisdiction.submission_method === 'email' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
+                        'bg-amber-50 text-amber-600 border border-amber-100'
+                      }`}>{formData.jurisdiction.submission_method.replace('_', ' ')}</span>
+                    )}
+                  </div>
+                  {formData.jurisdiction.gov_url && (
+                    <a href={formData.jurisdiction.gov_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs mt-0.5 hover:underline truncate block">{formData.jurisdiction.gov_url}</a>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <div>
+                  <div className="text-amber-800 font-bold text-sm">Permit portal not automatically found</div>
+                  <p className="text-amber-700 text-xs mt-0.5">{formData.jurisdiction.error || 'No verified .gov source located.'}</p>
+                  {formData.jurisdiction.fallback_search_url && (
+                    <a href={formData.jurisdiction.fallback_search_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-1.5 text-xs font-semibold text-amber-700 underline">Search manually →</a>
+                  )}
+                </div>
+              </div>
+            )
+          )}
+
+          {/* Missing required fields warning */}
+          {(() => {
+            const missing = (formData.fields || []).filter((f: any) => f.status === 'needs_input' && !fieldValues[f.key])
+            if (missing.length === 0) return null
+            return (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-start gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <div>
+                  <span className="text-amber-800 font-bold text-xs">{missing.length} required field{missing.length > 1 ? 's' : ''} still need input: </span>
+                  <span className="text-amber-700 text-xs">{missing.map((f: any) => f.label).join(', ')}</span>
+                </div>
+              </div>
+            )
+          })()}
+
           {Object.entries(fieldsBySection).map(([section, sFields]) => (
             <div key={section} className="bg-white rounded-2xl overflow-hidden" style={cardStyle}>
               <div className="px-5 py-4 border-b flex items-center gap-2" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
@@ -325,12 +443,20 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
                   const hasProfileValue = isContractorField && contractorProfile?.company_name
                   return (
                     <div key={f.key} className={f.key === 'project_description' || f.key === 'legal_description' ? 'col-span-2' : ''}>
-                      <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                        {f.label}{f.required ? <span className="text-red-400 ml-0.5">*</span> : ''}
-                        {hasProfileValue && !fieldValues[f.key] && (
-                          <span className="ml-2 text-[10px] text-blue-500 font-normal normal-case tracking-normal">from saved profile</span>
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                          {f.label}{f.required ? <span className="text-red-400 ml-0.5">*</span> : ''}
+                        </span>
+                        {f.status === 'auto_filled' && fieldValues[f.key] && (
+                          <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full px-1.5 py-0.5">✓ Auto-filled</span>
                         )}
-                      </label>
+                        {f.status === 'needs_input' && !fieldValues[f.key] && (
+                          <span className="text-[10px] font-semibold bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-1.5 py-0.5">⚠ Required</span>
+                        )}
+                        {hasProfileValue && !fieldValues[f.key] && (
+                          <span className="text-[10px] text-blue-500 font-normal">from saved profile</span>
+                        )}
+                      </div>
                       {f.field_type === 'signature' ? (
                         <div className="border-b-2 border-slate-300 h-8 flex items-end pb-1">
                           <input
@@ -364,12 +490,13 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
                     <label htmlFor="save-profile" className="text-sm text-slate-700 cursor-pointer flex-1">
                       Save contractor info to my profile — auto-fill on future permit applications
                     </label>
-                    {saveProfile && (
+                    {saveProfile && !profileSaved && (
                       <button onClick={handleSaveProfile} disabled={savingProfile}
                         className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50">
                         {savingProfile ? 'Saving…' : 'Save Now'}
                       </button>
                     )}
+                    {profileSaved && <span className="text-xs text-emerald-600 font-semibold">✓ Saved</span>}
                   </div>
                 )}
               </div>
@@ -445,20 +572,48 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
             )}
           </div>
 
-          {/* Submit instructions */}
-          {portal?.portal_url && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
-              <div className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">Next Step: Submit Your Application</div>
-              <p className="text-amber-800 text-sm leading-relaxed mb-3">
-                Download your completed form above, then submit it through the official {project?.city} permit portal.
-              </p>
-              <a href={portal.portal_url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-all">
-                Open Permit Portal
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              </a>
+          {/* Downloaded confirmation */}
+          {downloaded && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+              <span className="text-emerald-800 font-semibold text-sm">Form downloaded — complete submission using the instructions below.</span>
             </div>
           )}
+
+          {/* Submission method-aware instructions */}
+          {(() => {
+            const method = formData?.jurisdiction?.submission_method || 'unknown'
+            const portalUrl = formData?.jurisdiction?.gov_url || portal?.portal_url
+            const email = formData?.jurisdiction?.submission_email
+            if (method === 'web_form' && portalUrl) return (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
+                <div className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">Submit Online</div>
+                <p className="text-blue-800 text-sm leading-relaxed mb-3">This jurisdiction accepts online permit applications. Log in to the permit portal and upload your completed form.</p>
+                <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-all">
+                  Open Permit Portal <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+              </div>
+            )
+            if (method === 'email') return (
+              <div className="bg-purple-50 border border-purple-200 rounded-2xl p-5">
+                <div className="text-xs font-bold text-purple-700 uppercase tracking-wider mb-2">Submit by Email</div>
+                <p className="text-purple-800 text-sm leading-relaxed mb-3">Email your completed permit application PDF to the building department{email ? ` at ${email}` : ''}.</p>
+                {email && (
+                  <a href={`mailto:${email}`} className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-all">Email Application</a>
+                )}
+              </div>
+            )
+            if (portalUrl) return (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+                <div className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">Next Step: Submit Your Application</div>
+                <p className="text-amber-800 text-sm leading-relaxed mb-3">Download your completed form above, then submit it through the official {project?.city} permit portal. Manual action required — this system never submits on your behalf.</p>
+                <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-all">
+                  Open Permit Portal <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+              </div>
+            )
+            return null
+          })()}
         </div>
       )}
     </div>

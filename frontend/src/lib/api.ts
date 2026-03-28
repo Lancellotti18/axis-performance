@@ -127,6 +127,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(payload),
       }, 30000),
+    validateLink: (url: string, productName: string, expectedPrice: number) =>
+      apiRequest<{ valid: boolean; is_product_page: boolean; product_found: boolean; actual_price: number | null; price_match: boolean; price_mismatch: boolean; error: string | null; cached: boolean }>(
+        `/api/v1/materials/validate-link`,
+        { method: 'POST', body: JSON.stringify({ url, product_name: productName, expected_price: expectedPrice }) },
+        15000
+      ),
   },
   permits: {
     searchPortal: (city: string, state: string, projectType: string) => {
