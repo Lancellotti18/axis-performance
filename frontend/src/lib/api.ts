@@ -135,6 +135,26 @@ export const api = {
         `/api/v1/permits/portal-search?${params}`
       )
     },
+    fetchForm: (projectId: string) =>
+      apiRequest<{ form_url: string | null; city: string; state: string; project_type: string; fields: any[] }>(
+        `/api/v1/permits/fetch-form/${projectId}`,
+        { method: 'POST' },
+        60000
+      ),
+    generatePdf: (projectId: string, fields: any[], formUrl: string | null, useWebForm: boolean) =>
+      apiRequest<Blob>(`/api/v1/permits/generate-pdf/${projectId}`, {
+        method: 'POST',
+        body: JSON.stringify({ fields, form_url: formUrl, use_web_form: useWebForm }),
+      }, 60000),
+  },
+  contractorProfile: {
+    get: (userId: string) =>
+      apiRequest<any>(`/api/v1/contractor-profile/${userId}`),
+    save: (userId: string, profile: any) =>
+      apiRequest<any>(`/api/v1/contractor-profile/${userId}`, {
+        method: 'POST',
+        body: JSON.stringify(profile),
+      }),
   },
   compliance: {
     getForRegion: (regionCode: string, projectType: string, city?: string) => {

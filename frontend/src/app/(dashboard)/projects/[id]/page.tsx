@@ -1,4 +1,5 @@
 'use client'
+import React from 'react'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -56,96 +57,408 @@ const RISK_BANNER: Record<string, string> = {
 }
 
 function PermitPortalSection({ project, projectId }: { project: any; projectId: string }) {
-  const [portal, setPortal] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-  const [searched, setSearched] = useState(false)
+  const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }
 
-  async function search() {
-    setLoading(true)
+  // Step state: 'portal' | 'form' | 'review'
+  const [step, setStep] = useState<'portal' | 'form' | 'review'>('portal')
+  const [portal, setPortal] = useState<any>(null)
+  const [portalLoading, setPortalLoading] = useState(false)
+
+  // Form state
+  const [formData, setFormData] = useState<any>(null)   // { form_url, fields, city, state }
+  const [formLoading, setFormLoading] = useState(false)
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
+
+  // Contractor profile
+  const [contractorProfile, setContractorProfile] = useState<any>({})
+  const [saveProfile, setSaveProfile] = useState(false)
+  const [savingProfile, setSavingProfile] = useState(false)
+
+  // PDF generation
+  const [generatingPdf, setGeneratingPdf] = useState(false)
+
+  // Load contractor profile on mount
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const { getUser } = await import('@/lib/auth')
+        const user = await getUser()
+        if (!user) return
+        const profile = await api.contractorProfile.get(user.id)
+        if (profile && Object.keys(profile).length > 0) {
+          setContractorProfile(profile)
+          // Pre-fill contractor fields immediately
+          setFieldValues(prev => ({
+            ...prev,
+            contractor_name: profile.company_name || '',
+            license_number: profile.license_number || '',
+            contractor_phone: profile.phone || '',
+            contractor_email: profile.email || '',
+            contractor_address: profile.address || '',
+          }))
+        }
+      } catch {}
+    }
+    loadProfile()
+  }, [])
+
+  async function handleFindPortal() {
+    setPortalLoading(true)
     try {
       const city = project?.city || ''
       const state = project?.region?.replace('US-', '') || ''
       const result = await api.permits.searchPortal(city, state, project?.blueprint_type || 'residential')
       setPortal(result)
-      setSearched(true)
     } catch (err) { console.error(err) }
-    setLoading(false)
+    setPortalLoading(false)
   }
 
-  const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }
+  async function handleFetchForm() {
+    setFormLoading(true)
+    try {
+      const data = await api.permits.fetchForm(projectId)
+      setFormData(data)
+      // Merge auto-filled values
+      const vals: Record<string, string> = { ...fieldValues }
+      for (const f of data.fields) {
+        if (f.value && !vals[f.key]) vals[f.key] = f.value
+      }
+      setFieldValues(vals)
+      setStep('form')
+    } catch (err) { console.error(err) }
+    setFormLoading(false)
+  }
+
+  async function handleSaveProfile() {
+    setSavingProfile(true)
+    try {
+      const { getUser } = await import('@/lib/auth')
+      const user = await getUser()
+      if (!user) return
+      await api.contractorProfile.save(user.id, {
+        company_name: fieldValues.contractor_name || '',
+        license_number: fieldValues.license_number || '',
+        phone: fieldValues.contractor_phone || '',
+        email: fieldValues.contractor_email || '',
+        address: fieldValues.contractor_address || '',
+      })
+    } catch (err) { console.error(err) }
+    setSavingProfile(false)
+  }
+
+  async function handleDownloadPdf(useWebForm: boolean) {
+    setGeneratingPdf(true)
+    try {
+      // Build field list with current values
+      const fields = (formData?.fields || []).map((f: any) => ({
+        ...f,
+        value: fieldValues[f.key] || f.value || '',
+      }))
+
+      // Use raw fetch since response is binary PDF
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+      const res = await fetch(`${API_BASE}/api/v1/permits/generate-pdf/${projectId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ fields, form_url: formData?.form_url || null, use_web_form: useWebForm }),
+      })
+
+      if (!res.ok) throw new Error('PDF generation failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `permit_application_${project?.name?.replace(/\s+/g, '_') || 'application'}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) { console.error(err) }
+    setGeneratingPdf(false)
+  }
+
+  // Group fields by section
+  const fieldsBySection: Record<string, any[]> = {}
+  if (formData?.fields) {
+    for (const f of formData.fields) {
+      const sec = f.section || 'General'
+      if (!fieldsBySection[sec]) fieldsBySection[sec] = []
+      fieldsBySection[sec].push(f)
+    }
+  }
+
+  const sectionIcons: Record<string, string> = {
+    'Property Information': '🏠',
+    'Owner Information': '👤',
+    'Contractor Information': '🔨',
+    'Project Details': '📐',
+    'Signatures': '✍️',
+    'General': '📋',
+  }
 
   return (
     <div className="space-y-4">
-      {/* Project location info */}
-      <div className="bg-white rounded-2xl p-5" style={cardStyle}>
-        <h3 className="text-slate-800 font-bold text-sm mb-3">Project Location</h3>
-        <div className="space-y-1">
-          {[
-            { label: 'City', value: project?.city || '—' },
-            { label: 'State', value: project?.region?.replace('US-', '') || '—' },
-            { label: 'Project Type', value: project?.blueprint_type || 'residential' },
-          ].map(row => (
-            <div key={row.label} className="flex justify-between py-2 border-b last:border-0" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
-              <span className="text-slate-400 text-sm">{row.label}</span>
-              <span className="text-slate-800 text-sm font-semibold capitalize">{row.value}</span>
-            </div>
-          ))}
-        </div>
+      {/* Progress steps */}
+      <div className="flex items-center gap-3 bg-white rounded-2xl px-5 py-4" style={cardStyle}>
+        {[
+          { key: 'portal', label: 'Find Portal' },
+          { key: 'form',   label: 'Fill Application' },
+          { key: 'review', label: 'Download & Submit' },
+        ].map((s, i) => {
+          const isActive = step === s.key
+          const isDone = (step === 'form' && s.key === 'portal') || (step === 'review' && s.key !== 'review')
+          return (
+            <React.Fragment key={s.key}>
+              <div className="flex items-center gap-2">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                  isDone ? 'bg-emerald-500 text-white' : isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
+                }`}>
+                  {isDone ? '✓' : i + 1}
+                </div>
+                <span className={`text-sm font-semibold ${isActive ? 'text-blue-600' : isDone ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {s.label}
+                </span>
+              </div>
+              {i < 2 && <div className="flex-1 h-px bg-slate-200" />}
+            </React.Fragment>
+          )
+        })}
       </div>
 
-      {!searched ? (
-        <div className="bg-white rounded-2xl p-10 text-center" style={cardStyle}>
-          <div className="w-16 h-16 bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+      {/* Step 1: Find Portal */}
+      {step === 'portal' && (
+        <>
+          {/* Project location */}
+          <div className="bg-white rounded-2xl p-5" style={cardStyle}>
+            <h3 className="text-slate-800 font-bold text-sm mb-3">Project Location</h3>
+            <div className="space-y-1">
+              {[
+                { label: 'City', value: project?.city || '—' },
+                { label: 'State', value: project?.region?.replace('US-', '') || '—' },
+                { label: 'Project Type', value: project?.blueprint_type || 'residential' },
+              ].map(row => (
+                <div key={row.label} className="flex justify-between py-2 border-b last:border-0" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+                  <span className="text-slate-400 text-sm">{row.label}</span>
+                  <span className="text-slate-800 text-sm font-semibold capitalize">{row.value}</span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="text-slate-800 font-bold text-lg mb-2">Find Your Permit Portal</div>
-          <div className="text-slate-400 text-sm mb-6 leading-relaxed">
-            We'll search for the official building permit submission portal for {project?.city ? `${project.city}` : 'your city'}.
+
+          {!portal ? (
+            <div className="bg-white rounded-2xl p-10 text-center" style={cardStyle}>
+              <div className="w-16 h-16 bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+              </div>
+              <div className="text-slate-800 font-bold text-lg mb-2">Find Your Permit Portal</div>
+              <div className="text-slate-400 text-sm mb-6 leading-relaxed">
+                We'll search for the official {project?.city ? `${project.city}` : 'city'} building permit portal and fetch the exact application form.
+              </div>
+              <button onClick={handleFindPortal} disabled={portalLoading}
+                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition-all disabled:opacity-50">
+                {portalLoading ? <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Searching…</> : 'Find Permit Portal →'}
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl p-6 space-y-4" style={cardStyle}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+                </div>
+                <div>
+                  <div className="text-slate-800 font-bold text-sm">{portal.portal_name || 'Permit Portal Found'}</div>
+                  <div className="text-slate-400 text-xs">{project?.city}, {project?.region?.replace('US-', '')}</div>
+                </div>
+              </div>
+              {portal.instructions && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                  <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Portal Instructions</div>
+                  <p className="text-slate-700 text-sm leading-relaxed">{portal.instructions}</p>
+                </div>
+              )}
+              <div className="flex items-center gap-3 pt-1">
+                {portal.portal_url && (
+                  <a href={portal.portal_url} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm transition-all">
+                    View Portal
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </a>
+                )}
+                <button onClick={handleFetchForm} disabled={formLoading}
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-xl text-sm transition-all disabled:opacity-50">
+                  {formLoading ? <><svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Fetching Form…</> : 'Prepare Application →'}
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Step 2: Fill Form */}
+      {step === 'form' && formData && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-slate-800 font-bold">Permit Application</h3>
+              <p className="text-slate-400 text-xs mt-0.5">
+                {formData.form_url ? 'Fields extracted from the official form · ' : 'Standard form · '}
+                Fill in all required fields marked with *
+              </p>
+            </div>
+            <button onClick={() => setStep('portal')} className="text-slate-400 text-sm hover:text-slate-600 transition-colors">← Back</button>
           </div>
+
+          {Object.entries(fieldsBySection).map(([section, sFields]) => (
+            <div key={section} className="bg-white rounded-2xl overflow-hidden" style={cardStyle}>
+              <div className="px-5 py-4 border-b flex items-center gap-2" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
+                <span className="text-base">{sectionIcons[section] || '📋'}</span>
+                <span className="text-slate-800 font-bold text-sm">{section}</span>
+              </div>
+              <div className="p-5 grid grid-cols-2 gap-x-5 gap-y-4">
+                {(sFields as any[]).map((f: any) => {
+                  const isContractorField = ['contractor_name','license_number','contractor_phone','contractor_email','contractor_address'].includes(f.key)
+                  const hasProfileValue = isContractorField && contractorProfile?.company_name
+                  return (
+                    <div key={f.key} className={f.key === 'project_description' || f.key === 'legal_description' ? 'col-span-2' : ''}>
+                      <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                        {f.label}{f.required ? <span className="text-red-400 ml-0.5">*</span> : ''}
+                        {hasProfileValue && !fieldValues[f.key] && (
+                          <span className="ml-2 text-[10px] text-blue-500 font-normal normal-case tracking-normal">from saved profile</span>
+                        )}
+                      </label>
+                      {f.field_type === 'signature' ? (
+                        <div className="border-b-2 border-slate-300 h-8 flex items-end pb-1">
+                          <input
+                            type="text" placeholder="Type full name as signature"
+                            value={fieldValues[f.key] || ''}
+                            onChange={e => setFieldValues(p => ({...p, [f.key]: e.target.value}))}
+                            className="w-full text-sm italic text-slate-700 focus:outline-none bg-transparent placeholder-slate-300"
+                          />
+                        </div>
+                      ) : (
+                        <input
+                          type={f.field_type === 'date' ? 'date' : 'text'}
+                          value={fieldValues[f.key] || ''}
+                          onChange={e => setFieldValues(p => ({...p, [f.key]: e.target.value}))}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all"
+                          placeholder={f.required ? 'Required' : 'Optional'}
+                        />
+                      )}
+                    </div>
+                  )
+                })}
+
+                {/* Save contractor profile option */}
+                {section === 'Contractor Information' && (
+                  <div className="col-span-2 mt-2 flex items-center gap-3 bg-blue-50 rounded-xl px-4 py-3">
+                    <input
+                      type="checkbox" id="save-profile" checked={saveProfile}
+                      onChange={e => setSaveProfile(e.target.checked)}
+                      className="w-4 h-4 rounded accent-blue-600"
+                    />
+                    <label htmlFor="save-profile" className="text-sm text-slate-700 cursor-pointer flex-1">
+                      Save contractor info to my profile — auto-fill on future permit applications
+                    </label>
+                    {saveProfile && (
+                      <button onClick={handleSaveProfile} disabled={savingProfile}
+                        className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50">
+                        {savingProfile ? 'Saving…' : 'Save Now'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
           <button
-            onClick={search}
-            disabled={loading}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition-all disabled:opacity-50"
+            onClick={() => setStep('review')}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl text-sm transition-all"
           >
-            {loading ? (
-              <>
-                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-                Searching…
-              </>
-            ) : 'Find Permit Portal →'}
+            Review & Download →
           </button>
         </div>
-      ) : (
-        <div className="bg-white rounded-2xl p-6" style={cardStyle}>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
-            </div>
-            <div>
-              <div className="text-slate-800 font-bold text-sm">{portal?.portal_name || 'Building Permit Portal Found'}</div>
-              <div className="text-slate-400 text-xs">{project?.city}, {project?.region?.replace('US-', '')}</div>
+      )}
+
+      {/* Step 3: Review & Download */}
+      {step === 'review' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-slate-800 font-bold">Ready to Download</h3>
+            <button onClick={() => setStep('form')} className="text-slate-400 text-sm hover:text-slate-600 transition-colors">← Edit</button>
+          </div>
+
+          {/* Summary */}
+          <div className="bg-white rounded-2xl p-5" style={cardStyle}>
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Application Summary</div>
+            <div className="space-y-1">
+              {(formData?.fields || []).filter((f: any) => fieldValues[f.key]).slice(0, 8).map((f: any) => (
+                <div key={f.key} className="flex justify-between py-2 border-b last:border-0" style={{ borderColor: 'rgba(219,234,254,0.5)' }}>
+                  <span className="text-slate-400 text-sm">{f.label}</span>
+                  <span className="text-slate-800 text-sm font-semibold truncate max-w-[55%] text-right">{fieldValues[f.key]}</span>
+                </div>
+              ))}
             </div>
           </div>
-          {portal?.instructions && (
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4">
-              <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Instructions</div>
-              <p className="text-slate-700 text-sm leading-relaxed">{portal.instructions}</p>
+
+          {/* Download options */}
+          <div className="bg-white rounded-2xl p-6" style={cardStyle}>
+            <div className="text-slate-800 font-bold text-sm mb-4">Download Options</div>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => handleDownloadPdf(false)}
+                disabled={generatingPdf}
+                className="flex flex-col items-center gap-3 p-5 border-2 border-blue-200 hover:border-blue-400 rounded-2xl transition-all hover:bg-blue-50 disabled:opacity-50"
+              >
+                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.75" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </div>
+                <div className="text-center">
+                  <div className="text-slate-800 font-bold text-sm">Official Form PDF</div>
+                  <div className="text-slate-400 text-xs mt-0.5">Values overlaid on the city's actual form</div>
+                </div>
+              </button>
+              <button
+                onClick={() => handleDownloadPdf(true)}
+                disabled={generatingPdf}
+                className="flex flex-col items-center gap-3 p-5 border-2 border-slate-200 hover:border-slate-400 rounded-2xl transition-all hover:bg-slate-50 disabled:opacity-50"
+              >
+                <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="1.75" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                </div>
+                <div className="text-center">
+                  <div className="text-slate-800 font-bold text-sm">Clean Form PDF</div>
+                  <div className="text-slate-400 text-xs mt-0.5">Professional formatted version to print</div>
+                </div>
+              </button>
+            </div>
+            {generatingPdf && (
+              <div className="flex items-center justify-center gap-2 mt-4 text-slate-500 text-sm">
+                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                Generating PDF…
+              </div>
+            )}
+          </div>
+
+          {/* Submit instructions */}
+          {portal?.portal_url && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+              <div className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">Next Step: Submit Your Application</div>
+              <p className="text-amber-800 text-sm leading-relaxed mb-3">
+                Download your completed form above, then submit it through the official {project?.city} permit portal.
+              </p>
+              <a href={portal.portal_url} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-all">
+                Open Permit Portal
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
             </div>
           )}
-          {portal?.portal_url && (
-            <a
-              href={portal.portal_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition-all"
-            >
-              Open Official Permit Portal
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            </a>
-          )}
-          <button onClick={() => { setSearched(false); setPortal(null) }} className="ml-3 text-slate-400 text-sm hover:text-slate-600 transition-colors">
-            Search again
-          </button>
         </div>
       )}
     </div>
