@@ -209,13 +209,13 @@ export const api = {
       apiRequest<any>(`/api/v1/roofing/project/${projectId}/shingle-estimate`),
   },
   crm: {
-    list: (userId: string) =>
+    listLeads: (userId: string) =>
       apiRequest<any[]>(`/api/v1/crm/leads?user_id=${userId}`),
-    create: (lead: any) =>
+    createLead: (lead: any, userId?: string) =>
       apiRequest<any>(`/api/v1/crm/leads`, { method: 'POST', body: JSON.stringify(lead) }),
-    update: (leadId: string, patch: any) =>
+    updateLead: (leadId: string, patch: any) =>
       apiRequest<any>(`/api/v1/crm/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
-    delete: (leadId: string) =>
+    deleteLead: (leadId: string) =>
       apiRequest<any>(`/api/v1/crm/leads/${leadId}`, { method: 'DELETE' }),
   },
 }
