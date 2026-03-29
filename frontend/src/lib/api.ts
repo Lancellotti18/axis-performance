@@ -196,9 +196,9 @@ export const api = {
       apiRequest<any>(`/api/v1/compliance/materials-check?project_id=${projectId}`, { method: 'POST' }, 90000),
   },
   roofing: {
-    measure: (blueprintId: string) =>
+    analyzeMeasurements: (blueprintId: string) =>
       apiRequest<any>(`/api/v1/roofing/${blueprintId}/measure`, { method: 'POST' }, 90000),
-    confirm: (blueprintId: string, measurements: any) =>
+    confirmMeasurements: (blueprintId: string, measurements: any) =>
       apiRequest<any>(`/api/v1/roofing/${blueprintId}/confirm`, {
         method: 'POST',
         body: JSON.stringify(measurements),
