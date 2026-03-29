@@ -120,7 +120,11 @@ def _run_analysis_bg(blueprint_id: str):
         run_analysis_pipeline(blueprint_id)
         db.table("blueprints").update({"status": "complete"}).eq("id", blueprint_id).execute()
     except Exception as e:
-        db.table("blueprints").update({"status": "failed", "error": str(e)}).eq("id", blueprint_id).execute()
+        try:
+            db.table("blueprints").update({"status": "failed"}).eq("id", blueprint_id).execute()
+        except Exception:
+            pass
+        print(f"[analysis] blueprint {blueprint_id} failed: {e}")
 
 
 @router.get("/{blueprint_id}/status")
