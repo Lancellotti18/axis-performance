@@ -18,11 +18,20 @@ class ProjectCreate(BaseModel):
 @router.get("/")
 async def list_projects(user_id: str = Query(...), include_archived: bool = Query(default=False)):
     db = get_supabase()
-    query = db.table("projects").select("*").eq("user_id", user_id)
+    try:
+        query = db.table("projects").select("*").eq("user_id", user_id)
+        if not include_archived:
+            query = query.eq("archived", False)
+        result = query.order("created_at", desc=True).execute()
+        rows = result.data or []
+    except Exception:
+        # archived column may not exist yet — fall back to unfiltered query
+        result = db.table("projects").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        rows = result.data or []
+    # If include_archived=False but column doesn't exist, filter client-side (archived defaults to False)
     if not include_archived:
-        query = query.eq("archived", False)
-    result = query.order("created_at", desc=True).execute()
-    return result.data or []
+        rows = [r for r in rows if not r.get("archived", False)]
+    return rows
 
 
 @router.post("/")
