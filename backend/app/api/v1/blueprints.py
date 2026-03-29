@@ -30,10 +30,13 @@ async def get_upload_url(
     content_type: str = Query(...),
 ):
     """Return a presigned URL for direct browser upload to S3/R2 or Supabase Storage."""
-    key = f"blueprints/{project_id}/{uuid.uuid4()}/{filename}"
+    # Sanitize filename — Supabase rejects keys with spaces or special chars
+    import re
+    safe_filename = re.sub(r'[^\w.\-]', '_', filename)
+    key = f"blueprints/{project_id}/{uuid.uuid4()}/{safe_filename}"
 
     # Supabase Storage path (without the bucket name prefix)
-    storage_path = f"{project_id}/{uuid.uuid4()}/{filename}"
+    storage_path = f"{project_id}/{uuid.uuid4()}/{safe_filename}"
 
     if not settings.AWS_ACCESS_KEY_ID:
         # Use Supabase Storage
