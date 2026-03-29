@@ -33,20 +33,23 @@ export async function apiRequest<T>(
   }
 
   let res: Response
-  try {
-    res = await fetchWithTimeout(`${API_BASE}${path}`, fetchOptions, timeoutMs)
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
-      // Auto-retry once — the cold start may have finished during the first attempt
-      try {
-        res = await fetchWithTimeout(`${API_BASE}${path}`, fetchOptions, timeoutMs)
-      } catch (retryErr: any) {
-        if (retryErr.name === 'AbortError') throw new Error('Server is taking too long to respond. Please try again in a moment.')
-        throw new Error('Network error. Please check your connection.')
-      }
-    } else {
-      throw new Error('Network error. Please check your connection.')
+  // Retry up to 3 times — handles cold starts and transient failures
+  let lastErr: any
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      res = await fetchWithTimeout(`${API_BASE}${path}`, fetchOptions, timeoutMs)
+      lastErr = null
+      break
+    } catch (err: any) {
+      lastErr = err
+      if (err.name === 'AbortError') continue   // timed out — retry
+      // Network-level failure (CORS, connection refused, etc.) — wait briefly then retry
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1500))
     }
+  }
+  if (lastErr) {
+    if (lastErr.name === 'AbortError') throw new Error('Server is taking too long to respond. Please try again in a moment.')
+    throw new Error('Network error. Please check your connection.')
   }
 
   if (!res!.ok) {
