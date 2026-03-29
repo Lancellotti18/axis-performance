@@ -108,8 +108,18 @@ def download_file(key: str) -> bytes:
     """Download file from Supabase Storage (URL), local disk, or S3."""
     import requests as _requests
 
-    # Supabase Storage or any HTTP URL
+    # Supabase Storage public/signed URL — use service client to download
+    # so the bucket doesn't need to be public
     if key.startswith("http://") or key.startswith("https://"):
+        if "supabase.co/storage" in key:
+            db = get_supabase()
+            # Extract the storage path after /public/blueprints/ or /object/public/blueprints/
+            import re as _re
+            m = _re.search(r'/(?:object/)?public/blueprints/(.+)', key)
+            if m:
+                storage_path = m.group(1)
+                data = db.storage.from_("blueprints").download(storage_path)
+                return data
         resp = _requests.get(key, timeout=60)
         resp.raise_for_status()
         return resp.content
