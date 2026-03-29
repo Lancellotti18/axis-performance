@@ -54,7 +54,7 @@ export default function NewProjectPage() {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
       }
-      xhr.onload = () => (xhr.status < 400 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)))
+      xhr.onload = () => (xhr.status < 400 ? resolve() : reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText}`)))
       xhr.onerror = () => reject(new Error('Upload failed'))
       xhr.open('PUT', presignedUrl)
       xhr.setRequestHeader('Content-Type', file.type)
