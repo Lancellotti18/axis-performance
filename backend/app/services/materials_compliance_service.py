@@ -65,34 +65,31 @@ def _parse_json_from_claude(text: str) -> dict:
     """Robustly extract JSON from Claude's response regardless of formatting."""
     text = text.strip()
 
-    # Remove opening markdown fence if present
-    if text.startswith("```"):
-        # Strip the opening fence line
-        text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
-        # Strip closing fence if present
-        text = re.sub(r'\s*```\s*$', '', text)
-        text = text.strip()
+    # Strip markdown fences
+    text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
+    text = re.sub(r'\s*```\s*$', '', text)
+    text = text.strip()
 
-    # Try direct parse first
     start = text.find("{")
-    if start != -1:
-        candidate = text[start:]
-        # Try full string
+    if start == -1:
+        raise ValueError(f"No JSON object found. First 200 chars: {text[:200]}")
+
+    candidate = text[start:]
+
+    # 1. Try clean parse
+    try:
+        return json.loads(candidate)
+    except Exception:
+        pass
+
+    # 2. Truncated response — walk backwards through every } and try to close it
+    for i in range(len(candidate) - 1, -1, -1):
+        if candidate[i] != '}':
+            continue
         try:
-            return json.loads(candidate)
+            return json.loads(candidate[:i + 1])
         except Exception:
-            pass
-        # Response was truncated — find the last complete top-level key
-        # by scanning backwards for the deepest valid closing brace
-        end = len(candidate)
-        while end > 0:
-            end = candidate.rfind("}", 0, end)
-            if end == -1:
-                break
-            try:
-                return json.loads(candidate[:end + 1])
-            except Exception:
-                end -= 1
+            continue
 
     raise ValueError(f"Could not parse JSON from Claude response. First 200 chars: {text[:200]}")
 
@@ -162,19 +159,19 @@ Return ONLY this JSON (no markdown, no text outside the JSON):
   "summary": "2-4 sentence overview of compliance status for {location_str}. Highlight the most critical issues.",
   "checklist": [
     {{
-      "item_name": "exact name from the list",
+      "item_name": "exact name from list",
       "category": "category",
       "status": "pass",
-      "note": "why this meets code",
-      "code_reference": "IRC Section R802.4.1"
+      "note": "brief reason (10 words max)",
+      "code_reference": "IRC R802.4.1"
     }},
     {{
-      "item_name": "exact name from the list",
+      "item_name": "exact name from list",
       "category": "category",
       "status": "fail",
-      "rule_text": "EXACT quote from the applicable code section — must be verbatim or as close as possible, e.g. 'IRC Section R905.2.4.1: Asphalt shingles shall comply with ASTM D3161...'",
-      "violation_reason": "Specific reason why this material fails or is flagged",
-      "fix_suggestion": "Exact actionable fix the contractor must implement"
+      "rule_text": "IRC Section R905.2.4.1: [exact quote, keep under 30 words]",
+      "violation_reason": "Why it fails (20 words max)",
+      "fix_suggestion": "Specific fix (15 words max)"
     }}
   ],
   "missing_required_items": [
@@ -190,10 +187,9 @@ RULES:
 - overall_status: "pass" = no failures, "warning" = minor issues only, "fail" = one or more serious violations
 - Every material in the list MUST appear in the checklist — no skipping
 - status must be exactly "pass", "fail", or "warning"
-- For pass items: provide a short note and the relevant code section
-- For fail/warning items: provide the EXACT rule text quoted, the reason, and a specific fix
-- For missing items: only flag things genuinely required by code for this project type and location
-- Be strict but fair — apply the code as a building inspector would
+- Keep ALL text fields SHORT — notes under 15 words, rule_text under 30 words, fix under 15 words
+- For missing items: only flag genuinely required items (max 5)
+- Be strict but concise — inspector style, no paragraphs
 - Consider {state} climate zone for insulation R-values, ice/water shield, wind ratings"""
 
     client = get_claude()
