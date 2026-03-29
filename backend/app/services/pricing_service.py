@@ -163,41 +163,44 @@ def _fallback_options(item_name: str, base_price: float) -> List[dict]:
 def enrich_materials_with_pricing(materials: List[dict], region: str, city: str = "") -> List[dict]:
     """
     Add real-time vendor pricing options to each material item.
+    Makes at most ONE Tavily search per category (not per item) to keep
+    the pipeline fast. All items in a category share the same vendor URLs.
     Falls back to estimated prices if Tavily search fails.
     """
     if not settings.TAVILY_API_KEY:
-        logger.warning("No Tavily API key — using fallback prices")
         return _add_fallback_pricing(materials)
 
     try:
-        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        tavily = TavilyClient(api_key=settings.TAVILY_API_KEY)
     except Exception as e:
         logger.warning(f"Tavily client init failed: {e}")
         return _add_fallback_pricing(materials)
 
-    # Only search for categories worth the API calls (deduplicate by item name)
-    seen_items: Dict[str, List[dict]] = {}
+    # One search per category — cache results and reuse for all items in that category
+    category_cache: Dict[str, List[dict]] = {}
     enriched = []
 
     for material in materials:
         item_name  = material["item_name"]
-        category   = material["category"]
-        base_price = material["unit_cost"]
+        category   = material.get("category", "finishing")
+        base_price = material.get("unit_cost", 10.0)
 
-        if item_name not in seen_items:
-            options = _search_material_prices(client, item_name, category, region, base_price, city=city)
-            seen_items[item_name] = options
-        else:
-            options = seen_items[item_name]
+        if category not in category_cache:
+            try:
+                options = _search_material_prices(tavily, item_name, category, region, base_price, city=city)
+            except Exception:
+                options = _fallback_options(item_name, base_price)
+            category_cache[category] = options
 
-        # Update unit cost to cheapest found price
+        options = category_cache[category]
+
         if options:
             cheapest = options[0]["price"]
             material = {
                 **material,
-                "unit_cost":       cheapest,
-                "total_cost":      round(material["quantity"] * cheapest, 2),
-                "vendor_options":  options,
+                "unit_cost":      cheapest,
+                "total_cost":     round(material.get("quantity", 1) * cheapest, 2),
+                "vendor_options": options,
             }
         else:
             material = {**material, "vendor_options": _fallback_options(item_name, base_price)}
