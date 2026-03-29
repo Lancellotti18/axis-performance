@@ -193,7 +193,7 @@ export const api = {
     getForProject: (projectId: string) =>
       apiRequest<any>(`/api/v1/compliance/project/${projectId}`),
     checkMaterials: (projectId: string) =>
-      apiRequest<any>(`/api/v1/compliance/materials-check?project_id=${projectId}`, { method: 'POST' }, 90000),
+      apiRequest<any>(`/api/v1/compliance/materials-check?project_id=${projectId}`, { method: 'POST' }, 240000),
   },
   roofing: {
     analyzeMeasurements: (blueprintId: string) =>

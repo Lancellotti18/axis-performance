@@ -41,8 +41,8 @@ async def fetch_local_codes(city: str, state: str, project_type: str, county: st
             try:
                 results = client.search(
                     query=q,
-                    search_depth="advanced",
-                    max_results=4,
+                    search_depth="basic",
+                    max_results=3,
                     include_answer=True,
                 )
                 if results.get("answer"):
