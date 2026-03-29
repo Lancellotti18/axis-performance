@@ -1042,18 +1042,6 @@ export default function ProjectPage() {
                         <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Checking…</>
                       ) : '⚖ Check Code Compliance'}
                     </button>
-                    {/* Sort toggle */}
-                    <div className="flex bg-slate-100 rounded-xl p-1">
-                      {(['lowest_price', 'best_value'] as SortMode[]).map(mode => (
-                        <button
-                          key={mode}
-                          onClick={() => setSortMode(mode)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${sortMode === mode ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
-                        >
-                          {mode === 'lowest_price' ? '💰 Lowest Price' : '⭐ Best Value'}
-                        </button>
-                      ))}
-                    </div>
                     {Object.keys(materialChanges).length > 0 && (
                       <button
                         onClick={handleSaveMaterials}
@@ -1506,6 +1494,19 @@ export default function ProjectPage() {
             {/* ── COMPLIANCE ────────────────────────────────────────────── */}
             {tab === 'compliance' && (
               <div className="max-w-3xl">
+                <div className="flex justify-end mb-4">
+                  <button
+                    onClick={handleMaterialsComplianceCheck}
+                    disabled={matCheckLoading || !project?.city}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: matCheckLoading ? '#94a3b8' : 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.25)' }}
+                    title={!project?.city ? 'Add a city to the project first' : ''}
+                  >
+                    {matCheckLoading ? (
+                      <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Checking…</>
+                    ) : '⚖ Check Code Compliance'}
+                  </button>
+                </div>
                 {!compliance || compliance.status === 'not_run' ? (
                   <div className="bg-white rounded-2xl p-12 text-center" style={cardStyle}>
                     <div className="text-5xl mb-4">⚖️</div>
