@@ -114,17 +114,19 @@ async def trigger_analysis(blueprint_id: str, background_tasks: BackgroundTasks)
 
 
 def _run_analysis_bg(blueprint_id: str):
+    import traceback
     from app.services.ai_pipeline import run_analysis_pipeline
     db = get_supabase()
     try:
         run_analysis_pipeline(blueprint_id)
         db.table("blueprints").update({"status": "complete"}).eq("id", blueprint_id).execute()
     except Exception as e:
+        err_msg = traceback.format_exc()
+        print(f"[analysis] blueprint {blueprint_id} FAILED:\n{err_msg}")
         try:
             db.table("blueprints").update({"status": "failed"}).eq("id", blueprint_id).execute()
-        except Exception:
-            pass
-        print(f"[analysis] blueprint {blueprint_id} failed: {e}")
+        except Exception as e2:
+            print(f"[analysis] could not set failed status: {e2}")
 
 
 @router.get("/{blueprint_id}/status")
@@ -132,9 +134,18 @@ async def get_status(blueprint_id: str):
     db = get_supabase()
     result = (
         db.table("blueprints")
-        .select("status")
+        .select("*")
         .eq("id", blueprint_id)
         .single()
         .execute()
     )
     return result.data or {"status": "unknown"}
+
+
+@router.post("/{blueprint_id}/retry")
+async def retry_analysis(blueprint_id: str, background_tasks: BackgroundTasks):
+    """Re-trigger analysis for a failed blueprint."""
+    db = get_supabase()
+    db.table("blueprints").update({"status": "processing"}).eq("id", blueprint_id).execute()
+    background_tasks.add_task(_run_analysis_bg, blueprint_id)
+    return {"status": "processing", "blueprint_id": blueprint_id}

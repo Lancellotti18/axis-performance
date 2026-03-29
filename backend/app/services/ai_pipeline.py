@@ -323,8 +323,12 @@ def save_estimates(db, analysis_id: str, project_id: str, materials: list, costs
             rows.append(row)
         db.table("material_estimates").insert(rows).execute()
 
-    # Always upsert cost estimate so the Cost tab is never blank
-    db.table("cost_estimates").upsert({
+    # Save cost estimate — delete existing first to avoid unique constraint issues
+    try:
+        db.table("cost_estimates").delete().eq("project_id", project_id).execute()
+    except Exception:
+        pass
+    db.table("cost_estimates").insert({
         "project_id": project_id,
         "materials_total": costs.get("materials_total", 0),
         "labor_total": costs.get("labor_total", 0),
@@ -333,4 +337,4 @@ def save_estimates(db, analysis_id: str, project_id: str, materials: list, costs
         "grand_total": costs.get("grand_total", 0),
         "region": costs.get("region", "US-TX"),
         "labor_hours": costs.get("labor_hours", 0),
-    }, on_conflict="project_id").execute()
+    }).execute()
