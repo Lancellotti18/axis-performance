@@ -1590,24 +1590,14 @@ export default function ProjectPage() {
                   <div className="bg-white rounded-2xl p-12 text-center text-red-500" style={cardStyle}>Compliance check failed.</div>
                 )}
 
-                {/* ── MATERIALS COMPLIANCE RESULTS ──────────────────────── */}
+                {/* ── MATERIALS CODE CHECK RESULTS ──────────────────────── */}
                 {(matCheckResult || matCheckLoading || matCheckError) && (
                   <div className="mt-6">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Materials Code Check</span>
-                      {matCheckResult && (
-                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border capitalize ${
-                          matCheckResult.overall_status === 'pass' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                          matCheckResult.overall_status === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                          'bg-red-50 border-red-200 text-red-700'
-                        }`}>{matCheckResult.overall_status}</span>
-                      )}
-                    </div>
-
                     {matCheckLoading && (
                       <div className="bg-white rounded-2xl p-8 text-center" style={cardStyle}>
                         <svg className="animate-spin text-purple-500 mx-auto mb-3" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-                        <div className="text-slate-400 text-sm">Checking materials against local building codes…</div>
+                        <div className="text-slate-600 text-sm font-medium mb-1">Checking materials against local codes…</div>
+                        <div className="text-slate-400 text-xs">Pulling {project?.city} building codes and cross-referencing your materials list</div>
                       </div>
                     )}
 
@@ -1615,97 +1605,122 @@ export default function ProjectPage() {
                       <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-600 text-sm">{matCheckError}</div>
                     )}
 
-                    {matCheckResult && (
-                      <div className="space-y-4">
-                        {matCheckResult.summary && (
-                          <div className="bg-white rounded-2xl px-5 py-4 text-slate-600 text-sm leading-relaxed" style={cardStyle}>{matCheckResult.summary}</div>
-                        )}
+                    {matCheckResult && (() => {
+                      const checklist: any[] = matCheckResult.checklist || []
+                      const missing: any[] = matCheckResult.missing_required_items || []
+                      const passCount = checklist.filter((c: any) => c.status === 'pass').length
+                      const failCount = checklist.filter((c: any) => c.status === 'fail').length
+                      const warnCount = checklist.filter((c: any) => c.status === 'warning').length
+                      const loc = matCheckResult.location
+                      const locationStr = [loc?.city, loc?.county, loc?.state].filter(Boolean).join(', ')
 
-                        {/* Violations */}
-                        {matCheckResult.violations?.length > 0 && (
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-xs font-bold text-red-500 uppercase tracking-wider">Violations ({matCheckResult.violations.length})</span>
+                      return (
+                        <div className="space-y-4">
+                          {/* Header */}
+                          <div className="bg-white rounded-2xl px-5 py-4" style={cardStyle}>
+                            <div className="flex items-start justify-between gap-4 mb-3">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-slate-800 font-bold text-sm">Materials Code Compliance</span>
+                                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border capitalize ${
+                                    matCheckResult.overall_status === 'pass' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                                    matCheckResult.overall_status === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                    'bg-red-50 border-red-200 text-red-700'
+                                  }`}>{matCheckResult.overall_status}</span>
+                                </div>
+                                {locationStr && <div className="text-slate-400 text-xs">{locationStr} · {matCheckResult.project_type}</div>}
+                              </div>
+                              <div className="flex gap-3 text-center flex-shrink-0">
+                                <div><div className="text-emerald-600 font-bold text-lg leading-none">{passCount}</div><div className="text-slate-400 text-[10px] mt-0.5">Pass</div></div>
+                                {warnCount > 0 && <div><div className="text-amber-500 font-bold text-lg leading-none">{warnCount}</div><div className="text-slate-400 text-[10px] mt-0.5">Warn</div></div>}
+                                <div><div className="text-red-500 font-bold text-lg leading-none">{failCount + missing.length}</div><div className="text-slate-400 text-[10px] mt-0.5">Fail</div></div>
+                              </div>
                             </div>
+                            {matCheckResult.summary && <p className="text-slate-500 text-sm leading-relaxed border-t pt-3" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>{matCheckResult.summary}</p>}
+                          </div>
+
+                          {/* Per-material checklist */}
+                          {checklist.length > 0 && (
                             <div className="space-y-2">
-                              {matCheckResult.violations.map((v: any, i: number) => (
-                                <div key={i} className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(239,68,68,0.08)', border: '1px solid rgba(254,202,202,0.8)' }}>
-                                  <div className="px-4 py-3 flex items-start gap-3">
-                                    <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0 bg-red-500" />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-start justify-between gap-3">
-                                        <span className="text-slate-800 text-sm font-semibold">{v.item_name}</span>
-                                        {v.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 font-semibold flex-shrink-0 capitalize">{v.category}</span>}
+                              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Materials Checklist ({checklist.length} items)</div>
+                              {checklist.map((item: any, i: number) => {
+                                const isFail = item.status === 'fail'
+                                const isWarn = item.status === 'warning'
+                                const isPass = item.status === 'pass'
+                                return (
+                                  <div key={i} className={`bg-white rounded-xl overflow-hidden`} style={{
+                                    boxShadow: isFail ? '0 2px 12px rgba(239,68,68,0.08)' : isWarn ? '0 2px 12px rgba(245,158,11,0.08)' : '0 2px 8px rgba(59,130,246,0.06)',
+                                    border: isFail ? '1px solid rgba(254,202,202,0.9)' : isWarn ? '1px solid rgba(253,230,138,0.9)' : '1px solid rgba(167,243,208,0.7)',
+                                  }}>
+                                    <div className="px-4 py-3 flex items-start gap-3">
+                                      {/* Status icon */}
+                                      <div className="flex-shrink-0 mt-0.5">
+                                        {isPass && (
+                                          <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                          </div>
+                                        )}
+                                        {isFail && (
+                                          <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                          </div>
+                                        )}
+                                        {isWarn && (
+                                          <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round"><path d="M12 9v4M12 17h.01"/></svg>
+                                          </div>
+                                        )}
                                       </div>
-                                      {v.rule_text && (
-                                        <blockquote className="mt-2 pl-3 border-l-2 border-red-200 text-slate-500 text-xs italic leading-relaxed">{v.rule_text}</blockquote>
-                                      )}
-                                      {v.violation_reason && (
-                                        <p className="mt-1.5 text-slate-500 text-xs">{v.violation_reason}</p>
-                                      )}
-                                      {v.fix_suggestion && (
-                                        <div className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-                                          <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Fix: </span>
-                                          <span className="text-slate-700 text-xs">{v.fix_suggestion}</span>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <span className="text-slate-800 text-sm font-semibold">{item.item_name}</span>
+                                          {item.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium flex-shrink-0 capitalize">{item.category}</span>}
                                         </div>
-                                      )}
+                                        {isPass && item.note && <p className="text-slate-500 text-xs mt-0.5">{item.note}</p>}
+                                        {isPass && item.code_reference && <p className="text-emerald-600 text-[10px] mt-0.5 font-medium">{item.code_reference}</p>}
+                                        {(isFail || isWarn) && item.rule_text && (
+                                          <blockquote className={`mt-2 pl-3 border-l-2 text-slate-500 text-xs italic leading-relaxed ${isFail ? 'border-red-300' : 'border-amber-300'}`}>{item.rule_text}</blockquote>
+                                        )}
+                                        {(isFail || isWarn) && item.violation_reason && (
+                                          <p className="mt-1.5 text-slate-600 text-xs">{item.violation_reason}</p>
+                                        )}
+                                        {(isFail || isWarn) && item.fix_suggestion && (
+                                          <div className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                                            <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Fix: </span>
+                                            <span className="text-slate-700 text-xs">{item.fix_suggestion}</span>
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              ))}
+                                )
+                              })}
                             </div>
-                          </div>
-                        )}
+                          )}
 
-                        {/* Missing Required Items */}
-                        {matCheckResult.missing_required_items?.length > 0 && (
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">Missing Required Items ({matCheckResult.missing_required_items.length})</span>
-                            </div>
-                            <div className="space-y-2">
-                              {matCheckResult.missing_required_items.map((m: any, i: number) => (
-                                <div key={i} className="bg-white rounded-xl px-4 py-3" style={{ boxShadow: '0 2px 12px rgba(245,158,11,0.08)', border: '1px solid rgba(253,230,138,0.8)' }}>
-                                  <div className="flex items-start gap-3">
-                                    <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0 bg-amber-500" />
+                          {/* Missing required items */}
+                          {missing.length > 0 && (
+                            <div>
+                              <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">Missing Required Items ({missing.length})</div>
+                              <div className="space-y-2">
+                                {missing.map((m: any, i: number) => (
+                                  <div key={i} className="bg-white rounded-xl px-4 py-3 flex items-start gap-3" style={{ boxShadow: '0 2px 12px rgba(245,158,11,0.08)', border: '1px solid rgba(253,230,138,0.9)' }}>
+                                    <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    </div>
                                     <div className="flex-1">
                                       <span className="text-slate-800 text-sm font-semibold">{m.item_name}</span>
-                                      {m.rule_text && (
-                                        <blockquote className="mt-1.5 pl-3 border-l-2 border-amber-200 text-slate-500 text-xs italic leading-relaxed">{m.rule_text}</blockquote>
-                                      )}
-                                      {m.reason_required && (
-                                        <p className="mt-1 text-slate-500 text-xs">{m.reason_required}</p>
-                                      )}
+                                      {m.rule_text && <blockquote className="mt-1.5 pl-3 border-l-2 border-amber-300 text-slate-500 text-xs italic leading-relaxed">{m.rule_text}</blockquote>}
+                                      {m.reason_required && <p className="mt-1 text-slate-500 text-xs">{m.reason_required}</p>}
                                     </div>
                                   </div>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
-
-                        {/* Compliant Items */}
-                        {matCheckResult.compliant_items?.length > 0 && (
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Compliant ({matCheckResult.compliant_items.length})</span>
-                            </div>
-                            <div className="grid grid-cols-1 gap-1.5">
-                              {matCheckResult.compliant_items.map((c: any, i: number) => (
-                                <div key={i} className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5 flex items-start gap-3">
-                                  <svg className="text-emerald-500 flex-shrink-0 mt-0.5" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                                  <div>
-                                    <span className="text-slate-700 text-sm font-medium">{c.item_name}</span>
-                                    {c.note && <p className="text-slate-500 text-xs mt-0.5">{c.note}</p>}
-                                    {c.code_reference && <p className="text-emerald-600 text-[10px] mt-0.5">{c.code_reference}</p>}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
               </div>

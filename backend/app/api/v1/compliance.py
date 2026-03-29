@@ -184,6 +184,7 @@ async def check_project_materials(project_id: str):
     project = proj.data
 
     city = project.get("city", "")
+    county = project.get("county", "")
     region = project.get("region", "US-TX")
     state = region.replace("US-", "") if region else "TX"
     project_type = project.get("blueprint_type", "residential")
@@ -218,6 +219,7 @@ async def check_project_materials(project_id: str):
             city=city,
             state=state,
             project_type=project_type,
+            county=county,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Compliance check failed: {str(e)}")
