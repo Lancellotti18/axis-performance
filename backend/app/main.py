@@ -23,9 +23,19 @@ app.add_middleware(
 # causing browsers to throw TypeError: Failed to fetch instead of seeing the error)
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    # @app.exception_handler(Exception) runs inside ServerErrorMiddleware, which is
+    # OUTSIDE CORSMiddleware in the Starlette stack — so CORS headers are never added
+    # automatically. We must set them explicitly here.
+    origin = request.headers.get("origin", "*")
     return JSONResponse(
         status_code=500,
         content={"detail": str(exc)},
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "false",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        },
     )
 
 app.include_router(api_router, prefix="/api/v1")

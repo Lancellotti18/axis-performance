@@ -16,5 +16,5 @@ async def get_analysis(analysis_id: str):
 @router.get("/by-blueprint/{blueprint_id}")
 async def get_analysis_by_blueprint(blueprint_id: str):
     db = get_supabase()
-    result = db.table("analyses").select("*").eq("blueprint_id", blueprint_id).single().execute()
-    return result.data
+    result = db.table("analyses").select("*").eq("blueprint_id", blueprint_id).limit(1).execute()
+    return result.data[0] if result.data else None
