@@ -97,20 +97,18 @@ export default function PermitsPage() {
 
   useEffect(() => {
     async function load() {
+      let u: any = null
       try {
-        const u = await getUser()
+        u = await getUser()
         if (!u) { router.push('/login'); return }
       } catch {
         router.push('/login'); return
       }
       // Auth passed — show the form immediately (states render now)
       setReady(true)
-      // Load projects separately with a timeout so a dead backend never blocks the UI
+      // Load projects separately so a slow backend never blocks the UI
       try {
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 5000)
-        const data = await api.projects.list('').catch(() => [] as Project[])
-        clearTimeout(timeout)
+        const data = await api.projects.list(u.id).catch(() => [] as Project[])
         setProjects(data || [])
         if (data?.length) setSelectedProject(data[0].id)
       } catch {}

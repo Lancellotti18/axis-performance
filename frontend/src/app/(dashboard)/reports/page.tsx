@@ -26,8 +26,8 @@ export default function ReportsPage() {
       const u = await getUser()
       if (!u) { router.push('/login'); return }
       try {
-        const data = await api.projects.list(u.id)
-        const complete = (data || []).filter((p: Project) => p.status === 'complete')
+        const allData = await api.projects.listArchived(u.id)
+        const complete = (allData || []).filter((p: Project) => p.status === 'complete' && !p.archived)
         setProjects(complete)
         if (complete.length > 0) setSelected(complete[0].id)
       } catch {}

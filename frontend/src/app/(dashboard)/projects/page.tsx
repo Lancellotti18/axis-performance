@@ -38,7 +38,8 @@ export default function ProjectsPage() {
       const u = await getUser()
       if (!u) { router.push('/login'); return }
       try {
-        const data = await api.projects.list(u.id)
+        const allData = await api.projects.listArchived(u.id)
+        const data = (allData || []).filter((p: any) => !p.archived)
         setProjects(data || [])
       } catch {}
       setLoading(false)
