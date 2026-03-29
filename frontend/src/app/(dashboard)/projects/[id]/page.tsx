@@ -716,19 +716,30 @@ export default function ProjectPage() {
     } catch (err) { console.error(err) }
   }
 
-  async function handleSearchPrices(material: any) {
+  async function handleSearchPrices(material: any, overrides?: { item_name?: string; category?: string }) {
     setSearchingPrices(material.id)
     try {
+      const itemName = overrides?.item_name || material.item_name
+      const category = overrides?.category || material.category
       const result = await api.materials.searchPrices({
-        item_name: material.item_name,
-        category: material.category,
+        item_name: itemName,
+        category: category,
         unit_cost: material.unit_cost,
         region: project?.region || 'US-TX',
         city: project?.city || '',
       })
-      // Update that material's vendor_options locally
-      setAnalysis((prev: any) => prev)  // trigger re-render - data is in estimate
-      await loadData()
+      if (result?.options) {
+        // Update vendor_options in local estimate state immediately
+        setEstimate((prev: any) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            material_estimates: (prev.material_estimates || []).map((m: any) =>
+              m.id === material.id ? { ...m, vendor_options: result.options, item_name: itemName } : m
+            ),
+          }
+        })
+      }
     } catch (err) { console.error(err) }
     setSearchingPrices(null)
   }
@@ -1230,7 +1241,14 @@ export default function ProjectPage() {
                                   {isExpanded && (
                                     <div className="px-5 pb-3 bg-slate-50/60">
                                       <button
-                                        onClick={e => { e.stopPropagation(); handleSearchPrices(m) }}
+                                        onClick={e => {
+                                          e.stopPropagation()
+                                          const overrides = editingMaterial === m.id ? {
+                                            item_name: editDraft.item_name || m.item_name,
+                                            category: editDraft.category || m.category,
+                                          } : undefined
+                                          handleSearchPrices(m, overrides)
+                                        }}
                                         disabled={searchingPrices === m.id}
                                         className="flex items-center gap-2 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-all border border-blue-200 disabled:opacity-50"
                                       >

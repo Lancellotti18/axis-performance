@@ -110,6 +110,17 @@ async def fetch_permit_form(project_id: str):
         if an.data:
             total_sqft = an.data[0].get("total_sqft") or 0
 
+    # Load contractor profile for auto-fill
+    contractor = {}
+    try:
+        user_id = proj.get("user_id")
+        if user_id:
+            cp = db.table("contractor_profiles").select("*").eq("user_id", user_id).limit(1).execute()
+            if cp.data:
+                contractor = cp.data[0]
+    except Exception:
+        pass
+
     # Jurisdiction detection — only proceed with verified .gov source
     from app.services.jurisdiction_service import detect_jurisdiction
     jurisdiction = detect_jurisdiction(city, state, project_type=project_type)
@@ -146,14 +157,23 @@ async def fetch_permit_form(project_id: str):
     # Pre-fill known values
     project_name = proj.get("name") or ""
     filled = _prefill_fields(raw_fields, {
-        "project_name": project_name,
-        "city": city,
-        "state": state,
-        "region": region,
-        "project_type": project_type,
-        "total_sqft": str(int(total_sqft)) if total_sqft else "",
-        "estimated_cost": f"${int(est.get('grand_total', 0)):,}" if est.get("grand_total") else "",
-        "labor_hours": str(int(est.get("labor_hours", 0))) if est.get("labor_hours") else "",
+        "project_name":     project_name,
+        "city":             city,
+        "state":            state,
+        "zip_code":         proj.get("zip_code") or "",
+        "region":           region,
+        "project_type":     project_type,
+        "total_sqft":       str(int(total_sqft)) if total_sqft else "",
+        "estimated_cost":   f"${int(est.get('grand_total', 0)):,}" if est.get("grand_total") else "",
+        "labor_hours":      str(int(est.get("labor_hours", 0))) if est.get("labor_hours") else "",
+        "contractor_name":  contractor.get("company_name") or "",
+        "license_number":   contractor.get("license_number") or "",
+        "contractor_phone": contractor.get("phone") or "",
+        "contractor_email": contractor.get("email") or "",
+        "contractor_address": contractor.get("address") or "",
+        "contractor_city":  contractor.get("city") or "",
+        "contractor_state": contractor.get("state") or "",
+        "contractor_zip":   contractor.get("zip_code") or "",
     })
 
     return {
@@ -330,14 +350,23 @@ def _standard_fields(city: str, state: str, project_type: str) -> list:
 def _prefill_fields(raw_fields: list, data: dict) -> list:
     """Map known project data onto form fields. Each field gets a 'status' key."""
     KEY_MAP = {
-        "city":              data.get("city", ""),
-        "state":             data.get("state", ""),
-        "project_name":      data.get("project_name", ""),
-        "project_type":      data.get("project_type", "").capitalize(),
-        "project_description": f"{data.get('project_type','').capitalize()} construction — {data.get('total_sqft','')} sq ft",
-        "total_sqft":        data.get("total_sqft", ""),
-        "estimated_cost":    data.get("estimated_cost", ""),
-        "region":            data.get("region", ""),
+        "city":               data.get("city", ""),
+        "state":              data.get("state", ""),
+        "zip_code":           data.get("zip_code", ""),
+        "project_name":       data.get("project_name", ""),
+        "project_type":       data.get("project_type", "").capitalize(),
+        "project_description": f"{data.get('project_type','').capitalize()} construction — {data.get('total_sqft','')} sq ft" if data.get('total_sqft') else data.get('project_type','').capitalize() + " construction",
+        "total_sqft":         data.get("total_sqft", ""),
+        "estimated_cost":     data.get("estimated_cost", ""),
+        "region":             data.get("region", ""),
+        "contractor_name":    data.get("contractor_name", ""),
+        "license_number":     data.get("license_number", ""),
+        "contractor_phone":   data.get("contractor_phone", ""),
+        "contractor_email":   data.get("contractor_email", ""),
+        "contractor_address": data.get("contractor_address", ""),
+        "contractor_city":    data.get("contractor_city", ""),
+        "contractor_state":   data.get("contractor_state", ""),
+        "contractor_zip":     data.get("contractor_zip", ""),
     }
     result = []
     for f in raw_fields:

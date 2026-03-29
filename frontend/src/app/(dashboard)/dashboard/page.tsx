@@ -66,14 +66,15 @@ function ProjectCard({
   project,
   onDelete,
   onRename,
+  onArchive,
 }: {
   project: Project
   onDelete: (id: string) => void
   onRename: (id: string, name: string) => void
+  onArchive: (id: string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draftName, setDraftName] = useState(project.name)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
 
   async function saveRename() {
@@ -88,14 +89,6 @@ function ProjectCard({
     setEditing(false)
   }
 
-  async function handleDelete() {
-    try {
-      await api.projects.delete(project.id)
-      onDelete(project.id)
-    } catch {}
-    setConfirmDelete(false)
-  }
-
   return (
     <div
       className="rounded-[20px] bg-white overflow-hidden group transition-all duration-200 hover:-translate-y-1 cursor-pointer relative"
@@ -106,23 +99,6 @@ function ProjectCard({
       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 32px rgba(59,130,246,0.16)' }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 12px rgba(59,130,246,0.08)' }}
     >
-      {/* Delete confirm overlay */}
-      {confirmDelete && (
-        <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-20 flex flex-col items-center justify-center gap-3 rounded-[20px] p-4">
-          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-            </svg>
-          </div>
-          <div className="text-slate-700 font-semibold text-sm text-center">Delete this project?</div>
-          <div className="text-slate-400 text-xs text-center">This cannot be undone.</div>
-          <div className="flex gap-2">
-            <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-medium hover:bg-slate-200 transition-all">Cancel</button>
-            <button onClick={handleDelete} className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition-all">Delete</button>
-          </div>
-        </div>
-      )}
-
       {/* Blueprint thumbnail */}
       <div className="h-[100px] flex items-center justify-center relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)' }}>
         {/* Action icons — top right */}
@@ -137,9 +113,9 @@ function ProjectCard({
             </svg>
           </button>
           <button
-            onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
-            className="w-7 h-7 rounded-lg bg-white/80 backdrop-blur-sm flex items-center justify-center hover:bg-red-50 hover:stroke-red-500 transition-all shadow-sm"
-            title="Delete"
+            onClick={e => { e.stopPropagation(); onArchive(project.id) }}
+            className="w-7 h-7 rounded-lg bg-white/80 backdrop-blur-sm flex items-center justify-center hover:bg-slate-100 transition-all shadow-sm"
+            title="Move to Trash"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
@@ -219,6 +195,8 @@ export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [projects, setProjects] = useState<Project[]>([])
+  const [archivedProjects, setArchivedProjects] = useState<Project[]>([])
+  const [showTrash, setShowTrash] = useState(false)
   const [loading, setLoading] = useState(true)
   const [fabOpen, setFabOpen] = useState(false)
 
@@ -229,19 +207,44 @@ export default function DashboardPage() {
       setUser(u)
       setLoading(false)
       try {
-        const data = await api.projects.list(u.id)
-        setProjects(data || [])
+        const allData = await api.projects.listArchived(u.id)
+        const activeProjects = (allData || []).filter((p: any) => !p.archived)
+        const archived = (allData || []).filter((p: any) => p.archived)
+        setProjects(activeProjects)
+        setArchivedProjects(archived)
       } catch {}
     }
     load()
   }, [router])
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
+    try {
+      await api.projects.delete(id)
+    } catch {}
     setProjects(prev => prev.filter(p => p.id !== id))
+    setArchivedProjects(prev => prev.filter(p => p.id !== id))
   }
 
   function handleRename(id: string, newName: string) {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, name: newName } : p))
+  }
+
+  async function handleArchive(id: string) {
+    try {
+      await api.projects.archive(id)
+      const proj = projects.find(p => p.id === id)
+      if (proj) setArchivedProjects(prev => [{ ...proj, archived: true } as any, ...prev])
+      setProjects(prev => prev.filter(p => p.id !== id))
+    } catch {}
+  }
+
+  async function handleRestore(id: string) {
+    try {
+      await api.projects.restore(id)
+      const proj = archivedProjects.find(p => p.id === id)
+      if (proj) setProjects(prev => [{ ...proj, archived: false } as any, ...prev])
+      setArchivedProjects(prev => prev.filter(p => p.id !== id))
+    } catch {}
   }
 
   const complete = projects.filter(p => p.status === 'complete').length
@@ -353,10 +356,50 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-5">
-            {recent.map(p => <ProjectCard key={p.id} project={p} onDelete={handleDelete} onRename={handleRename} />)}
+            {recent.map(p => <ProjectCard key={p.id} project={p} onDelete={handleDelete} onRename={handleRename} onArchive={handleArchive} />)}
           </div>
         )}
       </div>
+
+      {/* Trash section */}
+      {archivedProjects.length > 0 && (
+        <div className="mt-10">
+          <button
+            onClick={() => setShowTrash(o => !o)}
+            className="flex items-center gap-2 text-slate-400 hover:text-slate-600 text-sm font-semibold transition-colors mb-4"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+            </svg>
+            Trash ({archivedProjects.length})
+            <span className="ml-1">{showTrash ? '↑' : '↓'}</span>
+          </button>
+          {showTrash && (
+            <div className="grid grid-cols-3 gap-5 opacity-60">
+              {archivedProjects.map(p => (
+                <div key={p.id} className="rounded-[20px] bg-white p-4 relative" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid rgba(203,213,225,0.8)' }}>
+                  <div className="text-slate-600 font-semibold text-sm mb-1 line-clamp-1">{p.name}</div>
+                  <div className="text-slate-400 text-xs mb-3">{new Date(p.updated_at || p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleRestore(p.id)}
+                      className="flex-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 py-1.5 rounded-lg transition-all"
+                    >
+                      Restore
+                    </button>
+                    <button
+                      onClick={() => handleDelete(p.id)}
+                      className="flex-1 text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 py-1.5 rounded-lg transition-all"
+                    >
+                      Delete Forever
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── FLOATING ACTION BUTTON ──────────────────────────────────── */}
       <div className="fixed bottom-8 right-8 flex flex-col items-end gap-3" style={{ zIndex: 50 }}>

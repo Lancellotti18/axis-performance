@@ -75,6 +75,18 @@ export const api = {
       }),
     delete: (id: string) =>
       apiRequest<any>(`/api/v1/projects/${id}`, { method: 'DELETE' }),
+    archive: (id: string) =>
+      apiRequest<any>(`/api/v1/projects/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ archived: true }),
+      }),
+    restore: (id: string) =>
+      apiRequest<any>(`/api/v1/projects/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ archived: false }),
+      }),
+    listArchived: (userId: string) =>
+      apiRequest<any[]>(`/api/v1/projects/?user_id=${userId}&include_archived=true`),
   },
   blueprints: {
     getUploadUrl: (projectId: string, filename: string, contentType: string) =>

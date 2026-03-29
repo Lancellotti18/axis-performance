@@ -16,15 +16,12 @@ class ProjectCreate(BaseModel):
 
 
 @router.get("/")
-async def list_projects(user_id: str = Query(...)):
+async def list_projects(user_id: str = Query(...), include_archived: bool = Query(default=False)):
     db = get_supabase()
-    result = (
-        db.table("projects")
-        .select("*")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .execute()
-    )
+    query = db.table("projects").select("*").eq("user_id", user_id)
+    if not include_archived:
+        query = query.eq("archived", False)
+    result = query.order("created_at", desc=True).execute()
     return result.data or []
 
 
@@ -64,7 +61,7 @@ async def get_project(project_id: str):
 @router.patch("/{project_id}")
 async def update_project(project_id: str, payload: dict):
     db = get_supabase()
-    allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region", "city", "zip_code")}
+    allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region", "city", "zip_code", "archived")}
     if not allowed:
         raise HTTPException(status_code=400, detail="No valid fields to update")
     result = db.table("projects").update(allowed).eq("id", project_id).execute()

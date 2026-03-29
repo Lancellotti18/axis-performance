@@ -80,69 +80,68 @@ def _vendor_from_url(url: str) -> str:
     return m.group(1).replace(".com", "").title() if m else "Online Retailer"
 
 
+PRODUCT_PAGE_SIGNALS = ['/p/', '/product/', '/item/', 'itemId=', 'productId=', '/N-', '/skus/']
+
 def _search_material_prices(client: TavilyClient, item_name: str,
                              category: str, region: str, base_price: float, city: str = "") -> List[dict]:
-    """Search Tavily for real prices for a given material."""
-    template = SEARCH_TEMPLATES.get(category, '{item} price buy 2024')
-    query    = template.format(item=item_name)
-
-    # Add region context for local suppliers
-    if city:
-        query += f" near {city}"
+    """Search Tavily for real prices — returns direct product page URLs only."""
     state = region.replace("US-", "") if region else ""
-    if state:
-        query += f" {state}"
-
-    try:
-        results = client.search(
-            query=query,
-            search_depth="basic",
-            max_results=5,
-            include_answer=False,
-        )
-    except Exception as e:
-        logger.warning(f"Tavily search failed for '{item_name}': {e}")
-        return _fallback_options(item_name, base_price)
+    city_hint = f" {city}" if city else (f" {state}" if state else "")
 
     options = []
     seen_vendors = set()
 
-    for r in results.get("results", []):
-        url     = r.get("url", "")
-        content = r.get("content", "") + " " + r.get("title", "")
-        price   = _extract_price(content)
-        vendor  = _vendor_from_url(url)
+    # Pass 1: domain-filtered search — forces results from retailer sites only
+    try:
+        results = client.search(
+            query=f'"{item_name}" buy price{city_hint}',
+            search_depth="advanced",
+            max_results=8,
+            include_domains=["homedepot.com", "lowes.com", "menards.com", "fastenal.com", "84lumber.com"],
+        )
+        for r in results.get("results", []):
+            url     = r.get("url", "")
+            content = r.get("content", "") + " " + r.get("title", "")
+            price   = _extract_price(content)
+            vendor  = _vendor_from_url(url)
+            is_product = any(sig in url for sig in PRODUCT_PAGE_SIGNALS)
 
-        if vendor in seen_vendors:
-            continue
+            if vendor in seen_vendors or not price:
+                continue
+            if is_product:
+                options.append({"vendor": vendor, "price": price, "url": url, "is_local": False, "note": "", "_is_product": True})
+                seen_vendors.add(vendor)
+    except Exception as e:
+        logger.warning(f"Tavily domain-filtered search failed: {e}")
 
-        if price:
-            # Score URL quality: product pages score higher than search/category pages
-            is_product_page = any(p in url for p in ['/p/', '/product/', '/item/', 'itemId=', 'productId=', '/N-'])
-            options.append({
-                "vendor":        vendor,
-                "price":         price,
-                "url":           url,
-                "is_local":      False,
-                "note":          "",
-                "_is_product":   is_product_page,
-            })
-            seen_vendors.add(vendor)
+    # Pass 2: broader search if we need more options
+    if len(options) < 2:
+        template = SEARCH_TEMPLATES.get(category, '{item} price buy')
+        query = template.format(item=item_name) + (city_hint or "")
+        try:
+            results2 = client.search(query=query, search_depth="basic", max_results=6)
+            for r in results2.get("results", []):
+                url     = r.get("url", "")
+                content = r.get("content", "") + " " + r.get("title", "")
+                price   = _extract_price(content)
+                vendor  = _vendor_from_url(url)
+                is_product = any(sig in url for sig in PRODUCT_PAGE_SIGNALS)
 
-    # Sort product pages to the top within each price tier
+                if vendor in seen_vendors or not price:
+                    continue
+                options.append({"vendor": vendor, "price": price, "url": url, "is_local": False, "note": "" if is_product else "Search result — may not be exact item", "_is_product": is_product})
+                seen_vendors.add(vendor)
+        except Exception as e:
+            logger.warning(f"Tavily broader search failed: {e}")
+
+    if not options:
+        return _fallback_options(item_name, base_price)
+
+    # Product pages sort first, then by price
     options.sort(key=lambda x: (not x.get("_is_product", False), x["price"]))
-    # Remove internal scoring field
     for o in options:
         o.pop("_is_product", None)
 
-    # If we didn't find enough options, fill with fallback
-    if len(options) < 2:
-        options = _fallback_options(item_name, base_price)
-
-    # Sort by price ascending
-    options.sort(key=lambda x: x["price"])
-
-    # Tag cheapest and best value
     if options:
         options[0]["tag"] = "lowest_price"
     if len(options) >= 2:
@@ -153,32 +152,11 @@ def _search_material_prices(client: TavilyClient, item_name: str,
 
 def _fallback_options(item_name: str, base_price: float) -> List[dict]:
     """Generate plausible price options when search fails."""
-    encoded = item_name.replace(' ', '+')
+    search = item_name.replace(' ', '+')
     return [
-        {
-            "vendor":   "Home Depot",
-            "price":    round(base_price * 0.98, 2),
-            "url":      f"https://www.homedepot.com/s/{encoded}",
-            "is_local": False,
-            "tag":      "lowest_price",
-            "note":     "Estimated — click to see current prices",
-        },
-        {
-            "vendor":   "Lowe's",
-            "price":    round(base_price * 1.02, 2),
-            "url":      f"https://www.lowes.com/search?searchTerm={encoded}",
-            "is_local": False,
-            "tag":      "best_value",
-            "note":     "Estimated — click to see current prices",
-        },
-        {
-            "vendor":   "Menards",
-            "price":    round(base_price * 0.95, 2),
-            "url":      f"https://www.menards.com/main/search.html?search={encoded}",
-            "is_local": False,
-            "tag":      "",
-            "note":     "Estimated — click to see current prices",
-        },
+        {"vendor": "Home Depot",  "price": round(base_price * 0.98, 2), "url": f"https://www.homedepot.com/s/{search}",                                "is_local": False, "tag": "lowest_price", "note": "Estimated — click to search current prices"},
+        {"vendor": "Lowe's",      "price": round(base_price * 1.02, 2), "url": f"https://www.lowes.com/search?searchTerm={search}",                     "is_local": False, "tag": "best_value",   "note": "Estimated — click to search current prices"},
+        {"vendor": "Menards",     "price": round(base_price * 0.95, 2), "url": f"https://www.menards.com/main/search.html?search={search}",              "is_local": False, "tag": "",             "note": "Estimated — click to search current prices"},
     ]
 
 
