@@ -101,3 +101,42 @@ export interface ComplianceCheck {
   created_at: string | null
   items: ComplianceItem[]
 }
+
+export type CRMStage = 'new' | 'contacted' | 'site_visit' | 'estimate_sent' | 'won' | 'lost'
+
+export interface CRMLead {
+  id: string
+  user_id: string
+  name: string
+  phone?: string
+  email?: string
+  address?: string
+  city?: string
+  state?: string
+  job_type?: string
+  stage: CRMStage
+  notes?: string
+  estimated_value?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface RoofMeasurements {
+  id: string
+  blueprint_id: string
+  project_id: string
+  total_sqft: number
+  pitch: string
+  facets: number
+  ridges_ft: number
+  valleys_ft: number
+  eaves_ft: number
+  rakes_ft: number
+  waste_pct: number
+  roof_type: string
+  stories: number
+  confidence: number
+  notes: string
+  confirmed: boolean
+  created_at: string
+}

@@ -6,8 +6,9 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { ComplianceCheck, ComplianceItem, ComplianceSeverity } from '@/types'
 import Blueprint3DViewer from './Blueprint3DViewer'
+import RoofingSection from './RoofingSection'
 
-type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'compliance' | 'permits'
+type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'compliance' | 'permits' | 'roofing'
 type SortMode = 'lowest_price' | 'best_value'
 
 // Labor split by trade (fractions of total labor cost)
@@ -645,6 +646,10 @@ export default function ProjectPage() {
   const [searchingPrices, setSearchingPrices] = useState<string | null>(null)  // item id searching
   const [addingMaterial, setAddingMaterial] = useState(false)
   const [newMaterial, setNewMaterial] = useState({ item_name: '', category: 'lumber', quantity: 0, unit: 'each', unit_cost: 0 })
+  // Materials compliance check
+  const [matCheckLoading, setMatCheckLoading] = useState(false)
+  const [matCheckResult, setMatCheckResult] = useState<any>(null)
+  const [matCheckError, setMatCheckError] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     try {
@@ -744,6 +749,21 @@ export default function ProjectPage() {
     setSearchingPrices(null)
   }
 
+  async function handleMaterialsComplianceCheck() {
+    setMatCheckLoading(true)
+    setMatCheckError(null)
+    setMatCheckResult(null)
+    try {
+      const result = await api.compliance.checkMaterials(projectId)
+      setMatCheckResult(result)
+      // Auto-scroll to compliance tab if not already there
+      setTab('compliance')
+    } catch (err: any) {
+      setMatCheckError(err.message || 'Compliance check failed.')
+    }
+    setMatCheckLoading(false)
+  }
+
   const isProcessing = blueprintStatus === 'processing' || blueprintStatus === 'pending'
   const hasBlueprint = project?.blueprints?.length > 0
   const requiredCount = compliance?.items?.filter(i => i.severity === 'required').length ?? 0
@@ -789,12 +809,14 @@ export default function ProjectPage() {
   )
 
   const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }
+  const isRoofing = project?.blueprint_type === 'roofing'
   const TABS: { id: Tab; label: string; badge?: number }[] = [
     { id: 'overview',   label: 'Overview' },
+    ...(isRoofing ? [{ id: 'roofing' as Tab, label: '🏠 Roof' }] : []),
     { id: 'materials',  label: 'Materials', badge: materials.length || undefined },
     { id: 'cost',       label: 'Cost Estimate' },
     { id: 'view3d',     label: '3D View' },
-    { id: 'compliance', label: 'Compliance', badge: requiredCount || undefined },
+    { id: 'compliance', label: 'Compliance', badge: (requiredCount + (matCheckResult?.violations?.length ?? 0)) || undefined },
     { id: 'permits',    label: 'Permits' },
   ]
 
@@ -877,6 +899,16 @@ export default function ProjectPage() {
 
           {/* Tab content */}
           <div className="flex-1 overflow-y-auto p-6">
+
+            {/* ── ROOFING ──────────────────────────────────────────────── */}
+            {tab === 'roofing' && project?.blueprints?.[0] && (
+              <div className="max-w-5xl">
+                <RoofingSection
+                  blueprintId={project.blueprints[0].id}
+                  projectId={projectId}
+                />
+              </div>
+            )}
 
             {/* ── OVERVIEW ──────────────────────────────────────────────── */}
             {tab === 'overview' && (
@@ -998,6 +1030,18 @@ export default function ProjectPage() {
                     <p className="text-slate-400 text-xs mt-0.5">{materials.length} items across {categoriesInData.length} categories</p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Check Code Compliance button */}
+                    <button
+                      onClick={handleMaterialsComplianceCheck}
+                      disabled={matCheckLoading || !project?.city}
+                      title={!project?.city ? 'Add a city to the project first' : 'Cross-reference materials against local building codes'}
+                      className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
+                      style={{ background: matCheckLoading ? '#94a3b8' : 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.25)' }}
+                    >
+                      {matCheckLoading ? (
+                        <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Checking…</>
+                      ) : '⚖ Check Code Compliance'}
+                    </button>
                     {/* Sort toggle */}
                     <div className="flex bg-slate-100 rounded-xl p-1">
                       {(['lowest_price', 'best_value'] as SortMode[]).map(mode => (
@@ -1544,6 +1588,125 @@ export default function ProjectPage() {
                   </div>
                 ) : (
                   <div className="bg-white rounded-2xl p-12 text-center text-red-500" style={cardStyle}>Compliance check failed.</div>
+                )}
+
+                {/* ── MATERIALS COMPLIANCE RESULTS ──────────────────────── */}
+                {(matCheckResult || matCheckLoading || matCheckError) && (
+                  <div className="mt-6">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Materials Code Check</span>
+                      {matCheckResult && (
+                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border capitalize ${
+                          matCheckResult.overall_status === 'pass' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                          matCheckResult.overall_status === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                          'bg-red-50 border-red-200 text-red-700'
+                        }`}>{matCheckResult.overall_status}</span>
+                      )}
+                    </div>
+
+                    {matCheckLoading && (
+                      <div className="bg-white rounded-2xl p-8 text-center" style={cardStyle}>
+                        <svg className="animate-spin text-purple-500 mx-auto mb-3" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                        <div className="text-slate-400 text-sm">Checking materials against local building codes…</div>
+                      </div>
+                    )}
+
+                    {matCheckError && (
+                      <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-600 text-sm">{matCheckError}</div>
+                    )}
+
+                    {matCheckResult && (
+                      <div className="space-y-4">
+                        {matCheckResult.summary && (
+                          <div className="bg-white rounded-2xl px-5 py-4 text-slate-600 text-sm leading-relaxed" style={cardStyle}>{matCheckResult.summary}</div>
+                        )}
+
+                        {/* Violations */}
+                        {matCheckResult.violations?.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-xs font-bold text-red-500 uppercase tracking-wider">Violations ({matCheckResult.violations.length})</span>
+                            </div>
+                            <div className="space-y-2">
+                              {matCheckResult.violations.map((v: any, i: number) => (
+                                <div key={i} className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(239,68,68,0.08)', border: '1px solid rgba(254,202,202,0.8)' }}>
+                                  <div className="px-4 py-3 flex items-start gap-3">
+                                    <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0 bg-red-500" />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-slate-800 text-sm font-semibold">{v.item_name}</span>
+                                        {v.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 font-semibold flex-shrink-0 capitalize">{v.category}</span>}
+                                      </div>
+                                      {v.rule_text && (
+                                        <blockquote className="mt-2 pl-3 border-l-2 border-red-200 text-slate-500 text-xs italic leading-relaxed">{v.rule_text}</blockquote>
+                                      )}
+                                      {v.violation_reason && (
+                                        <p className="mt-1.5 text-slate-500 text-xs">{v.violation_reason}</p>
+                                      )}
+                                      {v.fix_suggestion && (
+                                        <div className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                                          <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Fix: </span>
+                                          <span className="text-slate-700 text-xs">{v.fix_suggestion}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Missing Required Items */}
+                        {matCheckResult.missing_required_items?.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">Missing Required Items ({matCheckResult.missing_required_items.length})</span>
+                            </div>
+                            <div className="space-y-2">
+                              {matCheckResult.missing_required_items.map((m: any, i: number) => (
+                                <div key={i} className="bg-white rounded-xl px-4 py-3" style={{ boxShadow: '0 2px 12px rgba(245,158,11,0.08)', border: '1px solid rgba(253,230,138,0.8)' }}>
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0 bg-amber-500" />
+                                    <div className="flex-1">
+                                      <span className="text-slate-800 text-sm font-semibold">{m.item_name}</span>
+                                      {m.rule_text && (
+                                        <blockquote className="mt-1.5 pl-3 border-l-2 border-amber-200 text-slate-500 text-xs italic leading-relaxed">{m.rule_text}</blockquote>
+                                      )}
+                                      {m.reason_required && (
+                                        <p className="mt-1 text-slate-500 text-xs">{m.reason_required}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Compliant Items */}
+                        {matCheckResult.compliant_items?.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Compliant ({matCheckResult.compliant_items.length})</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-1.5">
+                              {matCheckResult.compliant_items.map((c: any, i: number) => (
+                                <div key={i} className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5 flex items-start gap-3">
+                                  <svg className="text-emerald-500 flex-shrink-0 mt-0.5" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                  <div>
+                                    <span className="text-slate-700 text-sm font-medium">{c.item_name}</span>
+                                    {c.note && <p className="text-slate-500 text-xs mt-0.5">{c.note}</p>}
+                                    {c.code_reference && <p className="text-emerald-600 text-[10px] mt-0.5">{c.code_reference}</p>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}

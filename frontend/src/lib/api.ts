@@ -192,6 +192,31 @@ export const api = {
     },
     getForProject: (projectId: string) =>
       apiRequest<any>(`/api/v1/compliance/project/${projectId}`),
+    checkMaterials: (projectId: string) =>
+      apiRequest<any>(`/api/v1/compliance/materials-check?project_id=${projectId}`, { method: 'POST' }, 90000),
+  },
+  roofing: {
+    measure: (blueprintId: string) =>
+      apiRequest<any>(`/api/v1/roofing/${blueprintId}/measure`, { method: 'POST' }, 90000),
+    confirm: (blueprintId: string, measurements: any) =>
+      apiRequest<any>(`/api/v1/roofing/${blueprintId}/confirm`, {
+        method: 'POST',
+        body: JSON.stringify(measurements),
+      }),
+    getMeasurements: (blueprintId: string) =>
+      apiRequest<any>(`/api/v1/roofing/${blueprintId}/measurements`),
+    getShingleEstimate: (projectId: string) =>
+      apiRequest<any>(`/api/v1/roofing/project/${projectId}/shingle-estimate`),
+  },
+  crm: {
+    list: (userId: string) =>
+      apiRequest<any[]>(`/api/v1/crm/leads?user_id=${userId}`),
+    create: (lead: any) =>
+      apiRequest<any>(`/api/v1/crm/leads`, { method: 'POST', body: JSON.stringify(lead) }),
+    update: (leadId: string, patch: any) =>
+      apiRequest<any>(`/api/v1/crm/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+    delete: (leadId: string) =>
+      apiRequest<any>(`/api/v1/crm/leads/${leadId}`, { method: 'DELETE' }),
   },
 }
 // cache-bust 1774803796

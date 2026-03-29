@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from app.core.auth import get_current_user
 from app.core.supabase import get_supabase
 from app.services.compliance_engine import run_compliance_check, get_state_from_region_code
+from app.services.materials_compliance_service import check_materials_compliance
 import asyncio
 
 router = APIRouter()
@@ -166,3 +167,59 @@ async def get_project_compliance(
         "created_at": check.get("created_at"),
         "items": items_result.data or [],
     }
+
+
+@router.post("/materials-check")
+async def check_project_materials(project_id: str):
+    """
+    Cross-reference the project's generated materials list against local building codes.
+    Returns exact rule citations, violations, and fix suggestions.
+    """
+    supabase = get_supabase()
+
+    # Get project info for location
+    proj = supabase.table("projects").select("*").eq("id", project_id).single().execute()
+    if not proj.data:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project = proj.data
+
+    city = project.get("city", "")
+    region = project.get("region", "US-TX")
+    state = region.replace("US-", "") if region else "TX"
+    project_type = project.get("blueprint_type", "residential")
+
+    if not city:
+        raise HTTPException(status_code=422, detail="Project has no city set. Edit the project to add a city before running compliance check.")
+
+    # Fetch materials from material_estimates via blueprint -> analysis chain
+    bp = supabase.table("blueprints").select("id").eq("project_id", project_id).limit(1).execute()
+    materials = []
+    if bp.data:
+        analysis = supabase.table("analyses").select("id").eq("blueprint_id", bp.data[0]["id"]).limit(1).execute()
+        if analysis.data:
+            mat_result = supabase.table("material_estimates").select("*").eq("analysis_id", analysis.data[0]["id"]).execute()
+            materials = mat_result.data or []
+
+    # Also check for manually added/edited materials in materials table
+    try:
+        manual = supabase.table("project_materials").select("*").eq("project_id", project_id).execute()
+        if manual.data:
+            materials.extend(manual.data)
+    except Exception:
+        pass
+
+    if not materials:
+        # Still run the check with empty list — Claude will flag missing required items
+        materials = []
+
+    try:
+        result = await check_materials_compliance(
+            materials=materials,
+            city=city,
+            state=state,
+            project_type=project_type,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Compliance check failed: {str(e)}")
+
+    return result
