@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, BackgroundTasks
 from app.core.supabase import get_supabase
 from app.core.config import settings
 import uuid
@@ -105,19 +105,22 @@ async def create_blueprint(
 
 
 @router.post("/{blueprint_id}/analyze")
-def trigger_analysis(blueprint_id: str):
-    """Run blueprint AI analysis synchronously."""
+async def trigger_analysis(blueprint_id: str, background_tasks: BackgroundTasks):
+    """Kick off blueprint AI analysis in the background and return immediately."""
+    db = get_supabase()
+    db.table("blueprints").update({"status": "processing"}).eq("id", blueprint_id).execute()
+    background_tasks.add_task(_run_analysis_bg, blueprint_id)
+    return {"status": "processing", "job_id": blueprint_id}
+
+
+def _run_analysis_bg(blueprint_id: str):
     from app.services.ai_pipeline import run_analysis_pipeline
-    from fastapi import HTTPException
     db = get_supabase()
     try:
-        db.table("blueprints").update({"status": "processing"}).eq("id", blueprint_id).execute()
-        result = run_analysis_pipeline(blueprint_id)
+        run_analysis_pipeline(blueprint_id)
         db.table("blueprints").update({"status": "complete"}).eq("id", blueprint_id).execute()
-        return {"job_id": result["analysis_id"], "status": "complete"}
     except Exception as e:
-        db.table("blueprints").update({"status": "failed"}).eq("id", blueprint_id).execute()
-        raise HTTPException(status_code=500, detail=str(e))
+        db.table("blueprints").update({"status": "failed", "error": str(e)}).eq("id", blueprint_id).execute()
 
 
 @router.get("/{blueprint_id}/status")

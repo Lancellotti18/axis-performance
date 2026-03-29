@@ -87,7 +87,9 @@ export default function NewProjectPage() {
       const blueprint = await api.blueprints.register(project.id, key, ext, Math.round(file.size / 1024))
 
       setStage('analyzing')
-      await api.blueprints.triggerAnalysis(blueprint.id)
+      // Fire and forget — backend runs pipeline in background.
+      // Project page polls blueprint status every 4s until complete.
+      api.blueprints.triggerAnalysis(blueprint.id).catch(() => {})
 
       setStage('done')
       setTimeout(() => router.push(`/projects/${project.id}`), 800)
