@@ -200,7 +200,23 @@ RULES:
     )
 
     text = message.content[0].text.strip()
-    result = _parse_json_from_claude(text)
+
+    try:
+        result = _parse_json_from_claude(text)
+    except Exception:
+        # Last resort — return a structured fallback so the UI never shows a raw error
+        result = {
+            "overall_status": "warning",
+            "summary": f"Compliance data was retrieved for {city}, {state} but could not be fully parsed. Re-run the check to try again.",
+            "checklist": [],
+            "missing_required_items": [],
+        }
+
+    # Ensure required keys always exist
+    result.setdefault("overall_status", "warning")
+    result.setdefault("summary", "")
+    result.setdefault("checklist", result.pop("compliant_items", []) + result.pop("violations", []))
+    result.setdefault("missing_required_items", [])
 
     result["location"] = {"city": city, "state": state, "county": county}
     result["project_type"] = project_type
