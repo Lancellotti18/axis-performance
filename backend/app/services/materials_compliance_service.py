@@ -65,24 +65,34 @@ def _parse_json_from_claude(text: str) -> dict:
     """Robustly extract JSON from Claude's response regardless of formatting."""
     text = text.strip()
 
-    # Strip markdown fences
-    if "```" in text:
-        # Try each code block
-        blocks = re.findall(r'```(?:json)?\s*([\s\S]*?)```', text)
-        for block in blocks:
-            try:
-                return json.loads(block.strip())
-            except Exception:
-                continue
+    # Remove opening markdown fence if present
+    if text.startswith("```"):
+        # Strip the opening fence line
+        text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
+        # Strip closing fence if present
+        text = re.sub(r'\s*```\s*$', '', text)
+        text = text.strip()
 
-    # Try raw JSON
+    # Try direct parse first
     start = text.find("{")
-    end = text.rfind("}") + 1
-    if start != -1 and end > start:
+    if start != -1:
+        candidate = text[start:]
+        # Try full string
         try:
-            return json.loads(text[start:end])
+            return json.loads(candidate)
         except Exception:
             pass
+        # Response was truncated — find the last complete top-level key
+        # by scanning backwards for the deepest valid closing brace
+        end = len(candidate)
+        while end > 0:
+            end = candidate.rfind("}", 0, end)
+            if end == -1:
+                break
+            try:
+                return json.loads(candidate[:end + 1])
+            except Exception:
+                end -= 1
 
     raise ValueError(f"Could not parse JSON from Claude response. First 200 chars: {text[:200]}")
 
@@ -189,7 +199,7 @@ RULES:
     client = get_claude()
     message = client.messages.create(
         model="claude-opus-4-6",
-        max_tokens=6000,
+        max_tokens=8192,
         messages=[{"role": "user", "content": prompt}],
     )
 
