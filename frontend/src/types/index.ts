@@ -18,6 +18,7 @@ export interface Project {
   name: string
   description?: string
   status: ProjectStatus
+  archived?: boolean
   created_at: string
   updated_at: string
 }
