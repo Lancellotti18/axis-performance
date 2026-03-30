@@ -1097,44 +1097,22 @@ Thank you for your time.`
                         )}
                       </div>
                     </div>
-                    {(() => {
-                      // Never use the raw stored file_url — it's private and will 401.
-                      // Only render once we have a backend-signed URL.
-                      if (!blueprintViewUrl) {
-                        return (
-                          <div className="flex items-center justify-center" style={{ height: '420px', background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}>
-                            <div className="text-center">
-                              <svg className="animate-spin mx-auto mb-3 text-blue-400" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-                              <p className="text-blue-400 text-sm">Loading blueprint…</p>
-                            </div>
-                          </div>
-                        )
-                      }
-
-                      const bp = project?.blueprints?.[0]
-                      const fileType = (blueprintFileType || bp?.file_type || '').toLowerCase()
-                      const isPdf = fileType === 'pdf' || blueprintViewUrl.toLowerCase().includes('.pdf')
-
-                      if (isPdf) {
-                        return (
-                          <iframe
-                            src={`${blueprintViewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                            className="w-full border-0"
-                            style={{ height: '560px' }}
-                            title="Blueprint"
-                          />
-                        )
-                      }
-
-                      return (
-                        <img
-                          src={blueprintViewUrl}
-                          alt="Blueprint"
-                          className="w-full object-contain"
-                          style={{ maxHeight: '560px', background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}
-                        />
-                      )
-                    })()}
+                    {blueprintViewUrl ? (
+                      <iframe
+                        key={blueprintViewUrl}
+                        src={blueprintViewUrl}
+                        className="w-full border-0 block"
+                        style={{ height: '560px' }}
+                        title="Blueprint"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center" style={{ height: '420px', background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}>
+                        <div className="text-center">
+                          <svg className="animate-spin mx-auto mb-3 text-blue-400" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                          <p className="text-blue-400 text-sm">Loading blueprint…</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Stats */}
