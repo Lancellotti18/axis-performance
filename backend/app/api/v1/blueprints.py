@@ -129,6 +129,59 @@ def _run_analysis_bg(blueprint_id: str):
             print(f"[analysis] could not set failed status: {e2}")
 
 
+@router.get("/{blueprint_id}/view-url")
+async def get_blueprint_view_url(blueprint_id: str):
+    """
+    Return a short-lived signed URL for viewing the blueprint file.
+    Works whether the bucket is public or private — uses the service role key.
+    """
+    db = get_supabase()
+    result = (
+        db.table("blueprints")
+        .select("file_url, file_type")
+        .eq("id", blueprint_id)
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Blueprint not found")
+
+    file_url: str = result.data.get("file_url", "")
+    file_type: str = result.data.get("file_type", "")
+
+    # If it's already a short-lived signed URL, return as-is
+    if "token=" in file_url:
+        return {"url": file_url, "file_type": file_type}
+
+    # Extract the storage path from the stored URL.
+    # Stored URL pattern: https://<project>.supabase.co/storage/v1/object/public/blueprints/<storage_path>
+    import re
+    m = re.search(r'/object/(?:public|authenticated)/blueprints/(.+)', file_url)
+    if m:
+        storage_path = m.group(1)
+    elif file_url.startswith("http"):
+        # Unrecognized format — return as-is and hope the bucket is public
+        return {"url": file_url, "file_type": file_type}
+    else:
+        # Relative path stored directly
+        storage_path = file_url.lstrip("/")
+
+    try:
+        signed = db.storage.from_("blueprints").create_signed_url(storage_path, expires_in=3600)
+        signed_url = (
+            signed.get("signedUrl")
+            or signed.get("signed_url")
+            or signed.get("signedURL")
+            or signed.get("data", {}).get("signedUrl", "")
+        )
+        if not signed_url:
+            raise RuntimeError(f"No signed URL in response: {signed}")
+        return {"url": signed_url, "file_type": file_type}
+    except Exception as e:
+        # Fallback: return the stored URL and let the browser try
+        return {"url": file_url, "file_type": file_type}
+
+
 @router.get("/{blueprint_id}/status")
 async def get_status(blueprint_id: str):
     db = get_supabase()

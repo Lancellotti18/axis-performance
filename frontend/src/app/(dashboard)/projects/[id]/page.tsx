@@ -659,6 +659,9 @@ export default function ProjectPage() {
   const [selectedPhoto, setSelectedPhoto] = useState<any>(null)
   // Job costing (actual spend per category, stored in localStorage)
   const [actualCosts, setActualCosts] = useState<Record<string, number>>({})
+  // Blueprint signed URL for display
+  const [blueprintViewUrl, setBlueprintViewUrl] = useState<string | null>(null)
+  const [blueprintFileType, setBlueprintFileType] = useState<string>('')
   // Proposal modal
   const [showProposal, setShowProposal] = useState(false)
   // Photo-to-Measurements
@@ -689,6 +692,15 @@ export default function ProjectPage() {
       if (blueprints.length > 0) {
         const bp = blueprints[0]
         setBlueprintStatus(bp.status)
+        if (bp.status === 'complete' || bp.status === 'pending' || bp.status === 'processing') {
+          // Always fetch a signed view URL so we can show the blueprint regardless of bucket visibility
+          api.blueprints.getViewUrl(bp.id).then(r => {
+            if (r?.url) { setBlueprintViewUrl(r.url); setBlueprintFileType(r.file_type || '') }
+          }).catch(() => {
+            // Fall back to stored URL
+            if (bp.file_url?.startsWith('http')) setBlueprintViewUrl(bp.file_url)
+          })
+        }
         if (bp.status === 'complete') {
           const [analysisData, estimateData] = await Promise.all([
             api.analyses.getByBlueprint(bp.id).catch(() => null),
@@ -1076,9 +1088,9 @@ Thank you for your time.`
                         {analysis?.confidence && (
                           <span className="text-xs text-slate-400">Quality: <span className="text-emerald-600 font-semibold">{Math.round(analysis.confidence * 100)}%</span></span>
                         )}
-                        {project?.blueprints?.[0]?.file_url && (
+                        {blueprintViewUrl && (
                           <a
-                            href={project.blueprints[0].file_url}
+                            href={blueprintViewUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1"
@@ -1091,17 +1103,17 @@ Thank you for your time.`
                     </div>
                     {(() => {
                       const bp = project?.blueprints?.[0]
-                      const fileUrl = bp?.file_url || ''
-                      const fileType = (bp?.file_type || '').toLowerCase()
-                      const isPdf = fileType === 'pdf' || fileUrl.includes('.pdf')
-                      const isImage = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(fileType) || /\.(png|jpe?g|webp|gif)(\?|$)/i.test(fileUrl)
+                      const fileUrl = blueprintViewUrl || bp?.file_url || ''
+                      const rawType = blueprintFileType || bp?.file_type || ''
+                      const fileType = rawType.toLowerCase()
+                      const isPdf = fileType === 'pdf' || fileUrl.toLowerCase().includes('.pdf')
 
-                      if (!fileUrl || !fileUrl.startsWith('http')) {
+                      if (!fileUrl) {
                         return (
-                          <div className="aspect-[4/3] flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}>
+                          <div className="flex items-center justify-center" style={{ height: '400px', background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}>
                             <div className="text-center">
-                              <svg width="48" height="48" className="mx-auto mb-3 opacity-30" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                              <p className="text-blue-400 text-sm">No file URL</p>
+                              <svg className="animate-spin mx-auto mb-3 text-blue-400" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                              <p className="text-blue-400 text-sm">Loading blueprint…</p>
                             </div>
                           </div>
                         )
@@ -1109,26 +1121,22 @@ Thank you for your time.`
 
                       if (isPdf) {
                         return (
-                          <div className="relative" style={{ height: '520px' }}>
-                            <iframe
-                              src={`${fileUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                              className="w-full h-full border-0"
-                              title="Blueprint PDF"
-                            />
-                          </div>
+                          <iframe
+                            src={`${fileUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                            className="w-full border-0"
+                            style={{ height: '560px' }}
+                            title="Blueprint"
+                          />
                         )
                       }
 
-                      // Image file (png, jpg, etc.)
                       return (
-                        <div className="relative" style={{ minHeight: '320px', background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}>
-                          <img
-                            src={fileUrl}
-                            alt="Blueprint"
-                            className="w-full object-contain"
-                            style={{ maxHeight: '520px' }}
-                          />
-                        </div>
+                        <img
+                          src={fileUrl}
+                          alt="Blueprint"
+                          className="w-full object-contain"
+                          style={{ maxHeight: '560px', background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}
+                        />
                       )
                     })()}
                   </div>

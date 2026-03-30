@@ -106,6 +106,8 @@ export const api = {
       apiRequest<{ job_id: string; status: string }>(`/api/v1/blueprints/${blueprintId}/analyze`, { method: 'POST' }),
     getStatus: (blueprintId: string) =>
       apiRequest<{ status: string }>(`/api/v1/blueprints/${blueprintId}/status`),
+    getViewUrl: (blueprintId: string) =>
+      apiRequest<{ url: string; file_type: string }>(`/api/v1/blueprints/${blueprintId}/view-url`),
   },
   analyses: {
     getByBlueprint: (blueprintId: string) =>
