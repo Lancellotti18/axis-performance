@@ -28,22 +28,21 @@ RETAIL_DOMAINS = [
 ]
 
 # Trade distributors — B2B contractor-login-only sites.
-# Their internal search pages require authentication. We use Google search
-# targeted at their domain so contractors can find the right product.
+# Pricing requires a contractor account, but search pages are publicly accessible.
 TRADE_DISTRIBUTORS = [
     {
         "vendor": "ABC Supply",
-        "url_template": "https://www.google.com/search?q={query}+ABC+Supply+price",
+        "url_template": "https://www.abcsupply.com/products/search?q={query}",
         "note": "Contractor pricing — login required for checkout",
     },
     {
         "vendor": "QXO (Beacon)",
-        "url_template": "https://www.google.com/search?q={query}+QXO+Beacon+roofing+supply+price",
+        "url_template": "https://www.qxo.com/search?q={query}",
         "note": "Contractor pricing — login required for checkout",
     },
     {
         "vendor": "SRS Distribution",
-        "url_template": "https://www.google.com/search?q={query}+SRS+Distribution+price",
+        "url_template": "https://www.srsdistribution.com/search?q={query}",
         "note": "Contractor pricing — login required for checkout",
     },
 ]

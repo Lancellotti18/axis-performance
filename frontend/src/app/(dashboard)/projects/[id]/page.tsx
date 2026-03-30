@@ -1585,14 +1585,6 @@ Thank you for your time.`
                                                 ) : (
                                                   <span className="text-slate-800 font-black text-sm">{formatMoneyExact(v.price)}</span>
                                                 )}
-                                                {isQuoteOnly && (
-                                                  <button
-                                                    onClick={e => { e.stopPropagation(); openQuoteModal(v.vendor, buyUrl) }}
-                                                    className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all whitespace-nowrap border border-slate-200"
-                                                  >
-                                                    📋 Build Request
-                                                  </button>
-                                                )}
                                                 <a
                                                   href={buyUrl}
                                                   target="_blank"
