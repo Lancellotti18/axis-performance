@@ -32,9 +32,12 @@ async def get_photo_upload_url(
 
     try:
         resp = db.storage.from_(BUCKET).create_signed_upload_url(storage_key)
-        upload_url = resp.get("signedUrl") or resp.get("signed_url", "")
-        # Also get the public URL for later display
-        pub = db.storage.from_(BUCKET).get_public_url(storage_key)
+        upload_url = resp.get("signedUrl") or resp.get("signed_url") or resp.get("signedURL", "")
+        if not upload_url:
+            raise RuntimeError(f"No signed URL in response: {resp}")
+        # get_public_url returns a string in supabase-py v2
+        raw_pub = db.storage.from_(BUCKET).get_public_url(storage_key)
+        pub = raw_pub if isinstance(raw_pub, str) else (raw_pub.get("publicUrl") or raw_pub.get("data", {}).get("publicUrl", ""))
         return {"upload_url": upload_url, "key": storage_key, "public_url": pub}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create upload URL: {e}")
@@ -48,7 +51,8 @@ async def register_photo(
 ):
     db = get_supabase()
     try:
-        pub = db.storage.from_(BUCKET).get_public_url(body.storage_key)
+        raw_pub = db.storage.from_(BUCKET).get_public_url(body.storage_key)
+        pub = raw_pub if isinstance(raw_pub, str) else (raw_pub.get("publicUrl") or raw_pub.get("data", {}).get("publicUrl", ""))
     except Exception:
         pub = ""
     result = db.table("project_photos").insert({
