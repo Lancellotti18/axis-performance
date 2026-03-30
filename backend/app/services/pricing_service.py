@@ -27,22 +27,24 @@ RETAIL_DOMAINS = [
     "build.com",
 ]
 
-# Trade distributors — B2B login required, always inject as "Get Quote" with search link
+# Trade distributors — B2B contractor-login-only sites.
+# Their internal search pages require authentication. We use Google search
+# targeted at their domain so contractors can find the right product.
 TRADE_DISTRIBUTORS = [
     {
         "vendor": "ABC Supply",
-        "url_template": "https://www.abcsupply.com/search?q={query}",
-        "note": "Contractor pricing — contact branch for quote",
+        "url_template": "https://www.google.com/search?q={query}+ABC+Supply+price",
+        "note": "Contractor pricing — login required for checkout",
     },
     {
-        "vendor": "Beacon Roofing Supply",
-        "url_template": "https://www.becn.com/search?q={query}",
-        "note": "Contractor pricing — contact branch for quote",
+        "vendor": "QXO (Beacon)",
+        "url_template": "https://www.google.com/search?q={query}+QXO+Beacon+roofing+supply+price",
+        "note": "Contractor pricing — login required for checkout",
     },
     {
         "vendor": "SRS Distribution",
-        "url_template": "https://www.srsdistribution.com/search/?q={query}",
-        "note": "Contractor pricing — contact branch for quote",
+        "url_template": "https://www.google.com/search?q={query}+SRS+Distribution+price",
+        "note": "Contractor pricing — login required for checkout",
     },
 ]
 
@@ -220,8 +222,9 @@ def _fallback_retail(item_name: str, base_price: float) -> List[dict]:
 def enrich_materials_with_pricing(materials: List[dict], region: str, city: str = "") -> List[dict]:
     """
     Add real-time vendor pricing options to each material item.
-    Makes at most ONE Tavily search per category (not per item) to keep
-    the pipeline fast. All items in a category share the same vendor URLs.
+    Each item gets its own Tavily search so product page URLs are specific
+    to that item. Prices from the same category are cached to limit API calls
+    but URLs are always item-specific.
     Falls back to estimated prices if Tavily search fails.
     """
     if not settings.TAVILY_API_KEY:
@@ -233,8 +236,8 @@ def enrich_materials_with_pricing(materials: List[dict], region: str, city: str 
         logger.warning(f"Tavily client init failed: {e}")
         return _add_fallback_pricing(materials)
 
-    # One search per category — cache results and reuse for all items in that category
-    category_cache: Dict[str, List[dict]] = {}
+    # Cache prices by category to limit Tavily calls, but search URLs are per-item
+    category_price_cache: Dict[str, List[dict]] = {}
     enriched = []
 
     for material in materials:
@@ -242,36 +245,31 @@ def enrich_materials_with_pricing(materials: List[dict], region: str, city: str 
         category   = material.get("category", "finishing")
         base_price = material.get("unit_cost", 10.0)
 
-        if category not in category_cache:
-            try:
-                options = _search_material_prices(tavily, item_name, category, region, base_price, city=city)
-            except Exception:
+        # Always run a per-item search so product URLs are specific to this item
+        try:
+            options = _search_material_prices(tavily, item_name, category, region, base_price, city=city)
+            category_price_cache[category] = options
+        except Exception:
+            # Fall back to cached category prices with item-specific URLs
+            cached = category_price_cache.get(category)
+            if cached:
+                item_urls = _retail_search_urls(item_name)
+                options = []
+                for opt in cached:
+                    if not opt.get("quote_only"):
+                        options.append({**opt, "url": item_urls.get(opt["vendor"], opt["url"])})
+                options += _trade_distributor_entries(item_name)
+            else:
                 options = _fallback_retail(item_name, base_price) + _trade_distributor_entries(item_name)
-            category_cache[category] = options
 
-        options = category_cache[category]
-
-        # Always rewrite retail URLs to be item-specific — the category cache shares
-        # prices (reasonable approximation) but URLs must target this exact item.
-        item_urls = _retail_search_urls(item_name)
-        item_options = []
-        for opt in options:
-            if not opt.get("quote_only"):
-                vendor_url = item_urls.get(opt["vendor"])
-                opt = {**opt, "url": vendor_url or opt["url"]}
-            item_options.append(opt)
-        # Regenerate trade distributor entries with this item's name
-        item_options = [o for o in item_options if not o.get("quote_only")]
-        item_options += _trade_distributor_entries(item_name)
-
-        if item_options:
-            retail = [o for o in item_options if not o.get("quote_only")]
+        if options:
+            retail = [o for o in options if not o.get("quote_only")]
             cheapest = retail[0]["price"] if retail else base_price
             material = {
                 **material,
                 "unit_cost":      cheapest,
                 "total_cost":     round(material.get("quantity", 1) * cheapest, 2),
-                "vendor_options": item_options,
+                "vendor_options": options,
             }
         else:
             material = {**material, "vendor_options": _fallback_retail(item_name, base_price) + _trade_distributor_entries(item_name)}

@@ -650,6 +650,8 @@ export default function ProjectPage() {
   const [matCheckLoading, setMatCheckLoading] = useState(false)
   const [matCheckResult, setMatCheckResult] = useState<any>(null)
   const [matCheckError, setMatCheckError] = useState<string | null>(null)
+  const [refreshingPrices, setRefreshingPrices] = useState(false)
+  const [refreshPricesResult, setRefreshPricesResult] = useState<string | null>(null)
 
   // Photos tab
   const [photos, setPhotos] = useState<any[]>([])
@@ -795,6 +797,22 @@ export default function ProjectPage() {
       }
     } catch (err) { console.error(err) }
     setSearchingPrices(null)
+  }
+
+  async function handleRefreshAllPrices() {
+    setRefreshingPrices(true)
+    setRefreshPricesResult(null)
+    try {
+      const result = await api.materials.refreshAllPrices(projectId)
+      setRefreshPricesResult(`Updated ${result.updated} item${result.updated !== 1 ? 's' : ''}`)
+      // Reload estimate from DB to get updated prices
+      const estimateData = await api.estimates.get(projectId).catch(() => null)
+      if (estimateData) setEstimate(estimateData)
+    } catch (err: any) {
+      setRefreshPricesResult('Refresh failed — try again')
+    }
+    setRefreshingPrices(false)
+    setTimeout(() => setRefreshPricesResult(null), 4000)
   }
 
   async function handleMaterialsComplianceCheck() {
@@ -1323,6 +1341,18 @@ Thank you for your time.`
                     <p className="text-slate-400 text-xs mt-0.5">{materials.length} items across {categoriesInData.length} categories</p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Refresh All Prices button */}
+                    <button
+                      onClick={handleRefreshAllPrices}
+                      disabled={refreshingPrices || materials.length === 0}
+                      title="Re-fetch live prices for all materials from Home Depot, Lowe's, and more"
+                      className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
+                      style={{ background: refreshingPrices ? '#94a3b8' : 'linear-gradient(135deg, #0ea5e9, #0369a1)', boxShadow: '0 4px 14px rgba(14,165,233,0.25)' }}
+                    >
+                      {refreshingPrices ? (
+                        <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Refreshing…</>
+                      ) : refreshPricesResult ? refreshPricesResult : '🔄 Refresh All Prices'}
+                    </button>
                     {/* Check Code Compliance button */}
                     <button
                       onClick={handleMaterialsComplianceCheck}

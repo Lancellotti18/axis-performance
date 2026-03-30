@@ -151,6 +151,8 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ url, product_name: productName, expected_price: expectedPrice }) },
         15000
       ),
+    refreshAllPrices: (projectId: string) =>
+      apiRequest<{ updated: number }>(`/api/v1/materials/${projectId}/refresh-all-prices`, { method: 'POST' }, 120000),
   },
   permits: {
     searchPortal: (city: string, state: string, projectType: string) => {

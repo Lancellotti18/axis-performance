@@ -102,6 +102,67 @@ async def search_prices(req: PriceSearchRequest):
         return {"options": _fallback_options(req.item_name, req.unit_cost)}
 
 
+@router.post("/{project_id}/refresh-all-prices")
+async def refresh_all_prices(project_id: str):
+    """
+    Refresh vendor pricing for every material in a project.
+    Runs a per-item Tavily search and saves updated vendor_options + unit_cost to DB.
+    """
+    from app.services.pricing_service import _search_material_prices, _fallback_retail, _trade_distributor_entries
+    from app.core.config import settings
+
+    db = get_supabase()
+
+    # Get project location
+    proj = db.table("projects").select("region, city").eq("id", project_id).single().execute()
+    region = proj.data.get("region", "US-TX") if proj.data else "US-TX"
+    city = proj.data.get("city", "") if proj.data else ""
+
+    # Get all materials for this project
+    analysis_id = _get_analysis_id(project_id)
+    if not analysis_id:
+        raise HTTPException(status_code=404, detail="No analysis found for project")
+
+    rows = db.table("material_estimates").select("*").eq("analysis_id", analysis_id).execute()
+    materials = rows.data or []
+    if not materials:
+        return {"updated": 0}
+
+    tavily = None
+    if settings.TAVILY_API_KEY:
+        try:
+            from tavily import TavilyClient
+            tavily = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        except Exception:
+            pass
+
+    updated = 0
+    for m in materials:
+        item_name = m.get("item_name", "")
+        category  = m.get("category", "finishing")
+        base_price = float(m.get("unit_cost") or 10.0)
+
+        try:
+            if tavily:
+                options = _search_material_prices(tavily, item_name, category, region, base_price, city=city)
+            else:
+                options = _fallback_retail(item_name, base_price) + _trade_distributor_entries(item_name)
+        except Exception:
+            options = _fallback_retail(item_name, base_price) + _trade_distributor_entries(item_name)
+
+        retail = [o for o in options if not o.get("quote_only")]
+        new_unit_cost = retail[0]["price"] if retail else base_price
+
+        db.table("material_estimates").update({
+            "vendor_options": json.dumps(options),
+            "unit_cost": new_unit_cost,
+            "total_cost": round(float(m.get("quantity", 1)) * new_unit_cost, 2),
+        }).eq("id", m["id"]).execute()
+        updated += 1
+
+    return {"updated": updated}
+
+
 @router.post("/validate-link")
 async def validate_material_link(payload: dict):
     """Validate a vendor product URL."""
