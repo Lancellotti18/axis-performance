@@ -1245,14 +1245,28 @@ Thank you for your time.`
                             ))}
                           </div>
                           {riskScore.summary && <p className="text-slate-600 text-xs leading-relaxed mb-2">{riskScore.summary}</p>}
-                          {riskScore.recommendation && <p className="text-blue-600 text-xs font-semibold">{riskScore.recommendation}</p>}
+                          {riskScore.scoring_rationale && (
+                            <div className="bg-slate-50 rounded-xl px-3 py-2.5 mb-2">
+                              <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Why This Score</div>
+                              <p className="text-slate-600 text-xs leading-relaxed">{riskScore.scoring_rationale}</p>
+                            </div>
+                          )}
+                          {riskScore.significance && (
+                            <div className="bg-blue-50 rounded-xl px-3 py-2.5 mb-2">
+                              <div className="text-blue-500 text-[10px] font-bold uppercase tracking-wider mb-1">What This Means For You</div>
+                              <p className="text-blue-700 text-xs leading-relaxed">{riskScore.significance}</p>
+                            </div>
+                          )}
+                          {riskScore.recommendation && <p className="text-blue-600 text-xs font-semibold mb-2">{riskScore.recommendation}</p>}
+                          {riskScore.insurance_note && <p className="text-slate-500 text-xs italic mb-2">{riskScore.insurance_note}</p>}
                           {riskScore.recent_events?.length > 0 && (
                             <div className="mt-3 space-y-1.5">
                               <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Recent Events</div>
-                              {riskScore.recent_events.slice(0, 3).map((ev: any, i: number) => (
+                              {riskScore.recent_events.slice(0, 4).map((ev: any, i: number) => (
                                 <div key={i} className="bg-slate-50 rounded-lg px-3 py-2">
                                   <div className="text-slate-700 text-xs font-semibold">{ev.year} — {ev.type}</div>
                                   <div className="text-slate-500 text-[10px]">{ev.severity}</div>
+                                  {ev.impact && <div className="text-slate-400 text-[10px]">{ev.impact}</div>}
                                 </div>
                               ))}
                             </div>
