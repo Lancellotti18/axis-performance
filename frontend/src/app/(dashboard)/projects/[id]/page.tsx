@@ -1072,27 +1072,65 @@ Thank you for your time.`
                   <div className="bg-white rounded-2xl overflow-hidden" style={cardStyle}>
                     <div className="flex items-center justify-between px-5 py-3.5 border-b" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
                       <span className="text-slate-800 font-semibold text-sm">Blueprint</span>
-                      {analysis?.confidence && (
-                        <span className="text-xs text-slate-400">Analysis Quality: <span className="text-emerald-600 font-semibold">{Math.round(analysis.confidence * 100)}%</span></span>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {analysis?.confidence && (
+                          <span className="text-xs text-slate-400">Quality: <span className="text-emerald-600 font-semibold">{Math.round(analysis.confidence * 100)}%</span></span>
+                        )}
+                        {project?.blueprints?.[0]?.file_url && (
+                          <a
+                            href={project.blueprints[0].file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1"
+                          >
+                            Open full size
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                          </a>
+                        )}
+                      </div>
                     </div>
-                    <div className="aspect-[4/3] flex items-center justify-center relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}>
-                      <svg className="absolute inset-0 w-full h-full opacity-10" xmlns="http://www.w3.org/2000/svg">
-                        <defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="#2563eb" strokeWidth="0.5"/></pattern></defs>
-                        <rect width="100%" height="100%" fill="url(#grid)" />
-                      </svg>
-                      {(() => {
-                        const imgUrl = analysis?.overlay_url || project?.blueprints?.[0]?.file_url
-                        return imgUrl && imgUrl.startsWith('http') ? (
-                          <img src={imgUrl} alt="Blueprint" className="w-full h-full object-contain" />
-                        ) : (
-                          <div className="text-center relative z-10">
-                            <svg width="48" height="48" className="mx-auto mb-3 opacity-40" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                            <p className="text-blue-600 text-sm font-medium">Blueprint Analyzed</p>
+                    {(() => {
+                      const bp = project?.blueprints?.[0]
+                      const fileUrl = bp?.file_url || ''
+                      const fileType = (bp?.file_type || '').toLowerCase()
+                      const isPdf = fileType === 'pdf' || fileUrl.includes('.pdf')
+                      const isImage = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(fileType) || /\.(png|jpe?g|webp|gif)(\?|$)/i.test(fileUrl)
+
+                      if (!fileUrl || !fileUrl.startsWith('http')) {
+                        return (
+                          <div className="aspect-[4/3] flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}>
+                            <div className="text-center">
+                              <svg width="48" height="48" className="mx-auto mb-3 opacity-30" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                              <p className="text-blue-400 text-sm">No file URL</p>
+                            </div>
                           </div>
                         )
-                      })()}
-                    </div>
+                      }
+
+                      if (isPdf) {
+                        return (
+                          <div className="relative" style={{ height: '520px' }}>
+                            <iframe
+                              src={`${fileUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                              className="w-full h-full border-0"
+                              title="Blueprint PDF"
+                            />
+                          </div>
+                        )
+                      }
+
+                      // Image file (png, jpg, etc.)
+                      return (
+                        <div className="relative" style={{ minHeight: '320px', background: 'linear-gradient(135deg, #eff6ff, #dbeafe)' }}>
+                          <img
+                            src={fileUrl}
+                            alt="Blueprint"
+                            className="w-full object-contain"
+                            style={{ maxHeight: '520px' }}
+                          />
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   {/* Stats */}
