@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     ANTHROPIC_API_KEY: str = ""
     TAVILY_API_KEY: str = ""
+    GOOGLE_SOLAR_API_KEY: str = ""
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
 

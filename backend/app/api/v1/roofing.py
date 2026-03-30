@@ -182,3 +182,39 @@ async def get_shingle_estimate(project_id: str):
         "total_materials_cost": round(total_materials_cost, 2),
         "squares": round(measurements["total_sqft"] / 100, 1),
     }
+
+
+class AerialReportRequest(BaseModel):
+    project_id: str
+    address: str
+
+
+@router.post("/aerial-report")
+async def aerial_roof_report(payload: AerialReportRequest):
+    """
+    Get aerial roof measurements for a property address.
+    Uses Google Solar API if configured, otherwise Tavily + Claude estimate.
+    """
+    from app.services.aerial_roof_service import get_aerial_roof_report
+    db = get_supabase()
+
+    proj = db.table("projects").select("city, region, zip_code").eq("id", payload.project_id).single().execute()
+    if not proj.data:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    city = proj.data.get("city", "")
+    region = proj.data.get("region", "US-TX")
+    zip_code = proj.data.get("zip_code", "")
+    state = region.replace("US-", "") if region else "TX"
+
+    try:
+        result = await get_aerial_roof_report(
+            address=payload.address,
+            city=city,
+            state=state,
+            zip_code=zip_code,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Aerial report failed: {e}")
+
+    return result

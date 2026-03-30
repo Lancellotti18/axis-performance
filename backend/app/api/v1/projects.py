@@ -84,3 +84,32 @@ async def delete_project(project_id: str):
     db = get_supabase()
     db.table("projects").delete().eq("id", project_id).execute()
     return {"success": True}
+
+
+@router.get("/{project_id}/risk-score")
+async def get_project_risk_score(project_id: str):
+    """
+    Generate a storm/hail/wind risk assessment for the project's location.
+    Uses Tavily weather data + Claude analysis.
+    """
+    from app.services.risk_score_service import get_risk_score
+    db = get_supabase()
+
+    proj = db.table("projects").select("city, region, zip_code").eq("id", project_id).single().execute()
+    if not proj.data:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    city = proj.data.get("city", "")
+    region = proj.data.get("region", "US-TX")
+    zip_code = proj.data.get("zip_code", "")
+    state = region.replace("US-", "") if region else "TX"
+
+    if not city:
+        raise HTTPException(status_code=422, detail="Project has no city set. Edit the project to add a city.")
+
+    try:
+        score = await get_risk_score(city=city, state=state, zip_code=zip_code)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Risk score failed: {e}")
+
+    return score

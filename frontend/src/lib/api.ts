@@ -90,6 +90,8 @@ export const api = {
       }),
     listArchived: (userId: string) =>
       apiRequest<any[]>(`/api/v1/projects/?user_id=${userId}&include_archived=true`),
+    getRiskScore: (projectId: string) =>
+      apiRequest<any>(`/api/v1/projects/${projectId}/risk-score`, {}, 90000),
   },
   blueprints: {
     getUploadUrl: (projectId: string, filename: string, contentType: string) =>
@@ -207,6 +209,11 @@ export const api = {
       apiRequest<any>(`/api/v1/roofing/${blueprintId}/measurements`),
     getShingleEstimate: (projectId: string) =>
       apiRequest<any>(`/api/v1/roofing/project/${projectId}/shingle-estimate`),
+    aerialReport: (projectId: string, address: string) =>
+      apiRequest<any>(`/api/v1/roofing/aerial-report`, {
+        method: 'POST',
+        body: JSON.stringify({ project_id: projectId, address }),
+      }, 60000),
   },
   crm: {
     listLeads: (userId: string) =>
@@ -232,6 +239,8 @@ export const api = {
       apiRequest<any[]>(`/api/v1/photos/${projectId}`),
     delete: (projectId: string, photoId: string) =>
       apiRequest<any>(`/api/v1/photos/${projectId}/${photoId}`, { method: 'DELETE' }),
+    measure: (projectId: string) =>
+      apiRequest<any>(`/api/v1/photos/measure/${projectId}`, { method: 'POST' }, 120000),
   },
 }
 // cache-bust 1774803796

@@ -661,11 +661,30 @@ export default function ProjectPage() {
   const [actualCosts, setActualCosts] = useState<Record<string, number>>({})
   // Proposal modal
   const [showProposal, setShowProposal] = useState(false)
+  // Photo-to-Measurements
+  const [photoMeasureLoading, setPhotoMeasureLoading] = useState(false)
+  const [photoMeasureResult, setPhotoMeasureResult] = useState<any>(null)
+  const [photoMeasureError, setPhotoMeasureError] = useState<string | null>(null)
+  // Hail/Wind Risk Score
+  const [riskScore, setRiskScore] = useState<any>(null)
+  const [riskScoreLoading, setRiskScoreLoading] = useState(false)
+  const [riskScoreError, setRiskScoreError] = useState<string | null>(null)
+  // Aerial Roof Report
+  const [aerialAddress, setAerialAddress] = useState('')
+  const [aerialLoading, setAerialLoading] = useState(false)
+  const [aerialResult, setAerialResult] = useState<any>(null)
+  const [aerialError, setAerialError] = useState<string | null>(null)
+  // Quote Request modal
+  const [quoteModal, setQuoteModal] = useState<{ vendor: string; url: string; items: any[] } | null>(null)
+  const [quoteForm, setQuoteForm] = useState({ name: '', company: '', phone: '', email: '', branch: '', notes: '' })
+  const [quoteGenerated, setQuoteGenerated] = useState(false)
+  const [quoteCopied, setQuoteCopied] = useState(false)
 
   const loadData = useCallback(async () => {
     try {
       const proj = await api.projects.get(projectId)
       setProject(proj)
+      if (proj.city) setAerialAddress(`${proj.city}, ${proj.region?.replace('US-', '') || ''}`)
       const blueprints = proj.blueprints || []
       if (blueprints.length > 0) {
         const bp = blueprints[0]
@@ -783,6 +802,86 @@ export default function ProjectPage() {
       setMatCheckError(err.message || 'Compliance check failed.')
     }
     setMatCheckLoading(false)
+  }
+
+  async function handlePhotoMeasure() {
+    setPhotoMeasureLoading(true)
+    setPhotoMeasureError(null)
+    setPhotoMeasureResult(null)
+    try {
+      const result = await api.photos.measure(projectId)
+      setPhotoMeasureResult(result)
+    } catch (err: any) {
+      setPhotoMeasureError(err.message || 'Measurement analysis failed.')
+    }
+    setPhotoMeasureLoading(false)
+  }
+
+  async function handleRiskScore() {
+    setRiskScoreLoading(true)
+    setRiskScoreError(null)
+    try {
+      const result = await api.projects.getRiskScore(projectId)
+      setRiskScore(result)
+    } catch (err: any) {
+      setRiskScoreError(err.message || 'Risk assessment failed.')
+    }
+    setRiskScoreLoading(false)
+  }
+
+  async function handleAerialReport() {
+    if (!aerialAddress.trim()) return
+    setAerialLoading(true)
+    setAerialError(null)
+    setAerialResult(null)
+    try {
+      const result = await api.roofing.aerialReport(projectId, aerialAddress)
+      setAerialResult(result)
+    } catch (err: any) {
+      setAerialError(err.message || 'Aerial report failed.')
+    }
+    setAerialLoading(false)
+  }
+
+  function openQuoteModal(vendor: string, url: string) {
+    const allItems = estimate?.material_estimates || []
+    setQuoteModal({ vendor, url, items: allItems })
+    setQuoteForm({ name: '', company: '', phone: '', email: '', branch: '', notes: '' })
+    setQuoteGenerated(false)
+    setQuoteCopied(false)
+  }
+
+  function generateQuoteText() {
+    if (!quoteModal) return ''
+    const itemLines = quoteModal.items.map((m: any) =>
+      `  • ${m.item_name}  —  Qty: ${m.quantity} ${m.unit}  |  Est. unit cost: $${Number(m.unit_cost || 0).toFixed(2)}`
+    ).join('\n')
+    return `MATERIAL QUOTE REQUEST
+${'─'.repeat(50)}
+Distributor: ${quoteModal.vendor}
+Date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+
+CONTACT INFORMATION
+Company: ${quoteForm.company || '___________________'}
+Name: ${quoteForm.name || '___________________'}
+Phone: ${quoteForm.phone || '___________________'}
+Email: ${quoteForm.email || '___________________'}
+Preferred Branch: ${quoteForm.branch || '___________________'}
+
+PROJECT DETAILS
+Project: ${project?.name || 'Construction Project'}
+Location: ${[project?.city, project?.region?.replace('US-', '')].filter(Boolean).join(', ') || '___________________'}
+Type: ${project?.blueprint_type || 'Residential'}
+
+ITEMS REQUESTED
+${itemLines}
+
+NOTES
+${quoteForm.notes || '(none)'}
+
+─────────────────────────────────────────────────────
+Please provide pricing and availability for the above items.
+Thank you for your time.`
   }
 
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -1053,6 +1152,125 @@ export default function ProjectPage() {
                     </div>
                   </div>
 
+                  {/* Hail / Wind Risk Score */}
+                  <div className="bg-white rounded-2xl p-5" style={cardStyle}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-slate-800 font-bold text-sm">Storm Risk Score</h3>
+                      <button
+                        onClick={handleRiskScore}
+                        disabled={riskScoreLoading || !project?.city}
+                        title={!project?.city ? 'Add a city to the project first' : ''}
+                        className="flex items-center gap-1.5 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-all disabled:opacity-40"
+                        style={{ background: riskScoreLoading ? '#94a3b8' : 'linear-gradient(135deg, #0ea5e9, #0369a1)', boxShadow: '0 3px 10px rgba(14,165,233,0.25)' }}
+                      >
+                        {riskScoreLoading ? <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Analyzing…</> : '🌩 Get Score'}
+                      </button>
+                    </div>
+                    {riskScoreError && <div className="text-red-600 text-xs bg-red-50 rounded-xl px-3 py-2">{riskScoreError}</div>}
+                    {!riskScore && !riskScoreError && !riskScoreLoading && (
+                      <div className="text-slate-400 text-xs text-center py-4">Hail, wind, and storm risk assessment for {project?.city || 'this location'}.</div>
+                    )}
+                    {riskScore && (() => {
+                      const colorMap: Record<string, string> = {
+                        emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+                        amber:   'bg-amber-50 border-amber-200 text-amber-700',
+                        red:     'bg-red-50 border-red-200 text-red-700',
+                      }
+                      const barMap: Record<string, string> = {
+                        emerald: 'bg-emerald-500',
+                        amber:   'bg-amber-500',
+                        red:     'bg-red-500',
+                      }
+                      const c = riskScore.risk_color || 'amber'
+                      return (
+                        <div>
+                          <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 mb-3 ${colorMap[c] || colorMap.amber}`}>
+                            <div className="text-2xl font-black">{riskScore.overall_risk}<span className="text-sm font-semibold">/10</span></div>
+                            <div>
+                              <div className="font-bold text-sm">{riskScore.risk_label}</div>
+                              <div className="text-xs opacity-70">{project?.city} storm exposure</div>
+                            </div>
+                          </div>
+                          <div className="space-y-2 mb-3">
+                            {[
+                              { label: 'Hail', score: riskScore.hail_risk },
+                              { label: 'Wind', score: riskScore.wind_risk },
+                              { label: 'Flood', score: riskScore.flood_risk },
+                            ].map(r => (
+                              <div key={r.label} className="flex items-center gap-2">
+                                <span className="text-slate-500 text-xs w-10">{r.label}</span>
+                                <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full ${barMap[c] || barMap.amber}`} style={{ width: `${(r.score / 10) * 100}%` }} />
+                                </div>
+                                <span className="text-slate-600 text-xs font-semibold w-6 text-right">{r.score}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {riskScore.summary && <p className="text-slate-600 text-xs leading-relaxed mb-2">{riskScore.summary}</p>}
+                          {riskScore.recommendation && <p className="text-blue-600 text-xs font-semibold">{riskScore.recommendation}</p>}
+                          {riskScore.recent_events?.length > 0 && (
+                            <div className="mt-3 space-y-1.5">
+                              <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Recent Events</div>
+                              {riskScore.recent_events.slice(0, 3).map((ev: any, i: number) => (
+                                <div key={i} className="bg-slate-50 rounded-lg px-3 py-2">
+                                  <div className="text-slate-700 text-xs font-semibold">{ev.year} — {ev.type}</div>
+                                  <div className="text-slate-500 text-[10px]">{ev.severity}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </div>
+
+                  {/* Aerial Roof Report */}
+                  <div className="bg-white rounded-2xl p-5" style={cardStyle}>
+                    <h3 className="text-slate-800 font-bold text-sm mb-3">Aerial Roof Report</h3>
+                    <p className="text-slate-400 text-xs mb-3">Enter a property address to get roof area, pitch, and square estimates from property records.</p>
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        value={aerialAddress}
+                        onChange={e => setAerialAddress(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleAerialReport()}
+                        placeholder="123 Main St, City, TX"
+                        className="flex-1 border rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-300"
+                        style={{ borderColor: 'rgba(219,234,254,0.9)' }}
+                      />
+                      <button
+                        onClick={handleAerialReport}
+                        disabled={aerialLoading || !aerialAddress.trim()}
+                        className="flex items-center gap-1.5 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all disabled:opacity-40"
+                        style={{ background: aerialLoading ? '#94a3b8' : 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 3px 10px rgba(124,58,237,0.25)' }}
+                      >
+                        {aerialLoading ? <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg></> : '🛰 Pull Report'}
+                      </button>
+                    </div>
+                    {aerialError && <div className="text-red-600 text-xs bg-red-50 rounded-xl px-3 py-2 mb-2">{aerialError}</div>}
+                    {aerialResult && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{aerialResult.source}</span>
+                          <span className="text-[10px] text-slate-400">Confidence: {Math.round((aerialResult.confidence || 0) * 100)}%</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          {[
+                            { label: 'Roof Sqft',  value: `${(aerialResult.total_sqft || 0).toLocaleString()}` },
+                            { label: 'Squares',    value: `${aerialResult.squares || 0}` },
+                            { label: 'Pitch',      value: aerialResult.pitch || '—' },
+                            { label: 'Segments',   value: aerialResult.roof_segments || '—' },
+                          ].map(s => (
+                            <div key={s.label} className="bg-purple-50 rounded-xl p-3">
+                              <div className="text-purple-800 font-black text-lg">{s.value}</div>
+                              <div className="text-purple-400 text-xs">{s.label}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {aerialResult.note && <p className="text-slate-400 text-[10px] italic">{aerialResult.note}</p>}
+                      </div>
+                    )}
+                  </div>
+
                   {analysis?.rooms?.length > 0 && (
                     <div className="bg-white rounded-2xl p-5" style={cardStyle}>
                       <h3 className="text-slate-800 font-bold text-sm mb-3">Rooms Detected</h3>
@@ -1311,11 +1529,19 @@ export default function ProjectPage() {
                                                   {v.note && <div className="text-slate-400 text-xs">{v.note}</div>}
                                                 </div>
                                               </div>
-                                              <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                                              <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                                                 {isQuoteOnly ? (
                                                   <span className="text-slate-400 text-xs font-semibold italic">Call for pricing</span>
                                                 ) : (
                                                   <span className="text-slate-800 font-black text-sm">{formatMoneyExact(v.price)}</span>
+                                                )}
+                                                {isQuoteOnly && (
+                                                  <button
+                                                    onClick={e => { e.stopPropagation(); openQuoteModal(v.vendor, buyUrl) }}
+                                                    className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all whitespace-nowrap border border-slate-200"
+                                                  >
+                                                    📋 Build Request
+                                                  </button>
                                                 )}
                                                 <a
                                                   href={buyUrl}
@@ -1710,6 +1936,75 @@ export default function ProjectPage() {
                   )
                 })()}
 
+                {/* Photo-to-Measurements */}
+                <div className="mt-6 bg-white rounded-2xl p-5" style={cardStyle}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-slate-800 font-bold text-sm">AI Measurement Estimate</h3>
+                      <p className="text-slate-400 text-xs mt-0.5">Claude Vision analyzes your photos to estimate wall area, roof area, and dimensions.</p>
+                    </div>
+                    <button
+                      onClick={handlePhotoMeasure}
+                      disabled={photoMeasureLoading || photos.length === 0}
+                      title={photos.length === 0 ? 'Upload at least one photo first' : ''}
+                      className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
+                      style={{ background: photoMeasureLoading ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #1e40af)', boxShadow: '0 4px 14px rgba(37,99,235,0.25)' }}
+                    >
+                      {photoMeasureLoading ? (
+                        <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Analyzing…</>
+                      ) : '📐 Measure from Photos'}
+                    </button>
+                  </div>
+                  {photoMeasureError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">{photoMeasureError}</div>
+                  )}
+                  {photoMeasureResult && (
+                    <div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                        {[
+                          { label: 'Total Sqft',     value: `${(photoMeasureResult.total_sqft || 0).toLocaleString()} sqft` },
+                          { label: 'Wall Area',      value: `${(photoMeasureResult.wall_area_sqft || 0).toLocaleString()} sqft` },
+                          { label: 'Roof Area',      value: `${(photoMeasureResult.roof_area_sqft || 0).toLocaleString()} sqft` },
+                          { label: 'Perimeter',      value: `${photoMeasureResult.perimeter_ft || 0} ft` },
+                          { label: 'Stories',        value: photoMeasureResult.stories || '—' },
+                          { label: 'Wall Height',    value: `${photoMeasureResult.wall_height_ft || '—'} ft` },
+                          { label: 'Photos Used',    value: photoMeasureResult.photo_count || photos.length },
+                          { label: 'Confidence',     value: `${Math.round((photoMeasureResult.confidence || 0) * 100)}%` },
+                        ].map(s => (
+                          <div key={s.label} className="bg-blue-50 rounded-xl p-3">
+                            <div className="text-blue-800 font-black text-lg">{s.value}</div>
+                            <div className="text-blue-500 text-xs mt-0.5">{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {photoMeasureResult.structure_type && (
+                        <div className="text-slate-500 text-xs mb-2"><span className="font-semibold text-slate-700">Structure:</span> {photoMeasureResult.structure_type}</div>
+                      )}
+                      {photoMeasureResult.dimensions && (
+                        <div className="text-slate-500 text-xs mb-2"><span className="font-semibold text-slate-700">Est. Dimensions:</span> ~{photoMeasureResult.dimensions.estimated_width_ft}ft wide × {photoMeasureResult.dimensions.estimated_depth_ft}ft deep</div>
+                      )}
+                      {photoMeasureResult.notes && (
+                        <div className="text-slate-500 text-xs mb-2 italic">{photoMeasureResult.notes}</div>
+                      )}
+                      {photoMeasureResult.warnings?.length > 0 && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-2">
+                          {photoMeasureResult.warnings.map((w: string, i: number) => (
+                            <div key={i} className="text-amber-700 text-xs flex items-start gap-1.5"><span className="mt-0.5">⚠</span>{w}</div>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-slate-400 text-[10px] mt-3">AI estimates only — verify all measurements on-site before ordering materials.</p>
+                    </div>
+                  )}
+                  {!photoMeasureResult && !photoMeasureError && !photoMeasureLoading && (
+                    <div className="text-center py-6 text-slate-400 text-sm">
+                      {photos.length === 0
+                        ? 'Upload photos above, then click "Measure from Photos" to get AI estimates.'
+                        : `${photos.length} photo${photos.length > 1 ? 's' : ''} ready — click "Measure from Photos" to extract dimensions.`}
+                    </div>
+                  )}
+                </div>
+
                 {/* Lightbox */}
                 {selectedPhoto && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setSelectedPhoto(null)}>
@@ -2085,6 +2380,97 @@ export default function ProjectPage() {
               <div className="text-center text-slate-400 text-xs pt-4 border-t" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
                 This proposal is an estimate based on AI-powered blueprint analysis. Final pricing may vary based on site conditions, material availability, and local market rates.
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quote Request Modal */}
+      {quoteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)' }} onClick={() => setQuoteModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+              <div>
+                <h2 className="text-slate-800 font-bold text-base">Quote Request — {quoteModal.vendor}</h2>
+                <p className="text-slate-400 text-xs mt-0.5">Fill in your info, then copy the generated text to send to the distributor.</p>
+              </div>
+              <button onClick={() => setQuoteModal(null)} className="text-slate-400 hover:text-slate-700 text-lg font-light leading-none">✕</button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { key: 'name', label: 'Your Name', placeholder: 'John Smith' },
+                  { key: 'company', label: 'Company', placeholder: 'Smith Roofing LLC' },
+                  { key: 'phone', label: 'Phone', placeholder: '(555) 000-0000' },
+                  { key: 'email', label: 'Email', placeholder: 'john@smithroofing.com' },
+                  { key: 'branch', label: 'Preferred Branch / Location', placeholder: 'Chicago, IL branch' },
+                ].map(f => (
+                  <div key={f.key} className={f.key === 'branch' ? 'col-span-2' : ''}>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">{f.label}</label>
+                    <input
+                      value={(quoteForm as any)[f.key]}
+                      onChange={e => setQuoteForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                      placeholder={f.placeholder}
+                      className="w-full border rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-300"
+                      style={{ borderColor: 'rgba(219,234,254,0.9)' }}
+                    />
+                  </div>
+                ))}
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Additional Notes</label>
+                  <textarea
+                    value={quoteForm.notes}
+                    onChange={e => setQuoteForm(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Delivery requirements, timeline, special requests…"
+                    rows={2}
+                    className="w-full border rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                    style={{ borderColor: 'rgba(219,234,254,0.9)' }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Items ({quoteModal.items.length})</div>
+                <div className="bg-slate-50 rounded-xl px-4 py-3 max-h-36 overflow-y-auto space-y-1">
+                  {quoteModal.items.map((m: any, i: number) => (
+                    <div key={i} className="flex justify-between text-xs text-slate-600">
+                      <span className="truncate max-w-[60%]">{m.item_name}</span>
+                      <span className="text-slate-400 ml-2">{m.quantity} {m.unit}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {!quoteGenerated ? (
+                <button
+                  onClick={() => setQuoteGenerated(true)}
+                  className="w-full flex items-center justify-center gap-2 text-white font-bold py-3 rounded-xl text-sm transition-all"
+                  style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', boxShadow: '0 4px 14px rgba(245,158,11,0.3)' }}
+                >
+                  📋 Generate Quote Request
+                </button>
+              ) : (
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Quote Request Text</div>
+                  <pre className="bg-slate-900 text-green-400 text-xs rounded-xl p-4 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed">{generateQuoteText()}</pre>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(generateQuoteText()); setQuoteCopied(true); setTimeout(() => setQuoteCopied(false), 2000) }}
+                      className={`flex-1 flex items-center justify-center gap-2 font-bold py-2.5 rounded-xl text-sm transition-all ${quoteCopied ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-900 text-white'}`}
+                    >
+                      {quoteCopied ? '✓ Copied!' : '📋 Copy to Clipboard'}
+                    </button>
+                    <a
+                      href={quoteModal.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white transition-all"
+                    >
+                      Open {quoteModal.vendor}
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                  </div>
+                  <p className="text-slate-400 text-[10px] mt-2 text-center">Copy this text and paste it into an email or the distributor's quote request form.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -81,6 +81,45 @@ async def list_photos(
     return result.data or []
 
 
+@router.post("/measure/{project_id}")
+async def measure_from_photos_endpoint(
+    project_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Send all project photos to Claude Vision to extract structural measurements.
+    Returns wall area, roof area, sqft, and dimensional estimates.
+    """
+    from app.services.photo_measurement_service import measure_from_photos as _measure
+    db = get_supabase()
+
+    result = (
+        db.table("project_photos")
+        .select("url, phase, filename")
+        .eq("project_id", project_id)
+        .order("created_at")
+        .execute()
+    )
+    photos = result.data or []
+    if not photos:
+        raise HTTPException(status_code=422, detail="No photos uploaded for this project yet. Upload at least 3 photos to measure.")
+
+    urls = [p["url"] for p in photos if p.get("url")]
+    if len(urls) < 1:
+        raise HTTPException(status_code=422, detail="Photos have no accessible URLs. Please re-upload.")
+
+    try:
+        measurements = await _measure(urls)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Measurement analysis failed: {e}")
+
+    measurements["photo_count"] = len(urls)
+    measurements["project_id"] = project_id
+    return measurements
+
+
 @router.delete("/{project_id}/{photo_id}")
 async def delete_photo(
     project_id: str,
