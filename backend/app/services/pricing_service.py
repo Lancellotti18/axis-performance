@@ -9,6 +9,7 @@ entries with direct search links rather than scraped prices.
 """
 import re
 import logging
+from urllib.parse import quote_plus
 from typing import List, Dict, Optional
 from tavily import TavilyClient
 from app.core.config import settings
@@ -30,7 +31,7 @@ RETAIL_DOMAINS = [
 TRADE_DISTRIBUTORS = [
     {
         "vendor": "ABC Supply",
-        "url_template": "https://www.abcsupply.com/search?query={query}",
+        "url_template": "https://www.abcsupply.com/search?q={query}",
         "note": "Contractor pricing — contact branch for quote",
     },
     {
@@ -40,7 +41,7 @@ TRADE_DISTRIBUTORS = [
     },
     {
         "vendor": "SRS Distribution",
-        "url_template": "https://www.srsdistribution.com/search?q={query}",
+        "url_template": "https://www.srsdistribution.com/search/?q={query}",
         "note": "Contractor pricing — contact branch for quote",
     },
 ]
@@ -192,13 +193,27 @@ def _search_material_prices(client: TavilyClient, item_name: str,
     return retail_options[:4] + trade
 
 
+def _retail_search_urls(item_name: str) -> dict:
+    """Generate item-specific search URLs for each retail vendor."""
+    q = quote_plus(item_name)
+    return {
+        "Home Depot": f"https://www.homedepot.com/s/{q}",
+        "Lowe's":     f"https://www.lowes.com/search?searchTerm={q}",
+        "Menards":    f"https://www.menards.com/main/search.html?search={q}",
+        "84 Lumber":  f"https://www.84lumber.com/search/?q={q}",
+        "Fastenal":   f"https://www.fastenal.com/products?term={q}",
+        "Amazon":     f"https://www.amazon.com/s?k={q}+building+materials",
+        "Build.com":  f"https://www.build.com/search?q={q}",
+    }
+
+
 def _fallback_retail(item_name: str, base_price: float) -> List[dict]:
     """Estimated retail prices when Tavily search fails."""
-    search = item_name.replace(' ', '+')
+    urls = _retail_search_urls(item_name)
     return [
-        {"vendor": "Home Depot", "price": round(base_price * 0.98, 2), "url": f"https://www.homedepot.com/s/{search}",               "is_local": False, "tag": "lowest_price", "note": "Estimated — click to verify current price"},
-        {"vendor": "Lowe's",     "price": round(base_price * 1.02, 2), "url": f"https://www.lowes.com/search?searchTerm={search}",    "is_local": False, "tag": "best_value",   "note": "Estimated — click to verify current price"},
-        {"vendor": "Menards",    "price": round(base_price * 0.95, 2), "url": f"https://www.menards.com/main/search.html?search={search}", "is_local": False, "tag": "",         "note": "Estimated — click to verify current price"},
+        {"vendor": "Home Depot", "price": round(base_price * 0.98, 2), "url": urls["Home Depot"], "is_local": False, "tag": "lowest_price", "note": "Estimated — click to verify current price"},
+        {"vendor": "Lowe's",     "price": round(base_price * 1.02, 2), "url": urls["Lowe's"],     "is_local": False, "tag": "best_value",   "note": "Estimated — click to verify current price"},
+        {"vendor": "Menards",    "price": round(base_price * 0.95, 2), "url": urls["Menards"],    "is_local": False, "tag": "",             "note": "Estimated — click to verify current price"},
     ]
 
 
@@ -236,13 +251,27 @@ def enrich_materials_with_pricing(materials: List[dict], region: str, city: str 
 
         options = category_cache[category]
 
-        if options:
-            cheapest = options[0]["price"]
+        # Always rewrite retail URLs to be item-specific — the category cache shares
+        # prices (reasonable approximation) but URLs must target this exact item.
+        item_urls = _retail_search_urls(item_name)
+        item_options = []
+        for opt in options:
+            if not opt.get("quote_only"):
+                vendor_url = item_urls.get(opt["vendor"])
+                opt = {**opt, "url": vendor_url or opt["url"]}
+            item_options.append(opt)
+        # Regenerate trade distributor entries with this item's name
+        item_options = [o for o in item_options if not o.get("quote_only")]
+        item_options += _trade_distributor_entries(item_name)
+
+        if item_options:
+            retail = [o for o in item_options if not o.get("quote_only")]
+            cheapest = retail[0]["price"] if retail else base_price
             material = {
                 **material,
                 "unit_cost":      cheapest,
                 "total_cost":     round(material.get("quantity", 1) * cheapest, 2),
-                "vendor_options": options,
+                "vendor_options": item_options,
             }
         else:
             material = {**material, "vendor_options": _fallback_retail(item_name, base_price) + _trade_distributor_entries(item_name)}
