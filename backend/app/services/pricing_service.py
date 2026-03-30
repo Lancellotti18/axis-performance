@@ -32,17 +32,17 @@ RETAIL_DOMAINS = [
 TRADE_DISTRIBUTORS = [
     {
         "vendor": "ABC Supply",
-        "url_template": "https://www.abcsupply.com/products/search?q={query}",
+        "url_template": "https://www.abcsupply.com/?s={query}",
         "note": "Contractor pricing — login required for checkout",
     },
     {
         "vendor": "QXO (Beacon)",
-        "url_template": "https://www.qxo.com/search?q={query}",
+        "url_template": "https://www.qxo.com/search/{query}",
         "note": "Contractor pricing — login required for checkout",
     },
     {
         "vendor": "SRS Distribution",
-        "url_template": "https://www.srsdistribution.com/search?q={query}",
+        "url_template": "https://www.srsdistribution.com/en/search/?query={query}",
         "note": "Contractor pricing — login required for checkout",
     },
 ]
@@ -108,7 +108,7 @@ PRODUCT_PAGE_SIGNALS = ['/p/', '/product/', '/item/', 'itemId=', 'productId=', '
 
 def _trade_distributor_entries(item_name: str) -> List[dict]:
     """Always-present trade distributor entries with search links (no scraped price)."""
-    query = item_name.replace(" ", "+")
+    query = quote_plus(item_name)
     return [
         {
             "vendor": d["vendor"],
