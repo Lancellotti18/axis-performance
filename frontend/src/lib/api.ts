@@ -218,6 +218,21 @@ export const api = {
     deleteLead: (leadId: string) =>
       apiRequest<any>(`/api/v1/crm/leads/${leadId}`, { method: 'DELETE' }),
   },
+  photos: {
+    getUploadUrl: (projectId: string, filename: string, contentType: string) =>
+      apiRequest<{ upload_url: string; key: string; public_url: string }>(
+        `/api/v1/photos/upload-url/${projectId}?filename=${encodeURIComponent(filename)}&content_type=${encodeURIComponent(contentType)}`
+      ),
+    register: (projectId: string, payload: { storage_key: string; filename: string; phase: string }) =>
+      apiRequest<any>(`/api/v1/photos/register/${projectId}`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    list: (projectId: string) =>
+      apiRequest<any[]>(`/api/v1/photos/${projectId}`),
+    delete: (projectId: string, photoId: string) =>
+      apiRequest<any>(`/api/v1/photos/${projectId}/${photoId}`, { method: 'DELETE' }),
+  },
 }
 // cache-bust 1774803796
 // cache-bust 1774804395

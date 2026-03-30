@@ -8,7 +8,7 @@ import type { ComplianceCheck, ComplianceItem, ComplianceSeverity } from '@/type
 import Blueprint3DViewer from './Blueprint3DViewer'
 import RoofingSection from './RoofingSection'
 
-type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'compliance' | 'permits' | 'roofing'
+type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'photos' | 'compliance' | 'permits' | 'roofing'
 type SortMode = 'lowest_price' | 'best_value'
 
 // Labor split by trade (fractions of total labor cost)
@@ -651,6 +651,17 @@ export default function ProjectPage() {
   const [matCheckResult, setMatCheckResult] = useState<any>(null)
   const [matCheckError, setMatCheckError] = useState<string | null>(null)
 
+  // Photos tab
+  const [photos, setPhotos] = useState<any[]>([])
+  const [photosLoading, setPhotosLoading] = useState(false)
+  const [photoPhase, setPhotoPhase] = useState<'all' | 'before' | 'during' | 'after'>('all')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [selectedPhoto, setSelectedPhoto] = useState<any>(null)
+  // Job costing (actual spend per category, stored in localStorage)
+  const [actualCosts, setActualCosts] = useState<Record<string, number>>({})
+  // Proposal modal
+  const [showProposal, setShowProposal] = useState(false)
+
   const loadData = useCallback(async () => {
     try {
       const proj = await api.projects.get(projectId)
@@ -671,6 +682,11 @@ export default function ProjectPage() {
       }
       const complianceData = await api.compliance.getForProject(projectId).catch(() => null)
       if (complianceData) setCompliance(complianceData)
+      // Load photos
+      try {
+        const photoData = await api.photos.list(projectId)
+        setPhotos(photoData || [])
+      } catch {}
     } catch (err) { console.error(err) }
     setLoading(false)
   }, [projectId])
@@ -681,6 +697,11 @@ export default function ProjectPage() {
     const interval = setInterval(loadData, 4000)
     return () => clearInterval(interval)
   }, [blueprintStatus, loadData])
+  useEffect(() => {
+    if (!projectId) return
+    const saved = localStorage.getItem(`job_costs_${projectId}`)
+    if (saved) { try { setActualCosts(JSON.parse(saved)) } catch {} }
+  }, [projectId])
 
   async function handleMarkupUpdate() {
     try { await api.estimates.update(projectId, { markup_pct: markup }); await loadData() } catch {}
@@ -764,6 +785,39 @@ export default function ProjectPage() {
     setMatCheckLoading(false)
   }
 
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
+  async function handlePhotoUpload(phase: 'before' | 'during' | 'after', files: FileList | null) {
+    if (!files || files.length === 0) return
+    setUploadingPhoto(true)
+    try {
+      for (const file of Array.from(files)) {
+        const { upload_url, key, public_url } = await api.photos.getUploadUrl(projectId, `${Date.now()}_${file.name}`, file.type)
+        // Upload directly to Supabase storage
+        await fetch(upload_url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+        // Register in DB
+        await api.photos.register(projectId, { storage_key: key, filename: file.name, phase })
+      }
+      // Reload photos
+      const updated = await api.photos.list(projectId)
+      setPhotos(updated || [])
+    } catch (err) { console.error(err) }
+    setUploadingPhoto(false)
+  }
+
+  async function handleDeletePhoto(photo: any) {
+    try {
+      await api.photos.delete(projectId, photo.id)
+      setPhotos(prev => prev.filter(p => p.id !== photo.id))
+    } catch {}
+  }
+
+  function updateActualCost(category: string, value: number) {
+    const updated = { ...actualCosts, [category]: value }
+    setActualCosts(updated)
+    localStorage.setItem(`job_costs_${projectId}`, JSON.stringify(updated))
+  }
+
   const isProcessing = blueprintStatus === 'processing' || blueprintStatus === 'pending'
   const hasBlueprint = project?.blueprints?.length > 0
   const requiredCount = compliance?.items?.filter(i => i.severity === 'required').length ?? 0
@@ -816,6 +870,7 @@ export default function ProjectPage() {
     { id: 'materials',  label: 'Materials', badge: materials.length || undefined },
     { id: 'cost',       label: 'Cost Estimate' },
     { id: 'view3d',     label: '3D View' },
+    { id: 'photos' as Tab,     label: '📸 Photos', badge: photos.length || undefined },
     { id: 'compliance', label: 'Compliance', badge: (requiredCount + (matCheckResult?.violations?.length ?? 0)) || undefined },
     { id: 'permits',    label: 'Permits' },
   ]
@@ -1408,6 +1463,66 @@ export default function ProjectPage() {
                         </div>
                       </div>
 
+                      {/* ── Job Costing: Actual vs Estimated ── */}
+                      <div className="bg-white rounded-2xl overflow-hidden" style={cardStyle}>
+                        <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
+                          <div>
+                            <span className="text-slate-800 font-bold">Job Costing — Actual vs Estimated</span>
+                            <span className="text-slate-400 text-xs ml-2">Track your real spend per category</span>
+                          </div>
+                          {(() => {
+                            const totalActual = Object.values(actualCosts).reduce((s, v) => s + v, 0)
+                            const totalEst = matTotal
+                            const diff = totalActual - totalEst
+                            if (totalActual === 0) return null
+                            return (
+                              <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${diff <= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                {diff <= 0 ? `${formatMoney(Math.abs(diff))} under budget` : `${formatMoney(diff)} over budget`}
+                              </span>
+                            )
+                          })()}
+                        </div>
+                        <div className="divide-y" style={{ borderColor: 'rgba(219,234,254,0.5)' }}>
+                          {Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]).map(([cat, est]) => {
+                            const meta = CATEGORY_META[cat] || { label: cat, icon: '📦' }
+                            const actual = actualCosts[cat] || 0
+                            const diff = actual - (est as number)
+                            return (
+                              <div key={cat} className="px-5 py-3 grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center">
+                                <span className="text-slate-600 text-sm flex items-center gap-2"><span>{meta.icon}</span>{meta.label}</span>
+                                <span className="text-slate-400 text-xs text-right">{formatMoney(est as number)} est.</span>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-slate-400 text-xs">$</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0"
+                                    value={actual || ''}
+                                    onChange={e => updateActualCost(cat, parseFloat(e.target.value) || 0)}
+                                    className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm text-slate-700 focus:outline-none focus:border-blue-400 text-right"
+                                  />
+                                </div>
+                                {actual > 0 && (
+                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${diff <= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                    {diff <= 0 ? '-' : '+'}{formatMoney(Math.abs(diff))}
+                                  </span>
+                                )}
+                                {actual === 0 && <div />}
+                              </div>
+                            )
+                          })}
+                        </div>
+                        {Object.values(actualCosts).some(v => v > 0) && (() => {
+                          const totalActual = Object.values(actualCosts).reduce((s, v) => s + v, 0)
+                          return (
+                            <div className="px-5 py-3 flex justify-between items-center bg-slate-50/60 border-t" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
+                              <span className="text-slate-600 text-sm font-bold">Total Actual Materials</span>
+                              <span className="text-slate-800 font-black">{formatMoney(totalActual)}</span>
+                            </div>
+                          )
+                        })()}
+                      </div>
+
                       {/* ── Final summary ── */}
                       <div className="bg-white rounded-2xl overflow-hidden" style={cardStyle}>
                         <div className="px-5 py-4 border-b" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
@@ -1443,6 +1558,17 @@ export default function ProjectPage() {
                         <div className="px-5 py-5 flex justify-between items-center bg-blue-50 border-t" style={{ borderColor: 'rgba(219,234,254,0.9)' }}>
                           <span className="text-slate-800 font-black text-base">Grand Total</span>
                           <span className="text-blue-600 font-black text-2xl">{formatMoney(grand)}</span>
+                        </div>
+                        <div className="px-5 py-4 flex justify-between items-center border-t" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
+                          <span className="text-slate-500 text-sm">Customer Proposal</span>
+                          <button
+                            onClick={() => setShowProposal(true)}
+                            className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all hover:scale-[1.02]"
+                            style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.2)' }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            Generate Proposal
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1486,6 +1612,103 @@ export default function ProjectPage() {
                 ) : (
                   <div className="bg-white rounded-2xl p-12 text-center text-slate-400" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
                     Run a blueprint analysis first to generate the 3D view.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── PHOTOS ──────────────────────────────────────────────── */}
+            {tab === 'photos' && (
+              <div className="max-w-5xl">
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <h2 className="text-slate-800 font-bold text-lg">Job Photos</h2>
+                    <p className="text-slate-400 text-xs mt-0.5">{photos.length} photo{photos.length !== 1 ? 's' : ''} — before, during, and after documentation</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {(['before', 'during', 'after'] as const).map(phase => (
+                      <label key={phase} className="relative cursor-pointer">
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={e => handlePhotoUpload(phase, e.target.files)}
+                        />
+                        <span className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all border ${
+                          phase === 'before' ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' :
+                          phase === 'during' ? 'bg-amber-500 text-white border-amber-500 hover:bg-amber-600' :
+                          'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
+                        }`}>
+                          {uploadingPhoto ? <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> : '+'} {phase.charAt(0).toUpperCase() + phase.slice(1)}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Phase filter */}
+                <div className="flex gap-2 mb-5">
+                  {(['all', 'before', 'during', 'after'] as const).map(p => {
+                    const count = p === 'all' ? photos.length : photos.filter(ph => ph.phase === p).length
+                    const colors: Record<string, string> = { all: 'bg-blue-600 text-white border-blue-600', before: 'bg-blue-600 text-white border-blue-600', during: 'bg-amber-500 text-white border-amber-500', after: 'bg-emerald-600 text-white border-emerald-600' }
+                    return (
+                      <button key={p} onClick={() => setPhotoPhase(p)}
+                        className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all capitalize ${photoPhase === p ? colors[p] : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300'}`}>
+                        {p === 'all' ? 'All' : p.charAt(0).toUpperCase() + p.slice(1)} ({count})
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Photo grid */}
+                {(() => {
+                  const displayed = photoPhase === 'all' ? photos : photos.filter(p => p.phase === photoPhase)
+                  if (displayed.length === 0) return (
+                    <div className="bg-white rounded-2xl p-16 text-center" style={cardStyle}>
+                      <div className="text-5xl mb-4">📸</div>
+                      <div className="text-slate-700 font-semibold mb-1">No photos yet</div>
+                      <div className="text-slate-400 text-sm">Upload before, during, and after photos using the buttons above.</div>
+                    </div>
+                  )
+                  return (
+                    <div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">
+                      {displayed.map((photo: any) => {
+                        const phaseColors: Record<string, string> = { before: 'bg-blue-500', during: 'bg-amber-500', after: 'bg-emerald-500' }
+                        return (
+                          <div key={photo.id} className="relative group break-inside-avoid bg-white rounded-2xl overflow-hidden cursor-pointer" style={cardStyle} onClick={() => setSelectedPhoto(photo)}>
+                            <img src={photo.url} alt={photo.filename} className="w-full object-cover" />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-end p-2">
+                              <div className="flex items-center justify-between w-full opacity-0 group-hover:opacity-100 transition-all">
+                                <span className={`text-[10px] font-bold text-white px-2 py-0.5 rounded-full capitalize ${phaseColors[photo.phase] || 'bg-slate-500'}`}>{photo.phase}</span>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleDeletePhoto(photo) }}
+                                  className="p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all"
+                                >
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                                </button>
+                              </div>
+                            </div>
+                            <div className="px-3 py-2">
+                              <div className="text-slate-500 text-[10px] truncate">{photo.filename}</div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+
+                {/* Lightbox */}
+                {selectedPhoto && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setSelectedPhoto(null)}>
+                    <div className="max-w-4xl max-h-full relative" onClick={e => e.stopPropagation()}>
+                      <img src={selectedPhoto.url} alt={selectedPhoto.filename} className="max-w-full max-h-[85vh] object-contain rounded-2xl" />
+                      <div className="flex items-center justify-between mt-3">
+                        <span className="text-white/60 text-sm">{selectedPhoto.filename}</span>
+                        <button onClick={() => setSelectedPhoto(null)} className="text-white/70 hover:text-white text-sm font-semibold">Close ✕</button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1737,6 +1960,121 @@ export default function ProjectPage() {
                 <PermitPortalSection project={project} projectId={projectId} />
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── PROPOSAL MODAL ── */}
+      {showProposal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(6px)' }}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto" style={{ border: '1px solid rgba(219,234,254,0.8)' }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Customer Proposal</h2>
+                <p className="text-slate-400 text-xs mt-0.5">Print or save as PDF to share with your client</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all"
+                  style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  Print / Save PDF
+                </button>
+                <button onClick={() => setShowProposal(false)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
+              </div>
+            </div>
+
+            {/* Proposal content */}
+            <div id="proposal-content" className="p-8 space-y-6">
+              {/* Header */}
+              <div className="text-center border-b pb-6" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+                <div className="text-3xl font-black text-blue-600 mb-1">Project Proposal</div>
+                <div className="text-xl font-bold text-slate-800">{project?.name}</div>
+                <div className="text-slate-400 text-sm mt-1">
+                  {project?.city && `${project.city}, `}{project?.region?.replace('US-', '')} · {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </div>
+              </div>
+
+              {/* Project Overview */}
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Project Overview</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Project Type', value: project?.blueprint_type || 'Residential' },
+                    { label: 'Location', value: [project?.city, project?.region?.replace('US-','')].filter(Boolean).join(', ') || '—' },
+                    { label: 'Total Area', value: analysis?.total_sqft ? `${analysis.total_sqft.toLocaleString()} sq ft` : '—' },
+                    { label: 'Rooms', value: analysis?.rooms?.length || '—' },
+                  ].map(row => (
+                    <div key={row.label} className="bg-slate-50 rounded-xl p-3">
+                      <div className="text-slate-400 text-xs">{row.label}</div>
+                      <div className="text-slate-800 font-bold text-sm mt-0.5">{row.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Scope of Work */}
+              {analysis?.rooms?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Scope of Work</div>
+                  <div className="bg-slate-50 rounded-xl p-4">
+                    <div className="grid grid-cols-3 gap-2">
+                      {analysis.rooms.slice(0, 9).map((room: any, i: number) => (
+                        <div key={i} className="text-slate-600 text-sm">{room.name}{room.sqft ? ` (${Math.round(room.sqft)} sqft)` : ''}</div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Materials Summary */}
+              {materials.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Materials Summary</div>
+                  <div className="space-y-1">
+                    {Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]).map(([cat, total]) => {
+                      const meta = CATEGORY_META[cat] || { label: cat, icon: '📦' }
+                      return (
+                        <div key={cat} className="flex justify-between items-center py-2 border-b" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+                          <span className="text-slate-600 text-sm flex items-center gap-2"><span>{meta.icon}</span>{meta.label}</span>
+                          <span className="text-slate-800 font-semibold text-sm">{formatMoney(total as number)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Investment Summary */}
+              {estimate && (() => {
+                const matTotal = estimate.materials_total || 0
+                const laborTotal = estimate.labor_total || 0
+                const overhead = (matTotal + laborTotal) * 0.10
+                const markupAmt = (matTotal + laborTotal + overhead) * ((estimate.markup_pct || 15) / 100)
+                const grand = matTotal + laborTotal + overhead + markupAmt
+                return (
+                  <div>
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Investment Summary</div>
+                    <div className="bg-blue-600 rounded-2xl p-6 text-white text-center">
+                      <div className="text-blue-100 text-sm mb-1">Total Project Investment</div>
+                      <div className="text-4xl font-black">{formatMoney(grand)}</div>
+                      <div className="flex justify-center gap-4 text-blue-200 text-xs mt-2">
+                        <span>Materials: {formatMoney(matTotal)}</span>
+                        <span>·</span>
+                        <span>Labor: {formatMoney(laborTotal)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Footer */}
+              <div className="text-center text-slate-400 text-xs pt-4 border-t" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+                This proposal is an estimate based on AI-powered blueprint analysis. Final pricing may vary based on site conditions, material availability, and local market rates.
+              </div>
+            </div>
           </div>
         </div>
       )}

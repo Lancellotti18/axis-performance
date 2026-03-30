@@ -21,6 +21,9 @@ PRIORITY_RETAILERS = [
     "fastenal.com",
     "amazon.com",
     "build.com",
+    "abcsupply.com",
+    "becn.com",
+    "srsdistribution.com",
 ]
 
 # Search queries for each material category
@@ -46,13 +49,16 @@ PRICE_PATTERNS = [
 ]
 
 VENDOR_NAMES = {
-    "homedepot.com": "Home Depot",
-    "lowes.com":     "Lowe's",
-    "menards.com":   "Menards",
-    "84lumber.com":  "84 Lumber",
-    "fastenal.com":  "Fastenal",
-    "amazon.com":    "Amazon",
-    "build.com":     "Build.com",
+    "homedepot.com":     "Home Depot",
+    "lowes.com":         "Lowe's",
+    "menards.com":       "Menards",
+    "84lumber.com":      "84 Lumber",
+    "fastenal.com":      "Fastenal",
+    "amazon.com":        "Amazon",
+    "build.com":         "Build.com",
+    "abcsupply.com":     "ABC Supply",
+    "becn.com":          "Beacon Roofing Supply",
+    "srsdistribution.com": "SRS Distribution",
 }
 
 
@@ -97,7 +103,7 @@ def _search_material_prices(client: TavilyClient, item_name: str,
             query=f'"{item_name}" buy price{city_hint}',
             search_depth="advanced",
             max_results=8,
-            include_domains=["homedepot.com", "lowes.com", "menards.com", "fastenal.com", "84lumber.com"],
+            include_domains=["homedepot.com", "lowes.com", "menards.com", "fastenal.com", "84lumber.com", "abcsupply.com", "becn.com", "srsdistribution.com"],
         )
         for r in results.get("results", []):
             url     = r.get("url", "")
