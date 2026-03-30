@@ -129,12 +129,14 @@ def _run_analysis_bg(blueprint_id: str):
             print(f"[analysis] could not set failed status: {e2}")
 
 
-@router.get("/{blueprint_id}/view-url")
-async def get_blueprint_view_url(blueprint_id: str):
+@router.get("/{blueprint_id}/view")
+async def view_blueprint(blueprint_id: str):
     """
-    Return a short-lived signed URL for viewing the blueprint file.
-    Works whether the bucket is public or private — uses the service role key.
+    Proxy the blueprint file directly from Supabase storage.
+    Uses the service role key so it works regardless of bucket visibility.
+    Streams the raw bytes back to the browser with correct Content-Type.
     """
+    import httpx
     db = get_supabase()
     result = (
         db.table("blueprints")
@@ -147,39 +149,52 @@ async def get_blueprint_view_url(blueprint_id: str):
         raise HTTPException(status_code=404, detail="Blueprint not found")
 
     file_url: str = result.data.get("file_url", "")
-    file_type: str = result.data.get("file_type", "")
+    file_type: str = (result.data.get("file_type") or "").lower()
 
-    # If it's already a short-lived signed URL, return as-is
-    if "token=" in file_url:
-        return {"url": file_url, "file_type": file_type}
+    if not file_url:
+        raise HTTPException(status_code=404, detail="No file URL stored for this blueprint")
 
-    # Extract the storage path from the stored URL.
-    # Stored URL pattern: https://<project>.supabase.co/storage/v1/object/public/blueprints/<storage_path>
-    import re
-    m = re.search(r'/object/(?:public|authenticated)/blueprints/(.+)', file_url)
-    if m:
-        storage_path = m.group(1)
-    elif file_url.startswith("http"):
-        # Unrecognized format — return as-is and hope the bucket is public
-        return {"url": file_url, "file_type": file_type}
-    else:
-        # Relative path stored directly
-        storage_path = file_url.lstrip("/")
+    # Build the authenticated download URL using the service role key
+    from app.core.config import settings
+    from fastapi.responses import Response
 
-    try:
-        signed = db.storage.from_("blueprints").create_signed_url(storage_path, expires_in=3600)
-        signed_url = (
-            signed.get("signedUrl")
-            or signed.get("signed_url")
-            or signed.get("signedURL")
-            or signed.get("data", {}).get("signedUrl", "")
+    # Try to download via Supabase REST API with service role key
+    headers = {
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+    }
+
+    # Convert the stored URL to an authenticated download URL if needed
+    # Stored pattern: https://<proj>.supabase.co/storage/v1/object/public/blueprints/<path>
+    # Authenticated pattern: https://<proj>.supabase.co/storage/v1/object/authenticated/blueprints/<path>
+    # Direct download with service key works on both patterns
+    fetch_url = file_url.replace("/object/public/", "/object/authenticated/")
+
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        resp = await client.get(fetch_url, headers=headers)
+        if resp.status_code != 200:
+            # Try the original URL as fallback
+            resp = await client.get(file_url, headers=headers)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Could not fetch blueprint from storage: HTTP {resp.status_code}")
+
+        content_type_map = {
+            "pdf":  "application/pdf",
+            "png":  "image/png",
+            "jpg":  "image/jpeg",
+            "jpeg": "image/jpeg",
+            "webp": "image/webp",
+            "gif":  "image/gif",
+        }
+        content_type = content_type_map.get(file_type) or resp.headers.get("content-type", "application/octet-stream")
+
+        return Response(
+            content=resp.content,
+            media_type=content_type,
+            headers={"Cache-Control": "private, max-age=3600"},
         )
-        if not signed_url:
-            raise RuntimeError(f"No signed URL in response: {signed}")
-        return {"url": signed_url, "file_type": file_type}
-    except Exception as e:
-        # Fallback: return the stored URL and let the browser try
-        return {"url": file_url, "file_type": file_type}
+
+
 
 
 @router.get("/{blueprint_id}/status")

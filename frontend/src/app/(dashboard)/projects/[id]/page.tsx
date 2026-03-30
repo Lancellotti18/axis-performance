@@ -693,10 +693,9 @@ export default function ProjectPage() {
         const bp = blueprints[0]
         setBlueprintStatus(bp.status)
         if (bp.id) {
-          // Fetch a signed view URL — works regardless of whether bucket is public or private
-          api.blueprints.getViewUrl(bp.id).then(r => {
-            if (r?.url) { setBlueprintViewUrl(r.url); setBlueprintFileType(r.file_type || bp.file_type || '') }
-          }).catch(() => {})
+          // Backend proxy URL — streams the file server-side with service role auth
+          setBlueprintViewUrl(api.blueprints.viewUrl(bp.id))
+          setBlueprintFileType(bp.file_type || '')
         }
         if (bp.status === 'complete') {
           const [analysisData, estimateData] = await Promise.all([
