@@ -1283,20 +1283,27 @@ export default function ProjectPage() {
                                       <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 pt-3">Where to Buy</div>
                                       <div className="grid gap-2">
                                         {sortedVendors.map((v: any, vi: number) => {
-                                          // Ensure URL is always valid — fall back to vendor search
+                                          const isQuoteOnly = v.quote_only === true || v.price === null || v.price === undefined
                                           const buyUrl = v.url && v.url.startsWith('http')
                                             ? v.url
                                             : `https://www.google.com/search?q=${encodeURIComponent(`${m.item_name} ${v.vendor} buy`)}`
+                                          // Retail entries: show price tag on first; trade distributors: show "Trade" badge
+                                          const isFirstRetail = !isQuoteOnly && vi === 0
                                           return (
                                             <div
                                               key={vi}
-                                              className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border"
-                                              style={{ borderColor: 'rgba(219,234,254,0.9)' }}
+                                              className={`flex items-center justify-between rounded-xl px-4 py-3 border ${isQuoteOnly ? 'bg-slate-50' : 'bg-white'}`}
+                                              style={{ borderColor: isQuoteOnly ? 'rgba(203,213,225,0.8)' : 'rgba(219,234,254,0.9)' }}
                                             >
                                               <div className="flex items-center gap-2 min-w-0">
-                                                {vi === 0 && (
-                                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${sortMode === 'lowest_price' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                    {sortMode === 'lowest_price' ? 'LOWEST' : 'BEST VALUE'}
+                                                {isFirstRetail && (
+                                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 bg-emerald-100 text-emerald-700">
+                                                    LOWEST
+                                                  </span>
+                                                )}
+                                                {isQuoteOnly && (
+                                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 bg-amber-100 text-amber-700">
+                                                    TRADE
                                                   </span>
                                                 )}
                                                 <div className="min-w-0">
@@ -1305,15 +1312,19 @@ export default function ProjectPage() {
                                                 </div>
                                               </div>
                                               <div className="flex items-center gap-3 flex-shrink-0 ml-3">
-                                                <span className="text-slate-800 font-black text-sm">{formatMoneyExact(v.price)}</span>
+                                                {isQuoteOnly ? (
+                                                  <span className="text-slate-400 text-xs font-semibold italic">Call for pricing</span>
+                                                ) : (
+                                                  <span className="text-slate-800 font-black text-sm">{formatMoneyExact(v.price)}</span>
+                                                )}
                                                 <a
                                                   href={buyUrl}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
                                                   onClick={e => e.stopPropagation()}
-                                                  className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all whitespace-nowrap"
+                                                  className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${isQuoteOnly ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
                                                 >
-                                                  Buy Now
+                                                  {isQuoteOnly ? 'Get Quote' : 'Buy Now'}
                                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                                                 </a>
                                               </div>

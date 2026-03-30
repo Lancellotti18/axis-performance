@@ -2,8 +2,11 @@
 Real-time material pricing service.
 Uses Tavily to search Home Depot, Lowe's, Menards, and local suppliers
 for current prices and returns multiple vendor options per material.
+
+Trade distributors (ABC Supply, Beacon, SRS) are B2B-only — they require
+contractor logins to view pricing, so they are always injected as "Get Quote"
+entries with direct search links rather than scraped prices.
 """
-import json
 import re
 import logging
 from typing import List, Dict, Optional
@@ -12,8 +15,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Retailers to prioritize in search results
-PRIORITY_RETAILERS = [
+# Retail sites — public prices, Tavily can scrape these
+RETAIL_DOMAINS = [
     "homedepot.com",
     "lowes.com",
     "menards.com",
@@ -21,9 +24,25 @@ PRIORITY_RETAILERS = [
     "fastenal.com",
     "amazon.com",
     "build.com",
-    "abcsupply.com",
-    "becn.com",
-    "srsdistribution.com",
+]
+
+# Trade distributors — B2B login required, always inject as "Get Quote" with search link
+TRADE_DISTRIBUTORS = [
+    {
+        "vendor": "ABC Supply",
+        "url_template": "https://www.abcsupply.com/search?query={query}",
+        "note": "Contractor pricing — contact branch for quote",
+    },
+    {
+        "vendor": "Beacon Roofing Supply",
+        "url_template": "https://www.becn.com/search?q={query}",
+        "note": "Contractor pricing — contact branch for quote",
+    },
+    {
+        "vendor": "SRS Distribution",
+        "url_template": "https://www.srsdistribution.com/search?q={query}",
+        "note": "Contractor pricing — contact branch for quote",
+    },
 ]
 
 # Search queries for each material category
@@ -49,16 +68,13 @@ PRICE_PATTERNS = [
 ]
 
 VENDOR_NAMES = {
-    "homedepot.com":     "Home Depot",
-    "lowes.com":         "Lowe's",
-    "menards.com":       "Menards",
-    "84lumber.com":      "84 Lumber",
-    "fastenal.com":      "Fastenal",
-    "amazon.com":        "Amazon",
-    "build.com":         "Build.com",
-    "abcsupply.com":     "ABC Supply",
-    "becn.com":          "Beacon Roofing Supply",
-    "srsdistribution.com": "SRS Distribution",
+    "homedepot.com": "Home Depot",
+    "lowes.com":     "Lowe's",
+    "menards.com":   "Menards",
+    "84lumber.com":  "84 Lumber",
+    "fastenal.com":  "Fastenal",
+    "amazon.com":    "Amazon",
+    "build.com":     "Build.com",
 }
 
 
@@ -88,81 +104,101 @@ def _vendor_from_url(url: str) -> str:
 
 PRODUCT_PAGE_SIGNALS = ['/p/', '/product/', '/item/', 'itemId=', 'productId=', '/N-', '/skus/']
 
+def _trade_distributor_entries(item_name: str) -> List[dict]:
+    """Always-present trade distributor entries with search links (no scraped price)."""
+    query = item_name.replace(" ", "+")
+    return [
+        {
+            "vendor": d["vendor"],
+            "price": None,
+            "url": d["url_template"].format(query=query),
+            "is_local": False,
+            "note": d["note"],
+            "quote_only": True,
+        }
+        for d in TRADE_DISTRIBUTORS
+    ]
+
+
 def _search_material_prices(client: TavilyClient, item_name: str,
                              category: str, region: str, base_price: float, city: str = "") -> List[dict]:
-    """Search Tavily for real prices — returns direct product page URLs only."""
+    """Search Tavily for real retail prices, then append trade distributor quote links."""
     state = region.replace("US-", "") if region else ""
     city_hint = f" {city}" if city else (f" {state}" if state else "")
 
-    options = []
+    retail_options = []
     seen_vendors = set()
 
-    # Pass 1: domain-filtered search — forces results from retailer sites only
+    # Pass 1: domain-filtered search across retail sites only
     try:
         results = client.search(
             query=f'"{item_name}" buy price{city_hint}',
             search_depth="advanced",
             max_results=8,
-            include_domains=["homedepot.com", "lowes.com", "menards.com", "fastenal.com", "84lumber.com", "abcsupply.com", "becn.com", "srsdistribution.com"],
+            include_domains=RETAIL_DOMAINS,
         )
         for r in results.get("results", []):
-            url     = r.get("url", "")
-            content = r.get("content", "") + " " + r.get("title", "")
-            price   = _extract_price(content)
-            vendor  = _vendor_from_url(url)
+            url        = r.get("url", "")
+            content    = r.get("content", "") + " " + r.get("title", "")
+            price      = _extract_price(content)
+            vendor     = _vendor_from_url(url)
             is_product = any(sig in url for sig in PRODUCT_PAGE_SIGNALS)
 
             if vendor in seen_vendors or not price:
                 continue
             if is_product:
-                options.append({"vendor": vendor, "price": price, "url": url, "is_local": False, "note": "", "_is_product": True})
+                retail_options.append({"vendor": vendor, "price": price, "url": url, "is_local": False, "note": "", "_is_product": True})
                 seen_vendors.add(vendor)
     except Exception as e:
         logger.warning(f"Tavily domain-filtered search failed: {e}")
 
-    # Pass 2: broader search if we need more options
-    if len(options) < 2:
+    # Pass 2: broader search if we still need more retail options
+    if len(retail_options) < 2:
         template = SEARCH_TEMPLATES.get(category, '{item} price buy')
         query = template.format(item=item_name) + (city_hint or "")
         try:
             results2 = client.search(query=query, search_depth="basic", max_results=6)
             for r in results2.get("results", []):
-                url     = r.get("url", "")
-                content = r.get("content", "") + " " + r.get("title", "")
-                price   = _extract_price(content)
-                vendor  = _vendor_from_url(url)
+                url        = r.get("url", "")
+                content    = r.get("content", "") + " " + r.get("title", "")
+                price      = _extract_price(content)
+                vendor     = _vendor_from_url(url)
                 is_product = any(sig in url for sig in PRODUCT_PAGE_SIGNALS)
 
                 if vendor in seen_vendors or not price:
                     continue
-                options.append({"vendor": vendor, "price": price, "url": url, "is_local": False, "note": "" if is_product else "Search result — may not be exact item", "_is_product": is_product})
+                retail_options.append({"vendor": vendor, "price": price, "url": url, "is_local": False,
+                                       "note": "" if is_product else "Search result — may not be exact item",
+                                       "_is_product": is_product})
                 seen_vendors.add(vendor)
         except Exception as e:
             logger.warning(f"Tavily broader search failed: {e}")
 
-    if not options:
-        return _fallback_options(item_name, base_price)
+    # Use fallback retail prices if Tavily found nothing
+    if not retail_options:
+        retail_options = _fallback_retail(item_name, base_price)
+    else:
+        # Product pages sort first, then by price
+        retail_options.sort(key=lambda x: (not x.get("_is_product", False), x["price"]))
+        for o in retail_options:
+            o.pop("_is_product", None)
+        if retail_options:
+            retail_options[0]["tag"] = "lowest_price"
+        if len(retail_options) >= 2:
+            retail_options[1]["tag"] = "best_value"
 
-    # Product pages sort first, then by price
-    options.sort(key=lambda x: (not x.get("_is_product", False), x["price"]))
-    for o in options:
-        o.pop("_is_product", None)
-
-    if options:
-        options[0]["tag"] = "lowest_price"
-    if len(options) >= 2:
-        options[1]["tag"] = "best_value"
-
-    return options[:5]
+    # Always append trade distributor quote links after retail prices
+    trade = _trade_distributor_entries(item_name)
+    return retail_options[:4] + trade
 
 
-def _fallback_options(item_name: str, base_price: float) -> List[dict]:
-    """Generate plausible price options when search fails."""
+def _fallback_retail(item_name: str, base_price: float) -> List[dict]:
+    """Estimated retail prices when Tavily search fails."""
     search = item_name.replace(' ', '+')
     return [
-        {"vendor": "Home Depot",  "price": round(base_price * 0.98, 2), "url": f"https://www.homedepot.com/s/{search}",                                "is_local": False, "tag": "lowest_price", "note": "Estimated — click to search current prices"},
-        {"vendor": "Lowe's",      "price": round(base_price * 1.02, 2), "url": f"https://www.lowes.com/search?searchTerm={search}",                     "is_local": False, "tag": "best_value",   "note": "Estimated — click to search current prices"},
-        {"vendor": "Menards",     "price": round(base_price * 0.95, 2), "url": f"https://www.menards.com/main/search.html?search={search}",              "is_local": False, "tag": "",             "note": "Estimated — click to search current prices"},
+        {"vendor": "Home Depot", "price": round(base_price * 0.98, 2), "url": f"https://www.homedepot.com/s/{search}",               "is_local": False, "tag": "lowest_price", "note": "Estimated — click to verify current price"},
+        {"vendor": "Lowe's",     "price": round(base_price * 1.02, 2), "url": f"https://www.lowes.com/search?searchTerm={search}",    "is_local": False, "tag": "best_value",   "note": "Estimated — click to verify current price"},
+        {"vendor": "Menards",    "price": round(base_price * 0.95, 2), "url": f"https://www.menards.com/main/search.html?search={search}", "is_local": False, "tag": "",         "note": "Estimated — click to verify current price"},
     ]
 
 
@@ -195,7 +231,7 @@ def enrich_materials_with_pricing(materials: List[dict], region: str, city: str 
             try:
                 options = _search_material_prices(tavily, item_name, category, region, base_price, city=city)
             except Exception:
-                options = _fallback_options(item_name, base_price)
+                options = _fallback_retail(item_name, base_price) + _trade_distributor_entries(item_name)
             category_cache[category] = options
 
         options = category_cache[category]
@@ -209,7 +245,7 @@ def enrich_materials_with_pricing(materials: List[dict], region: str, city: str 
                 "vendor_options": options,
             }
         else:
-            material = {**material, "vendor_options": _fallback_options(item_name, base_price)}
+            material = {**material, "vendor_options": _fallback_retail(item_name, base_price) + _trade_distributor_entries(item_name)}
 
         enriched.append(material)
 
@@ -222,6 +258,6 @@ def _add_fallback_pricing(materials: List[dict]) -> List[dict]:
     for m in materials:
         enriched.append({
             **m,
-            "vendor_options": _fallback_options(m["item_name"], m["unit_cost"]),
+            "vendor_options": _fallback_retail(m["item_name"], m["unit_cost"]) + _trade_distributor_entries(m["item_name"]),
         })
     return enriched
