@@ -5,6 +5,7 @@ Tavily property records + Claude estimation.
 """
 import re
 import json
+import asyncio
 import httpx
 import anthropic
 from app.core.config import settings
@@ -95,7 +96,7 @@ async def _tavily_claude_estimate(full_address: str, city: str, state: str, zip_
         snippets = []
         for q in queries:
             try:
-                r = tavily.search(query=q, search_depth="basic", max_results=4)
+                r = await asyncio.to_thread(tavily.search, query=q, search_depth="basic", max_results=4)
                 for item in r.get("results", []):
                     c = item.get("content", "")[:500]
                     if c:
@@ -103,8 +104,6 @@ async def _tavily_claude_estimate(full_address: str, city: str, state: str, zip_
             except Exception:
                 continue
         research = "\n\n".join(snippets[:6])
-
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     prompt = f"""You are a roofing contractor estimator. Estimate the roof measurements for this address using available property records.
 
@@ -137,13 +136,16 @@ Rules:
 - confidence: 0.5–0.65 from records, 0.35–0.5 if no records found
 - house_sqft: living area from records if found, else estimate"""
 
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=512,
-        messages=[{"role": "user", "content": prompt}]
-    )
+    def _call_claude(p: str) -> str:
+        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        msg = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=512,
+            messages=[{"role": "user", "content": p}]
+        )
+        return msg.content[0].text.strip()
 
-    text = message.content[0].text.strip()
+    text = await asyncio.to_thread(_call_claude, prompt)
     text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
     text = re.sub(r'\s*```\s*$', '', text)
     start = text.find("{")

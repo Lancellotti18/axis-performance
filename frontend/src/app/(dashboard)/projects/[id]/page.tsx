@@ -1278,8 +1278,8 @@ Thank you for your time.`
 
                   {/* Aerial Roof Report */}
                   <div className="bg-white rounded-2xl p-5" style={cardStyle}>
-                    <h3 className="text-slate-800 font-bold text-sm mb-3">Aerial Roof Report</h3>
-                    <p className="text-slate-400 text-xs mb-3">Enter a property address to get roof area, pitch, and square estimates from property records.</p>
+                    <h3 className="text-slate-800 font-bold text-sm mb-1">Aerial Roof Report</h3>
+                    <p className="text-slate-400 text-xs mb-3">Enter a property address to pull real roof measurements from Google Solar satellite imagery.</p>
                     <div className="flex gap-2 mb-3">
                       <input
                         value={aerialAddress}
@@ -1295,32 +1295,54 @@ Thank you for your time.`
                         className="flex items-center gap-1.5 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all disabled:opacity-40"
                         style={{ background: aerialLoading ? '#94a3b8' : 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 3px 10px rgba(124,58,237,0.25)' }}
                       >
-                        {aerialLoading ? <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg></> : '🛰 Pull Report'}
+                        {aerialLoading ? <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Analyzing…</> : '🛰 Pull Report'}
                       </button>
                     </div>
                     {aerialError && <div className="text-red-600 text-xs bg-red-50 rounded-xl px-3 py-2 mb-2">{aerialError}</div>}
-                    {aerialResult && (
-                      <div>
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{aerialResult.source}</span>
-                          <span className="text-[10px] text-slate-400">Confidence: {Math.round((aerialResult.confidence || 0) * 100)}%</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 mb-3">
-                          {[
-                            { label: 'Roof Sqft',  value: `${(aerialResult.total_sqft || 0).toLocaleString()}` },
-                            { label: 'Squares',    value: `${aerialResult.squares || 0}` },
-                            { label: 'Pitch',      value: aerialResult.pitch || '—' },
-                            { label: 'Segments',   value: aerialResult.roof_segments || '—' },
-                          ].map(s => (
-                            <div key={s.label} className="bg-purple-50 rounded-xl p-3">
-                              <div className="text-purple-800 font-black text-lg">{s.value}</div>
-                              <div className="text-purple-400 text-xs">{s.label}</div>
+                    {aerialResult && (() => {
+                      const isSatellite = aerialResult.source === 'Google Solar API'
+                      const confidence = Math.round((aerialResult.confidence || 0) * 100)
+                      return (
+                        <div>
+                          {/* Source badge */}
+                          <div className={`flex items-center gap-2 rounded-xl px-3 py-2 mb-3 ${isSatellite ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
+                            <span className="text-lg">{isSatellite ? '🛰' : '📋'}</span>
+                            <div>
+                              <div className={`text-xs font-bold ${isSatellite ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                {isSatellite ? 'Google Solar Satellite Imagery' : 'Property Records Estimate'}
+                              </div>
+                              <div className={`text-[10px] ${isSatellite ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                {isSatellite
+                                  ? `${confidence}% confidence — measured from aerial imagery`
+                                  : `${confidence}% confidence — estimated from public records. Physical inspection recommended.`}
+                              </div>
                             </div>
-                          ))}
+                          </div>
+                          {/* Metrics */}
+                          <div className="grid grid-cols-2 gap-2 mb-3">
+                            {[
+                              { label: 'Roof Sqft',  value: `${(aerialResult.total_sqft || 0).toLocaleString()}` },
+                              { label: 'Squares',    value: `${aerialResult.squares || 0}` },
+                              { label: 'Pitch',      value: aerialResult.pitch || '—' },
+                              { label: 'Segments',   value: aerialResult.roof_segments || '—' },
+                            ].map(s => (
+                              <div key={s.label} className="bg-purple-50 rounded-xl p-3">
+                                <div className="text-purple-800 font-black text-lg">{s.value}</div>
+                                <div className="text-purple-400 text-xs">{s.label}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {aerialResult.stories && (
+                            <div className="text-slate-500 text-xs mb-2">Stories: {aerialResult.stories} &nbsp;·&nbsp; House sqft: {aerialResult.house_sqft?.toLocaleString() || '—'}</div>
+                          )}
+                          {!isSatellite && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-amber-700 text-[10px] leading-relaxed">
+                              ⚠ These are estimates based on public property records, not aerial measurements. Numbers may vary from actual roof area. Always verify with a physical inspection before ordering materials.
+                            </div>
+                          )}
                         </div>
-                        {aerialResult.note && <p className="text-slate-400 text-[10px] italic">{aerialResult.note}</p>}
-                      </div>
-                    )}
+                      )
+                    })()}
                   </div>
 
                   {analysis?.rooms?.length > 0 && (
