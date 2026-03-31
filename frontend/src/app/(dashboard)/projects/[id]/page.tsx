@@ -959,12 +959,12 @@ Thank you for your time.`
       .then(r => {
         if (r?.scene_data) {
           setSceneData(r.scene_data)
-        } else if (hasBlueprint && blueprintFileType !== 'pdf') {
+        } else if (hasBlueprint) {
           handleGenerate3D()
         }
       })
       .catch(() => {
-        if (hasBlueprint && blueprintFileType !== 'pdf') handleGenerate3D()
+        if (hasBlueprint) handleGenerate3D()
       })
   }, [tab, hasBlueprint, blueprintFileType])
 
@@ -1946,7 +1946,7 @@ Thank you for your time.`
                     <button
                       onClick={handleGenerate3D}
                       disabled={scene3dLoading || !hasBlueprint}
-                      title={!hasBlueprint ? 'Upload a blueprint first' : blueprintFileType === 'pdf' ? 'PDF not supported — upload a PNG or JPG' : 'Parse blueprint with Claude Vision'}
+                      title={!hasBlueprint ? 'Upload a blueprint first' : 'Parse blueprint with Claude Vision'}
                       className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
                       style={{ background: scene3dLoading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
                     >
@@ -1961,11 +1961,7 @@ Thank you for your time.`
                   <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-sm">{scene3dError}</div>
                 )}
 
-                {blueprintFileType === 'pdf' && !sceneData && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-sm">
-                    ⚠ 3D generation requires a PNG or JPG blueprint. Your current blueprint is a PDF — please re-upload as an image to use this feature.
-                  </div>
-                )}
+
 
                 {analysis ? (
                   <>
