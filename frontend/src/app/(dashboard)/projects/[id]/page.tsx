@@ -966,7 +966,8 @@ Thank you for your time.`
       .catch(() => {
         if (hasBlueprint) handleGenerate3D()
       })
-  }, [tab, hasBlueprint, blueprintFileType])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
 
   function updateActualCost(category: string, value: number) {
     const updated = { ...actualCosts, [category]: value }
