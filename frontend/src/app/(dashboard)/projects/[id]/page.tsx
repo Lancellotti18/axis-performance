@@ -1966,7 +1966,7 @@ Thank you for your time.`
 
                 {analysis ? (
                   <>
-                    <Blueprint3DViewer analysis={analysis} sceneData={sceneData} />
+                    <Blueprint3DViewer analysis={analysis} sceneData={sceneData} blueprintUrl={blueprintViewUrl ?? undefined} />
                     {analysis.rooms?.length > 0 && (
                       <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
                         <h3 className="text-slate-800 font-bold text-sm mb-3">Rooms Detected</h3>

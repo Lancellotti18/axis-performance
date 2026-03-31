@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useEffect, useMemo, Suspense, useCallback } from "react";
+import React, { useRef, useState, useEffect, useMemo, Suspense, useCallback, createContext, useContext } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, ContactShadows, Environment, Grid } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
@@ -9,8 +9,9 @@ import * as THREE from "three";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ViewMode = "iso" | "fp";
-type UnitKey  = "ft" | "in" | "m" | "cm";
+type ViewMode  = "iso" | "fp";
+type UnitKey   = "ft" | "in" | "m" | "cm";
+type StyleMode = "photo" | "minimal" | "wireframe";
 
 interface LayerState {
   foundation: boolean; framing: boolean; electrical: boolean;
@@ -19,10 +20,10 @@ interface LayerState {
 
 interface Annotation { id: number; x: number; z: number; text: string }
 
-interface SceneRoom     { name: string; x: number; z: number; width: number; depth: number; floor_type: string; sqft: number }
-interface SceneWall     { x1: number; z1: number; x2: number; z2: number; thickness: number; type: "exterior" | "interior" }
-interface SceneDoor     { x: number; z: number; width: number; height: number }
-interface SceneWindow   { x: number; z: number; width: number; height: number; sill_height: number }
+interface SceneRoom      { name: string; x: number; z: number; width: number; depth: number; floor_type: string; sqft: number }
+interface SceneWall      { x1: number; z1: number; x2: number; z2: number; thickness: number; type: "exterior" | "interior" }
+interface SceneDoor      { x: number; z: number; width: number; height: number }
+interface SceneWindow    { x: number; z: number; width: number; height: number; sill_height: number }
 interface SceneElectrical { type: string; x: number; z: number }
 interface ScenePlumbing   { type: string; x: number; z: number; rotation: number }
 
@@ -34,6 +35,10 @@ interface SceneData {
 }
 
 interface PlacedRoom { name: string; sqft: number; w: number; h: number; x: number; z: number; colorIdx: number }
+
+// ─── Context ──────────────────────────────────────────────────────────────────
+
+const StyleCtx = createContext<StyleMode>("photo");
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -82,7 +87,6 @@ function makeHardwoodTexture(): THREE.CanvasTexture {
       const shade = 0.82 + Math.random() * 0.18;
       ctx.fillStyle = `rgb(${Math.round(196 * shade)},${Math.round(134 * shade)},${Math.round(58 * shade)})`;
       ctx.fillRect(x + 1.5, y + 1.5, S * 0.5 - 3, plankH - 3);
-      // grain lines
       ctx.strokeStyle = "rgba(0,0,0,0.07)";
       ctx.lineWidth = 0.5;
       for (let g = 1; g < 5; g++) {
@@ -95,7 +99,6 @@ function makeHardwoodTexture(): THREE.CanvasTexture {
         );
         ctx.stroke();
       }
-      // plank edge shadow
       ctx.fillStyle = "rgba(0,0,0,0.18)";
       ctx.fillRect(x, y, S * 0.5, 2);
       ctx.fillRect(x, y, 2, plankH);
@@ -119,7 +122,6 @@ function makeTileTexture(): THREE.CanvasTexture {
       const shade = 0.93 + Math.random() * 0.07;
       ctx.fillStyle = `rgb(${Math.round(216 * shade)},${Math.round(212 * shade)},${Math.round(200 * shade)})`;
       ctx.fillRect(col * ts + 3, row * ts + 3, ts - 6, ts - 6);
-      // specular highlight
       ctx.fillStyle = `rgba(255,255,255,${0.04 + Math.random() * 0.04})`;
       ctx.fillRect(col * ts + 4, row * ts + 4, ts * 0.35, ts * 0.25);
     }
@@ -150,7 +152,6 @@ function makeCarpetTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-// Singleton texture cache (created once per session)
 const texCache: Record<string, THREE.CanvasTexture> = {};
 function getFloorTex(type: string): THREE.CanvasTexture | null {
   if (typeof window === "undefined") return null;
@@ -198,17 +199,28 @@ function getRoomType(name: string): string {
 
 // ─── 3D components ────────────────────────────────────────────────────────────
 
-function RoomFloor({ room }: { room: SceneRoom }) {
+function RoomFloor({ room, selected, onSelect }: { room: SceneRoom; selected: boolean; onSelect: () => void }) {
+  const style = useContext(StyleCtx);
   const mat  = FLOOR_MAT_PROPS[room.floor_type] ?? { color: "#c8b890", roughness: 0.6, metalness: 0 };
   const tex  = useMemo(() => getFloorTex(room.floor_type), [room.floor_type]);
+  const wireframe = style === "wireframe";
+  const showTex   = style === "photo" && !selected;
   return (
-    <mesh receiveShadow position={[room.x + room.width / 2, 0.012, room.z + room.depth / 2]} rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh
+      receiveShadow
+      position={[room.x + room.width / 2, 0.012, room.z + room.depth / 2]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      onClick={(e) => { e.stopPropagation(); onSelect(); }}
+    >
       <planeGeometry args={[room.width - 0.06, room.depth - 0.06]} />
       <meshStandardMaterial
-        color={mat.color}
+        color={selected ? "#fde68a" : mat.color}
         roughness={mat.roughness}
         metalness={mat.metalness}
-        map={tex ?? undefined}
+        map={showTex ? (tex ?? undefined) : undefined}
+        wireframe={wireframe}
+        emissive={selected ? "#f59e0b" : "#000000"}
+        emissiveIntensity={selected ? 0.12 : 0}
       />
     </mesh>
   );
@@ -233,13 +245,14 @@ function WallBox({ x1, z1, x2, z2, yBot, yTop, thickness, color, roughness = 0.8
   x1: number; z1: number; x2: number; z2: number;
   yBot: number; yTop: number; thickness: number; color: string; roughness?: number;
 }) {
+  const style = useContext(StyleCtx);
   const len = Math.sqrt((x2 - x1) ** 2 + (z2 - z1) ** 2);
   if (len < 0.05) return null;
   const dx = (x2 - x1) / len, dz = (z2 - z1) / len;
   return (
     <mesh castShadow receiveShadow position={[(x1 + x2) / 2, yBot + (yTop - yBot) / 2, (z1 + z2) / 2]} rotation={[0, -Math.atan2(dz, dx), 0]}>
       <boxGeometry args={[len, yTop - yBot, thickness]} />
-      <meshStandardMaterial color={color} roughness={roughness} metalness={0} />
+      <meshStandardMaterial color={color} roughness={roughness} metalness={0} wireframe={style === "wireframe"} />
     </mesh>
   );
 }
@@ -302,15 +315,14 @@ function WindowPane({ win, walls }: { win: SceneWindow; walls: SceneWall[] }) {
   );
 }
 
-// ─── Window light shaft ────────────────────────────────────────────────────────
-
 function WindowLightShaft({ win, walls, cx, cz }: { win: SceneWindow; walls: SceneWall[]; cx: number; cz: number }) {
+  const style = useContext(StyleCtx);
+  if (style !== "photo") return null;
   const wall = walls.find(w => isOnWall(win.x, win.z, w, 3));
   if (!wall) return null;
   const len = Math.sqrt((wall.x2 - wall.x1) ** 2 + (wall.z2 - wall.z1) ** 2);
   if (len < 0.01) return null;
   const dx = (wall.x2 - wall.x1) / len, dz = (wall.z2 - wall.z1) / len;
-  // Normal pointing toward building centroid
   const nx = -dz, nz = dx;
   const toCxX = cx - win.x, toCzZ = cz - win.z;
   const dot   = nx * toCxX + nz * toCzZ;
@@ -326,15 +338,100 @@ function WindowLightShaft({ win, walls, cx, cz }: { win: SceneWindow; walls: Sce
   return (
     <mesh position={[cx3, sill + winH * 0.45, cz3]} rotation={[0, rotY, 0]}>
       <boxGeometry args={[shaftLen, winH * 0.85, win.width || 3]} />
-      <meshStandardMaterial
-        color="#fff8d0"
-        transparent
-        opacity={0.03}
-        side={THREE.DoubleSide}
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-      />
+      <meshStandardMaterial color="#fff8d0" transparent opacity={0.03} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
     </mesh>
+  );
+}
+
+// ─── Dimension overlays ───────────────────────────────────────────────────────
+
+function DimensionOverlays({ walls, rooms, wallH, unit }: { walls: SceneWall[]; rooms: SceneRoom[]; wallH: number; unit: UnitKey }) {
+  const factor = UNIT_FACTORS[unit];
+  const suffix = UNIT_SUFFIXES[unit];
+  return (
+    <>
+      {walls.filter(w => w.type === "exterior").map((wall, i) => {
+        const len = Math.sqrt((wall.x2 - wall.x1) ** 2 + (wall.z2 - wall.z1) ** 2);
+        if (len < 3) return null;
+        const mx = (wall.x1 + wall.x2) / 2;
+        const mz = (wall.z1 + wall.z2) / 2;
+        return (
+          <Html key={i} position={[mx, wallH + 0.6, mz]} center style={{ pointerEvents: "none" }}>
+            <div style={{ background: "rgba(15,23,42,0.82)", color: "#fbbf24", padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", backdropFilter: "blur(4px)" }}>
+              {(len * factor).toFixed(1)}{suffix}
+            </div>
+          </Html>
+        );
+      })}
+      {rooms.map((r, i) => (
+        <Html key={`r${i}`} position={[r.x + r.width / 2, wallH + 1.5, r.z + r.depth / 2]} center style={{ pointerEvents: "none" }}>
+          <div style={{ background: "rgba(15,23,42,0.7)", color: "#bfdbfe", padding: "1px 7px", borderRadius: 5, fontSize: 9, fontWeight: 600, whiteSpace: "nowrap" }}>
+            {(r.width * factor).toFixed(1)} × {(r.depth * factor).toFixed(1)} {suffix}
+          </div>
+        </Html>
+      ))}
+    </>
+  );
+}
+
+// ─── Measurement tool ─────────────────────────────────────────────────────────
+
+function MeasureFloor({ active, points, onPoint, bw, bd }: {
+  active: boolean;
+  points: THREE.Vector3[];
+  onPoint: (p: THREE.Vector3) => void;
+  bw: number; bd: number;
+}) {
+  const handleClick = useCallback((e: any) => {
+    if (!active) return;
+    e.stopPropagation();
+    onPoint(e.point.clone());
+  }, [active, onPoint]);
+
+  const linePositions = useMemo(() => {
+    if (points.length < 2) return null;
+    return new Float32Array([points[0].x, 0.08, points[0].z, points[1].x, 0.08, points[1].z]);
+  }, [points]);
+
+  const dist = points.length === 2 ? points[0].distanceTo(points[1]) : null;
+
+  return (
+    <>
+      {/* Invisible clickable floor for measurement */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[bw / 2, 0.05, bd / 2]} onClick={handleClick}>
+        <planeGeometry args={[bw + 60, bd + 60]} />
+        <meshStandardMaterial visible={false} />
+      </mesh>
+
+      {/* Point A */}
+      {points.length >= 1 && (
+        <mesh position={[points[0].x, 0.2, points[0].z]}>
+          <sphereGeometry args={[0.35, 12, 12]} />
+          <meshStandardMaterial color="#f59e0b" emissive="#f59e0b" emissiveIntensity={0.7} />
+        </mesh>
+      )}
+
+      {/* Point B + line + label */}
+      {points.length >= 2 && linePositions && (
+        <>
+          <mesh position={[points[1].x, 0.2, points[1].z]}>
+            <sphereGeometry args={[0.35, 12, 12]} />
+            <meshStandardMaterial color="#f59e0b" emissive="#f59e0b" emissiveIntensity={0.7} />
+          </mesh>
+          <line_>
+            <bufferGeometry>
+              <bufferAttribute attach="attributes-position" args={[linePositions, 3]} />
+            </bufferGeometry>
+            <lineBasicMaterial color="#f59e0b" />
+          </line_>
+          <Html position={[(points[0].x + points[1].x) / 2, 1.2, (points[0].z + points[1].z) / 2]} center style={{ pointerEvents: "none" }}>
+            <div style={{ background: "rgba(0,0,0,0.85)", color: "#fbbf24", padding: "4px 12px", borderRadius: 8, fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(0,0,0,0.4)" }}>
+              📐 {dist!.toFixed(2)} ft
+            </div>
+          </Html>
+        </>
+      )}
+    </>
   );
 }
 
@@ -367,6 +464,7 @@ function CeilingLight({ el }: { el: SceneElectrical }) {
 // ─── Plumbing ─────────────────────────────────────────────────────────────────
 
 function PlumbingFixture({ pl }: { pl: ScenePlumbing }) {
+  const style = useContext(StyleCtx);
   const size: [number, number, number] =
     pl.type === "toilet"       ? [1.8, 0.4, 2.5] :
     pl.type === "bathtub"      ? [3.0, 0.5, 6.0] :
@@ -375,7 +473,7 @@ function PlumbingFixture({ pl }: { pl: ScenePlumbing }) {
   return (
     <mesh castShadow receiveShadow position={[pl.x, size[1] / 2, pl.z]} rotation={[0, pl.rotation * (Math.PI / 180), 0]}>
       <boxGeometry args={size} />
-      <meshStandardMaterial color="#7ecaef" roughness={0.22} metalness={0.28} />
+      <meshStandardMaterial color="#7ecaef" roughness={0.22} metalness={0.28} wireframe={style === "wireframe"} />
     </mesh>
   );
 }
@@ -396,28 +494,21 @@ function Box3({ pos, size, color, roughness = 0.7, metalness = 0 }: {
 
 function LivingRoomFurniture({ room }: { room: SceneRoom }) {
   const { x, z, width, depth } = room;
-  const m = 1.0; // wall margin
+  const m = 1.0;
   const sofaW = Math.min(width - m * 2, 7);
   const sofaX = x + width / 2;
   const sofaZ = z + depth - m - 1.5;
   const tvW   = Math.min(width - m * 2, 5.5);
   return (
     <>
-      {/* Sofa */}
       <Box3 pos={[sofaX, 1.4, sofaZ]}         size={[sofaW, 2.8, 3.2]}     color="#7a6a5a" roughness={0.92} />
-      {/* Sofa back cushion */}
       <Box3 pos={[sofaX, 2.5, sofaZ + 1.1]}   size={[sofaW, 1.0, 0.8]}     color="#8a7a68" roughness={0.9} />
-      {/* Coffee table */}
       <Box3 pos={[sofaX, 0.8, sofaZ - 3.0]}   size={[Math.min(sofaW - 1, 4), 1.6, 2.2]} color="#4a3010" roughness={0.38} metalness={0.04} />
-      {/* Table legs */}
       {[-1, 1].map(sx => [-1, 1].map(sz => (
         <Box3 key={`${sx}${sz}`} pos={[sofaX + sx * 1.5, 0.5, sofaZ - 3 + sz * 0.8]} size={[0.15, 1.0, 0.15]} color="#3a2008" roughness={0.4} />
       )))}
-      {/* TV unit */}
       <Box3 pos={[sofaX, 1.0, z + m + 0.3]}   size={[tvW, 2.0, 0.55]}      color="#1e1e1e" roughness={0.25} metalness={0.1} />
-      {/* TV screen */}
       <Box3 pos={[sofaX, 1.6, z + m + 0.04]}  size={[tvW - 0.4, 1.5, 0.05]} color="#0a0a12" roughness={0.05} metalness={0.2} />
-      {/* Floor lamp */}
       <Box3 pos={[x + m + 0.5, 4.2, sofaZ - 1]} size={[0.12, 8.4, 0.12]}   color="#888" roughness={0.2} metalness={0.6} />
       <Box3 pos={[x + m + 0.5, 8.5, sofaZ - 1]} size={[0.7, 0.5, 0.7]}     color="#fff8d0" roughness={0.3} />
     </>
@@ -426,26 +517,19 @@ function LivingRoomFurniture({ room }: { room: SceneRoom }) {
 
 function KitchenFurniture({ room }: { room: SceneRoom }) {
   const { x, z, width, depth } = room;
-  const m   = 0.3;
-  const cH  = 3.5; // counter height
-  const cD  = 2.0; // counter depth
+  const m = 0.3, cH = 3.5, cD = 2.0;
   return (
     <>
-      {/* Counter along back wall */}
       <Box3 pos={[x + width / 2, cH / 2, z + depth - m - cD / 2]} size={[width - m * 2, cH, cD]}         color="#d4c8b0" roughness={0.3} metalness={0.08} />
-      {/* Counter top */}
       <Box3 pos={[x + width / 2, cH + 0.1, z + depth - m - cD / 2]} size={[width - m * 2, 0.2, cD + 0.1]} color="#e8e0d0" roughness={0.15} metalness={0.05} />
-      {/* Left side counter */}
       <Box3 pos={[x + m + cD / 2, cH / 2, z + depth / 2]}           size={[cD, cH, depth - 4]}            color="#d4c8b0" roughness={0.3} metalness={0.08} />
       <Box3 pos={[x + m + cD / 2, cH + 0.1, z + depth / 2]}          size={[cD + 0.1, 0.2, depth - 4]}    color="#e8e0d0" roughness={0.15} metalness={0.05} />
-      {/* Island */}
       {width > 10 && depth > 12 && (
         <>
-          <Box3 pos={[x + width / 2, cH * 0.7, z + depth / 2]}          size={[4, cH * 0.7, 2.5]}          color="#c8bca8" roughness={0.35} metalness={0.06} />
-          <Box3 pos={[x + width / 2, cH * 0.7 + 0.1, z + depth / 2]}    size={[4.1, 0.2, 2.6]}             color="#e0d8c8" roughness={0.12} metalness={0.05} />
+          <Box3 pos={[x + width / 2, cH * 0.7, z + depth / 2]}       size={[4, cH * 0.7, 2.5]}            color="#c8bca8" roughness={0.35} metalness={0.06} />
+          <Box3 pos={[x + width / 2, cH * 0.7 + 0.1, z + depth / 2]} size={[4.1, 0.2, 2.6]}               color="#e0d8c8" roughness={0.12} metalness={0.05} />
         </>
       )}
-      {/* Refrigerator */}
       <Box3 pos={[x + width - m - 1.0, 4.5, z + depth - m - 1.2]} size={[2.0, 9, 2.4]} color="#d8d8d8" roughness={0.15} metalness={0.3} />
     </>
   );
@@ -453,29 +537,19 @@ function KitchenFurniture({ room }: { room: SceneRoom }) {
 
 function BedroomFurniture({ room, isMaster }: { room: SceneRoom; isMaster: boolean }) {
   const { x, z, width, depth } = room;
-  const m      = 0.8;
-  const bedW   = isMaster ? 6.0 : 4.5;
-  const bedL   = isMaster ? 7.5 : 6.5;
-  const bedX   = x + width / 2;
-  const bedZ   = z + depth - m - bedL / 2;
-  const nightW = 1.5;
+  const m = 0.8, bedW = isMaster ? 6.0 : 4.5, bedL = isMaster ? 7.5 : 6.5;
+  const bedX = x + width / 2, bedZ = z + depth - m - bedL / 2, nightW = 1.5;
   return (
     <>
-      {/* Bed frame */}
       <Box3 pos={[bedX, 0.6, bedZ]}            size={[bedW + 0.3, 1.2, bedL + 0.3]}  color="#5a3820" roughness={0.55} metalness={0.02} />
-      {/* Mattress */}
       <Box3 pos={[bedX, 1.5, bedZ]}            size={[bedW, 0.8, bedL]}               color="#f0ece4" roughness={0.9} />
-      {/* Pillow(s) */}
       {isMaster
-        ? [[-1.1, 1], [1.1, 1]].map(([ox], i) => <Box3 key={i} pos={[bedX + ox, 2.05, bedZ + bedL / 2 - 1.5]} size={[1.8, 0.5, 1.2]} color="#f5f0e8" roughness={0.95} />)
+        ? [[-1.1], [1.1]].map(([ox], i) => <Box3 key={i} pos={[bedX + ox, 2.05, bedZ + bedL / 2 - 1.5]} size={[1.8, 0.5, 1.2]} color="#f5f0e8" roughness={0.95} />)
         : [<Box3 key="p" pos={[bedX, 2.05, bedZ + bedL / 2 - 1.5]} size={[1.8, 0.5, 1.2]} color="#f5f0e8" roughness={0.95} />]
       }
-      {/* Bedspread tuck */}
       <Box3 pos={[bedX, 1.82, bedZ - bedL * 0.15]} size={[bedW, 0.18, bedL * 0.7]}   color="#e0d8d0" roughness={0.88} />
-      {/* Nightstands */}
       <Box3 pos={[bedX - bedW / 2 - nightW / 2 - 0.1, 1.5, bedZ + 1.5]} size={[nightW, 3.0, nightW]} color="#6b4226" roughness={0.5} />
       {isMaster && <Box3 pos={[bedX + bedW / 2 + nightW / 2 + 0.1, 1.5, bedZ + 1.5]} size={[nightW, 3.0, nightW]} color="#6b4226" roughness={0.5} />}
-      {/* Dresser */}
       <Box3 pos={[x + m + 1.5, 2.5, z + m + 1.0]} size={[3.0, 5.0, 1.5]}            color="#6b4226" roughness={0.5} />
     </>
   );
@@ -484,17 +558,13 @@ function BedroomFurniture({ room, isMaster }: { room: SceneRoom; isMaster: boole
 function DiningFurniture({ room }: { room: SceneRoom }) {
   const { x, z, width, depth } = room;
   const tW = Math.min(width - 3, 6), tL = Math.min(depth - 3, 4.5);
-  const tx = x + width / 2, tz = z + depth / 2;
-  const chairs = tW > 4 ? 3 : 2;
+  const tx = x + width / 2, tz = z + depth / 2, chairs = tW > 4 ? 3 : 2;
   return (
     <>
-      {/* Table top */}
       <Box3 pos={[tx, 2.9, tz]} size={[tW, 0.22, tL]} color="#5a3010" roughness={0.4} metalness={0.03} />
-      {/* Table legs */}
       {[[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([sx, sz], i) => (
         <Box3 key={i} pos={[tx + sx * (tW / 2 - 0.4), 1.5, tz + sz * (tL / 2 - 0.4)]} size={[0.18, 3.0, 0.18]} color="#3a1e08" roughness={0.45} />
       ))}
-      {/* Chairs */}
       {[-1, 1].map(side => Array.from({ length: chairs }).map((_, i) => {
         const cx2 = tx + (tW / 2 + 1.1) * side;
         const cz2 = tz + (i - (chairs - 1) / 2) * 2;
@@ -510,20 +580,15 @@ function DiningFurniture({ room }: { room: SceneRoom }) {
 }
 
 function OfficeFurniture({ room }: { room: SceneRoom }) {
-  const { x, z, width, depth } = room;
+  const { x, z } = room;
   const m = 0.5;
   return (
     <>
-      {/* L-desk main */}
       <Box3 pos={[x + m + 2.5, 2.8, z + m + 1.0]}  size={[5, 0.22, 2.0]} color="#c8b898" roughness={0.35} metalness={0.04} />
-      {/* L-desk return */}
       <Box3 pos={[x + m + 0.9, 2.8, z + m + 2.7]}  size={[1.8, 0.22, 3.4]} color="#c8b898" roughness={0.35} metalness={0.04} />
-      {/* Desk frame */}
       <Box3 pos={[x + m + 2.5, 1.4, z + m + 1.0]}  size={[4.8, 2.8, 1.8]} color="#b8a888" roughness={0.5} />
-      {/* Monitor */}
       <Box3 pos={[x + m + 2.5, 4.5, z + m + 0.4]}  size={[2.4, 1.8, 0.12]} color="#111" roughness={0.08} metalness={0.3} />
       <Box3 pos={[x + m + 2.5, 3.3, z + m + 0.45]} size={[0.3, 0.9, 0.1]}  color="#222" roughness={0.2} metalness={0.3} />
-      {/* Chair */}
       <Box3 pos={[x + m + 2.5, 1.8, z + m + 3.0]}  size={[2.2, 3.6, 2.2]} color="#3a3a3a" roughness={0.7} />
     </>
   );
@@ -534,13 +599,9 @@ function GarageFurniture({ room }: { room: SceneRoom }) {
   const carW = Math.min(width - 2, 7.5), carL = Math.min(depth - 3, 14);
   return (
     <>
-      {/* Car body */}
       <Box3 pos={[x + width / 2, 1.8, z + depth / 2 + 1]}       size={[carW, 3.6, carL]}     color="#3a5a8a" roughness={0.25} metalness={0.35} />
-      {/* Car roof */}
       <Box3 pos={[x + width / 2, 3.9, z + depth / 2 + 0.5]}     size={[carW - 1.5, 2.0, carL * 0.55]} color="#3a5a8a" roughness={0.2} metalness={0.35} />
-      {/* Windshield */}
       <Box3 pos={[x + width / 2, 3.5, z + depth / 2 - carL * 0.19]} size={[carW - 1.5, 1.8, 0.1]} color="#a8cce8" roughness={0.04} metalness={0.2} />
-      {/* Workbench */}
       <Box3 pos={[x + 1.2, 3.0, z + 1.0]}                        size={[2.4, 6.0, 0.5]}      color="#8a6a40" roughness={0.6} />
     </>
   );
@@ -548,7 +609,6 @@ function GarageFurniture({ room }: { room: SceneRoom }) {
 
 function RoomFurniture({ room }: { room: SceneRoom }) {
   const type = getRoomType(room.name);
-  // Minimum size checks — don't render furniture in tiny rooms
   if (room.width < 6 || room.depth < 6) return null;
   if (type === "living")   return <LivingRoomFurniture room={room} />;
   if (type === "kitchen")  return <KitchenFurniture room={room} />;
@@ -591,16 +651,15 @@ function AnnotationPin({ ann, wallH }: { ann: Annotation; wallH: number }) {
         <meshStandardMaterial color="#7c3aed" emissive="#7c3aed" emissiveIntensity={0.5} roughness={0.3} />
       </mesh>
       <Html position={[ann.x, wallH * 0.62, ann.z]} center style={{ pointerEvents: "none" }}>
-        <div style={{
-          background: "rgba(124,58,237,0.9)", color: "#fff", borderRadius: 7, padding: "3px 9px",
-          fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-        }}>📌 {ann.text}</div>
+        <div style={{ background: "rgba(124,58,237,0.9)", color: "#fff", borderRadius: 7, padding: "3px 9px", fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
+          📌 {ann.text}
+        </div>
       </Html>
     </>
   );
 }
 
-// ─── Fallback room boxes (no Vision data) ────────────────────────────────────
+// ─── Fallback room boxes ───────────────────────────────────────────────────────
 
 function FallbackRoom({ room, layers, wallH }: { room: PlacedRoom; layers: LayerState; wallH: number }) {
   const floorColor = ROOM_TINT[room.colorIdx % ROOM_TINT.length];
@@ -636,7 +695,7 @@ function FallbackRoom({ room, layers, wallH }: { room: PlacedRoom; layers: Layer
   );
 }
 
-// ─── Screenshot helper ────────────────────────────────────────────────────────
+// ─── Screenshot & GLB export triggers ────────────────────────────────────────
 
 function ScreenshotTrigger({ triggerRef }: { triggerRef: React.MutableRefObject<(() => void) | null> }) {
   const { gl, scene, camera } = useThree();
@@ -650,6 +709,35 @@ function ScreenshotTrigger({ triggerRef }: { triggerRef: React.MutableRefObject<
       link.click();
     };
   }, [gl, scene, camera, triggerRef]);
+  return null;
+}
+
+function GLBExportTrigger({ triggerRef }: { triggerRef: React.MutableRefObject<(() => void) | null> }) {
+  const { scene } = useThree();
+  useEffect(() => {
+    triggerRef.current = async () => {
+      try {
+        const { GLTFExporter } = await import("three/examples/jsm/exporters/GLTFExporter.js" as any);
+        const exporter = new GLTFExporter();
+        exporter.parse(
+          scene,
+          (result: any) => {
+            const blob = new Blob([result as ArrayBuffer], { type: "model/gltf-binary" });
+            const url  = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href     = url;
+            link.download = "floor-plan-3d.glb";
+            link.click();
+            URL.revokeObjectURL(url);
+          },
+          (err: any) => console.error("GLB export failed", err),
+          { binary: true }
+        );
+      } catch (e) {
+        console.error("GLB export error", e);
+      }
+    };
+  }, [scene, triggerRef]);
   return null;
 }
 
@@ -708,12 +796,26 @@ function WalkthroughCamera({ startX, startZ, onExit }: { startX: number; startZ:
 // ─── Main 3D scene ────────────────────────────────────────────────────────────
 
 interface Scene3DProps {
-  sceneData: SceneData | null | undefined; layers: LayerState; unit: UnitKey;
-  viewMode: ViewMode; onExitWalk: () => void; fallbackRooms: PlacedRoom[];
-  annotations: Annotation[]; overviewKey: number; screenshotRef: React.MutableRefObject<(() => void) | null>;
+  sceneData: SceneData | null | undefined;
+  layers: LayerState;
+  unit: UnitKey;
+  viewMode: ViewMode;
+  onExitWalk: () => void;
+  fallbackRooms: PlacedRoom[];
+  annotations: Annotation[];
+  overviewKey: number;
+  screenshotRef: React.MutableRefObject<(() => void) | null>;
+  glbRef: React.MutableRefObject<(() => void) | null>;
+  selectedRoomName: string | null;
+  onRoomSelect: (room: SceneRoom) => void;
+  showDimensions: boolean;
+  measureMode: boolean;
+  measurePts: THREE.Vector3[];
+  onMeasurePoint: (p: THREE.Vector3) => void;
 }
 
-function Scene3D({ sceneData, layers, unit, viewMode, onExitWalk, fallbackRooms, annotations, overviewKey, screenshotRef }: Scene3DProps) {
+function Scene3D({ sceneData, layers, unit, viewMode, onExitWalk, fallbackRooms, annotations, overviewKey, screenshotRef, glbRef, selectedRoomName, onRoomSelect, showDimensions, measureMode, measurePts, onMeasurePoint }: Scene3DProps) {
+  const style = useContext(StyleCtx);
   const sd    = sceneData;
   const hasSD = !!(sd?.walls?.length);
   const bw    = hasSD ? sd!.building_width_ft  : Math.max(30, fallbackRooms.reduce((m, r) => Math.max(m, r.x + r.w), 0));
@@ -723,22 +825,31 @@ function Scene3D({ sceneData, layers, unit, viewMode, onExitWalk, fallbackRooms,
   const extColor = layers.drywall ? "#f0ece4" : "#b07040";
   const intColor = layers.drywall ? "#f5f2ee" : "#a06030";
 
+  const isMinimal  = style === "minimal";
+  const isWireframe = style === "wireframe";
+
   return (
     <>
-      <color attach="background" args={["#e4eaf5"]} />
-      <fog attach="fog" args={["#e4eaf5", 180, 600]} />
+      <color attach="background" args={[isMinimal || isWireframe ? "#f8fafc" : "#e4eaf5"]} />
+      {!isMinimal && !isWireframe && <fog attach="fog" args={["#e4eaf5", 180, 600]} />}
 
       {/* ── Lighting ──────────────────────────────────────────────────────── */}
-      <directionalLight castShadow position={[cx + 35, 52, cz + 28]} intensity={1.65} color="#fff6e0"
-        shadow-mapSize-width={4096} shadow-mapSize-height={4096}
-        shadow-camera-near={1} shadow-camera-far={450}
-        shadow-camera-left={-110} shadow-camera-right={110}
-        shadow-camera-top={110} shadow-camera-bottom={-110}
-        shadow-bias={-0.0004} shadow-normalBias={0.02}
-      />
-      <directionalLight position={[cx - 30, 20, cz - 22]} intensity={0.38} color="#b8d0ff" />
-      <hemisphereLight args={["#f0eeff", "#e8d4b0", 0.48]} />
-      <Environment preset="apartment" background={false} />
+      {isMinimal || isWireframe ? (
+        <ambientLight intensity={1.2} />
+      ) : (
+        <>
+          <directionalLight castShadow position={[cx + 35, 52, cz + 28]} intensity={1.65} color="#fff6e0"
+            shadow-mapSize-width={4096} shadow-mapSize-height={4096}
+            shadow-camera-near={1} shadow-camera-far={450}
+            shadow-camera-left={-110} shadow-camera-right={110}
+            shadow-camera-top={110} shadow-camera-bottom={-110}
+            shadow-bias={-0.0004} shadow-normalBias={0.02}
+          />
+          <directionalLight position={[cx - 30, 20, cz - 22]} intensity={0.38} color="#b8d0ff" />
+          <hemisphereLight args={["#f0eeff", "#e8d4b0", 0.48]} />
+          <Environment preset="apartment" background={false} />
+        </>
+      )}
 
       {/* ── Camera ────────────────────────────────────────────────────────── */}
       {viewMode === "iso" ? (
@@ -751,32 +862,40 @@ function Scene3D({ sceneData, layers, unit, viewMode, onExitWalk, fallbackRooms,
       )}
 
       {/* ── Ground & grid ─────────────────────────────────────────────────── */}
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[cx, -0.22, cz]}>
+      <mesh receiveShadow={!isMinimal} rotation={[-Math.PI / 2, 0, 0]} position={[cx, -0.22, cz]}>
         <planeGeometry args={[bw + 100, bd + 100]} />
-        <meshStandardMaterial color="#a8a098" roughness={0.93} />
+        <meshStandardMaterial color={isMinimal || isWireframe ? "#e2e8f0" : "#a8a098"} roughness={0.93} wireframe={isWireframe} />
       </mesh>
-      {layers.foundation && (
+      {layers.foundation && !isWireframe && (
         <Grid position={[cx, -0.19, cz]} args={[bw + 70, bd + 70]}
           cellSize={5} cellThickness={0.3} cellColor="#88867e"
           sectionSize={20} sectionThickness={0.7} sectionColor="#6a6860"
           fadeDistance={250} fadeStrength={1.6} infiniteGrid={false} />
       )}
 
-      {/* ── Screenshot helper ─────────────────────────────────────────────── */}
+      {/* ── Export triggers ───────────────────────────────────────────────── */}
       <ScreenshotTrigger triggerRef={screenshotRef} />
+      <GLBExportTrigger  triggerRef={glbRef} />
 
-      {/* ── Post-processing ───────────────────────────────────────────────── */}
-      <EffectComposer>
-        <Bloom luminanceThreshold={0.75} luminanceSmoothing={0.5} intensity={0.45} blendFunction={BlendFunction.ADD} />
-        <ChromaticAberration offset={new THREE.Vector2(0.0004, 0.0004)} blendFunction={BlendFunction.NORMAL} />
-        <Vignette eskil={false} offset={0.38} darkness={0.48} blendFunction={BlendFunction.NORMAL} />
-      </EffectComposer>
+      {/* ── Post-processing (photo only) ──────────────────────────────────── */}
+      {style === "photo" && (
+        <EffectComposer>
+          <Bloom luminanceThreshold={0.75} luminanceSmoothing={0.5} intensity={0.45} blendFunction={BlendFunction.ADD} />
+          <ChromaticAberration offset={new THREE.Vector2(0.0004, 0.0004)} blendFunction={BlendFunction.NORMAL} />
+          <Vignette eskil={false} offset={0.38} darkness={0.48} blendFunction={BlendFunction.NORMAL} />
+        </EffectComposer>
+      )}
+
+      {/* ── Measurement tool ──────────────────────────────────────────────── */}
+      <MeasureFloor active={measureMode} points={measurePts} onPoint={onMeasurePoint} bw={bw} bd={bd} />
 
       {/* ── Building (Vision data) ────────────────────────────────────────── */}
       {hasSD ? (
         <>
           {layers.foundation && <Foundation rooms={sd!.rooms} />}
-          {layers.drywall && sd!.rooms.map((r, i) => <RoomFloor key={i} room={r} />)}
+          {layers.drywall && sd!.rooms.map((r, i) => (
+            <RoomFloor key={i} room={r} selected={selectedRoomName === r.name} onSelect={() => onRoomSelect(r)} />
+          ))}
           {(layers.framing || layers.drywall) && sd!.walls.map((w, i) => (
             <WallWithDoors key={i} wall={w} wallHeight={wallH} doors={sd!.doors} color={w.type === "exterior" ? extColor : intColor} />
           ))}
@@ -790,13 +909,16 @@ function Scene3D({ sceneData, layers, unit, viewMode, onExitWalk, fallbackRooms,
             </mesh>
           ))}
           {layers.electrical && sd!.electrical.map((el, i) => (
-            <React.Fragment key={i}><ElectricalMarker el={el} /><CeilingLight el={el} /></React.Fragment>
+            <React.Fragment key={i}><ElectricalMarker el={el} />{style === "photo" && <CeilingLight el={el} />}</React.Fragment>
           ))}
           {layers.plumbing   && sd!.plumbing.map((pl, i)   => <PlumbingFixture key={i} pl={pl} />)}
-          {/* Furniture — only when drywall layer on */}
-          {layers.drywall && sd!.rooms.map((r, i) => <RoomFurniture key={i} room={r} />)}
+          {/* Furniture — photo/minimal only, not wireframe, not in tiny rooms */}
+          {!isWireframe && layers.drywall && sd!.rooms.map((r, i) => <RoomFurniture key={i} room={r} />)}
           {viewMode === "iso" && sd!.rooms.map((r, i) => <RoomLabel key={i} room={r} wallH={wallH} unit={unit} />)}
-          <ContactShadows position={[cx, 0.02, cz]} width={bw + 22} height={bd + 22} far={4.5} blur={2.8} opacity={0.4} />
+          {showDimensions && <DimensionOverlays walls={sd!.walls} rooms={sd!.rooms} wallH={wallH} unit={unit} />}
+          {!isMinimal && !isWireframe && (
+            <ContactShadows position={[cx, 0.02, cz]} width={bw + 22} height={bd + 22} far={4.5} blur={2.8} opacity={0.4} />
+          )}
         </>
       ) : (
         <>
@@ -822,11 +944,7 @@ function Scene3D({ sceneData, layers, unit, viewMode, onExitWalk, fallbackRooms,
               <div style={{ position: "absolute", top: "50%", left: 0, width: "100%", height: 1.5, background: "rgba(255,255,255,0.85)", borderRadius: 2, transform: "translateY(-50%)" }} />
               <div style={{ position: "absolute", left: "50%", top: 0, height: "100%", width: 1.5, background: "rgba(255,255,255,0.85)", borderRadius: 2, transform: "translateX(-50%)" }} />
             </div>
-            <div style={{
-              position: "absolute", bottom: 52, left: "50%", transform: "translateX(-50%)",
-              background: "rgba(0,0,0,0.52)", color: "#fff", borderRadius: 10, padding: "6px 20px",
-              fontSize: 12, fontWeight: 500, backdropFilter: "blur(10px)", whiteSpace: "nowrap",
-            }}>
+            <div style={{ position: "absolute", bottom: 52, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.52)", color: "#fff", borderRadius: 10, padding: "6px 20px", fontSize: 12, fontWeight: 500, backdropFilter: "blur(10px)", whiteSpace: "nowrap" }}>
               W / A / S / D · Drag to look · Esc to exit
             </div>
           </>
@@ -869,14 +987,30 @@ function buildRooms(analysis: any): PlacedRoom[] {
 
 // ─── Main exported component ───────────────────────────────────────────────────
 
-export default function Blueprint3DViewer({ analysis, sceneData }: { analysis: any; sceneData?: SceneData | null }) {
+export default function Blueprint3DViewer({
+  analysis,
+  sceneData,
+  blueprintUrl,
+}: {
+  analysis: any;
+  sceneData?: SceneData | null;
+  blueprintUrl?: string;
+}) {
   const [viewMode,        setViewMode]        = useState<ViewMode>("iso");
+  const [styleMode,       setStyleMode]       = useState<StyleMode>("photo");
   const [layers,          setLayers]          = useState<LayerState>({ foundation: true, framing: true, electrical: false, plumbing: false, drywall: true, roof: true });
   const [unit,            setUnit]            = useState<UnitKey>("ft");
   const [showLayersPanel, setShowLayersPanel] = useState(false);
   const [annotations,     setAnnotations]     = useState<Annotation[]>([]);
   const [overviewKey,     setOverviewKey]     = useState(0);
+  const [selectedRoom,    setSelectedRoom]    = useState<SceneRoom | null>(null);
+  const [showDimensions,  setShowDimensions]  = useState(false);
+  const [measureMode,     setMeasureMode]     = useState(false);
+  const [measurePts,      setMeasurePts]      = useState<THREE.Vector3[]>([]);
+  const [showSplit,       setShowSplit]        = useState(false);
+
   const screenshotRef = useRef<(() => void) | null>(null);
+  const glbRef        = useRef<(() => void) | null>(null);
   const nextId        = useRef(1);
 
   const fallbackRooms = useRef<PlacedRoom[]>(buildRooms(analysis));
@@ -888,124 +1022,254 @@ export default function Blueprint3DViewer({ analysis, sceneData }: { analysis: a
   function toggleLayer(key: keyof LayerState) { setLayers(p => ({ ...p, [key]: !p[key] })); }
   function exitWalkthrough() { setViewMode("iso"); setOverviewKey(k => k + 1); }
   const handleScreenshot = useCallback(() => screenshotRef.current?.(), []);
+  const handleGLBExport  = useCallback(() => glbRef.current?.(), []);
+
+  function handleRoomSelect(room: SceneRoom) {
+    setSelectedRoom(prev => prev?.name === room.name ? null : room);
+  }
+
+  function handleMeasurePoint(p: THREE.Vector3) {
+    setMeasurePts(prev => {
+      if (prev.length === 0) return [p];
+      if (prev.length === 1) return [prev[0], p];
+      return [p]; // reset on 3rd click
+    });
+  }
+
+  function toggleMeasure() {
+    setMeasureMode(m => !m);
+    setMeasurePts([]);
+  }
+
+  const canvas = (
+    <Canvas
+      shadows
+      camera={{ position: [40, 32, 40], fov: 42, near: 0.1, far: 1500 }}
+      gl={{ antialias: true, alpha: false, powerPreference: "high-performance", preserveDrawingBuffer: true }}
+      dpr={[1, 2]}
+    >
+      <Suspense fallback={null}>
+        <Scene3D
+          sceneData={sceneData}
+          layers={layers}
+          unit={unit}
+          viewMode={viewMode}
+          onExitWalk={exitWalkthrough}
+          fallbackRooms={fallbackRooms.current}
+          annotations={annotations}
+          overviewKey={overviewKey}
+          screenshotRef={screenshotRef}
+          glbRef={glbRef}
+          selectedRoomName={selectedRoom?.name ?? null}
+          onRoomSelect={handleRoomSelect}
+          showDimensions={showDimensions}
+          measureMode={measureMode}
+          measurePts={measurePts}
+          onMeasurePoint={handleMeasurePoint}
+        />
+      </Suspense>
+    </Canvas>
+  );
 
   return (
-    <div className="flex flex-col gap-3 select-none">
-      {/* ── Toolbar ───────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap px-1">
-        {/* View mode */}
-        <div className="flex rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-          <button className={`px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === "iso" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`} onClick={exitWalkthrough}>
-            ⬡ Overview
-          </button>
-          <button className={`px-3 py-1.5 text-xs font-semibold border-l border-gray-200 transition-colors ${viewMode === "fp" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`} onClick={() => setViewMode("fp")}>
-            🚶 Walk Through
-          </button>
-        </div>
+    <StyleCtx.Provider value={styleMode}>
+      <div className="flex flex-col gap-3 select-none">
 
-        <div className="w-px h-5 bg-gray-200" />
+        {/* ── Toolbar ─────────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-2 flex-wrap px-1">
 
-        {/* Layers */}
-        <div className="relative">
-          <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showLayersPanel ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={() => setShowLayersPanel(p => !p)}>
-            🏗 Layers
+          {/* View mode */}
+          <div className="flex rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+            <button className={`px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === "iso" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`} onClick={exitWalkthrough}>
+              ⬡ Overview
+            </button>
+            <button className={`px-3 py-1.5 text-xs font-semibold border-l border-gray-200 transition-colors ${viewMode === "fp" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`} onClick={() => setViewMode("fp")}>
+              🚶 Walk Through
+            </button>
+          </div>
+
+          <div className="w-px h-5 bg-gray-200" />
+
+          {/* Style mode */}
+          <div className="flex rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+            {(["photo", "minimal", "wireframe"] as StyleMode[]).map((s, i) => (
+              <button
+                key={s}
+                className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${i > 0 ? "border-l border-gray-200" : ""} ${styleMode === s ? "bg-slate-700 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                onClick={() => setStyleMode(s)}
+              >
+                {s === "photo" ? "🖼 Photo" : s === "minimal" ? "◻ Minimal" : "⬡ Wire"}
+              </button>
+            ))}
+          </div>
+
+          <div className="w-px h-5 bg-gray-200" />
+
+          {/* Layers */}
+          <div className="relative">
+            <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showLayersPanel ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={() => setShowLayersPanel(p => !p)}>
+              🏗 Layers
+            </button>
+            {showLayersPanel && (
+              <div className="absolute left-0 top-full mt-1 z-40 bg-white border border-gray-200 rounded-xl shadow-xl p-3 w-48">
+                <p className="text-xs font-semibold text-gray-400 mb-2 uppercase tracking-widest">Visibility</p>
+                {LAYER_META.map(({ key, label, color }) => (
+                  <label key={key} className="flex items-center gap-2 py-1 px-1 cursor-pointer hover:bg-gray-50 rounded-lg">
+                    <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} className="rounded accent-indigo-600" />
+                    <span className="w-3 h-3 rounded-sm flex-shrink-0 border border-gray-200" style={{ backgroundColor: color }} />
+                    <span className="text-xs text-gray-700">{label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Dimensions toggle */}
+          <button
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showDimensions ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}
+            onClick={() => setShowDimensions(d => !d)}
+            title="Toggle dimension labels"
+          >
+            📏 Dims
           </button>
-          {showLayersPanel && (
-            <div className="absolute left-0 top-full mt-1 z-40 bg-white border border-gray-200 rounded-xl shadow-xl p-3 w-48">
-              <p className="text-xs font-semibold text-gray-400 mb-2 uppercase tracking-widest">Visibility</p>
-              {LAYER_META.map(({ key, label, color }) => (
-                <label key={key} className="flex items-center gap-2 py-1 px-1 cursor-pointer hover:bg-gray-50 rounded-lg">
-                  <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} className="rounded accent-indigo-600" />
-                  <span className="w-3 h-3 rounded-sm flex-shrink-0 border border-gray-200" style={{ backgroundColor: color }} />
-                  <span className="text-xs text-gray-700">{label}</span>
-                </label>
-              ))}
-            </div>
+
+          {/* Measure tool */}
+          <button
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${measureMode ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}
+            onClick={toggleMeasure}
+            title="Click two floor points to measure distance"
+          >
+            📐 Measure
+          </button>
+
+          {/* Split view — only when blueprint URL available */}
+          {blueprintUrl && (
+            <button
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showSplit ? "bg-teal-600 text-white border-teal-600" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}
+              onClick={() => setShowSplit(s => !s)}
+              title="Side-by-side 2D blueprint and 3D view"
+            >
+              ⬛ Split
+            </button>
+          )}
+
+          <div className="flex-1" />
+
+          {/* Screenshot */}
+          <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors" onClick={handleScreenshot} title="Download PNG">
+            📸 PNG
+          </button>
+
+          {/* GLB Export */}
+          <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors" onClick={handleGLBExport} title="Export 3D model as GLB">
+            📦 GLB
+          </button>
+
+          {/* Unit selector */}
+          <select className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 font-medium" value={unit} onChange={e => setUnit(e.target.value as UnitKey)}>
+            {(Object.keys(UNIT_LABELS) as UnitKey[]).map(k => <option key={k} value={k}>{UNIT_LABELS[k]}</option>)}
+          </select>
+
+          {viewMode === "fp" && (
+            <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors" onClick={exitWalkthrough}>
+              ✕ Exit Walk
+            </button>
           )}
         </div>
 
-        <div className="flex-1" />
-
-        {/* Screenshot */}
-        <button
-          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
-          onClick={handleScreenshot}
-          title="Download PNG screenshot"
-        >
-          📸 Export PNG
-        </button>
-
-        {/* Unit */}
-        <select className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 font-medium" value={unit} onChange={e => setUnit(e.target.value as UnitKey)}>
-          {(Object.keys(UNIT_LABELS) as UnitKey[]).map(k => <option key={k} value={k}>{UNIT_LABELS[k]}</option>)}
-        </select>
-
-        {viewMode === "fp" && (
-          <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors" onClick={exitWalkthrough}>
-            ✕ Exit Walk Mode
-          </button>
-        )}
-      </div>
-
-      {/* ── Three.js Canvas ───────────────────────────────────────────────── */}
-      <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-xl" style={{ height: 560 }}>
-        <Canvas
-          shadows
-          camera={{ position: [40, 32, 40], fov: 42, near: 0.1, far: 1500 }}
-          gl={{ antialias: true, alpha: false, powerPreference: "high-performance", preserveDrawingBuffer: true }}
-          dpr={[1, 2]}
-        >
-          <Suspense fallback={null}>
-            <Scene3D
-              sceneData={sceneData}
-              layers={layers}
-              unit={unit}
-              viewMode={viewMode}
-              onExitWalk={exitWalkthrough}
-              fallbackRooms={fallbackRooms.current}
-              annotations={annotations}
-              overviewKey={overviewKey}
-              screenshotRef={screenshotRef}
-            />
-          </Suspense>
-        </Canvas>
-      </div>
-
-      {/* ── Stats panel ───────────────────────────────────────────────────── */}
-      {hasSD && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {[
-            { label: "Total Area",    value: `${(sd!.total_sqft || 0).toLocaleString()} sqft` },
-            { label: "Rooms",         value: sd!.rooms.length },
-            { label: "Wall Height",   value: `${sd!.wall_height_ft ?? WALL_H_DEFAULT} ft` },
-            { label: "Parse Quality", value: `${Math.round((sd!.confidence || 0) * 100)}%` },
-          ].map(s => (
-            <div key={s.label} className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
-              <p className="text-xs text-gray-400 font-medium">{s.label}</p>
-              <p className="text-sm font-bold text-gray-800 mt-0.5">{s.value}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Annotations list ─────────────────────────────────────────────── */}
-      {annotations.length > 0 && (
-        <div className="border border-gray-200 rounded-xl bg-white shadow-sm p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">📌 Notes ({annotations.length})</p>
-            <button className="text-xs text-red-500 hover:text-red-700" onClick={() => setAnnotations([])}>Clear all</button>
+        {/* ── Measure hint ──────────────────────────────────────────────────── */}
+        {measureMode && (
+          <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-medium flex items-center gap-2">
+            <span className="text-base">📐</span>
+            {measurePts.length === 0 && "Click a point on the floor to start measuring"}
+            {measurePts.length === 1 && "Click a second point to complete the measurement"}
+            {measurePts.length === 2 && `Distance: ${measurePts[0].distanceTo(measurePts[1]).toFixed(2)} ft — click again to reset`}
+            <button className="ml-auto text-amber-600 hover:text-amber-800 font-semibold" onClick={toggleMeasure}>Done</button>
           </div>
-          <div className="flex flex-col gap-1">
-            {annotations.map(ann => (
-              <div key={ann.id} className="flex items-center gap-2 py-1.5 px-2 bg-purple-50 rounded-lg">
-                <span className="w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center text-white text-xs flex-shrink-0">✏</span>
-                <span className="text-xs text-gray-700 flex-1">{ann.text}</span>
-                <button className="text-gray-400 hover:text-red-500 text-sm" onClick={() => setAnnotations(p => p.filter(a => a.id !== ann.id))}>×</button>
+        )}
+
+        {/* ── Canvas (normal or split) ──────────────────────────────────────── */}
+        {showSplit && blueprintUrl ? (
+          <div className="flex gap-3" style={{ height: 560 }}>
+            {/* Blueprint image */}
+            <div className="flex-1 rounded-2xl overflow-hidden border border-gray-200 shadow-xl bg-white flex items-center justify-center">
+              <img
+                src={blueprintUrl}
+                alt="Blueprint"
+                className="w-full h-full object-contain"
+                style={{ maxHeight: 560 }}
+              />
+            </div>
+            {/* 3D viewer */}
+            <div className="flex-1 rounded-2xl overflow-hidden border border-gray-200 shadow-xl">
+              {canvas}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-xl" style={{ height: 560 }}>
+            {canvas}
+          </div>
+        )}
+
+        {/* ── Selected room info panel ──────────────────────────────────────── */}
+        {selectedRoom && (
+          <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm px-5 py-4 flex items-start gap-4" style={{ boxShadow: "0 2px 16px rgba(99,102,241,0.10)" }}>
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">🏠</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-slate-800 text-sm">{selectedRoom.name}</h3>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  {selectedRoom.floor_type || "—"}
+                </span>
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-4 text-xs text-slate-500">
+                {selectedRoom.sqft > 0 && <span><span className="font-semibold text-slate-700">{Math.round(selectedRoom.sqft).toLocaleString()}</span> sqft</span>}
+                <span><span className="font-semibold text-slate-700">{selectedRoom.width?.toFixed(1)}</span>′ wide</span>
+                <span><span className="font-semibold text-slate-700">{selectedRoom.depth?.toFixed(1)}</span>′ deep</span>
+                <span>at <span className="font-semibold text-slate-700">({selectedRoom.x.toFixed(0)}, {selectedRoom.z.toFixed(0)})</span></span>
+              </div>
+            </div>
+            <button className="text-slate-400 hover:text-slate-600 text-lg leading-none" onClick={() => setSelectedRoom(null)}>×</button>
+          </div>
+        )}
+
+        {/* ── Stats panel ───────────────────────────────────────────────────── */}
+        {hasSD && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { label: "Total Area",    value: `${(sd!.total_sqft || 0).toLocaleString()} sqft` },
+              { label: "Rooms",         value: sd!.rooms.length },
+              { label: "Wall Height",   value: `${sd!.wall_height_ft ?? WALL_H_DEFAULT} ft` },
+              { label: "Parse Quality", value: `${Math.round((sd!.confidence || 0) * 100)}%` },
+            ].map(s => (
+              <div key={s.label} className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
+                <p className="text-xs text-gray-400 font-medium">{s.label}</p>
+                <p className="text-sm font-bold text-gray-800 mt-0.5">{s.value}</p>
               </div>
             ))}
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* ── Annotations list ──────────────────────────────────────────────── */}
+        {annotations.length > 0 && (
+          <div className="border border-gray-200 rounded-xl bg-white shadow-sm p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">📌 Notes ({annotations.length})</p>
+              <button className="text-xs text-red-500 hover:text-red-700" onClick={() => setAnnotations([])}>Clear all</button>
+            </div>
+            <div className="flex flex-col gap-1">
+              {annotations.map(ann => (
+                <div key={ann.id} className="flex items-center gap-2 py-1.5 px-2 bg-purple-50 rounded-lg">
+                  <span className="w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center text-white text-xs flex-shrink-0">✏</span>
+                  <span className="text-xs text-gray-700 flex-1">{ann.text}</span>
+                  <button className="text-gray-400 hover:text-red-500 text-sm" onClick={() => setAnnotations(p => p.filter(a => a.id !== ann.id))}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </StyleCtx.Provider>
   );
 }
