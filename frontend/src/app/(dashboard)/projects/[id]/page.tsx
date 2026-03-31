@@ -684,6 +684,10 @@ export default function ProjectPage() {
   const [quoteForm, setQuoteForm] = useState({ name: '', company: '', phone: '', email: '', branch: '', notes: '' })
   const [quoteGenerated, setQuoteGenerated] = useState(false)
   const [quoteCopied, setQuoteCopied] = useState(false)
+  // 3D Model
+  const [sceneData, setSceneData] = useState<any>(null)
+  const [scene3dLoading, setScene3dLoading] = useState(false)
+  const [scene3dError, setScene3dError] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     try {
@@ -936,6 +940,26 @@ Thank you for your time.`
       setPhotos(prev => prev.filter(p => p.id !== photo.id))
     } catch {}
   }
+
+  async function handleGenerate3D() {
+    setScene3dLoading(true)
+    setScene3dError(null)
+    try {
+      const result = await api.model3d.parse(projectId)
+      setSceneData(result)
+    } catch (err: any) {
+      setScene3dError(err.message || '3D generation failed. Please try again.')
+    }
+    setScene3dLoading(false)
+  }
+
+  useEffect(() => {
+    if (tab === 'view3d' && !sceneData && !scene3dLoading) {
+      api.model3d.get(projectId)
+        .then(r => { if (r?.scene_data) setSceneData(r.scene_data) })
+        .catch(() => {})
+    }
+  }, [tab])
 
   function updateActualCost(category: string, value: number) {
     const updated = { ...actualCosts, [category]: value }
@@ -1894,28 +1918,63 @@ Thank you for your time.`
 
             {/* ── 3D VIEW ───────────────────────────────────────────────── */}
             {tab === 'view3d' && (
-              <div className="max-w-5xl space-y-5">
-                <div>
-                  <h2 className="text-slate-800 font-bold text-lg">3D Floor Plan</h2>
-                  <p className="text-slate-400 text-xs mt-0.5">
-                    Isometric view built from AI-detected rooms. Drag to rotate, scroll to zoom.
-                  </p>
+              <div className="max-w-5xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-slate-800 font-bold text-lg">3D Floor Plan</h2>
+                    <p className="text-slate-400 text-xs mt-0.5">
+                      {sceneData
+                        ? `Claude Vision parsed · ${sceneData.walls?.length || 0} walls · ${sceneData.rooms?.length || 0} rooms · ${sceneData.electrical?.length || 0} electrical · ${sceneData.plumbing?.length || 0} plumbing`
+                        : 'Generate a 3D model from the uploaded blueprint using Claude Vision.'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {sceneData && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          ✓ Vision Parsed · {Math.round((sceneData.confidence || 0) * 100)}% confidence
+                        </span>
+                      </div>
+                    )}
+                    <button
+                      onClick={handleGenerate3D}
+                      disabled={scene3dLoading || !hasBlueprint}
+                      title={!hasBlueprint ? 'Upload a blueprint first' : blueprintFileType === 'pdf' ? 'PDF not supported — upload a PNG or JPG' : 'Parse blueprint with Claude Vision'}
+                      className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
+                      style={{ background: scene3dLoading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
+                    >
+                      {scene3dLoading
+                        ? <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Analyzing Blueprint…</>
+                        : sceneData ? '🔄 Re-generate 3D' : '✦ Generate 3D Model'}
+                    </button>
+                  </div>
                 </div>
+
+                {scene3dError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-sm">{scene3dError}</div>
+                )}
+
+                {blueprintFileType === 'pdf' && !sceneData && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-sm">
+                    ⚠ 3D generation requires a PNG or JPG blueprint. Your current blueprint is a PDF — please re-upload as an image to use this feature.
+                  </div>
+                )}
+
                 {analysis ? (
                   <>
-                    <Blueprint3DViewer analysis={analysis} />
+                    <Blueprint3DViewer analysis={analysis} sceneData={sceneData} />
                     {analysis.rooms?.length > 0 && (
                       <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
                         <h3 className="text-slate-800 font-bold text-sm mb-3">Rooms Detected</h3>
                         <div className="grid grid-cols-3 gap-3">
-                          {analysis.rooms.map((room: any, i: number) => {
+                          {(sceneData?.rooms?.length > 0 ? sceneData.rooms : analysis.rooms).map((room: any, i: number) => {
                             const colors = ['bg-blue-50 border-blue-200','bg-green-50 border-green-200','bg-yellow-50 border-yellow-200','bg-rose-50 border-rose-200','bg-purple-50 border-purple-200','bg-cyan-50 border-cyan-200','bg-orange-50 border-orange-200','bg-emerald-50 border-emerald-200']
                             return (
                               <div key={i} className={`rounded-xl border p-3 ${colors[i % colors.length]}`}>
                                 <div className="text-slate-800 font-semibold text-sm">{room.name}</div>
                                 <div className="text-slate-500 text-xs mt-0.5">{room.sqft ? `${Math.round(room.sqft)} sqft` : '—'}</div>
-                                {room.dimensions && (
-                                  <div className="text-slate-400 text-xs">{room.dimensions.width?.toFixed(0)}′ × {room.dimensions.height?.toFixed(0)}′</div>
+                                {(room.dimensions || room.width) && (
+                                  <div className="text-slate-400 text-xs">{(room.dimensions?.width || room.width)?.toFixed(0)}′ × {(room.dimensions?.height || room.depth)?.toFixed(0)}′</div>
                                 )}
                               </div>
                             )

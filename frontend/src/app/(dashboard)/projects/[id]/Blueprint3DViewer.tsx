@@ -50,6 +50,19 @@ interface LayerState {
   roof: boolean;
 }
 
+interface SceneRoom { name: string; x: number; z: number; width: number; depth: number; floor_type: string; sqft: number }
+interface SceneWall { x1: number; z1: number; x2: number; z2: number; thickness: number; type: 'exterior' | 'interior' }
+interface SceneDoor { x: number; z: number; width: number; height: number }
+interface SceneWindow { x: number; z: number; width: number; height: number; sill_height: number }
+interface SceneElectrical { type: string; x: number; z: number }
+interface ScenePlumbing { type: string; x: number; z: number; rotation: number }
+interface SceneData {
+  building_width_ft: number; building_depth_ft: number; total_sqft: number; wall_height_ft: number; stories: number
+  rooms: SceneRoom[]; walls: SceneWall[]; doors: SceneDoor[]; windows: SceneWindow[]
+  electrical: SceneElectrical[]; plumbing: ScenePlumbing[]
+  confidence: number; scale_detected: string
+}
+
 interface ProjectedPoint {
   sx: number;
   sy: number;
@@ -106,6 +119,330 @@ const LAYER_META: { key: keyof LayerState; label: string; color: string }[] = [
   { key: "drywall", label: "Drywall", color: "#e5e7eb" },
   { key: "roof", label: "Roof", color: "#6b7280" },
 ];
+
+// ---------------------------------------------------------------------------
+// Scene-data rendering helpers
+// ---------------------------------------------------------------------------
+
+function projectOntoWall(px: number, pz: number, wall: SceneWall): number {
+  const dx = wall.x2 - wall.x1, dz = wall.z2 - wall.z1
+  const len = Math.sqrt(dx * dx + dz * dz)
+  if (len < 0.01) return 0
+  return ((px - wall.x1) * dx + (pz - wall.z1) * dz) / len
+}
+
+function isOnWall(px: number, pz: number, wall: SceneWall, tol = 2.5): boolean {
+  const dx = wall.x2 - wall.x1, dz = wall.z2 - wall.z1
+  const len = Math.sqrt(dx * dx + dz * dz)
+  if (len < 0.01) return false
+  const t = ((px - wall.x1) * dx + (pz - wall.z1) * dz) / (len * len)
+  if (t < -0.05 || t > 1.05) return false
+  const projX = wall.x1 + t * dx, projZ = wall.z1 + t * dz
+  return Math.sqrt((px - projX) ** 2 + (pz - projZ) ** 2) < tol
+}
+
+function drawWallBox3D(
+  ctx: CanvasRenderingContext2D,
+  x1: number, z1: number, x2: number, z2: number,
+  yBot: number, yTop: number, thickness: number,
+  fillColor: string, darkColor: string,
+  isoP: (x: number, y: number, z: number) => { sx: number; sy: number }
+) {
+  const len = Math.sqrt((x2 - x1) ** 2 + (z2 - z1) ** 2)
+  if (len < 0.05) return
+  const nx = -(z2 - z1) / len * thickness / 2
+  const nz = (x2 - x1) / len * thickness / 2
+
+  const bf0 = isoP(x1 + nx, yBot, z1 + nz), bf1 = isoP(x2 + nx, yBot, z2 + nz)
+  const tf0 = isoP(x1 + nx, yTop, z1 + nz), tf1 = isoP(x2 + nx, yTop, z2 + nz)
+  const bb0 = isoP(x1 - nx, yBot, z1 - nz), bb1 = isoP(x2 - nx, yBot, z2 - nz)
+  const tb0 = isoP(x1 - nx, yTop, z1 - nz), tb1 = isoP(x2 - nx, yTop, z2 - nz)
+
+  // Top face
+  fillPoly(ctx, [tf0, tf1, tb1, tb0], '#f0ece4', 0.95)
+  strokePoly(ctx, [tf0, tf1, tb1, tb0], '#00000015', 0.5)
+  // Front face
+  fillPoly(ctx, [bf0, bf1, tf1, tf0], fillColor)
+  strokePoly(ctx, [bf0, bf1, tf1, tf0], '#00000025', 0.8)
+  // Back face
+  fillPoly(ctx, [bb0, bb1, tb1, tb0], darkColor, 0.75)
+  // End caps
+  fillPoly(ctx, [bf0, bb0, tb0, tf0], darkColor, 0.9)
+  fillPoly(ctx, [bf1, bb1, tb1, tf1], darkColor, 0.9)
+}
+
+function drawSceneDataIso(
+  ctx: CanvasRenderingContext2D,
+  sd: SceneData,
+  scale: number,
+  angle: number,
+  cx: number,
+  cy: number,
+  lyr: LayerState,
+  factor: number,
+  suffix: string
+) {
+  const wallH = sd.wall_height_ft || 9
+
+  function isoP(wx: number, wy: number, wz: number) {
+    const cosR = Math.cos(angle), sinR = Math.sin(angle)
+    const ix = wx * cosR - wz * sinR
+    const iz = wx * sinR + wz * cosR
+    return { sx: cx + ix * scale, sy: cy + iz * scale * 0.45 - wy * scale * 0.6 }
+  }
+
+  const floorColors: Record<string, string> = {
+    hardwood: '#d4a96a', tile: '#dde8e8', carpet: '#b8aec8',
+    concrete: '#c0c0b8', vinyl: '#d8d0c0', wood: '#d4a96a',
+  }
+
+  // 1. Foundation slab
+  if (lyr.foundation && sd.rooms.length > 0) {
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity
+    for (const r of sd.rooms) {
+      minX = Math.min(minX, r.x); minZ = Math.min(minZ, r.z)
+      maxX = Math.max(maxX, r.x + r.width); maxZ = Math.max(maxZ, r.z + r.depth)
+    }
+    const pad = 0.3
+    const s00 = isoP(minX-pad, -0.3, minZ-pad), s10 = isoP(maxX+pad, -0.3, minZ-pad)
+    const s11 = isoP(maxX+pad, -0.3, maxZ+pad), s01 = isoP(minX-pad, -0.3, maxZ+pad)
+    fillPoly(ctx, [s00, s10, s11, s01], '#9ca3af', 0.7)
+    strokePoly(ctx, [s00, s10, s11, s01], '#6b7280', 1)
+  }
+
+  // 2. Sort rooms back to front for painter's algorithm
+  const sortedRooms = [...sd.rooms].sort((a, b) => {
+    const da = isoP(a.x + a.width/2, 0, a.z + a.depth/2).sy
+    const db = isoP(b.x + b.width/2, 0, b.z + b.depth/2).sy
+    return da - db
+  })
+
+  // 3. Draw floors
+  for (const r of sortedRooms) {
+    const c00 = isoP(r.x, 0, r.z), c10 = isoP(r.x + r.width, 0, r.z)
+    const c11 = isoP(r.x + r.width, 0, r.z + r.depth), c01 = isoP(r.x, 0, r.z + r.depth)
+    const fc = floorColors[r.floor_type] || '#c8b99a'
+    fillPoly(ctx, [c00, c10, c11, c01], lyr.drywall ? fc : '#d6b896')
+    strokePoly(ctx, [c00, c10, c11, c01], '#00000018', 0.5)
+  }
+
+  // 4. Draw walls (sorted back to front)
+  const sortedWalls = [...sd.walls].sort((a, b) => {
+    const da = isoP((a.x1+a.x2)/2, 0, (a.z1+a.z2)/2).sy
+    const db = isoP((b.x1+b.x2)/2, 0, (b.z1+b.z2)/2).sy
+    return da - db
+  })
+
+  for (const wall of sortedWalls) {
+    const wallLen = Math.sqrt((wall.x2-wall.x1)**2 + (wall.z2-wall.z1)**2)
+    if (wallLen < 0.1) continue
+    const dirX = (wall.x2-wall.x1)/wallLen, dirZ = (wall.z2-wall.z1)/wallLen
+    const t = wall.thickness || (wall.type === 'exterior' ? 0.5 : 0.33)
+    const isExt = wall.type === 'exterior'
+    const fillColor = lyr.drywall ? (isExt ? '#e0d8c8' : '#ece8e0') : '#c8a070'
+    const darkColor = lyr.drywall ? (isExt ? '#cec6b4' : '#dcd8d0') : '#a87848'
+
+    // Find doors on this wall, build segments with gaps
+    const wallDoors = sd.doors.filter(d => isOnWall(d.x, d.z, wall))
+    const openings = wallDoors.map(d => {
+      const pos = projectOntoWall(d.x, d.z, wall)
+      const hw = (d.width || 3) / 2
+      return { start: pos - hw, end: pos + hw, type: 'door' as const, height: d.height || 7 }
+    }).sort((a, b) => a.start - b.start)
+
+    const segments: { x1: number; z1: number; x2: number; z2: number; yBot: number; yTop: number }[] = []
+    let cursor = 0
+    for (const op of openings) {
+      if (op.start > cursor + 0.1) {
+        const s = cursor, e = op.start
+        segments.push({ x1: wall.x1+dirX*s, z1: wall.z1+dirZ*s, x2: wall.x1+dirX*e, z2: wall.z1+dirZ*e, yBot: 0, yTop: wallH })
+      }
+      // Header above door
+      if (op.height < wallH - 0.1) {
+        const s = op.start, e = op.end
+        segments.push({ x1: wall.x1+dirX*s, z1: wall.z1+dirZ*s, x2: wall.x1+dirX*e, z2: wall.z1+dirZ*e, yBot: op.height, yTop: wallH })
+      }
+      cursor = op.end
+    }
+    if (cursor < wallLen - 0.1) {
+      segments.push({ x1: wall.x1+dirX*cursor, z1: wall.z1+dirZ*cursor, x2: wall.x2, z2: wall.z2, yBot: 0, yTop: wallH })
+    }
+
+    for (const seg of segments) {
+      drawWallBox3D(ctx, seg.x1, seg.z1, seg.x2, seg.z2, seg.yBot, seg.yTop, t, fillColor, darkColor, isoP)
+    }
+  }
+
+  // 5. Windows - glass panels
+  for (const win of sd.windows) {
+    const closestWall = sd.walls.reduce<SceneWall | null>((best, w) => {
+      if (!isOnWall(win.x, win.z, w, 3)) return best
+      const d = Math.abs(projectOntoWall(win.x, win.z, w))
+      if (!best) return w
+      return d < Math.abs(projectOntoWall(win.x, win.z, best)) ? w : best
+    }, null)
+    if (!closestWall) continue
+
+    const t = closestWall.thickness || 0.5
+    const wallLen = Math.sqrt((closestWall.x2-closestWall.x1)**2 + (closestWall.z2-closestWall.z1)**2)
+    if (wallLen < 0.1) continue
+    const dx = (closestWall.x2-closestWall.x1)/wallLen, dz = (closestWall.z2-closestWall.z1)/wallLen
+    const nx = -dz * t/2, nz = dx * t/2
+    const pos = projectOntoWall(win.x, win.z, closestWall)
+    const hw = (win.width || 3) / 2
+    const sill = win.sill_height || 2.5
+    const winTop = sill + (win.height || 3.5)
+    const x1 = closestWall.x1 + dx * (pos - hw), z1 = closestWall.z1 + dz * (pos - hw)
+    const x2 = closestWall.x1 + dx * (pos + hw), z2 = closestWall.z1 + dz * (pos + hw)
+
+    // Glass panel
+    const gbl = isoP(x1+nx, sill, z1+nz), gbr = isoP(x2+nx, sill, z2+nz)
+    const gtl = isoP(x1+nx, winTop, z1+nz), gtr = isoP(x2+nx, winTop, z2+nz)
+    fillPoly(ctx, [gbl, gbr, gtr, gtl], '#93c5fd', 0.45)
+    strokePoly(ctx, [gbl, gbr, gtr, gtl], '#3b82f6', 1.2)
+  }
+
+  // 6. Roof overlay
+  if (lyr.roof && sd.rooms.length > 0) {
+    for (const r of sd.rooms) {
+      const c010 = isoP(r.x, wallH, r.z), c110 = isoP(r.x+r.width, wallH, r.z)
+      const c111 = isoP(r.x+r.width, wallH, r.z+r.depth), c011 = isoP(r.x, wallH, r.z+r.depth)
+      fillPoly(ctx, [c010, c110, c111, c011], '#ffffff', 0.25)
+      strokePoly(ctx, [c010, c110, c111, c011], '#00000018', 0.5)
+    }
+  }
+
+  // 7. Electrical markers
+  if (lyr.electrical) {
+    for (const el of sd.electrical) {
+      const t = el.type
+      if (t === 'ceiling_light' || t === 'ceiling_fan') {
+        const p = isoP(el.x, wallH - 0.2, el.z)
+        ctx.save()
+        ctx.fillStyle = t === 'ceiling_light' ? '#fef08a' : '#bae6fd'
+        ctx.strokeStyle = t === 'ceiling_light' ? '#d97706' : '#0284c7'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.arc(p.sx, p.sy, 6, 0, Math.PI * 2)
+        ctx.fill(); ctx.stroke()
+        if (t === 'ceiling_fan') {
+          for (let i = 0; i < 4; i++) {
+            const a = i * Math.PI / 2
+            ctx.beginPath()
+            ctx.moveTo(p.sx + Math.cos(a)*6, p.sy + Math.sin(a)*6)
+            ctx.lineTo(p.sx + Math.cos(a)*12, p.sy + Math.sin(a)*12)
+            ctx.strokeStyle = '#0284c7'
+            ctx.lineWidth = 2
+            ctx.stroke()
+          }
+        } else {
+          // Light rays
+          for (let i = 0; i < 8; i++) {
+            const a = i * Math.PI / 4
+            ctx.beginPath()
+            ctx.moveTo(p.sx + Math.cos(a)*7, p.sy + Math.sin(a)*7)
+            ctx.lineTo(p.sx + Math.cos(a)*11, p.sy + Math.sin(a)*11)
+            ctx.strokeStyle = '#fbbf24'
+            ctx.lineWidth = 1
+            ctx.stroke()
+          }
+        }
+        ctx.restore()
+      } else {
+        const p = isoP(el.x, t === 'panel' ? 5 : 4, el.z)
+        ctx.save()
+        if (t === 'outlet') {
+          ctx.fillStyle = '#fbbf24'; ctx.strokeStyle = '#d97706'
+          ctx.fillRect(p.sx - 4, p.sy - 4, 8, 8)
+          ctx.strokeRect(p.sx - 4, p.sy - 4, 8, 8)
+        } else if (t === 'switch') {
+          ctx.fillStyle = '#f8fafc'; ctx.strokeStyle = '#64748b'
+          ctx.lineWidth = 1
+          ctx.fillRect(p.sx - 3, p.sy - 5, 6, 10)
+          ctx.strokeRect(p.sx - 3, p.sy - 5, 6, 10)
+        } else if (t === 'panel') {
+          ctx.fillStyle = '#94a3b8'; ctx.strokeStyle = '#475569'
+          ctx.lineWidth = 1.5
+          ctx.fillRect(p.sx - 7, p.sy - 10, 14, 20)
+          ctx.strokeRect(p.sx - 7, p.sy - 10, 14, 20)
+          ctx.fillStyle = '#334155'
+          ctx.font = 'bold 7px sans-serif'
+          ctx.textAlign = 'center'
+          ctx.fillText('⚡', p.sx, p.sy + 3)
+        }
+        ctx.restore()
+      }
+    }
+  }
+
+  // 8. Plumbing markers
+  if (lyr.plumbing) {
+    for (const pl of sd.plumbing) {
+      const p = isoP(pl.x, 0.1, pl.z)
+      ctx.save()
+      ctx.fillStyle = '#93c5fd'
+      ctx.strokeStyle = '#1d4ed8'
+      ctx.lineWidth = 1.5
+      const t = pl.type
+      if (t === 'toilet') {
+        ctx.beginPath()
+        ctx.ellipse(p.sx, p.sy, 7, 10, 0, 0, Math.PI * 2)
+        ctx.fill(); ctx.stroke()
+        ctx.fillStyle = '#bfdbfe'
+        ctx.beginPath()
+        ctx.ellipse(p.sx, p.sy - 3, 5, 6, 0, 0, Math.PI * 2)
+        ctx.fill(); ctx.stroke()
+      } else if (t === 'bathtub') {
+        ctx.fillRect(p.sx - 14, p.sy - 7, 28, 14)
+        ctx.strokeRect(p.sx - 14, p.sy - 7, 28, 14)
+        ctx.fillStyle = '#bfdbfe'
+        ctx.fillRect(p.sx - 12, p.sy - 5, 24, 10)
+      } else if (t === 'shower') {
+        ctx.fillRect(p.sx - 9, p.sy - 9, 18, 18)
+        ctx.strokeRect(p.sx - 9, p.sy - 9, 18, 18)
+        ctx.strokeStyle = '#93c5fd'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(p.sx - 6, p.sy - 6); ctx.lineTo(p.sx + 6, p.sy + 6)
+        ctx.moveTo(p.sx + 6, p.sy - 6); ctx.lineTo(p.sx - 6, p.sy + 6)
+        ctx.stroke()
+      } else if (t === 'water_heater') {
+        ctx.fillStyle = '#bae6fd'; ctx.strokeStyle = '#0369a1'
+        ctx.beginPath()
+        ctx.arc(p.sx, p.sy, 8, 0, Math.PI * 2)
+        ctx.fill(); ctx.stroke()
+        ctx.fillStyle = '#0369a1'
+        ctx.font = '8px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('WH', p.sx, p.sy + 3)
+      } else {
+        // sink, kitchen_sink, washer
+        ctx.fillRect(p.sx - 7, p.sy - 7, 14, 14)
+        ctx.strokeRect(p.sx - 7, p.sy - 7, 14, 14)
+        ctx.fillStyle = '#bfdbfe'
+        ctx.beginPath()
+        ctx.arc(p.sx, p.sy, 4, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    }
+  }
+
+  // 9. Room labels
+  ctx.save()
+  for (const r of sortedRooms) {
+    const mid = isoP(r.x + r.width / 2, wallH + 0.6, r.z + r.depth / 2)
+    const sqftLabel = r.sqft ? `${Math.round(r.sqft)} sqft` : `${(r.width * factor).toFixed(0)}×${(r.depth * factor).toFixed(0)}${suffix}`
+    ctx.font = 'bold 11px sans-serif'
+    ctx.fillStyle = '#1e293b'
+    ctx.textAlign = 'center'
+    ctx.fillText(r.name, mid.sx, mid.sy)
+    ctx.font = '9px sans-serif'
+    ctx.fillStyle = '#475569'
+    ctx.fillText(sqftLabel, mid.sx, mid.sy + 13)
+  }
+  ctx.restore()
+}
 
 // ---------------------------------------------------------------------------
 // Room layout algorithm
@@ -370,7 +707,7 @@ function strokePoly(
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function Blueprint3DViewer({ analysis }: { analysis: any }) {
+export default function Blueprint3DViewer({ analysis, sceneData }: { analysis: any; sceneData?: SceneData | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // View state
@@ -412,6 +749,9 @@ export default function Blueprint3DViewer({ analysis }: { analysis: any }) {
     rooms.current = buildRooms(analysis);
     baseScale.current = computeScale(rooms.current);
   }, [analysis]);
+
+  const sceneDataRef = useRef<SceneData | null>(null)
+  useEffect(() => { sceneDataRef.current = sceneData || null }, [sceneData])
 
   // FP camera refs (not state to avoid stale closures)
   const fpCamX = useRef(0);
@@ -470,6 +810,82 @@ export default function Blueprint3DViewer({ analysis }: { analysis: any }) {
     bg.addColorStop(1, "#e8edf7");
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
+
+    // ── Scene-data-based rendering (Claude Vision parsed) ──────────────────
+    const sd = sceneDataRef.current
+    if (sd && sd.walls && sd.walls.length > 0) {
+      // Compute cx/cy from scene data dimensions
+      const sdW = sd.building_width_ft || 45
+      const sdD = sd.building_depth_ft || 38
+      const cosR2 = Math.cos(angle), sinR2 = Math.sin(angle)
+      function proj2(wx: number, wz: number) {
+        return { ix: wx * cosR2 - wz * sinR2, iz: wx * sinR2 + wz * cosR2 }
+      }
+      const corners2 = [proj2(0,0), proj2(sdW,0), proj2(0,sdD), proj2(sdW,sdD)]
+      const minIX2 = Math.min(...corners2.map(c => c.ix))
+      const maxIX2 = Math.max(...corners2.map(c => c.ix))
+      const minIZ2 = Math.min(...corners2.map(c => c.iz))
+      const maxIZ2 = Math.max(...corners2.map(c => c.iz))
+      const cx = W / 2 - ((minIX2 + maxIX2) / 2) * scale
+      const cy = H / 2 - ((minIZ2 + maxIZ2) / 2) * scale * 0.45 + ((sd.wall_height_ft || 9) * scale * 0.6) / 2
+      drawSceneDataIso(ctx, sd, scale, angle, cx, cy, lyr, factor, suffix)
+      // Draw annotations
+      const anns = annotationsRef.current
+      for (const ann of anns) {
+        const cosR3 = Math.cos(angle), sinR3 = Math.sin(angle)
+        function isoP3(wx: number, wy: number, wz: number) {
+          const ix = wx * cosR3 - wz * sinR3
+          const iz = wx * sinR3 + wz * cosR3
+          return { sx: cx + ix * scale, sy: cy + iz * scale * 0.45 - wy * scale * 0.6 }
+        }
+        const base = isoP3(ann.wx, 0, ann.wz)
+        const tip = isoP3(ann.wx, WALL_HEIGHT * 0.6, ann.wz)
+        ctx.save()
+        ctx.strokeStyle = '#7c3aed'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(base.sx, base.sy)
+        ctx.lineTo(tip.sx, tip.sy)
+        ctx.stroke()
+        ctx.fillStyle = '#7c3aed'
+        ctx.beginPath()
+        ctx.arc(tip.sx, tip.sy, 8, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = '#fff'
+        ctx.font = '9px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('✏', tip.sx, tip.sy + 3)
+        ctx.restore()
+      }
+      // Draw measure points
+      const mPts = measurePtsRef.current
+      if (mPts.length >= 1) {
+        ctx.save()
+        ctx.fillStyle = '#22c55e'
+        ctx.beginPath()
+        ctx.arc(mPts[0].sx, mPts[0].sy, 5, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+      if (mPts.length >= 2) {
+        ctx.save()
+        ctx.fillStyle = '#22c55e'
+        ctx.beginPath()
+        ctx.arc(mPts[1].sx, mPts[1].sy, 5, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#22c55e'
+        ctx.lineWidth = 2
+        ctx.setLineDash([6, 4])
+        ctx.beginPath()
+        ctx.moveTo(mPts[0].sx, mPts[0].sy)
+        ctx.lineTo(mPts[1].sx, mPts[1].sy)
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.restore()
+      }
+      return
+    }
+    // ── end scene-data rendering ──────────────────────────────────────────
 
     const rs = rooms.current;
     if (rs.length === 0) return;
@@ -970,7 +1386,7 @@ export default function Blueprint3DViewer({ analysis }: { analysis: any }) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (ctx) drawIso(ctx);
-  }, [viewMode, isoAngle, isoScale, layers, unit, annotations, measurePts, drawIso]);
+  }, [viewMode, isoAngle, isoScale, layers, unit, annotations, measurePts, drawIso, sceneData]);
 
   // -----------------------------------------------------------------------
   // Canvas mouse handlers

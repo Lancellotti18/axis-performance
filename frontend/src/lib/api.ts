@@ -245,6 +245,12 @@ export const api = {
     measure: (projectId: string) =>
       apiRequest<any>(`/api/v1/photos/measure/${projectId}`, { method: 'POST' }, 120000),
   },
+  model3d: {
+    parse: (projectId: string) =>
+      apiRequest<any>(`/api/v1/model3d/${projectId}/parse3d`, { method: 'POST' }, 120000),
+    get: (projectId: string) =>
+      apiRequest<any>(`/api/v1/model3d/${projectId}/model3d`),
+  },
 }
 // cache-bust 1774803796
 // cache-bust 1774804395
