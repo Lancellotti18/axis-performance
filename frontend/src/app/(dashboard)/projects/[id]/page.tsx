@@ -1335,11 +1335,11 @@ Thank you for your time.`
                           {aerialResult.stories && (
                             <div className="text-slate-500 text-xs mb-2">Stories: {aerialResult.stories} &nbsp;·&nbsp; House sqft: {aerialResult.house_sqft?.toLocaleString() || '—'}</div>
                           )}
-                          {!isSatellite && (
-                            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-amber-700 text-[10px] leading-relaxed">
-                              ⚠ These are estimates based on public property records, not aerial measurements. Numbers may vary from actual roof area. Always verify with a physical inspection before ordering materials.
-                            </div>
-                          )}
+                          <p className="text-slate-400 text-[10px] leading-relaxed mt-2">
+                            {isSatellite
+                              ? 'Roof measurements were derived from Google Solar satellite imagery using high-resolution aerial analysis of the building footprint and roof geometry. Data is provided for estimation purposes and should be verified prior to material procurement.'
+                              : 'Measurements are estimates based on publicly available property records. Figures may vary from actual roof area. A physical inspection is recommended before ordering materials.'}
+                          </p>
                         </div>
                       )
                     })()}
