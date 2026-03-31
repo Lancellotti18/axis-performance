@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useRef, useState, useEffect, Suspense } from "react";
+import React, { useRef, useState, useEffect, useMemo, Suspense, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, ContactShadows, Environment, Grid } from "@react-three/drei";
+import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
+import { BlendFunction } from "postprocessing";
 import * as THREE from "three";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -42,8 +44,7 @@ const UNIT_LABELS:   Record<UnitKey, string> = { ft: "Feet", in: "Inches", m: "M
 const UNIT_FACTORS:  Record<UnitKey, number> = { ft: 1, in: 12, m: 0.3048, cm: 30.48 };
 const UNIT_SUFFIXES: Record<UnitKey, string> = { ft: "ft", in: "in", m: "m", cm: "cm" };
 
-// PBR material palette — warm residential interior palette
-const FLOOR_MAT: Record<string, { color: string; roughness: number; metalness: number }> = {
+const FLOOR_MAT_PROPS: Record<string, { color: string; roughness: number; metalness: number }> = {
   hardwood: { color: "#c4863a", roughness: 0.48, metalness: 0.02 },
   tile:     { color: "#d8d4c8", roughness: 0.12, metalness: 0.04 },
   carpet:   { color: "#9c96b4", roughness: 0.98, metalness: 0    },
@@ -62,6 +63,105 @@ const LAYER_META: { key: keyof LayerState; label: string; color: string }[] = [
   { key: "drywall",    label: "Drywall",    color: "#e5e7eb" },
   { key: "roof",       label: "Roof",       color: "#6b7280" },
 ];
+
+// ─── Procedural floor textures ────────────────────────────────────────────────
+
+function makeHardwoodTexture(): THREE.CanvasTexture {
+  const S = 512;
+  const c = document.createElement("canvas");
+  c.width = S; c.height = S;
+  const ctx = c.getContext("2d")!;
+  const plankH = S / 7;
+  ctx.fillStyle = "#c4863a";
+  ctx.fillRect(0, 0, S, S);
+  for (let row = 0; row < 8; row++) {
+    const offsetX = row % 2 === 0 ? 0 : S * 0.5;
+    const y = row * plankH;
+    for (let col = -1; col < 3; col++) {
+      const x = col * (S * 0.5) + offsetX;
+      const shade = 0.82 + Math.random() * 0.18;
+      ctx.fillStyle = `rgb(${Math.round(196 * shade)},${Math.round(134 * shade)},${Math.round(58 * shade)})`;
+      ctx.fillRect(x + 1.5, y + 1.5, S * 0.5 - 3, plankH - 3);
+      // grain lines
+      ctx.strokeStyle = "rgba(0,0,0,0.07)";
+      ctx.lineWidth = 0.5;
+      for (let g = 1; g < 5; g++) {
+        ctx.beginPath();
+        ctx.moveTo(x, y + plankH * (g / 5));
+        ctx.bezierCurveTo(
+          x + S * 0.15, y + plankH * (g / 5) + (Math.random() - 0.5) * 3,
+          x + S * 0.35, y + plankH * (g / 5) + (Math.random() - 0.5) * 3,
+          x + S * 0.5,  y + plankH * (g / 5) + (Math.random() - 0.5) * 3
+        );
+        ctx.stroke();
+      }
+      // plank edge shadow
+      ctx.fillStyle = "rgba(0,0,0,0.18)";
+      ctx.fillRect(x, y, S * 0.5, 2);
+      ctx.fillRect(x, y, 2, plankH);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(0.18, 0.18);
+  return tex;
+}
+
+function makeTileTexture(): THREE.CanvasTexture {
+  const S = 512;
+  const c = document.createElement("canvas");
+  c.width = S; c.height = S;
+  const ctx = c.getContext("2d")!;
+  const ts = S / 4;
+  ctx.fillStyle = "#d8d4c8"; ctx.fillRect(0, 0, S, S);
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 4; col++) {
+      const shade = 0.93 + Math.random() * 0.07;
+      ctx.fillStyle = `rgb(${Math.round(216 * shade)},${Math.round(212 * shade)},${Math.round(200 * shade)})`;
+      ctx.fillRect(col * ts + 3, row * ts + 3, ts - 6, ts - 6);
+      // specular highlight
+      ctx.fillStyle = `rgba(255,255,255,${0.04 + Math.random() * 0.04})`;
+      ctx.fillRect(col * ts + 4, row * ts + 4, ts * 0.35, ts * 0.25);
+    }
+  }
+  ctx.fillStyle = "#b0ac9e";
+  for (let i = 0; i <= 4; i++) { ctx.fillRect(i * ts - 2, 0, 4, S); ctx.fillRect(0, i * ts - 2, S, 4); }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(0.14, 0.14);
+  return tex;
+}
+
+function makeCarpetTexture(): THREE.CanvasTexture {
+  const S = 256;
+  const c = document.createElement("canvas");
+  c.width = S; c.height = S;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#9c96b4"; ctx.fillRect(0, 0, S, S);
+  for (let i = 0; i < 3000; i++) {
+    const x = Math.random() * S, y = Math.random() * S;
+    const v = Math.floor(Math.random() * 40 - 20);
+    ctx.fillStyle = `rgba(${Math.max(0, 156 + v)},${Math.max(0, 150 + v)},${Math.max(0, 180 + v)},0.35)`;
+    ctx.fillRect(x, y, 1.5, 1.5);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(0.25, 0.25);
+  return tex;
+}
+
+// Singleton texture cache (created once per session)
+const texCache: Record<string, THREE.CanvasTexture> = {};
+function getFloorTex(type: string): THREE.CanvasTexture | null {
+  if (typeof window === "undefined") return null;
+  if (!texCache[type]) {
+    if (type === "hardwood" || type === "wood") texCache[type] = makeHardwoodTexture();
+    else if (type === "tile")                   texCache[type] = makeTileTexture();
+    else if (type === "carpet")                 texCache[type] = makeCarpetTexture();
+    else return null;
+  }
+  return texCache[type];
+}
 
 // ─── Geometry helpers ─────────────────────────────────────────────────────────
 
@@ -82,7 +182,37 @@ function isOnWall(px: number, pz: number, wall: SceneWall, tol = 2.5): boolean {
   return Math.sqrt((px - projX) ** 2 + (pz - projZ) ** 2) < tol;
 }
 
+function getRoomType(name: string): string {
+  const n = name.toLowerCase();
+  if (n.includes("living") || n.includes("lounge") || n.includes("family")) return "living";
+  if (n.includes("kitchen"))                                                  return "kitchen";
+  if (n.includes("master") || n.includes("primary"))                          return "master";
+  if (n.includes("bed"))                                                       return "bedroom";
+  if (n.includes("bath"))                                                      return "bathroom";
+  if (n.includes("dining"))                                                    return "dining";
+  if (n.includes("office") || n.includes("study"))                            return "office";
+  if (n.includes("garage"))                                                    return "garage";
+  if (n.includes("laundry") || n.includes("utility"))                         return "laundry";
+  return "generic";
+}
+
 // ─── 3D components ────────────────────────────────────────────────────────────
+
+function RoomFloor({ room }: { room: SceneRoom }) {
+  const mat  = FLOOR_MAT_PROPS[room.floor_type] ?? { color: "#c8b890", roughness: 0.6, metalness: 0 };
+  const tex  = useMemo(() => getFloorTex(room.floor_type), [room.floor_type]);
+  return (
+    <mesh receiveShadow position={[room.x + room.width / 2, 0.012, room.z + room.depth / 2]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[room.width - 0.06, room.depth - 0.06]} />
+      <meshStandardMaterial
+        color={mat.color}
+        roughness={mat.roughness}
+        metalness={mat.metalness}
+        map={tex ?? undefined}
+      />
+    </mesh>
+  );
+}
 
 function Foundation({ rooms }: { rooms: SceneRoom[] }) {
   if (!rooms.length) return null;
@@ -99,16 +229,6 @@ function Foundation({ rooms }: { rooms: SceneRoom[] }) {
   );
 }
 
-function RoomFloor({ room }: { room: SceneRoom }) {
-  const mat = FLOOR_MAT[room.floor_type] ?? { color: "#c8b890", roughness: 0.6, metalness: 0 };
-  return (
-    <mesh receiveShadow position={[room.x + room.width / 2, 0.012, room.z + room.depth / 2]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[room.width - 0.06, room.depth - 0.06]} />
-      <meshStandardMaterial color={mat.color} roughness={mat.roughness} metalness={mat.metalness} />
-    </mesh>
-  );
-}
-
 function WallBox({ x1, z1, x2, z2, yBot, yTop, thickness, color, roughness = 0.84 }: {
   x1: number; z1: number; x2: number; z2: number;
   yBot: number; yTop: number; thickness: number; color: string; roughness?: number;
@@ -117,11 +237,7 @@ function WallBox({ x1, z1, x2, z2, yBot, yTop, thickness, color, roughness = 0.8
   if (len < 0.05) return null;
   const dx = (x2 - x1) / len, dz = (z2 - z1) / len;
   return (
-    <mesh
-      castShadow receiveShadow
-      position={[(x1 + x2) / 2, yBot + (yTop - yBot) / 2, (z1 + z2) / 2]}
-      rotation={[0, -Math.atan2(dz, dx), 0]}
-    >
+    <mesh castShadow receiveShadow position={[(x1 + x2) / 2, yBot + (yTop - yBot) / 2, (z1 + z2) / 2]} rotation={[0, -Math.atan2(dz, dx), 0]}>
       <boxGeometry args={[len, yTop - yBot, thickness]} />
       <meshStandardMaterial color={color} roughness={roughness} metalness={0} />
     </mesh>
@@ -133,18 +249,12 @@ function WallWithDoors({ wall, wallHeight, doors, color }: {
 }) {
   const len = Math.sqrt((wall.x2 - wall.x1) ** 2 + (wall.z2 - wall.z1) ** 2);
   if (len < 0.05) return null;
-  const t = wall.thickness || (wall.type === "exterior" ? 0.5 : 0.33);
+  const t    = wall.thickness || (wall.type === "exterior" ? 0.5 : 0.33);
   const dirX = (wall.x2 - wall.x1) / len, dirZ = (wall.z2 - wall.z1) / len;
-
   const openings = doors
     .filter(d => isOnWall(d.x, d.z, wall))
-    .map(d => {
-      const pos = projectOntoWall(d.x, d.z, wall);
-      const hw  = (d.width || 3) / 2;
-      return { start: pos - hw, end: pos + hw, height: d.height || 7 };
-    })
+    .map(d => { const pos = projectOntoWall(d.x, d.z, wall); const hw = (d.width || 3) / 2; return { start: pos - hw, end: pos + hw, height: d.height || 7 }; })
     .sort((a, b) => a.start - b.start);
-
   const segs: { x1: number; z1: number; x2: number; z2: number; yBot: number; yTop: number }[] = [];
   let cur = 0;
   for (const op of openings) {
@@ -153,7 +263,6 @@ function WallWithDoors({ wall, wallHeight, doors, color }: {
     cur = op.end;
   }
   if (cur < len - 0.1) segs.push({ x1: wall.x1 + dirX * cur, z1: wall.z1 + dirZ * cur, x2: wall.x2, z2: wall.z2, yBot: 0, yTop: wallHeight });
-
   return <>{segs.map((s, i) => <WallBox key={i} {...s} thickness={t} color={color} />)}</>;
 }
 
@@ -164,12 +273,12 @@ function DoorVoid({ door, walls, wallHeight }: { door: SceneDoor; walls: SceneWa
   if (len < 0.01) return null;
   const dx = (wall.x2 - wall.x1) / len, dz = (wall.z2 - wall.z1) / len;
   const pos = projectOntoWall(door.x, door.z, wall);
-  const t = (wall.thickness || 0.5) + 0.08;
+  const t   = (wall.thickness || 0.5) + 0.08;
   const doorH = door.height || 7;
   return (
     <mesh position={[wall.x1 + dx * pos, doorH / 2, wall.z1 + dz * pos]} rotation={[0, -Math.atan2(dz, dx), 0]}>
       <boxGeometry args={[door.width || 3, doorH, t]} />
-      <meshStandardMaterial color="#1a0d05" roughness={0.95} />
+      <meshStandardMaterial color="#140a02" roughness={0.95} />
     </mesh>
   );
 }
@@ -179,12 +288,12 @@ function WindowPane({ win, walls }: { win: SceneWindow; walls: SceneWall[] }) {
   if (!wall) return null;
   const len = Math.sqrt((wall.x2 - wall.x1) ** 2 + (wall.z2 - wall.z1) ** 2);
   if (len < 0.01) return null;
-  const dx = (wall.x2 - wall.x1) / len, dz = (wall.z2 - wall.z1) / len;
-  const pos = projectOntoWall(win.x, win.z, wall);
-  const t = (wall.thickness || 0.5) + 0.06;
-  const sill  = win.sill_height || 2.5;
-  const winH  = win.height      || 3.5;
-  const winW  = win.width       || 3;
+  const dx   = (wall.x2 - wall.x1) / len, dz = (wall.z2 - wall.z1) / len;
+  const pos  = projectOntoWall(win.x, win.z, wall);
+  const t    = (wall.thickness || 0.5) + 0.06;
+  const sill = win.sill_height || 2.5;
+  const winH = win.height || 3.5;
+  const winW = win.width  || 3;
   return (
     <mesh position={[wall.x1 + dx * pos, sill + winH / 2, wall.z1 + dz * pos]} rotation={[0, -Math.atan2(dz, dx), 0]}>
       <boxGeometry args={[winW, winH, t]} />
@@ -193,16 +302,54 @@ function WindowPane({ win, walls }: { win: SceneWindow; walls: SceneWall[] }) {
   );
 }
 
+// ─── Window light shaft ────────────────────────────────────────────────────────
+
+function WindowLightShaft({ win, walls, cx, cz }: { win: SceneWindow; walls: SceneWall[]; cx: number; cz: number }) {
+  const wall = walls.find(w => isOnWall(win.x, win.z, w, 3));
+  if (!wall) return null;
+  const len = Math.sqrt((wall.x2 - wall.x1) ** 2 + (wall.z2 - wall.z1) ** 2);
+  if (len < 0.01) return null;
+  const dx = (wall.x2 - wall.x1) / len, dz = (wall.z2 - wall.z1) / len;
+  // Normal pointing toward building centroid
+  const nx = -dz, nz = dx;
+  const toCxX = cx - win.x, toCzZ = cz - win.z;
+  const dot   = nx * toCxX + nz * toCzZ;
+  const inX   = dot > 0 ? nx : -nx;
+  const inZ   = dot > 0 ? nz : -nz;
+  const pos   = projectOntoWall(win.x, win.z, wall);
+  const sill  = win.sill_height || 2.5;
+  const winH  = win.height || 3.5;
+  const shaftLen = 8;
+  const cx3 = wall.x1 + dx * pos + inX * shaftLen * 0.5;
+  const cz3 = wall.z1 + dz * pos + inZ * shaftLen * 0.5;
+  const rotY = -Math.atan2(inZ, inX) + Math.PI / 2;
+  return (
+    <mesh position={[cx3, sill + winH * 0.45, cz3]} rotation={[0, rotY, 0]}>
+      <boxGeometry args={[shaftLen, winH * 0.85, win.width || 3]} />
+      <meshStandardMaterial
+        color="#fff8d0"
+        transparent
+        opacity={0.03}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+  );
+}
+
+// ─── Electrical ───────────────────────────────────────────────────────────────
+
 function ElectricalMarker({ el }: { el: SceneElectrical }) {
   const ceiling = el.type === "ceiling_light" || el.type === "ceiling_fan";
-  const y = ceiling ? 8.7 : 4.0;
-  const cfg = {
-    ceiling_light: { color: "#fff5a0", emissive: "#ffee44", intensity: 1.4 },
-    ceiling_fan:   { color: "#bae6fd", emissive: "#88c8f8", intensity: 0.4 },
+  const y   = ceiling ? 8.7 : 4.0;
+  const cfg: Record<string, { color: string; emissive: string; intensity: number }> = {
+    ceiling_light: { color: "#fff5a0", emissive: "#ffee44", intensity: 1.8 },
+    ceiling_fan:   { color: "#bae6fd", emissive: "#88c8f8", intensity: 0.5 },
     panel:         { color: "#94a3b8", emissive: "#000",    intensity: 0   },
-    outlet:        { color: "#fbbf24", emissive: "#f59e0b", intensity: 0.3 },
+    outlet:        { color: "#fbbf24", emissive: "#f59e0b", intensity: 0.4 },
     switch:        { color: "#f1f5f9", emissive: "#000",    intensity: 0   },
-  } as any;
+  };
   const c = cfg[el.type] ?? cfg.outlet;
   return (
     <mesh position={[el.x, y, el.z]}>
@@ -212,11 +359,12 @@ function ElectricalMarker({ el }: { el: SceneElectrical }) {
   );
 }
 
-// Point light under ceiling fixtures
 function CeilingLight({ el }: { el: SceneElectrical }) {
   if (el.type !== "ceiling_light") return null;
-  return <pointLight position={[el.x, 8.4, el.z]} intensity={0.6} color="#fff5c0" distance={12} decay={2} />;
+  return <pointLight position={[el.x, 8.3, el.z]} intensity={1.2} color="#fff5c0" distance={14} decay={2} castShadow={false} />;
 }
+
+// ─── Plumbing ─────────────────────────────────────────────────────────────────
 
 function PlumbingFixture({ pl }: { pl: ScenePlumbing }) {
   const size: [number, number, number] =
@@ -232,19 +380,201 @@ function PlumbingFixture({ pl }: { pl: ScenePlumbing }) {
   );
 }
 
+// ─── Furniture ────────────────────────────────────────────────────────────────
+
+function Box3({ pos, size, color, roughness = 0.7, metalness = 0 }: {
+  pos: [number, number, number]; size: [number, number, number];
+  color: string; roughness?: number; metalness?: number;
+}) {
+  return (
+    <mesh castShadow receiveShadow position={pos}>
+      <boxGeometry args={size} />
+      <meshStandardMaterial color={color} roughness={roughness} metalness={metalness} />
+    </mesh>
+  );
+}
+
+function LivingRoomFurniture({ room }: { room: SceneRoom }) {
+  const { x, z, width, depth } = room;
+  const m = 1.0; // wall margin
+  const sofaW = Math.min(width - m * 2, 7);
+  const sofaX = x + width / 2;
+  const sofaZ = z + depth - m - 1.5;
+  const tvW   = Math.min(width - m * 2, 5.5);
+  return (
+    <>
+      {/* Sofa */}
+      <Box3 pos={[sofaX, 1.4, sofaZ]}         size={[sofaW, 2.8, 3.2]}     color="#7a6a5a" roughness={0.92} />
+      {/* Sofa back cushion */}
+      <Box3 pos={[sofaX, 2.5, sofaZ + 1.1]}   size={[sofaW, 1.0, 0.8]}     color="#8a7a68" roughness={0.9} />
+      {/* Coffee table */}
+      <Box3 pos={[sofaX, 0.8, sofaZ - 3.0]}   size={[Math.min(sofaW - 1, 4), 1.6, 2.2]} color="#4a3010" roughness={0.38} metalness={0.04} />
+      {/* Table legs */}
+      {[-1, 1].map(sx => [-1, 1].map(sz => (
+        <Box3 key={`${sx}${sz}`} pos={[sofaX + sx * 1.5, 0.5, sofaZ - 3 + sz * 0.8]} size={[0.15, 1.0, 0.15]} color="#3a2008" roughness={0.4} />
+      )))}
+      {/* TV unit */}
+      <Box3 pos={[sofaX, 1.0, z + m + 0.3]}   size={[tvW, 2.0, 0.55]}      color="#1e1e1e" roughness={0.25} metalness={0.1} />
+      {/* TV screen */}
+      <Box3 pos={[sofaX, 1.6, z + m + 0.04]}  size={[tvW - 0.4, 1.5, 0.05]} color="#0a0a12" roughness={0.05} metalness={0.2} />
+      {/* Floor lamp */}
+      <Box3 pos={[x + m + 0.5, 4.2, sofaZ - 1]} size={[0.12, 8.4, 0.12]}   color="#888" roughness={0.2} metalness={0.6} />
+      <Box3 pos={[x + m + 0.5, 8.5, sofaZ - 1]} size={[0.7, 0.5, 0.7]}     color="#fff8d0" roughness={0.3} />
+    </>
+  );
+}
+
+function KitchenFurniture({ room }: { room: SceneRoom }) {
+  const { x, z, width, depth } = room;
+  const m   = 0.3;
+  const cH  = 3.5; // counter height
+  const cD  = 2.0; // counter depth
+  return (
+    <>
+      {/* Counter along back wall */}
+      <Box3 pos={[x + width / 2, cH / 2, z + depth - m - cD / 2]} size={[width - m * 2, cH, cD]}         color="#d4c8b0" roughness={0.3} metalness={0.08} />
+      {/* Counter top */}
+      <Box3 pos={[x + width / 2, cH + 0.1, z + depth - m - cD / 2]} size={[width - m * 2, 0.2, cD + 0.1]} color="#e8e0d0" roughness={0.15} metalness={0.05} />
+      {/* Left side counter */}
+      <Box3 pos={[x + m + cD / 2, cH / 2, z + depth / 2]}           size={[cD, cH, depth - 4]}            color="#d4c8b0" roughness={0.3} metalness={0.08} />
+      <Box3 pos={[x + m + cD / 2, cH + 0.1, z + depth / 2]}          size={[cD + 0.1, 0.2, depth - 4]}    color="#e8e0d0" roughness={0.15} metalness={0.05} />
+      {/* Island */}
+      {width > 10 && depth > 12 && (
+        <>
+          <Box3 pos={[x + width / 2, cH * 0.7, z + depth / 2]}          size={[4, cH * 0.7, 2.5]}          color="#c8bca8" roughness={0.35} metalness={0.06} />
+          <Box3 pos={[x + width / 2, cH * 0.7 + 0.1, z + depth / 2]}    size={[4.1, 0.2, 2.6]}             color="#e0d8c8" roughness={0.12} metalness={0.05} />
+        </>
+      )}
+      {/* Refrigerator */}
+      <Box3 pos={[x + width - m - 1.0, 4.5, z + depth - m - 1.2]} size={[2.0, 9, 2.4]} color="#d8d8d8" roughness={0.15} metalness={0.3} />
+    </>
+  );
+}
+
+function BedroomFurniture({ room, isMaster }: { room: SceneRoom; isMaster: boolean }) {
+  const { x, z, width, depth } = room;
+  const m      = 0.8;
+  const bedW   = isMaster ? 6.0 : 4.5;
+  const bedL   = isMaster ? 7.5 : 6.5;
+  const bedX   = x + width / 2;
+  const bedZ   = z + depth - m - bedL / 2;
+  const nightW = 1.5;
+  return (
+    <>
+      {/* Bed frame */}
+      <Box3 pos={[bedX, 0.6, bedZ]}            size={[bedW + 0.3, 1.2, bedL + 0.3]}  color="#5a3820" roughness={0.55} metalness={0.02} />
+      {/* Mattress */}
+      <Box3 pos={[bedX, 1.5, bedZ]}            size={[bedW, 0.8, bedL]}               color="#f0ece4" roughness={0.9} />
+      {/* Pillow(s) */}
+      {isMaster
+        ? [[-1.1, 1], [1.1, 1]].map(([ox], i) => <Box3 key={i} pos={[bedX + ox, 2.05, bedZ + bedL / 2 - 1.5]} size={[1.8, 0.5, 1.2]} color="#f5f0e8" roughness={0.95} />)
+        : [<Box3 key="p" pos={[bedX, 2.05, bedZ + bedL / 2 - 1.5]} size={[1.8, 0.5, 1.2]} color="#f5f0e8" roughness={0.95} />]
+      }
+      {/* Bedspread tuck */}
+      <Box3 pos={[bedX, 1.82, bedZ - bedL * 0.15]} size={[bedW, 0.18, bedL * 0.7]}   color="#e0d8d0" roughness={0.88} />
+      {/* Nightstands */}
+      <Box3 pos={[bedX - bedW / 2 - nightW / 2 - 0.1, 1.5, bedZ + 1.5]} size={[nightW, 3.0, nightW]} color="#6b4226" roughness={0.5} />
+      {isMaster && <Box3 pos={[bedX + bedW / 2 + nightW / 2 + 0.1, 1.5, bedZ + 1.5]} size={[nightW, 3.0, nightW]} color="#6b4226" roughness={0.5} />}
+      {/* Dresser */}
+      <Box3 pos={[x + m + 1.5, 2.5, z + m + 1.0]} size={[3.0, 5.0, 1.5]}            color="#6b4226" roughness={0.5} />
+    </>
+  );
+}
+
+function DiningFurniture({ room }: { room: SceneRoom }) {
+  const { x, z, width, depth } = room;
+  const tW = Math.min(width - 3, 6), tL = Math.min(depth - 3, 4.5);
+  const tx = x + width / 2, tz = z + depth / 2;
+  const chairs = tW > 4 ? 3 : 2;
+  return (
+    <>
+      {/* Table top */}
+      <Box3 pos={[tx, 2.9, tz]} size={[tW, 0.22, tL]} color="#5a3010" roughness={0.4} metalness={0.03} />
+      {/* Table legs */}
+      {[[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([sx, sz], i) => (
+        <Box3 key={i} pos={[tx + sx * (tW / 2 - 0.4), 1.5, tz + sz * (tL / 2 - 0.4)]} size={[0.18, 3.0, 0.18]} color="#3a1e08" roughness={0.45} />
+      ))}
+      {/* Chairs */}
+      {[-1, 1].map(side => Array.from({ length: chairs }).map((_, i) => {
+        const cx2 = tx + (tW / 2 + 1.1) * side;
+        const cz2 = tz + (i - (chairs - 1) / 2) * 2;
+        return (
+          <React.Fragment key={`${side}_${i}`}>
+            <Box3 pos={[cx2, 1.4, cz2]}      size={[1.8, 2.8, 1.8]}  color="#8a7060" roughness={0.88} />
+            <Box3 pos={[cx2, 4.5, cz2 + side * 0.65]} size={[1.8, 3.0, 0.22]} color="#8a7060" roughness={0.88} />
+          </React.Fragment>
+        );
+      }))}
+    </>
+  );
+}
+
+function OfficeFurniture({ room }: { room: SceneRoom }) {
+  const { x, z, width, depth } = room;
+  const m = 0.5;
+  return (
+    <>
+      {/* L-desk main */}
+      <Box3 pos={[x + m + 2.5, 2.8, z + m + 1.0]}  size={[5, 0.22, 2.0]} color="#c8b898" roughness={0.35} metalness={0.04} />
+      {/* L-desk return */}
+      <Box3 pos={[x + m + 0.9, 2.8, z + m + 2.7]}  size={[1.8, 0.22, 3.4]} color="#c8b898" roughness={0.35} metalness={0.04} />
+      {/* Desk frame */}
+      <Box3 pos={[x + m + 2.5, 1.4, z + m + 1.0]}  size={[4.8, 2.8, 1.8]} color="#b8a888" roughness={0.5} />
+      {/* Monitor */}
+      <Box3 pos={[x + m + 2.5, 4.5, z + m + 0.4]}  size={[2.4, 1.8, 0.12]} color="#111" roughness={0.08} metalness={0.3} />
+      <Box3 pos={[x + m + 2.5, 3.3, z + m + 0.45]} size={[0.3, 0.9, 0.1]}  color="#222" roughness={0.2} metalness={0.3} />
+      {/* Chair */}
+      <Box3 pos={[x + m + 2.5, 1.8, z + m + 3.0]}  size={[2.2, 3.6, 2.2]} color="#3a3a3a" roughness={0.7} />
+    </>
+  );
+}
+
+function GarageFurniture({ room }: { room: SceneRoom }) {
+  const { x, z, width, depth } = room;
+  const carW = Math.min(width - 2, 7.5), carL = Math.min(depth - 3, 14);
+  return (
+    <>
+      {/* Car body */}
+      <Box3 pos={[x + width / 2, 1.8, z + depth / 2 + 1]}       size={[carW, 3.6, carL]}     color="#3a5a8a" roughness={0.25} metalness={0.35} />
+      {/* Car roof */}
+      <Box3 pos={[x + width / 2, 3.9, z + depth / 2 + 0.5]}     size={[carW - 1.5, 2.0, carL * 0.55]} color="#3a5a8a" roughness={0.2} metalness={0.35} />
+      {/* Windshield */}
+      <Box3 pos={[x + width / 2, 3.5, z + depth / 2 - carL * 0.19]} size={[carW - 1.5, 1.8, 0.1]} color="#a8cce8" roughness={0.04} metalness={0.2} />
+      {/* Workbench */}
+      <Box3 pos={[x + 1.2, 3.0, z + 1.0]}                        size={[2.4, 6.0, 0.5]}      color="#8a6a40" roughness={0.6} />
+    </>
+  );
+}
+
+function RoomFurniture({ room }: { room: SceneRoom }) {
+  const type = getRoomType(room.name);
+  // Minimum size checks — don't render furniture in tiny rooms
+  if (room.width < 6 || room.depth < 6) return null;
+  if (type === "living")   return <LivingRoomFurniture room={room} />;
+  if (type === "kitchen")  return <KitchenFurniture room={room} />;
+  if (type === "master")   return <BedroomFurniture room={room} isMaster />;
+  if (type === "bedroom")  return <BedroomFurniture room={room} isMaster={false} />;
+  if (type === "dining")   return <DiningFurniture room={room} />;
+  if (type === "office")   return <OfficeFurniture room={room} />;
+  if (type === "garage" && room.width > 12 && room.depth > 16) return <GarageFurniture room={room} />;
+  return null;
+}
+
+// ─── Labels & annotations ─────────────────────────────────────────────────────
+
 function RoomLabel({ room, wallH, unit }: { room: SceneRoom; wallH: number; unit: UnitKey }) {
-  const suffix = UNIT_SUFFIXES[unit];
-  const factor = UNIT_FACTORS[unit];
+  const suffix   = UNIT_SUFFIXES[unit];
+  const factor   = UNIT_FACTORS[unit];
   const sqftText = room.sqft
     ? `${Math.round(room.sqft).toLocaleString()} sqft`
     : `${(room.width * factor).toFixed(0)} × ${(room.depth * factor).toFixed(0)} ${suffix}`;
   return (
     <Html position={[room.x + room.width / 2, wallH + 0.9, room.z + room.depth / 2]} center style={{ pointerEvents: "none", userSelect: "none" }}>
       <div style={{
-        background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+        background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
         border: "1px solid rgba(0,0,0,0.08)", borderRadius: 8, padding: "4px 10px 5px",
         fontSize: 11, fontWeight: 700, color: "#1e293b", textAlign: "center", whiteSpace: "nowrap",
-        boxShadow: "0 2px 12px rgba(0,0,0,0.15)", fontFamily: "system-ui,-apple-system,sans-serif", lineHeight: 1.4,
+        boxShadow: "0 2px 12px rgba(0,0,0,0.14)", fontFamily: "system-ui,-apple-system,sans-serif", lineHeight: 1.4,
       }}>
         {room.name}
         <div style={{ fontSize: 9, fontWeight: 400, color: "#64748b", marginTop: 1 }}>{sqftText}</div>
@@ -260,19 +590,17 @@ function AnnotationPin({ ann, wallH }: { ann: Annotation; wallH: number }) {
         <sphereGeometry args={[0.28, 14, 14]} />
         <meshStandardMaterial color="#7c3aed" emissive="#7c3aed" emissiveIntensity={0.5} roughness={0.3} />
       </mesh>
-      <Html position={[ann.x, wallH * 0.6, ann.z]} center style={{ pointerEvents: "none" }}>
+      <Html position={[ann.x, wallH * 0.62, ann.z]} center style={{ pointerEvents: "none" }}>
         <div style={{
           background: "rgba(124,58,237,0.9)", color: "#fff", borderRadius: 7, padding: "3px 9px",
           fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-        }}>
-          📌 {ann.text}
-        </div>
+        }}>📌 {ann.text}</div>
       </Html>
     </>
   );
 }
 
-// ─── Fallback room boxes (no Vision data yet) ─────────────────────────────────
+// ─── Fallback room boxes (no Vision data) ────────────────────────────────────
 
 function FallbackRoom({ room, layers, wallH }: { room: PlacedRoom; layers: LayerState; wallH: number }) {
   const floorColor = ROOM_TINT[room.colorIdx % ROOM_TINT.length];
@@ -292,9 +620,9 @@ function FallbackRoom({ room, layers, wallH }: { room: PlacedRoom; layers: Layer
       )}
       {(layers.framing || layers.drywall) && (
         <>
-          <WallBox x1={room.x} z1={room.z} x2={room.x + room.w} z2={room.z} yBot={0} yTop={wallH} thickness={0.42} color={layers.drywall ? "#f0ece4" : "#b07040"} />
+          <WallBox x1={room.x} z1={room.z} x2={room.x + room.w} z2={room.z}            yBot={0} yTop={wallH} thickness={0.42} color={layers.drywall ? "#f0ece4" : "#b07040"} />
           <WallBox x1={room.x} z1={room.z + room.h} x2={room.x + room.w} z2={room.z + room.h} yBot={0} yTop={wallH} thickness={0.42} color={layers.drywall ? "#f0ece4" : "#b07040"} />
-          <WallBox x1={room.x} z1={room.z} x2={room.x} z2={room.z + room.h} yBot={0} yTop={wallH} thickness={0.42} color={layers.drywall ? "#ece8e0" : "#8a5c2a"} />
+          <WallBox x1={room.x} z1={room.z} x2={room.x} z2={room.z + room.h}            yBot={0} yTop={wallH} thickness={0.42} color={layers.drywall ? "#ece8e0" : "#8a5c2a"} />
           <WallBox x1={room.x + room.w} z1={room.z} x2={room.x + room.w} z2={room.z + room.h} yBot={0} yTop={wallH} thickness={0.42} color={layers.drywall ? "#ece8e0" : "#8a5c2a"} />
         </>
       )}
@@ -308,7 +636,24 @@ function FallbackRoom({ room, layers, wallH }: { room: PlacedRoom; layers: Layer
   );
 }
 
-// ─── Camera controllers ────────────────────────────────────────────────────────
+// ─── Screenshot helper ────────────────────────────────────────────────────────
+
+function ScreenshotTrigger({ triggerRef }: { triggerRef: React.MutableRefObject<(() => void) | null> }) {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    triggerRef.current = () => {
+      gl.render(scene, camera);
+      const url  = gl.domElement.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href     = url;
+      link.download = "floor-plan-3d.png";
+      link.click();
+    };
+  }, [gl, scene, camera, triggerRef]);
+  return null;
+}
+
+// ─── Camera controllers ───────────────────────────────────────────────────────
 
 function OverviewCameraSetup({ cx, cz, bw, bd }: { cx: number; cz: number; bw: number; bd: number }) {
   const { camera } = useThree();
@@ -321,40 +666,28 @@ function OverviewCameraSetup({ cx, cz, bw, bd }: { cx: number; cz: number; bw: n
   return null;
 }
 
-function WalkthroughCamera({ startX, startZ, onExit }: {
-  startX: number; startZ: number; onExit: () => void;
-}) {
+function WalkthroughCamera({ startX, startZ, onExit }: { startX: number; startZ: number; onExit: () => void }) {
   const { camera, gl } = useThree();
-  const keys      = useRef<Set<string>>(new Set());
-  const mouseDown = useRef(false);
+  const keys       = useRef<Set<string>>(new Set());
+  const mouseDown  = useRef(false);
   const lastMouseX = useRef(0);
-  const yaw       = useRef(0);
+  const yaw        = useRef(0);
 
   useEffect(() => {
     camera.position.set(startX, EYE_HEIGHT, startZ);
     yaw.current = 0;
-
     const onKD = (e: KeyboardEvent) => { keys.current.add(e.key.toLowerCase()); if (e.key === "Escape") onExit(); };
     const onKU = (e: KeyboardEvent) => keys.current.delete(e.key.toLowerCase());
-    const onMD = (e: MouseEvent)    => { mouseDown.current = true;  lastMouseX.current = e.clientX; };
+    const onMD = (e: MouseEvent)    => { mouseDown.current = true; lastMouseX.current = e.clientX; };
     const onMU = ()                  => { mouseDown.current = false; };
-    const onMM = (e: MouseEvent)    => {
-      if (!mouseDown.current) return;
-      yaw.current       -= (e.clientX - lastMouseX.current) * 0.004;
-      lastMouseX.current = e.clientX;
-    };
-
-    window.addEventListener("keydown", onKD);
-    window.addEventListener("keyup",   onKU);
+    const onMM = (e: MouseEvent)    => { if (!mouseDown.current) return; yaw.current -= (e.clientX - lastMouseX.current) * 0.004; lastMouseX.current = e.clientX; };
+    window.addEventListener("keydown", onKD); window.addEventListener("keyup", onKU);
     gl.domElement.addEventListener("mousedown", onMD);
-    window.addEventListener("mouseup",   onMU);
-    window.addEventListener("mousemove", onMM);
+    window.addEventListener("mouseup", onMU); window.addEventListener("mousemove", onMM);
     return () => {
-      window.removeEventListener("keydown", onKD);
-      window.removeEventListener("keyup",   onKU);
+      window.removeEventListener("keydown", onKD); window.removeEventListener("keyup", onKU);
       gl.domElement.removeEventListener("mousedown", onMD);
-      window.removeEventListener("mouseup",   onMU);
-      window.removeEventListener("mousemove", onMM);
+      window.removeEventListener("mouseup", onMU); window.removeEventListener("mousemove", onMM);
     };
   }, [startX, startZ, onExit, camera, gl.domElement]);
 
@@ -362,187 +695,116 @@ function WalkthroughCamera({ startX, startZ, onExit }: {
     const speed = 13 * dt;
     const fwd   = new THREE.Vector3(Math.sin(yaw.current), 0, Math.cos(yaw.current));
     const right  = new THREE.Vector3(fwd.z, 0, -fwd.x);
-    if (keys.current.has("w") || keys.current.has("arrowup"))    camera.position.addScaledVector(fwd,  speed);
-    if (keys.current.has("s") || keys.current.has("arrowdown"))  camera.position.addScaledVector(fwd, -speed);
+    if (keys.current.has("w") || keys.current.has("arrowup"))    camera.position.addScaledVector(fwd,   speed);
+    if (keys.current.has("s") || keys.current.has("arrowdown"))  camera.position.addScaledVector(fwd,  -speed);
     if (keys.current.has("a") || keys.current.has("arrowleft"))  camera.position.addScaledVector(right, -speed);
     if (keys.current.has("d") || keys.current.has("arrowright")) camera.position.addScaledVector(right,  speed);
     camera.position.y = EYE_HEIGHT;
     camera.lookAt(camera.position.x + fwd.x * 10, EYE_HEIGHT, camera.position.z + fwd.z * 10);
   });
-
   return null;
 }
 
 // ─── Main 3D scene ────────────────────────────────────────────────────────────
 
 interface Scene3DProps {
-  sceneData:     SceneData | null | undefined;
-  layers:        LayerState;
-  unit:          UnitKey;
-  viewMode:      ViewMode;
-  onExitWalk:    () => void;
-  fallbackRooms: PlacedRoom[];
-  annotations:   Annotation[];
-  overviewKey:   number;
+  sceneData: SceneData | null | undefined; layers: LayerState; unit: UnitKey;
+  viewMode: ViewMode; onExitWalk: () => void; fallbackRooms: PlacedRoom[];
+  annotations: Annotation[]; overviewKey: number; screenshotRef: React.MutableRefObject<(() => void) | null>;
 }
 
-function Scene3D({ sceneData, layers, unit, viewMode, onExitWalk, fallbackRooms, annotations, overviewKey }: Scene3DProps) {
+function Scene3D({ sceneData, layers, unit, viewMode, onExitWalk, fallbackRooms, annotations, overviewKey, screenshotRef }: Scene3DProps) {
   const sd    = sceneData;
   const hasSD = !!(sd?.walls?.length);
   const bw    = hasSD ? sd!.building_width_ft  : Math.max(30, fallbackRooms.reduce((m, r) => Math.max(m, r.x + r.w), 0));
   const bd    = hasSD ? sd!.building_depth_ft  : Math.max(30, fallbackRooms.reduce((m, r) => Math.max(m, r.z + r.h), 0));
-  const cx    = bw / 2;
-  const cz    = bd / 2;
+  const cx    = bw / 2, cz = bd / 2;
   const wallH = sd?.wall_height_ft || WALL_H_DEFAULT;
-
   const extColor = layers.drywall ? "#f0ece4" : "#b07040";
   const intColor = layers.drywall ? "#f5f2ee" : "#a06030";
 
   return (
     <>
-      {/* Scene background and atmosphere */}
-      <color attach="background" args={["#e8edf6"]} />
-      <fog attach="fog" args={["#e8edf6", 150, 500]} />
+      <color attach="background" args={["#e4eaf5"]} />
+      <fog attach="fog" args={["#e4eaf5", 180, 600]} />
 
-      {/* ── Photorealistic lighting ──────────────────────────────────────── */}
-      {/* Warm afternoon sun — primary shadow caster */}
-      <directionalLight
-        castShadow
-        position={[cx + 35, 50, cz + 28]}
-        intensity={1.6}
-        color="#fff6e0"
-        shadow-mapSize-width={4096}
-        shadow-mapSize-height={4096}
-        shadow-camera-near={1}
-        shadow-camera-far={400}
-        shadow-camera-left={-100}
-        shadow-camera-right={100}
-        shadow-camera-top={100}
-        shadow-camera-bottom={-100}
-        shadow-bias={-0.0004}
-        shadow-normalBias={0.02}
+      {/* ── Lighting ──────────────────────────────────────────────────────── */}
+      <directionalLight castShadow position={[cx + 35, 52, cz + 28]} intensity={1.65} color="#fff6e0"
+        shadow-mapSize-width={4096} shadow-mapSize-height={4096}
+        shadow-camera-near={1} shadow-camera-far={450}
+        shadow-camera-left={-110} shadow-camera-right={110}
+        shadow-camera-top={110} shadow-camera-bottom={-110}
+        shadow-bias={-0.0004} shadow-normalBias={0.02}
       />
-      {/* Cool sky bounce from opposite side */}
-      <directionalLight position={[cx - 30, 18, cz - 22]} intensity={0.38} color="#c0d8ff" />
-      {/* Soft warm fill from below (ground bounce) */}
-      <hemisphereLight args={["#f0eeff", "#e8d4b0", 0.5]} />
-      {/* HDRI-like environment for PBR reflections */}
+      <directionalLight position={[cx - 30, 20, cz - 22]} intensity={0.38} color="#b8d0ff" />
+      <hemisphereLight args={["#f0eeff", "#e8d4b0", 0.48]} />
       <Environment preset="apartment" background={false} />
 
-      {/* ── Camera ──────────────────────────────────────────────────────── */}
+      {/* ── Camera ────────────────────────────────────────────────────────── */}
       {viewMode === "iso" ? (
         <>
           <OverviewCameraSetup key={overviewKey} cx={cx} cz={cz} bw={bw} bd={bd} />
-          <OrbitControls
-            target={[cx, 0, cz]}
-            enableDamping
-            dampingFactor={0.07}
-            makeDefault
-            minPolarAngle={0.05}
-            maxPolarAngle={Math.PI / 2.05}
-            minDistance={5}
-            maxDistance={500}
-          />
+          <OrbitControls target={[cx, 0, cz]} enableDamping dampingFactor={0.07} makeDefault minPolarAngle={0.05} maxPolarAngle={Math.PI / 2.05} minDistance={5} maxDistance={600} />
         </>
       ) : (
         <WalkthroughCamera key="fp" startX={cx} startZ={cz} onExit={onExitWalk} />
       )}
 
-      {/* ── Ground plane ─────────────────────────────────────────────────── */}
+      {/* ── Ground & grid ─────────────────────────────────────────────────── */}
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[cx, -0.22, cz]}>
-        <planeGeometry args={[bw + 80, bd + 80]} />
-        <meshStandardMaterial color="#b0a898" roughness={0.93} metalness={0} />
+        <planeGeometry args={[bw + 100, bd + 100]} />
+        <meshStandardMaterial color="#a8a098" roughness={0.93} />
       </mesh>
-
-      {/* Subtle measurement grid */}
       {layers.foundation && (
-        <Grid
-          position={[cx, -0.19, cz]}
-          args={[bw + 60, bd + 60]}
-          cellSize={5}
-          cellThickness={0.3}
-          cellColor="#8a8880"
-          sectionSize={20}
-          sectionThickness={0.7}
-          sectionColor="#706860"
-          fadeDistance={220}
-          fadeStrength={1.5}
-          infiniteGrid={false}
-        />
+        <Grid position={[cx, -0.19, cz]} args={[bw + 70, bd + 70]}
+          cellSize={5} cellThickness={0.3} cellColor="#88867e"
+          sectionSize={20} sectionThickness={0.7} sectionColor="#6a6860"
+          fadeDistance={250} fadeStrength={1.6} infiniteGrid={false} />
       )}
+
+      {/* ── Screenshot helper ─────────────────────────────────────────────── */}
+      <ScreenshotTrigger triggerRef={screenshotRef} />
+
+      {/* ── Post-processing ───────────────────────────────────────────────── */}
+      <EffectComposer>
+        <Bloom luminanceThreshold={0.75} luminanceSmoothing={0.5} intensity={0.45} blendFunction={BlendFunction.ADD} />
+        <ChromaticAberration offset={new THREE.Vector2(0.0004, 0.0004)} blendFunction={BlendFunction.NORMAL} />
+        <Vignette eskil={false} offset={0.38} darkness={0.48} blendFunction={BlendFunction.NORMAL} />
+      </EffectComposer>
 
       {/* ── Building (Vision data) ────────────────────────────────────────── */}
       {hasSD ? (
         <>
           {layers.foundation && <Foundation rooms={sd!.rooms} />}
-
-          {/* Floors — material varies by room type */}
           {layers.drywall && sd!.rooms.map((r, i) => <RoomFloor key={i} room={r} />)}
-
-          {/* Walls with door cutouts */}
           {(layers.framing || layers.drywall) && sd!.walls.map((w, i) => (
-            <WallWithDoors
-              key={i} wall={w} wallHeight={wallH} doors={sd!.doors}
-              color={w.type === "exterior" ? extColor : intColor}
-            />
+            <WallWithDoors key={i} wall={w} wallHeight={wallH} doors={sd!.doors} color={w.type === "exterior" ? extColor : intColor} />
           ))}
-
-          {/* Dark void inside door openings */}
-          {layers.drywall && sd!.doors.map((d, i) => (
-            <DoorVoid key={i} door={d} walls={sd!.walls} wallHeight={wallH} />
-          ))}
-
-          {/* Glass windows */}
-          {layers.drywall && sd!.windows.map((w, i) => (
-            <WindowPane key={i} win={w} walls={sd!.walls} />
-          ))}
-
-          {/* Roof cap (translucent — lets you see inside) */}
-          {layers.roof && sd!.rooms.map((r, i) => (
+          {layers.drywall && sd!.doors.map((d, i)   => <DoorVoid   key={i} door={d} walls={sd!.walls} wallHeight={wallH} />)}
+          {layers.drywall && sd!.windows.map((w, i)  => <WindowPane key={i} win={w}  walls={sd!.walls} />)}
+          {layers.drywall && sd!.windows.map((w, i)  => <WindowLightShaft key={i} win={w} walls={sd!.walls} cx={cx} cz={cz} />)}
+          {layers.roof    && sd!.rooms.map((r, i)    => (
             <mesh key={i} position={[r.x + r.width / 2, wallH + 0.08, r.z + r.depth / 2]}>
               <boxGeometry args={[r.width + 0.12, 0.16, r.depth + 0.12]} />
               <meshStandardMaterial color="#e8e4dc" transparent opacity={0.15} roughness={0.9} />
             </mesh>
           ))}
-
-          {/* Electrical fixtures */}
           {layers.electrical && sd!.electrical.map((el, i) => (
-            <React.Fragment key={i}>
-              <ElectricalMarker el={el} />
-              <CeilingLight el={el} />
-            </React.Fragment>
+            <React.Fragment key={i}><ElectricalMarker el={el} /><CeilingLight el={el} /></React.Fragment>
           ))}
-
-          {/* Plumbing fixtures */}
-          {layers.plumbing && sd!.plumbing.map((pl, i) => <PlumbingFixture key={i} pl={pl} />)}
-
-          {/* Room labels — overview only */}
-          {viewMode === "iso" && sd!.rooms.map((r, i) => (
-            <RoomLabel key={i} room={r} wallH={wallH} unit={unit} />
-          ))}
-
-          {/* Soft contact shadow on floor */}
-          <ContactShadows
-            position={[cx, 0.02, cz]}
-            width={bw + 20} height={bd + 20}
-            far={4} blur={2.5} opacity={0.38}
-          />
+          {layers.plumbing   && sd!.plumbing.map((pl, i)   => <PlumbingFixture key={i} pl={pl} />)}
+          {/* Furniture — only when drywall layer on */}
+          {layers.drywall && sd!.rooms.map((r, i) => <RoomFurniture key={i} room={r} />)}
+          {viewMode === "iso" && sd!.rooms.map((r, i) => <RoomLabel key={i} room={r} wallH={wallH} unit={unit} />)}
+          <ContactShadows position={[cx, 0.02, cz]} width={bw + 22} height={bd + 22} far={4.5} blur={2.8} opacity={0.4} />
         </>
       ) : (
-        /* ── Fallback room boxes (before Vision parse) ───────────────────── */
         <>
-          {fallbackRooms.map((r, i) => (
-            <FallbackRoom key={i} room={r} layers={layers} wallH={WALL_H_DEFAULT} />
-          ))}
+          {fallbackRooms.map((r, i) => <FallbackRoom key={i} room={r} layers={layers} wallH={WALL_H_DEFAULT} />)}
           {viewMode === "iso" && fallbackRooms.map((r, i) => (
             <Html key={i} position={[r.x + r.w / 2, WALL_H_DEFAULT + 0.9, r.z + r.h / 2]} center style={{ pointerEvents: "none" }}>
-              <div style={{
-                background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)", borderRadius: 8,
-                padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#1e293b",
-                whiteSpace: "nowrap", boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
-              }}>
-                {r.name}
-                <div style={{ fontSize: 9, fontWeight: 400, color: "#64748b" }}>{Math.round(r.sqft).toLocaleString()} sqft</div>
+              <div style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#1e293b", whiteSpace: "nowrap", boxShadow: "0 2px 12px rgba(0,0,0,0.14)" }}>
+                {r.name}<div style={{ fontSize: 9, fontWeight: 400, color: "#64748b" }}>{Math.round(r.sqft).toLocaleString()} sqft</div>
               </div>
             </Html>
           ))}
@@ -550,26 +812,22 @@ function Scene3D({ sceneData, layers, unit, viewMode, onExitWalk, fallbackRooms,
         </>
       )}
 
-      {/* Annotation pins */}
       {annotations.map(ann => <AnnotationPin key={ann.id} ann={ann} wallH={wallH} />)}
 
-      {/* Walkthrough HUD overlay */}
+      {/* ── Walkthrough HUD ───────────────────────────────────────────────── */}
       {viewMode === "fp" && (
         <Html fullscreen style={{ pointerEvents: "none" }}>
           <>
-            {/* Crosshair */}
             <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 24, height: 24 }}>
               <div style={{ position: "absolute", top: "50%", left: 0, width: "100%", height: 1.5, background: "rgba(255,255,255,0.85)", borderRadius: 2, transform: "translateY(-50%)" }} />
               <div style={{ position: "absolute", left: "50%", top: 0, height: "100%", width: 1.5, background: "rgba(255,255,255,0.85)", borderRadius: 2, transform: "translateX(-50%)" }} />
             </div>
-            {/* Controls hint */}
             <div style={{
               position: "absolute", bottom: 52, left: "50%", transform: "translateX(-50%)",
               background: "rgba(0,0,0,0.52)", color: "#fff", borderRadius: 10, padding: "6px 20px",
-              fontSize: 12, fontWeight: 500, backdropFilter: "blur(10px)", letterSpacing: "0.02em",
-              whiteSpace: "nowrap",
+              fontSize: 12, fontWeight: 500, backdropFilter: "blur(10px)", whiteSpace: "nowrap",
             }}>
-              W / A / S / D to move &nbsp;·&nbsp; Drag to look around &nbsp;·&nbsp; Esc to exit
+              W / A / S / D · Drag to look · Esc to exit
             </div>
           </>
         </Html>
@@ -592,82 +850,66 @@ function buildRooms(analysis: any): PlacedRoom[] {
   } else {
     const total = analysis?.total_sqft || 1200;
     rawRooms = [
-      { name: "Living Room",    sqft: total * 0.30 },
-      { name: "Kitchen",        sqft: total * 0.18 },
-      { name: "Master Bedroom", sqft: total * 0.20 },
-      { name: "Bedroom 2",      sqft: total * 0.14 },
-      { name: "Bathroom",       sqft: total * 0.10 },
-      { name: "Garage",         sqft: total * 0.08 },
+      { name: "Living Room", sqft: total * 0.30 }, { name: "Kitchen",  sqft: total * 0.18 },
+      { name: "Master Bedroom", sqft: total * 0.20 }, { name: "Bedroom 2", sqft: total * 0.14 },
+      { name: "Bathroom", sqft: total * 0.10 }, { name: "Garage", sqft: total * 0.08 },
     ].map(r => { const w = Math.sqrt(r.sqft * 1.3); return { ...r, w, h: r.sqft / w }; });
   }
   rawRooms.sort((a, b) => b.sqft - a.sqft);
-  const maxRowWidth = Math.sqrt(rawRooms.reduce((s, r) => s + r.sqft, 0)) * 1.5;
+  const maxRowW = Math.sqrt(rawRooms.reduce((s, r) => s + r.sqft, 0)) * 1.5;
   const placed: PlacedRoom[] = [];
-  let curX = 0, curZ = 0, rowMaxH = 0, ci = 0;
+  let curX = 0, curZ = 0, rowH = 0, ci = 0;
   for (const r of rawRooms) {
-    if (curX > 0 && curX + r.w > maxRowWidth) { curX = 0; curZ += rowMaxH + 2; rowMaxH = 0; }
+    if (curX > 0 && curX + r.w > maxRowW) { curX = 0; curZ += rowH + 2; rowH = 0; }
     placed.push({ name: r.name, sqft: r.sqft, w: r.w, h: r.h, x: curX, z: curZ, colorIdx: ci++ });
-    curX += r.w + 2; rowMaxH = Math.max(rowMaxH, r.h);
+    curX += r.w + 2; rowH = Math.max(rowH, r.h);
   }
   return placed;
 }
 
 // ─── Main exported component ───────────────────────────────────────────────────
 
-export default function Blueprint3DViewer({
-  analysis, sceneData,
-}: {
-  analysis: any;
-  sceneData?: SceneData | null;
-}) {
+export default function Blueprint3DViewer({ analysis, sceneData }: { analysis: any; sceneData?: SceneData | null }) {
   const [viewMode,        setViewMode]        = useState<ViewMode>("iso");
   const [layers,          setLayers]          = useState<LayerState>({ foundation: true, framing: true, electrical: false, plumbing: false, drywall: true, roof: true });
   const [unit,            setUnit]            = useState<UnitKey>("ft");
   const [showLayersPanel, setShowLayersPanel] = useState(false);
   const [annotations,     setAnnotations]     = useState<Annotation[]>([]);
   const [overviewKey,     setOverviewKey]     = useState(0);
-  const nextId = useRef(1);
+  const screenshotRef = useRef<(() => void) | null>(null);
+  const nextId        = useRef(1);
 
   const fallbackRooms = useRef<PlacedRoom[]>(buildRooms(analysis));
   useEffect(() => { fallbackRooms.current = buildRooms(analysis); }, [analysis]);
 
   const sd    = sceneData;
   const hasSD = !!(sd?.walls?.length);
-  const wallH = sd?.wall_height_ft || WALL_H_DEFAULT;
 
-  function toggleLayer(key: keyof LayerState) {
-    setLayers(prev => ({ ...prev, [key]: !prev[key] }));
-  }
-
-  function exitWalkthrough() {
-    setViewMode("iso");
-    setOverviewKey(k => k + 1); // force camera reset
-  }
+  function toggleLayer(key: keyof LayerState) { setLayers(p => ({ ...p, [key]: !p[key] })); }
+  function exitWalkthrough() { setViewMode("iso"); setOverviewKey(k => k + 1); }
+  const handleScreenshot = useCallback(() => screenshotRef.current?.(), []);
 
   return (
     <div className="flex flex-col gap-3 select-none">
       {/* ── Toolbar ───────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap px-1">
-        {/* View mode toggle */}
+        {/* View mode */}
         <div className="flex rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-          <button
-            className={`px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === "iso" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-            onClick={exitWalkthrough}
-          >⬡ Overview</button>
-          <button
-            className={`px-3 py-1.5 text-xs font-semibold border-l border-gray-200 transition-colors ${viewMode === "fp" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-            onClick={() => setViewMode("fp")}
-          >🚶 Walk Through</button>
+          <button className={`px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === "iso" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`} onClick={exitWalkthrough}>
+            ⬡ Overview
+          </button>
+          <button className={`px-3 py-1.5 text-xs font-semibold border-l border-gray-200 transition-colors ${viewMode === "fp" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`} onClick={() => setViewMode("fp")}>
+            🚶 Walk Through
+          </button>
         </div>
 
         <div className="w-px h-5 bg-gray-200" />
 
         {/* Layers */}
         <div className="relative">
-          <button
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showLayersPanel ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}
-            onClick={() => setShowLayersPanel(p => !p)}
-          >🏗 Layers</button>
+          <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showLayersPanel ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={() => setShowLayersPanel(p => !p)}>
+            🏗 Layers
+          </button>
           {showLayersPanel && (
             <div className="absolute left-0 top-full mt-1 z-40 bg-white border border-gray-200 rounded-xl shadow-xl p-3 w-48">
               <p className="text-xs font-semibold text-gray-400 mb-2 uppercase tracking-widest">Visibility</p>
@@ -684,22 +926,24 @@ export default function Blueprint3DViewer({
 
         <div className="flex-1" />
 
-        {/* Unit selector */}
-        <select
-          className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 font-medium"
-          value={unit}
-          onChange={e => setUnit(e.target.value as UnitKey)}
+        {/* Screenshot */}
+        <button
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+          onClick={handleScreenshot}
+          title="Download PNG screenshot"
         >
-          {(Object.keys(UNIT_LABELS) as UnitKey[]).map(k => (
-            <option key={k} value={k}>{UNIT_LABELS[k]}</option>
-          ))}
+          📸 Export PNG
+        </button>
+
+        {/* Unit */}
+        <select className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 font-medium" value={unit} onChange={e => setUnit(e.target.value as UnitKey)}>
+          {(Object.keys(UNIT_LABELS) as UnitKey[]).map(k => <option key={k} value={k}>{UNIT_LABELS[k]}</option>)}
         </select>
 
         {viewMode === "fp" && (
-          <button
-            className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
-            onClick={exitWalkthrough}
-          >✕ Exit Walk Mode</button>
+          <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors" onClick={exitWalkthrough}>
+            ✕ Exit Walk Mode
+          </button>
         )}
       </div>
 
@@ -708,7 +952,7 @@ export default function Blueprint3DViewer({
         <Canvas
           shadows
           camera={{ position: [40, 32, 40], fov: 42, near: 0.1, far: 1500 }}
-          gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+          gl={{ antialias: true, alpha: false, powerPreference: "high-performance", preserveDrawingBuffer: true }}
           dpr={[1, 2]}
         >
           <Suspense fallback={null}>
@@ -721,18 +965,19 @@ export default function Blueprint3DViewer({
               fallbackRooms={fallbackRooms.current}
               annotations={annotations}
               overviewKey={overviewKey}
+              screenshotRef={screenshotRef}
             />
           </Suspense>
         </Canvas>
       </div>
 
-      {/* ── Building stats panel ──────────────────────────────────────────── */}
+      {/* ── Stats panel ───────────────────────────────────────────────────── */}
       {hasSD && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
             { label: "Total Area",    value: `${(sd!.total_sqft || 0).toLocaleString()} sqft` },
             { label: "Rooms",         value: sd!.rooms.length },
-            { label: "Wall Height",   value: `${wallH} ft` },
+            { label: "Wall Height",   value: `${sd!.wall_height_ft ?? WALL_H_DEFAULT} ft` },
             { label: "Parse Quality", value: `${Math.round((sd!.confidence || 0) * 100)}%` },
           ].map(s => (
             <div key={s.label} className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
