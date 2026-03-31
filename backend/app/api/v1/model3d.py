@@ -20,12 +20,6 @@ async def parse_blueprint_3d(project_id: str):
     blueprint = bp.data[0]
     file_type = (blueprint.get("file_type") or "").lower()
 
-    if file_type == "pdf":
-        raise HTTPException(
-            status_code=422,
-            detail="PDF blueprints are not supported for 3D parsing. Please upload a PNG or JPG image of your floor plan."
-        )
-
     try:
         scene_data = await _parse(blueprint["id"])
     except ValueError as e:
