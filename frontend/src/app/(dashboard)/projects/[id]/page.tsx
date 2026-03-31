@@ -954,12 +954,19 @@ Thank you for your time.`
   }
 
   useEffect(() => {
-    if (tab === 'view3d' && !sceneData && !scene3dLoading) {
-      api.model3d.get(projectId)
-        .then(r => { if (r?.scene_data) setSceneData(r.scene_data) })
-        .catch(() => {})
-    }
-  }, [tab])
+    if (tab !== 'view3d' || sceneData || scene3dLoading) return
+    api.model3d.get(projectId)
+      .then(r => {
+        if (r?.scene_data) {
+          setSceneData(r.scene_data)
+        } else if (hasBlueprint && blueprintFileType !== 'pdf') {
+          handleGenerate3D()
+        }
+      })
+      .catch(() => {
+        if (hasBlueprint && blueprintFileType !== 'pdf') handleGenerate3D()
+      })
+  }, [tab, hasBlueprint, blueprintFileType])
 
   function updateActualCost(category: string, value: number) {
     const updated = { ...actualCosts, [category]: value }
