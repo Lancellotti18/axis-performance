@@ -77,25 +77,42 @@ def _download_blueprint(blueprint_id: str) -> tuple:
     file_url = bp.data.get("file_url", "")
     file_type = (bp.data.get("file_type") or "").lower()
 
-    if file_type == "pdf":
-        raise ValueError("PDF blueprints are not supported for 3D parsing. Please upload a PNG or JPG image.")
-
     m = re.search(r'/blueprints/(.+?)(?:\?.*)?$', file_url)
     if not m:
         raise RuntimeError(f"Cannot parse storage path from URL: {file_url[:80]}")
     storage_path = m.group(1)
 
-    image_data = db.storage.from_("blueprints").download(storage_path)
+    file_data = db.storage.from_("blueprints").download(storage_path)
 
-    media_type_map = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}
+    media_type_map = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp", "pdf": "application/pdf"}
     media_type = media_type_map.get(file_type, "image/png")
 
-    return image_data, media_type
+    return file_data, media_type
 
 
-def _call_claude_vision(image_data: bytes, media_type: str) -> dict:
-    """Sync: send image to Claude Vision and parse response."""
-    image_b64 = base64.standard_b64encode(image_data).decode("utf-8")
+def _call_claude_vision(file_data: bytes, media_type: str) -> dict:
+    """Sync: send blueprint (image or PDF) to Claude Vision and parse response."""
+    file_b64 = base64.standard_b64encode(file_data).decode("utf-8")
+
+    # PDFs use document type; images use image type
+    if media_type == "application/pdf":
+        content_block = {
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": file_b64,
+            },
+        }
+    else:
+        content_block = {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": media_type,
+                "data": file_b64,
+            },
+        }
 
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     message = client.messages.create(
@@ -104,14 +121,7 @@ def _call_claude_vision(image_data: bytes, media_type: str) -> dict:
         messages=[{
             "role": "user",
             "content": [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": media_type,
-                        "data": image_b64,
-                    },
-                },
+                content_block,
                 {"type": "text", "text": VISION_PROMPT}
             ],
         }]
