@@ -2,6 +2,10 @@
 Aerial Roof Report service.
 Attempts Google Solar API first (if key configured), then falls back to
 Tavily property records + Claude estimation.
+
+Note: Google Solar API is optimized for residential buildings. For large
+commercial properties it may return incomplete or wrong-building data.
+A plausibility check rejects implausible results and triggers the fallback.
 """
 import re
 import json
@@ -14,23 +18,55 @@ from app.core.config import settings
 async def get_aerial_roof_report(address: str, city: str, state: str, zip_code: str = "") -> dict:
     """
     Get roof measurements for a property address.
-    Source priority: Google Solar API → Tavily + Claude estimate.
+    Source priority: Google Solar API (with plausibility check) → Tavily + Claude estimate.
     """
     full_address = ", ".join(filter(None, [address, city, f"{state} {zip_code}".strip()])).strip(", ")
 
+    # Always run Tavily research in parallel so we have a size reference for validation
+    research = await _tavily_research(full_address, city, state, zip_code)
+
     if settings.GOOGLE_SOLAR_API_KEY:
         try:
-            result = await _google_solar_report(full_address)
+            result = await _google_solar_report(full_address, research)
             if result:
                 return result
         except Exception:
             pass
 
-    return await _tavily_claude_estimate(full_address, city, state, zip_code)
+    return await _claude_estimate(full_address, city, state, zip_code, research)
 
 
-async def _google_solar_report(full_address: str) -> dict | None:
-    """Geocode the address then call Google Solar API for roof segment data."""
+async def _tavily_research(full_address: str, city: str, state: str, zip_code: str) -> str:
+    """Search Tavily for property records and building footprint data."""
+    if not settings.TAVILY_API_KEY:
+        return ""
+    from tavily import TavilyClient
+    tavily = TavilyClient(api_key=settings.TAVILY_API_KEY)
+    queries = [
+        f'"{full_address}" building square footage property records',
+        f'"{full_address}" site:zillow.com OR site:redfin.com OR site:loopnet.com sqft',
+        f"{city} {state} {zip_code} county assessor {full_address} building area",
+    ]
+    snippets = []
+    for q in queries:
+        try:
+            r = await asyncio.to_thread(tavily.search, query=q, search_depth="basic", max_results=4)
+            for item in r.get("results", []):
+                c = item.get("content", "")[:600]
+                if c:
+                    snippets.append(c)
+        except Exception:
+            continue
+    return "\n\n".join(snippets[:8])
+
+
+async def _google_solar_report(full_address: str, research: str) -> dict | None:
+    """
+    Geocode the address then call Google Solar API for roof segment data.
+    Runs a plausibility check against Tavily research — rejects results that
+    are implausibly small (Solar API often finds the wrong building for large
+    commercial properties).
+    """
     key = settings.GOOGLE_SOLAR_API_KEY
     async with httpx.AsyncClient(timeout=15.0) as client:
         geo = await client.get(
@@ -63,6 +99,18 @@ async def _google_solar_report(full_address: str) -> dict | None:
         total_m2 = sum(s.get("stats", {}).get("areaMeters2", 0) for s in segments)
         total_sqft = round(total_m2 * 10.764)
 
+        # Plausibility check: if the result is very small and research suggests
+        # a much larger building, reject and fall back to Claude estimate.
+        # Google Solar often snaps to a nearby small building for large commercial sites.
+        if total_sqft < 10_000 and research:
+            # Look for any large sqft mention in research
+            large_sqft_match = re.search(r'(\d{2,3}[,\d]*)\s*(?:sq(?:uare)?\s*f(?:oo)?t|sqft|sf)', research, re.IGNORECASE)
+            if large_sqft_match:
+                ref_sqft = int(large_sqft_match.group(1).replace(",", ""))
+                if ref_sqft > total_sqft * 3:
+                    # Research suggests a much larger building — Solar API got the wrong one
+                    return None
+
         pitches = [s.get("pitchDegrees", 0) for s in segments if s.get("pitchDegrees", 0) > 2]
         avg_deg = (sum(pitches) / len(pitches)) if pitches else 18.4  # ~6/12 default
         pitch_12 = round(avg_deg * 0.2667)
@@ -83,34 +131,17 @@ async def _google_solar_report(full_address: str) -> dict | None:
         }
 
 
-async def _tavily_claude_estimate(full_address: str, city: str, state: str, zip_code: str) -> dict:
-    """Use Tavily property records + Claude to estimate roof area."""
-    research = ""
-    if settings.TAVILY_API_KEY:
-        from tavily import TavilyClient
-        tavily = TavilyClient(api_key=settings.TAVILY_API_KEY)
-        queries = [
-            f"{full_address} square footage lot size property records",
-            f"{full_address} zillow redfin property details beds baths sqft",
-        ]
-        snippets = []
-        for q in queries:
-            try:
-                r = await asyncio.to_thread(tavily.search, query=q, search_depth="basic", max_results=4)
-                for item in r.get("results", []):
-                    c = item.get("content", "")[:500]
-                    if c:
-                        snippets.append(c)
-            except Exception:
-                continue
-        research = "\n\n".join(snippets[:6])
-
-    prompt = f"""You are a roofing contractor estimator. Estimate the roof measurements for this address using available property records.
+async def _claude_estimate(full_address: str, city: str, state: str, zip_code: str, research: str) -> dict:
+    """
+    Use property record research + Claude to estimate roof area.
+    Handles both residential and large commercial buildings correctly.
+    """
+    prompt = f"""You are a professional roofing estimator and property analyst. Estimate the roof area for this address using the property research below.
 
 Address: {full_address}
 
-PROPERTY RECORDS FOUND:
-{research if research else "No records found. Use typical residential values for " + state + "."}
+PROPERTY RESEARCH:
+{research if research else f"No records found. Use your best knowledge of typical building sizes for this address type in {state}."}
 
 Return ONLY valid JSON — no text before or after:
 {{
@@ -124,23 +155,28 @@ Return ONLY valid JSON — no text before or after:
   "roof_segments": 2,
   "stories": 1,
   "house_sqft": 1800,
+  "building_type": "residential",
   "confidence": 0.58,
   "note": "Estimated from property records. Physical inspection recommended before ordering materials.",
   "max_sunshine_hours_yr": null
 }}
 
-Rules:
-- total_sqft = roof deck area (house sqft × 1.15–1.40 depending on pitch and overhang)
-- squares = total_sqft / 100
-- pitch: use typical {state} residential pitch (common: "4/12", "6/12", "8/12")
-- confidence: 0.5–0.65 from records, 0.35–0.5 if no records found
-- house_sqft: living area from records if found, else estimate"""
+Critical rules:
+- Read the research carefully. If it mentions a specific square footage for the building, USE THAT NUMBER as your starting point — do not ignore it.
+- For single-story commercial buildings (big box retail, warehouses, grocery stores): roof area ≈ building footprint (floor sqft). These have flat or very low-slope roofs.
+- For residential buildings: roof area = floor sqft × 1.15 to 1.40 depending on pitch and overhang.
+- For multi-story buildings: roof area ≈ footprint of ONE floor (the building footprint), not total floor area.
+- pitch: "1/12" to "3/12" for flat commercial roofs, "4/12" to "12/12" for residential.
+- building_type: "residential", "commercial", or "industrial"
+- confidence: 0.70–0.85 if research contains explicit sqft figures; 0.40–0.60 if estimating from general knowledge.
+- squares = total_sqft / 100 (always)
+- Be accurate — contractors will use this to order materials."""
 
     def _call_claude(p: str) -> str:
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         msg = client.messages.create(
             model="claude-opus-4-6",
-            max_tokens=512,
+            max_tokens=600,
             messages=[{"role": "user", "content": p}]
         )
         return msg.content[0].text.strip()
