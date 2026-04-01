@@ -6,9 +6,13 @@ Tavily property records + Claude estimation.
 Note: Google Solar API is optimized for residential buildings. For large
 commercial properties it may return incomplete or wrong-building data.
 A plausibility check rejects implausible results and triggers the fallback.
+
+Satellite imagery uses Esri World Imagery (free, no API key required).
+Geocoding tries Google first (if key set), then Nominatim/OSM as fallback.
 """
 import re
 import json
+import math
 import asyncio
 import httpx
 import anthropic
@@ -37,39 +41,62 @@ async def get_aerial_roof_report(address: str, city: str, state: str, zip_code: 
 
 
 async def _geocode_address(full_address: str) -> tuple[float, float] | None:
-    """Geocode an address to (lat, lng) using Google Geocoding API."""
+    """
+    Geocode an address to (lat, lng).
+    Tries Google Geocoding API first (if key configured), then Nominatim (free, no key).
+    """
     key = settings.GOOGLE_SOLAR_API_KEY
-    if not key:
-        return None
+    if key:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                geo = await client.get(
+                    "https://maps.googleapis.com/maps/api/geocode/json",
+                    params={"address": full_address, "key": key},
+                )
+                data = geo.json()
+                if data.get("status") == "OK" and data.get("results"):
+                    loc = data["results"][0]["geometry"]["location"]
+                    return loc["lat"], loc["lng"]
+        except Exception:
+            pass
+
+    # Fallback: Nominatim (OpenStreetMap) — free, no API key required
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            geo = await client.get(
-                "https://maps.googleapis.com/maps/api/geocode/json",
-                params={"address": full_address, "key": key},
+        async with httpx.AsyncClient(
+            timeout=10.0,
+            headers={"User-Agent": "BuildAI-RoofEstimator/1.0 (contact@buildai.app)"},
+        ) as client:
+            resp = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": full_address, "format": "json", "limit": 1},
             )
-            data = geo.json()
-            if data.get("status") != "OK" or not data.get("results"):
-                return None
-            loc = data["results"][0]["geometry"]["location"]
-            return loc["lat"], loc["lng"]
+            results = resp.json()
+            if results:
+                return float(results[0]["lat"]), float(results[0]["lon"])
     except Exception:
-        return None
+        pass
+
+    return None
 
 
 def _satellite_image_url(lat: float, lng: float) -> str:
     """
-    Build a Google Maps Static API URL for a satellite image centered on the property.
-    Zoom 20 = highest resolution showing individual buildings clearly.
+    Build an Esri World Imagery satellite URL for the property.
+    Free, no API key required. Returns a PNG image at 640x420.
     """
-    key = settings.GOOGLE_SOLAR_API_KEY
+    zoom = 18
+    # Metres per pixel at this zoom level (Web Mercator / Google Mercator)
+    mpp = 156543.03392 * math.cos(math.radians(lat)) / (2 ** zoom)
+    half_w_deg = (640 * mpp / 2) / (111320 * math.cos(math.radians(lat)))
+    half_h_deg = (420 * mpp / 2) / 111320
+    west  = lng - half_w_deg
+    east  = lng + half_w_deg
+    south = lat - half_h_deg
+    north = lat + half_h_deg
     return (
-        f"https://maps.googleapis.com/maps/api/staticmap"
-        f"?center={lat},{lng}"
-        f"&zoom=20"
-        f"&size=640x420"
-        f"&maptype=satellite"
-        f"&markers=color:red%7Csize:small%7C{lat},{lng}"
-        f"&key={key}"
+        "https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export"
+        f"?bbox={west:.6f},{south:.6f},{east:.6f},{north:.6f}"
+        "&bboxSR=4326&imageSR=4326&size=640,420&format=png&f=image"
     )
 
 
@@ -226,7 +253,7 @@ Critical rules:
         text = text[start:]
     result = json.loads(text)
 
-    # Geocode and attach satellite image even for Claude-estimated results
+    # Geocode (Google → Nominatim fallback) and attach Esri satellite image
     coords = await _geocode_address(full_address)
     if coords:
         result["lat"] = coords[0]
