@@ -94,7 +94,7 @@ def _satellite_image_url(lat: float, lng: float) -> str:
     south = lat - half_h_deg
     north = lat + half_h_deg
     return (
-        "https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export"
+        "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export"
         f"?bbox={west:.6f},{south:.6f},{east:.6f},{north:.6f}"
         "&bboxSR=4326&imageSR=4326&size=640,420&format=png&f=image"
     )

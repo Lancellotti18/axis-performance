@@ -859,6 +859,26 @@ export default function ProjectPage() {
     setRiskScoreLoading(false)
   }
 
+  function buildEsriSatelliteUrl(lat: number, lng: number): string {
+    const zoom = 18
+    const mpp = 156543.03392 * Math.cos((lat * Math.PI) / 180) / Math.pow(2, zoom)
+    const halfW = (640 * mpp / 2) / (111320 * Math.cos((lat * Math.PI) / 180))
+    const halfH = (420 * mpp / 2) / 111320
+    const bbox = `${(lng - halfW).toFixed(6)},${(lat - halfH).toFixed(6)},${(lng + halfW).toFixed(6)},${(lat + halfH).toFixed(6)}`
+    return `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=640,420&format=png&f=image`
+  }
+
+  async function geocodeNominatim(address: string): Promise<{ lat: number; lng: number } | null> {
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`, {
+        headers: { 'User-Agent': 'BuildAI-RoofEstimator/1.0' }
+      })
+      const data = await r.json()
+      if (data?.length) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
+    } catch {}
+    return null
+  }
+
   async function handleAerialReport() {
     if (!aerialAddress.trim()) return
     setAerialLoading(true)
@@ -866,6 +886,15 @@ export default function ProjectPage() {
     setAerialResult(null)
     try {
       const result = await api.roofing.aerialReport(projectId, aerialAddress)
+      // If backend didn't attach satellite URL, geocode client-side and build Esri URL
+      if (!result.satellite_image_url) {
+        const coords = await geocodeNominatim(aerialAddress)
+        if (coords) {
+          result.lat = coords.lat
+          result.lng = coords.lng
+          result.satellite_image_url = buildEsriSatelliteUrl(coords.lat, coords.lng)
+        }
+      }
       setAerialResult(result)
     } catch (err: any) {
       setAerialError(err.message || 'Aerial report failed.')
@@ -1359,6 +1388,7 @@ Thank you for your time.`
                                 alt={`Satellite view of ${aerialResult.address}`}
                                 className="w-full object-cover"
                                 style={{ display: 'block', minHeight: 180 }}
+                                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
                               />
                               {/* Dark gradient overlay at bottom */}
                               <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '55%', background: 'linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%)' }} />
