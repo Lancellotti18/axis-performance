@@ -36,6 +36,43 @@ async def get_aerial_roof_report(address: str, city: str, state: str, zip_code: 
     return await _claude_estimate(full_address, city, state, zip_code, research)
 
 
+async def _geocode_address(full_address: str) -> tuple[float, float] | None:
+    """Geocode an address to (lat, lng) using Google Geocoding API."""
+    key = settings.GOOGLE_SOLAR_API_KEY
+    if not key:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            geo = await client.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params={"address": full_address, "key": key},
+            )
+            data = geo.json()
+            if data.get("status") != "OK" or not data.get("results"):
+                return None
+            loc = data["results"][0]["geometry"]["location"]
+            return loc["lat"], loc["lng"]
+    except Exception:
+        return None
+
+
+def _satellite_image_url(lat: float, lng: float) -> str:
+    """
+    Build a Google Maps Static API URL for a satellite image centered on the property.
+    Zoom 20 = highest resolution showing individual buildings clearly.
+    """
+    key = settings.GOOGLE_SOLAR_API_KEY
+    return (
+        f"https://maps.googleapis.com/maps/api/staticmap"
+        f"?center={lat},{lng}"
+        f"&zoom=20"
+        f"&size=640x420"
+        f"&maptype=satellite"
+        f"&markers=color:red%7Csize:small%7C{lat},{lng}"
+        f"&key={key}"
+    )
+
+
 async def _tavily_research(full_address: str, city: str, state: str, zip_code: str) -> str:
     """Search Tavily for property records and building footprint data."""
     if not settings.TAVILY_API_KEY:
@@ -101,18 +138,15 @@ async def _google_solar_report(full_address: str, research: str) -> dict | None:
 
         # Plausibility check: if the result is very small and research suggests
         # a much larger building, reject and fall back to Claude estimate.
-        # Google Solar often snaps to a nearby small building for large commercial sites.
         if total_sqft < 10_000 and research:
-            # Look for any large sqft mention in research
             large_sqft_match = re.search(r'(\d{2,3}[,\d]*)\s*(?:sq(?:uare)?\s*f(?:oo)?t|sqft|sf)', research, re.IGNORECASE)
             if large_sqft_match:
                 ref_sqft = int(large_sqft_match.group(1).replace(",", ""))
                 if ref_sqft > total_sqft * 3:
-                    # Research suggests a much larger building — Solar API got the wrong one
                     return None
 
         pitches = [s.get("pitchDegrees", 0) for s in segments if s.get("pitchDegrees", 0) > 2]
-        avg_deg = (sum(pitches) / len(pitches)) if pitches else 18.4  # ~6/12 default
+        avg_deg = (sum(pitches) / len(pitches)) if pitches else 18.4
         pitch_12 = round(avg_deg * 0.2667)
         pitch_str = f"{pitch_12}/12"
 
@@ -128,6 +162,9 @@ async def _google_solar_report(full_address: str, research: str) -> dict | None:
             "max_sunshine_hours_yr": sp.get("maxSunshineHoursPerYear"),
             "confidence": 0.93,
             "note": "High-accuracy measurements from Google Solar aerial imagery analysis.",
+            "lat": lat,
+            "lng": lng,
+            "satellite_image_url": _satellite_image_url(lat, lng),
         }
 
 
@@ -187,4 +224,13 @@ Critical rules:
     start = text.find("{")
     if start > 0:
         text = text[start:]
-    return json.loads(text)
+    result = json.loads(text)
+
+    # Geocode and attach satellite image even for Claude-estimated results
+    coords = await _geocode_address(full_address)
+    if coords:
+        result["lat"] = coords[0]
+        result["lng"] = coords[1]
+        result["satellite_image_url"] = _satellite_image_url(*coords)
+
+    return result

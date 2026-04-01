@@ -1350,20 +1350,74 @@ Thank you for your time.`
                               </div>
                             </div>
                           </div>
-                          {/* Metrics */}
-                          <div className="grid grid-cols-2 gap-2 mb-3">
-                            {[
-                              { label: 'Roof Sqft',  value: `${(aerialResult.total_sqft || 0).toLocaleString()}` },
-                              { label: 'Squares',    value: `${aerialResult.squares || 0}` },
-                              { label: 'Pitch',      value: aerialResult.pitch || '—' },
-                              { label: 'Segments',   value: aerialResult.roof_segments || '—' },
-                            ].map(s => (
-                              <div key={s.label} className="bg-purple-50 rounded-xl p-3">
-                                <div className="text-purple-800 font-black text-lg">{s.value}</div>
-                                <div className="text-purple-400 text-xs">{s.label}</div>
+
+                          {/* Satellite image with measurement overlay */}
+                          {aerialResult.satellite_image_url && (
+                            <div className="relative rounded-xl overflow-hidden mb-3 border border-slate-200" style={{ background: '#0f172a' }}>
+                              <img
+                                src={aerialResult.satellite_image_url}
+                                alt={`Satellite view of ${aerialResult.address}`}
+                                className="w-full object-cover"
+                                style={{ display: 'block', minHeight: 180 }}
+                              />
+                              {/* Dark gradient overlay at bottom */}
+                              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '55%', background: 'linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%)' }} />
+
+                              {/* Address label top-left */}
+                              <div style={{ position: 'absolute', top: 10, left: 10 }}>
+                                <div style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)', color: '#fff', fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 6, whiteSpace: 'nowrap' }}>
+                                  📍 {aerialResult.address}
+                                </div>
                               </div>
-                            ))}
-                          </div>
+
+                              {/* Source badge top-right */}
+                              <div style={{ position: 'absolute', top: 10, right: 10 }}>
+                                <div style={{ background: isSatellite ? 'rgba(16,185,129,0.85)' : 'rgba(245,158,11,0.85)', color: '#fff', fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 6, whiteSpace: 'nowrap' }}>
+                                  {isSatellite ? '🛰 Google Solar' : '📋 Estimated'}
+                                </div>
+                              </div>
+
+                              {/* Measurement badges bottom overlay */}
+                              <div style={{ position: 'absolute', bottom: 10, left: 10, right: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                <div style={{ background: 'rgba(99,102,241,0.92)', backdropFilter: 'blur(6px)', color: '#fff', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{(aerialResult.total_sqft || 0).toLocaleString()}</div>
+                                  <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>ROOF SQFT</div>
+                                </div>
+                                <div style={{ background: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(6px)', color: '#fff', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.squares || '—'}</div>
+                                  <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>SQUARES</div>
+                                </div>
+                                <div style={{ background: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(6px)', color: '#fff', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.pitch || '—'}</div>
+                                  <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>PITCH</div>
+                                </div>
+                                {aerialResult.roof_segments > 0 && (
+                                  <div style={{ background: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(6px)', color: '#fff', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.roof_segments}</div>
+                                    <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>SEGMENTS</div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Metrics grid (shown when no satellite image, or as supplement) */}
+                          {!aerialResult.satellite_image_url && (
+                            <div className="grid grid-cols-2 gap-2 mb-3">
+                              {[
+                                { label: 'Roof Sqft',  value: `${(aerialResult.total_sqft || 0).toLocaleString()}` },
+                                { label: 'Squares',    value: `${aerialResult.squares || 0}` },
+                                { label: 'Pitch',      value: aerialResult.pitch || '—' },
+                                { label: 'Segments',   value: aerialResult.roof_segments || '—' },
+                              ].map(s => (
+                                <div key={s.label} className="bg-purple-50 rounded-xl p-3">
+                                  <div className="text-purple-800 font-black text-lg">{s.value}</div>
+                                  <div className="text-purple-400 text-xs">{s.label}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           {aerialResult.stories && (
                             <div className="text-slate-500 text-xs mb-2">Stories: {aerialResult.stories} &nbsp;·&nbsp; House sqft: {aerialResult.house_sqft?.toLocaleString() || '—'}</div>
                           )}
