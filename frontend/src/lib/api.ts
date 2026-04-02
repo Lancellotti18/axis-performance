@@ -217,6 +217,16 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ project_id: projectId, address }),
       }, 60000),
+    aerialReportStandalone: (address: string) =>
+      apiRequest<any>(`/api/v1/roofing/aerial-report/standalone`, {
+        method: 'POST',
+        body: JSON.stringify({ address }),
+      }, 60000),
+    stormRisk: (city: string, state: string, zipCode?: string) =>
+      apiRequest<any>(`/api/v1/roofing/storm-risk`, {
+        method: 'POST',
+        body: JSON.stringify({ city, state, zip_code: zipCode || '' }),
+      }, 60000),
   },
   crm: {
     listLeads: (userId: string) =>

@@ -189,23 +189,39 @@ class AerialReportRequest(BaseModel):
     address: str
 
 
+class StandaloneAerialRequest(BaseModel):
+    address: str  # full address including city, state, zip
+
+
+class StormRiskRequest(BaseModel):
+    city: str
+    state: str
+    zip_code: Optional[str] = ""
+
+
 @router.post("/aerial-report")
 async def aerial_roof_report(payload: AerialReportRequest):
     """
-    Get aerial roof measurements for a property address.
+    Get aerial roof measurements for a property address (project-linked).
     Uses Google Solar API if configured, otherwise Tavily + Claude estimate.
     """
     from app.services.aerial_roof_service import get_aerial_roof_report
     db = get_supabase()
 
     proj = db.table("projects").select("city, region, zip_code").eq("id", payload.project_id).single().execute()
-    if not proj.data:
+    if not proj.data and payload.project_id != "standalone":
         raise HTTPException(status_code=404, detail="Project not found")
 
-    city = proj.data.get("city", "")
-    region = proj.data.get("region", "US-TX")
-    zip_code = proj.data.get("zip_code", "")
-    state = region.replace("US-", "") if region else "TX"
+    if payload.project_id == "standalone" or not proj.data:
+        # Parse city/state from the address string itself
+        city = ""
+        state = ""
+        zip_code = ""
+    else:
+        city = proj.data.get("city", "")
+        region = proj.data.get("region", "US-TX")
+        zip_code = proj.data.get("zip_code", "")
+        state = region.replace("US-", "") if region else "TX"
 
     try:
         result = await get_aerial_roof_report(
@@ -217,4 +233,45 @@ async def aerial_roof_report(payload: AerialReportRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Aerial report failed: {e}")
 
+    return result
+
+
+@router.post("/aerial-report/standalone")
+async def aerial_roof_report_standalone(payload: StandaloneAerialRequest):
+    """
+    Standalone aerial roof report — no project required.
+    Pass the full address (street, city, state, zip) and get roof measurements.
+    """
+    from app.services.aerial_roof_service import get_aerial_roof_report
+    if not payload.address.strip():
+        raise HTTPException(status_code=422, detail="Address is required.")
+    try:
+        result = await get_aerial_roof_report(
+            address=payload.address.strip(),
+            city="",
+            state="",
+            zip_code="",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Aerial report failed: {e}")
+    return result
+
+
+@router.post("/storm-risk")
+async def storm_risk_standalone(payload: StormRiskRequest):
+    """
+    Standalone storm / hail / wind risk report for any city + state.
+    No project required.
+    """
+    from app.services.risk_score_service import get_risk_score
+    if not payload.city.strip() or not payload.state.strip():
+        raise HTTPException(status_code=422, detail="City and state are required.")
+    try:
+        result = await get_risk_score(
+            city=payload.city.strip(),
+            state=payload.state.strip().upper(),
+            zip_code=payload.zip_code.strip() if payload.zip_code else "",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Storm risk report failed: {e}")
     return result

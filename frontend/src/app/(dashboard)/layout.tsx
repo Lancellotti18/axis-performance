@@ -11,6 +11,8 @@ const NAV = [
   { href: '/projects',        label: 'Projects',         icon: IconProjects },
   { href: '/projects/new',    label: 'Upload Blueprint',  icon: IconUpload },
   { href: '/material-check',  label: 'Material Check',    icon: IconMaterialCheck },
+  { href: '/aerial-report',   label: 'Aerial Roof Report', icon: IconAerial },
+  { href: '/storm-report',    label: 'Storm Risk Report',  icon: IconStorm },
   { href: '/crm',             label: 'CRM',              icon: IconCRM },
   { href: '/reports',         label: 'Reports',          icon: IconReports },
   { href: '/permits',         label: 'Permits',          icon: IconPermits },
@@ -68,6 +70,24 @@ function IconMaterialCheck({ active }: { active: boolean }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#2563eb' : '#94a3b8'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+    </svg>
+  )
+}
+
+function IconAerial({ active }: { active: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#2563eb' : '#94a3b8'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  )
+}
+
+function IconStorm({ active }: { active: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#2563eb' : '#94a3b8'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 16.9A5 5 0 0018 7h-1.26A8 8 0 104 15.3"/>
+      <polyline points="13 11 9 17 15 17 11 23"/>
     </svg>
   )
 }
