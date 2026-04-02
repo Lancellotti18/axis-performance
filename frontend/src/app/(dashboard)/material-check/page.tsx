@@ -304,7 +304,7 @@ export default function MaterialCheckPage() {
 
         {/* Page header */}
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Material Compliance Check</h1>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Material Compliance</h1>
           <p className="text-slate-400 text-sm mt-1">
             Upload or paste your material list and verify it meets the building codes for your jurisdiction.
             Every result is sourced from official .gov building codes — nothing is fabricated.

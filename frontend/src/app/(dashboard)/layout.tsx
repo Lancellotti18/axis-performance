@@ -10,7 +10,7 @@ const NAV = [
   { href: '/dashboard',       label: 'Dashboard',        icon: IconDashboard },
   { href: '/projects',        label: 'Projects',         icon: IconProjects },
   { href: '/projects/new',    label: 'Upload Blueprint',  icon: IconUpload },
-  { href: '/material-check',  label: 'Material Check',    icon: IconMaterialCheck },
+  { href: '/material-check',  label: 'Material Compliance', icon: IconMaterialCheck },
   { href: '/aerial-report',   label: 'Aerial Roof Report', icon: IconAerial },
   { href: '/storm-report',    label: 'Storm Risk Report',  icon: IconStorm },
   { href: '/crm',             label: 'CRM',              icon: IconCRM },
