@@ -57,12 +57,14 @@ def _principled(tree) -> bpy.types.Node:
 
 def _tex_coord_mapping(tree, scale: tuple = (1, 1, 1),
                         loc_offset: tuple = (-800, 0)) -> bpy.types.Node:
-    """TexCoord → Mapping chain, return Mapping node."""
+    """TexCoord → Mapping chain, return Mapping node.
+    Uses 'Generated' (object bounding box) instead of UV — works on all bmesh
+    geometry without requiring explicit UV unwrap."""
     coord   = _node(tree, "ShaderNodeTexCoord",   (loc_offset[0] - 200, loc_offset[1]))
     mapping = _node(tree, "ShaderNodeMapping",     loc_offset)
     mapping.vector_type = "POINT"
     mapping.inputs["Scale"].default_value = scale
-    _link(tree, coord, "UV", mapping, "Vector")
+    _link(tree, coord, "Generated", mapping, "Vector")
     return mapping
 
 
@@ -147,15 +149,24 @@ def _try_download_polyhaven(name: str, resolution: str,
 # ── Individual material builders ─────────────────────────────────────────────
 
 def make_stucco_wall(tex_dir: str = "") -> bpy.types.Material:
-    """Painted stucco exterior wall — off-white with fine grain normal."""
+    """Painted stucco exterior wall — warm off-white with procedural grain."""
     mat = _new_material("MAT_Stucco_Wall")
     tree = mat.node_tree
     bsdf = _principled(tree)
-    bsdf.inputs["Base Color"].default_value  = (0.961, 0.941, 0.910, 1.0)  # #F5F0E8
-    bsdf.inputs["Roughness"].default_value   = 0.85
+    # Slight color variation so it's not perfectly flat
+    mapping = _tex_coord_mapping(tree, scale=(3.0, 3.0, 3.0))
+    ramp = _noise_color(tree, scale=8.0, detail=10.0, roughness=0.65,
+                        color_a=(0.88, 0.85, 0.80, 1.0),
+                        color_b=(0.95, 0.93, 0.89, 1.0))
+    noise_n = tree.nodes.get("Noise Texture") or list(tree.nodes)[-3]
+    try: _link(tree, mapping, "Vector", noise_n, "Vector")
+    except Exception: pass
+    _link(tree, ramp, "Color", bsdf, "Base Color")
+    bsdf.inputs["Roughness"].default_value   = 0.88
     bsdf.inputs["Metallic"].default_value    = 0.0
-    bsdf.inputs["Specular IOR Level"].default_value = 0.05
-    _bump_from_noise(tree, bsdf, strength=0.3, scale=120.0)
+    try: bsdf.inputs["Specular IOR Level"].default_value = 0.04
+    except KeyError: pass
+    _bump_from_noise(tree, bsdf, strength=0.35, scale=40.0)
     return mat
 
 
@@ -355,12 +366,12 @@ def make_tile_floor() -> bpy.types.Material:
     tree = mat.node_tree
     bsdf = _principled(tree)
     mapping = _tex_coord_mapping(tree, scale=(4.0, 4.0, 1.0))
-    # Grout pattern via fmod / grid
-    musgrave = _node(tree, "ShaderNodeTexMusgrave", (-400, 100))
-    musgrave.musgrave_type = "RIDGED_MULTIFRACTAL"
-    musgrave.inputs["Scale"].default_value  = 30.0
-    musgrave.inputs["Detail"].default_value = 2.0
-    _link(tree, mapping, "Vector", musgrave, "Vector")
+    # Grout pattern via noise (Musgrave merged into Noise in Blender 4.1+)
+    noise = _node(tree, "ShaderNodeTexNoise", (-400, 100))
+    noise.inputs["Scale"].default_value   = 30.0
+    noise.inputs["Detail"].default_value  = 2.0
+    noise.inputs["Roughness"].default_value = 0.9
+    _link(tree, mapping, "Vector", noise, "Vector")
     ramp = _node(tree, "ShaderNodeValToRGB", (-200, 100))
     ramp.color_ramp.elements[0].position = 0.0
     ramp.color_ramp.elements[0].color    = (0.75, 0.74, 0.72, 1.0)  # grout
@@ -368,8 +379,8 @@ def make_tile_floor() -> bpy.types.Material:
     e1.color = (0.94, 0.93, 0.91, 1.0)  # tile
     ramp.color_ramp.elements[1].position = 1.0
     ramp.color_ramp.elements[1].color    = (0.96, 0.95, 0.93, 1.0)
-    _link(tree, musgrave, "Fac",  ramp, "Fac")
-    _link(tree, ramp,    "Color", bsdf, "Base Color")
+    _link(tree, noise, "Fac",  ramp, "Fac")
+    _link(tree, ramp,  "Color", bsdf, "Base Color")
     bsdf.inputs["Roughness"].default_value = 0.28
     bsdf.inputs["Specular IOR Level"].default_value = 0.5
     _bump_from_noise(tree, bsdf, strength=0.08, scale=30.0, loc=(-400, -300))
@@ -392,23 +403,25 @@ def make_carpet_floor() -> bpy.types.Material:
 
 
 def make_grass_ground() -> bpy.types.Material:
-    """Procedural grass ground — green noise, high roughness."""
+    """Procedural grass — natural muted green with soil variation."""
     mat = _new_material("MAT_Grass_Ground")
     tree = mat.node_tree
     bsdf = _principled(tree)
-    mapping = _tex_coord_mapping(tree, scale=(0.3, 0.3, 0.3))
+    mapping = _tex_coord_mapping(tree, scale=(0.15, 0.15, 0.15))
     noise_a = _node(tree, "ShaderNodeTexNoise", (-400, 100))
-    noise_a.inputs["Scale"].default_value = 20.0
-    noise_a.inputs["Detail"].default_value = 10.0
+    noise_a.inputs["Scale"].default_value   = 12.0
+    noise_a.inputs["Detail"].default_value  = 10.0
+    noise_a.inputs["Roughness"].default_value = 0.7
     _link(tree, mapping, "Vector", noise_a, "Vector")
     ramp = _node(tree, "ShaderNodeValToRGB", (-200, 100))
-    ramp.color_ramp.elements[0].color = (0.05, 0.22, 0.04, 1.0)  # dark grass
-    ramp.color_ramp.elements[1].color = (0.18, 0.42, 0.08, 1.0)  # light grass
+    # Muted, natural grass tones — not neon
+    ramp.color_ramp.elements[0].color = (0.06, 0.13, 0.03, 1.0)  # dark muted grass
+    ramp.color_ramp.elements[1].color = (0.14, 0.24, 0.07, 1.0)  # medium muted grass
     _link(tree, noise_a, "Fac", ramp, "Fac")
     _link(tree, ramp, "Color", bsdf, "Base Color")
-    bsdf.inputs["Roughness"].default_value = 0.97
+    bsdf.inputs["Roughness"].default_value = 0.98
     bsdf.inputs["Metallic"].default_value  = 0.0
-    _bump_from_noise(tree, bsdf, strength=0.6, scale=30.0, loc=(-400, -300))
+    _bump_from_noise(tree, bsdf, strength=0.5, scale=20.0, loc=(-400, -300))
     return mat
 
 

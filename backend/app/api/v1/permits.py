@@ -553,6 +553,86 @@ def _generate_clean_pdf(fields: list, project_id: str) -> bytes:
     return buf.getvalue()
 
 
+@router.post("/package/{project_id}")
+async def generate_permit_package(project_id: str):
+    """
+    Generate a complete permit package ZIP containing:
+      01_permit_application.pdf   — pre-filled with real project + contractor data
+      02_site_plan_summary.pdf    — dimensions from Claude Vision blueprint parse
+      03_material_specifications.pdf — material list with live prices
+      04_contractor_certification.pdf — contractor license & insurance page
+      jurisdiction_info.json      — real requirements from building dept website
+
+    All data sourced from:
+    - Project record (Supabase)
+    - Contractor profile (Supabase)
+    - AXIS pipeline outputs (Claude Vision parse + live pricing)
+    - Tavily search of official .gov building department websites
+    """
+    import json as _json
+    db = get_supabase()
+
+    # Load project
+    proj_r = db.table("projects").select("*").eq("id", project_id).limit(1).execute()
+    if not proj_r.data:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project = proj_r.data[0]
+
+    state_label = (project.get("region") or "").replace("US-", "")
+    project_dict = {
+        **project,
+        "state": state_label,
+        "address": project.get("address", f"{project.get('city', '')} {state_label}".strip()),
+    }
+
+    # Load contractor profile
+    contractor = {}
+    try:
+        user_id = project.get("user_id", "")
+        if user_id:
+            cp = db.table("contractor_profiles").select("*").eq("user_id", user_id).limit(1).execute()
+            if cp.data:
+                contractor = cp.data[0]
+    except Exception:
+        pass
+
+    # Load materials + pricing (AXIS first, estimator fallback)
+    from app.api.v1.proposals import _load_materials_and_pricing
+    materials, pricing_data = _load_materials_and_pricing(project_id, db)
+
+    # Load scene_data (Claude Vision parse)
+    scene_data = None
+    axis_dir = os.path.join(os.environ.get("AXIS_OUTPUT_DIR", "/tmp/axis_outputs"), project_id)
+    scene_path = os.path.join(axis_dir, "scene_data.json")
+    if os.path.exists(scene_path):
+        try:
+            with open(scene_path) as f:
+                scene_data = _json.load(f)
+        except Exception:
+            pass
+
+    project_type = (project.get("blueprint_type") or "residential").lower()
+
+    from app.services.permit_package_service import generate_permit_package as _gen_pkg
+    zip_bytes = _gen_pkg(
+        project=project_dict,
+        contractor=contractor,
+        materials=materials,
+        pricing_data=pricing_data,
+        scene_data=scene_data,
+        project_type=project_type,
+    )
+
+    name_slug = project_dict.get("name", "project").lower().replace(" ", "_")
+    filename = f"permit_package_{name_slug}.zip"
+
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/validate-link")
 async def validate_product_link(payload: dict):
     """Validate a product URL: verify it's a real product page with matching price."""

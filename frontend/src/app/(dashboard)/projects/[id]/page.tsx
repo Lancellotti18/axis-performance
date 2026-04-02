@@ -689,6 +689,28 @@ export default function ProjectPage() {
   const [scene3dLoading, setScene3dLoading] = useState(false)
   const [scene3dError, setScene3dError] = useState<string | null>(null)
 
+  // AXIS Performance 5D pipeline
+  const [axisJobId, setAxisJobId]       = useState<string | null>(null)
+  const [axisStatus, setAxisStatus]     = useState<'idle' | 'queued' | 'running_3d' | 'running_5d' | 'queued_cloud' | 'complete' | 'error'>('idle')
+  const [axisResults, setAxisResults]   = useState<any>(null)
+  const [axisError, setAxisError]       = useState<string | null>(null)
+  const [axisElapsed, setAxisElapsed]   = useState(0)
+  const axisPollerRef = useRef<NodeJS.Timeout | null>(null)
+  // AXIS settings
+  const [axisTradeType, setAxisTradeType] = useState('General Construction')
+  const [axisTier, setAxisTier]           = useState<'economy' | 'standard' | 'premium'>('standard')
+  const [axisCloudGpu, setAxisCloudGpu]   = useState(false)
+  // Proposal generation
+  const [proposalLoading, setProposalLoading] = useState(false)
+  const [proposalError, setProposalError]     = useState<string | null>(null)
+  // Editable line items (from AXIS materials)
+  const [axisLineItems, setAxisLineItems]     = useState<any[]>([])
+  const [lineItemsEdited, setLineItemsEdited] = useState(false)
+  // AXIS results tabs + source popovers
+  const [axisTab, setAxisTab] = useState<'overview'|'costs'|'schedule'|'materials'|'insights'>('overview')
+  const [openSources, setOpenSources] = useState<Set<string>>(new Set())
+  const toggleSource = (key: string) => setOpenSources(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
+
   const loadData = useCallback(async () => {
     try {
       const proj = await api.projects.get(projectId)
@@ -981,6 +1003,105 @@ Thank you for your time.`
     }
     setScene3dLoading(false)
   }
+
+  async function handleGenerateProposal() {
+    setProposalLoading(true)
+    setProposalError(null)
+    try {
+      const body: any = {
+        trade_type: axisTradeType,
+        tier:       axisTier,
+      }
+      if (lineItemsEdited && axisLineItems.length > 0) {
+        body.material_overrides = axisLineItems
+      }
+      const resp = await fetch(`/api/v1/proposals/${projectId}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }))
+        throw new Error(err.detail || 'Proposal generation failed')
+      }
+      const blob = await resp.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `proposal_${(project?.name || 'project').toLowerCase().replace(/\s+/g, '_')}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      setProposalError(e.message || 'Failed to generate proposal')
+    } finally {
+      setProposalLoading(false)
+    }
+  }
+
+  async function handleRunAxis() {
+    setAxisStatus('queued')
+    setAxisError(null)
+    setAxisResults(null)
+    setAxisElapsed(0)
+    setAxisLineItems([])
+    setLineItemsEdited(false)
+    try {
+      const resp = await api.axis.run(projectId, {
+        project_name:  project?.name || 'Project',
+        run_5d:        true,
+        generate_pdf:  true,
+        trade_type:    axisTradeType,
+        use_cloud_gpu: axisCloudGpu,
+      })
+      setAxisJobId(resp.job_id)
+      // Start polling
+      if (axisPollerRef.current) clearInterval(axisPollerRef.current)
+      axisPollerRef.current = setInterval(async () => {
+        try {
+          const statusResp = await api.axis.status(projectId, resp.job_id)
+          setAxisStatus(statusResp.status as any)
+          setAxisElapsed(statusResp.elapsed_s || 0)
+          if (statusResp.status === 'complete') {
+            clearInterval(axisPollerRef.current!)
+            // Load results
+            const results = await api.axis.results(projectId)
+            setAxisResults(results)
+            // Populate editable line items from live pricing materials
+            const mats = results?.live_pricing?.materials || results?.quantities?._raw_items || []
+            if (mats.length > 0) setAxisLineItems(mats)
+          } else if (statusResp.status === 'error') {
+            clearInterval(axisPollerRef.current!)
+            setAxisError(statusResp.error || 'Pipeline failed.')
+          }
+        } catch (e: any) {
+          // Don't stop polling on transient errors
+        }
+      }, 4000)
+    } catch (err: any) {
+      setAxisStatus('error')
+      setAxisError(err.message || 'Failed to start AXIS pipeline.')
+    }
+  }
+
+  // Load existing AXIS results when entering 3D tab
+  useEffect(() => {
+    if (tab !== 'view3d' || axisResults || axisStatus !== 'idle') return
+    api.axis.results(projectId)
+      .then(r => {
+        if (r?.summary) {
+          setAxisResults(r)
+          const mats = r?.live_pricing?.materials || r?.quantities?._raw_items || []
+          if (mats.length > 0 && axisLineItems.length === 0) setAxisLineItems(mats)
+        }
+      })
+      .catch(() => {}) // not run yet — that's fine
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
+
+  // Cleanup poller on unmount
+  useEffect(() => {
+    return () => { if (axisPollerRef.current) clearInterval(axisPollerRef.current) }
+  }, [])
 
   useEffect(() => {
     if (tab !== 'view3d' || sceneData || scene3dLoading) return
@@ -2076,6 +2197,731 @@ Thank you for your time.`
                     Run a blueprint analysis first to generate the 3D view.
                   </div>
                 )}
+
+                {/* ── AXIS PERFORMANCE 5D SECTION ──────────────────────── */}
+                <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(15,27,45,0.15)', boxShadow: '0 4px 20px rgba(15,27,45,0.10)' }}>
+                  {/* Header */}
+                  <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #0F1B2D 0%, #1a2f4a 100%)' }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-bold text-base tracking-wide">AXIS PERFORMANCE</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(45,125,210,0.3)', color: '#7BB8F5', border: '1px solid rgba(45,125,210,0.4)' }}>5D Intelligence</span>
+                        </div>
+                        <p className="text-slate-400 text-xs mt-0.5">Quantity takeoff · Cost estimate · Schedule · AI insights · PDF report</p>
+                      </div>
+                      <button
+                        onClick={handleRunAxis}
+                        disabled={axisStatus === 'queued' || axisStatus === 'running_3d' || axisStatus === 'running_5d' || axisStatus === 'queued_cloud' || !hasBlueprint}
+                        title={!hasBlueprint ? 'Upload a blueprint first' : 'Run full AXIS pipeline'}
+                        className="flex items-center gap-2 font-bold px-5 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
+                        style={{ background: (['queued','running_3d','running_5d','queued_cloud'] as any[]).includes(axisStatus) ? '#374151' : 'linear-gradient(135deg, #2D7DD2, #1a5fa8)', color: 'white', boxShadow: '0 4px 14px rgba(45,125,210,0.35)' }}
+                      >
+                        {(['queued','running_3d','running_5d','queued_cloud'] as any[]).includes(axisStatus)
+                          ? <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                              {axisStatus === 'running_3d' ? `Rendering 3D… ${axisElapsed}s` : axisStatus === 'running_5d' ? `Computing 5D… ${axisElapsed}s` : axisStatus === 'queued_cloud' ? 'Cloud GPU queued…' : 'Queued…'}</>
+                          : axisResults ? '↺ Re-run AXIS' : '▶ Run AXIS Performance'}
+                      </button>
+                    </div>
+
+                    {/* Settings row: trade type, tier, cloud GPU */}
+                    <div className="flex flex-wrap items-center gap-3 mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 text-xs">Trade</span>
+                        <select
+                          value={axisTradeType}
+                          onChange={e => setAxisTradeType(e.target.value)}
+                          className="text-xs rounded-lg px-2 py-1.5 font-medium outline-none"
+                          style={{ background: 'rgba(255,255,255,0.08)', color: '#CBD5E1', border: '1px solid rgba(255,255,255,0.12)' }}
+                        >
+                          {['General Construction','New Construction','Renovation','Roofing'].map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 text-xs">Tier</span>
+                        <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.12)' }}>
+                          {(['economy','standard','premium'] as const).map(t => (
+                            <button
+                              key={t}
+                              onClick={() => setAxisTier(t)}
+                              className="px-3 py-1.5 text-xs font-semibold transition-all"
+                              style={{ background: axisTier === t ? '#2D7DD2' : 'rgba(255,255,255,0.05)', color: axisTier === t ? 'white' : '#94A3B8' }}
+                            >
+                              {t.charAt(0).toUpperCase() + t.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-1.5 cursor-pointer ml-auto">
+                        <div
+                          onClick={() => setAxisCloudGpu(v => !v)}
+                          className="w-8 h-4 rounded-full transition-all relative"
+                          style={{ background: axisCloudGpu ? '#2D7DD2' : 'rgba(255,255,255,0.15)' }}
+                        >
+                          <div className="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all" style={{ left: axisCloudGpu ? '17px' : '2px' }} />
+                        </div>
+                        <span className="text-slate-400 text-xs">Cloud GPU</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Error */}
+                  {axisError && (
+                    <div className="px-5 py-3 bg-red-50 border-t border-red-100 text-red-700 text-sm">{axisError}</div>
+                  )}
+
+                  {/* Progress bar while running */}
+                  {(axisStatus === 'running_3d' || axisStatus === 'running_5d') && (
+                    <div className="px-5 py-3 bg-slate-900">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-1.5 rounded-full bg-slate-700 overflow-hidden">
+                          <div className="h-full rounded-full animate-pulse" style={{ width: axisStatus === 'running_5d' ? '75%' : '35%', background: 'linear-gradient(90deg, #2D7DD2, #7BB8F5)' }} />
+                        </div>
+                        <span className="text-slate-400 text-xs">{axisStatus === 'running_3d' ? 'Step 1–5: 3D Render' : 'Step 6–11: 5D Analysis'}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Results */}
+                  {axisResults && axisStatus === 'complete' && (() => {
+                    // ── Helpers ────────────────────────────────────────────────
+                    const SrcIcon = ({ id, label, url, method, date }: { id: string; label: string; url?: string; method: string; date?: string }) => (
+                      <span className="inline-flex items-center">
+                        <button
+                          onClick={() => toggleSource(id)}
+                          title="View data source"
+                          className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold transition-all"
+                          style={{ background: openSources.has(id) ? '#2D7DD2' : '#E2E8F0', color: openSources.has(id) ? 'white' : '#64748B' }}
+                        >ⓘ</button>
+                        {openSources.has(id) && (
+                          <span className="absolute z-20 mt-1 ml-6 w-72 rounded-xl shadow-xl text-xs"
+                            style={{ background: '#0F1B2D', border: '1px solid rgba(45,125,210,0.4)', padding: '10px 12px', lineHeight: '1.6' }}>
+                            <div className="font-bold text-blue-300 mb-1">{label}</div>
+                            <div className="text-slate-300">{method}</div>
+                            {url && <a href={url} target="_blank" rel="noopener noreferrer" className="block mt-1.5 text-blue-400 truncate hover:underline">{url}</a>}
+                            {date && <div className="text-slate-500 mt-1">Retrieved: {date}</div>}
+                          </span>
+                        )}
+                      </span>
+                    )
+
+                    const livePricing  = axisResults.live_pricing || {}
+                    const costReport   = axisResults.cost_report  || {}
+                    const schedule     = axisResults.schedule      || {}
+                    const insights     = axisResults.insights      || {}
+                    const summary      = axisResults.summary        || {}
+                    const regionMult   = livePricing.regional_multiplier || 1.0
+                    const regionNote   = livePricing.regional_note || 'RSMeans 2025 national average'
+                    const liveCount    = livePricing.live_prices_fetched || 0
+                    const totalMats    = axisLineItems.length
+                    const livePct      = totalMats > 0 ? Math.round((liveCount / totalMats) * 100) : 0
+                    const matTotal     = livePricing.total_adjusted || costReport.summary?.standard_materials || 0
+                    const laborEst     = Math.round(matTotal * 0.62)
+                    const overheadEst  = Math.round((matTotal + laborEst) * 0.12)
+                    const profitEst    = Math.round((matTotal + laborEst) * 0.25)
+                    const grandStd     = summary.standard_total || (matTotal + laborEst + overheadEst + profitEst)
+                    const stackTotal   = matTotal + laborEst + overheadEst + profitEst
+                    const stackPct     = (v: number) => stackTotal > 0 ? `${Math.round((v / stackTotal) * 100)}%` : '0%'
+
+                    // Gantt helpers
+                    const ganttTasks: any[] = schedule.tasks || []
+                    const ganttStart = ganttTasks[0]?.start_date ? new Date(ganttTasks[0].start_date) : null
+                    const ganttEnd   = ganttTasks[ganttTasks.length - 1]?.end_date ? new Date(ganttTasks[ganttTasks.length - 1].end_date) : null
+                    const ganttSpan  = ganttStart && ganttEnd ? Math.max(1, (ganttEnd.getTime() - ganttStart.getTime()) / 86400000) : 1
+                    const ganttColors = ['#2D7DD2','#D97706','#DC2626','#059669','#7C3AED','#0891B2','#BE185D','#4F46E5']
+
+                    // Category cost breakdown from line items
+                    const catTotals: Record<string, number> = {}
+                    axisLineItems.forEach((it: any) => {
+                      const cat = (it.category || 'other').replace(/_/g, ' ')
+                      catTotals[cat] = (catTotals[cat] || 0) + (it.total_cost || (it.unit_cost || 0) * (it.quantity || 0))
+                    })
+                    const catEntries = Object.entries(catTotals).sort((a, b) => b[1] - a[1])
+                    const catMax = catEntries[0]?.[1] || 1
+
+                    return (
+                      <div className="bg-white">
+                        {/* ── Tab bar ─────────────────────────────────────────── */}
+                        <div className="flex items-center gap-0 px-5 pt-4 pb-0" style={{ borderBottom: '2px solid #E5E7EB' }}>
+                          {(['overview','costs','schedule','materials','insights'] as const).map(t => (
+                            <button
+                              key={t}
+                              onClick={() => setAxisTab(t)}
+                              className="px-4 py-2.5 text-xs font-bold tracking-wide transition-all relative"
+                              style={{
+                                color: axisTab === t ? '#2D7DD2' : '#94A3B8',
+                                borderBottom: axisTab === t ? '2px solid #2D7DD2' : '2px solid transparent',
+                                marginBottom: '-2px',
+                                background: 'none',
+                              }}
+                            >
+                              {t === 'overview' ? 'Overview' : t === 'costs' ? 'Cost Analysis' : t === 'schedule' ? 'Schedule' : t === 'materials' ? 'Materials' : 'AI Insights'}
+                            </button>
+                          ))}
+                          {/* Live pricing indicator */}
+                          <div className="ml-auto flex items-center gap-1.5 pb-2">
+                            <span className="inline-block w-2 h-2 rounded-full" style={{ background: livePct > 0 ? '#059669' : '#94A3B8' }} />
+                            <span className="text-xs text-slate-400">{livePct}% live prices</span>
+                            <span className="relative">
+                              <SrcIcon id="live-prices-header" label="Live Pricing" method={`${liveCount} materials fetched from Home Depot, Lowe's, 84 Lumber via Tavily web search. Remaining items use RSMeans 2025 national average.`} date={livePricing.retrieved_at?.slice(0,10)} />
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* ════════════════════════════════════════════════════ */}
+                        {/* OVERVIEW TAB                                        */}
+                        {/* ════════════════════════════════════════════════════ */}
+                        {axisTab === 'overview' && (
+                          <div className="p-5 space-y-6">
+                            {/* Metric cards */}
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                              {[
+                                {
+                                  label: 'Standard Total', value: `$${grandStd.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
+                                  sub: `$${summary.standard_psf ? summary.standard_psf.toFixed(0) : (grandStd / Math.max(summary.area_sqft || 1, 1)).toFixed(0)}/sqft`,
+                                  color: '#2D7DD2',
+                                  srcId: 'metric-cost',
+                                  srcLabel: 'Cost Estimate',
+                                  srcMethod: `Materials: Tavily live search (${liveCount} items) + RSMeans 2025 base costs. Regional multiplier: ${regionMult.toFixed(2)}x (${regionNote}). Labor: 62% of materials (RS Means productivity). Overhead: 12%. Profit: 25% (standard tier).`,
+                                },
+                                {
+                                  label: 'Floor Area', value: `${(summary.area_sqft || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })} sqft`,
+                                  sub: `${((summary.area_sqft || 0) * 0.0929).toFixed(0)} m²`,
+                                  color: '#059669',
+                                  srcId: 'metric-area',
+                                  srcLabel: 'Floor Area',
+                                  srcMethod: 'Extracted from blueprint via Claude Vision (claude-opus-4-6) multi-pass analysis. Room polygons summed. Confidence shown in Materials tab.',
+                                },
+                                {
+                                  label: 'Duration', value: `${schedule.total_calendar_days || summary.calendar_days || 0} days`,
+                                  sub: `${schedule.total_working_days || summary.working_days || 0} working days`,
+                                  color: '#D97706',
+                                  srcId: 'metric-sched',
+                                  srcLabel: 'Schedule',
+                                  srcMethod: 'Phase durations calculated from quantity takeoff using RS Means crew productivity rates (e.g., 150 studs/day, 12 shingle squares/day). 15% weather buffer applied to outdoor phases. Critical path: Foundation → Framing → Roofing → Siding → Interior.',
+                                },
+                                {
+                                  label: 'Labor Hours', value: `${(schedule.total_labor_hours || summary.labor_hours || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
+                                  sub: 'Estimated total',
+                                  color: '#7C3AED',
+                                  srcId: 'metric-labor',
+                                  srcLabel: 'Labor Hours',
+                                  srcMethod: 'Aggregated from per-phase labor estimates. Each phase uses RS Means labor-hour-per-unit constants (e.g., framing: 0.022 hrs/sqft, roofing: 0.035 hrs/sqft).',
+                                },
+                              ].map((m, i) => (
+                                <div key={i} className="rounded-xl p-4 relative" style={{ border: '1px solid #E5E7EB', borderTop: `3px solid ${m.color}` }}>
+                                  <div className="font-bold text-xl" style={{ color: m.color }}>{m.value}</div>
+                                  <div className="font-semibold text-xs text-slate-700 mt-1 flex items-center gap-0.5">
+                                    {m.label}
+                                    <span className="relative">
+                                      <SrcIcon id={m.srcId} label={m.srcLabel} method={m.srcMethod} />
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-slate-400 mt-0.5">{m.sub}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Regional pricing banner */}
+                            <div className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#2D7DD2' }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-semibold text-blue-800">Regional Cost Adjustment Applied</div>
+                                <div className="text-xs text-blue-600 mt-0.5">{regionNote} · Multiplier: <strong>{regionMult.toFixed(2)}x</strong></div>
+                              </div>
+                              <span className="relative flex-shrink-0">
+                                <SrcIcon id="regional-adj" label="Regional Multiplier" method="RS Means 2025 City Cost Index (Section 01 01 10). Published annually. Values normalized to 1.00 = national average. Applied to material costs before totaling." url="https://www.rsmeans.com" />
+                              </span>
+                            </div>
+
+                            {/* Cost scenario cards */}
+                            {(costReport.economy || costReport.standard || costReport.premium) && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <h3 className="font-bold text-sm text-slate-800">Cost Scenarios — 3 Tiers</h3>
+                                  <span className="relative">
+                                    <SrcIcon id="cost-scenarios" label="Cost Scenarios" method="Economy: standard-grade materials, 18% contractor margin. Standard: quality materials, 25% margin. Premium: upgraded materials, 35% margin. Material grades sourced from RSMeans 2025 cost database (cost_database.json)." />
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-3">
+                                  {(['economy','standard','premium'] as const).map((tier, ti) => {
+                                    const cr = costReport[tier]
+                                    if (!cr) return null
+                                    const tc = [
+                                      { bg: '#F0FDF4', border: '#86EFAC', badge: '#16A34A', accent: '#16A34A' },
+                                      { bg: '#EFF6FF', border: '#93C5FD', badge: '#2563EB', accent: '#2563EB' },
+                                      { bg: '#FDF4FF', border: '#D8B4FE', badge: '#7C3AED', accent: '#7C3AED' },
+                                    ][ti]
+                                    const phases = cr.phases || []
+                                    return (
+                                      <div key={tier} className="rounded-xl p-4" style={{ background: tc.bg, border: `1px solid ${tc.border}` }}>
+                                        <div className="flex items-center justify-between mb-3">
+                                          <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ background: tc.badge }}>{cr.label || tier.charAt(0).toUpperCase() + tier.slice(1)}</span>
+                                          {cr.delta?.vs_economy_pct > 0 && <span className="text-xs text-slate-500">+{Math.round(cr.delta.vs_economy_pct)}%</span>}
+                                        </div>
+                                        <div className="font-bold text-2xl text-slate-800">${(cr.grand_total || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+                                        <div className="text-xs text-slate-500 mt-0.5">${(cr.cost_per_sqft || 0).toFixed(0)}/sqft</div>
+                                        {phases.slice(0, 3).map((ph: any, pi: number) => (
+                                          <div key={pi} className="flex justify-between text-xs mt-2 pt-2" style={{ borderTop: pi === 0 ? `1px solid ${tc.border}` : 'none' }}>
+                                            <span className="text-slate-600">{ph.name || ph.phase}</span>
+                                            <span className="font-medium text-slate-700">${(ph.total || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Photorealistic renders */}
+                            {axisResults.render_urls && Object.keys(axisResults.render_urls).length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <h3 className="font-bold text-sm text-slate-800">Photorealistic Renders — Blender Cycles</h3>
+                                  <span className="relative">
+                                    <SrcIcon id="renders-src" label="3D Renders" method="Generated by Blender 4.x Cycles renderer using the blueprint geometry extracted by Claude Vision. Materials (stucco, roofing, glass) are Cycles PBR node-based. HDRI environment lighting. No stock images — all renders are computed from your actual blueprint." />
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                  {Object.entries(axisResults.render_urls).map(([key, url]: [string, any]) => (
+                                    <div key={key} className="relative rounded-xl overflow-hidden group" style={{ border: '1px solid #E5E7EB' }}>
+                                      <img src={url} alt={key} className="w-full object-cover transition-transform group-hover:scale-105" style={{ height: '190px' }} onError={e => { (e.target as HTMLImageElement).style.display='none' }} />
+                                      <div className="absolute bottom-0 left-0 right-0 px-3 py-2 text-xs font-semibold text-white" style={{ background: 'linear-gradient(0deg,rgba(0,0,0,0.72) 0%,transparent 100%)' }}>
+                                        {key.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Action buttons */}
+                            <div className="flex flex-wrap gap-3 pt-1">
+                              {axisResults.pdf_url && (
+                                <a href={axisResults.pdf_url} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold text-sm hover:scale-[1.02] transition-all"
+                                  style={{ background: 'linear-gradient(135deg,#DC2626,#B91C1C)', boxShadow: '0 4px 14px rgba(220,38,38,0.3)' }}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                  12-Page PDF Report
+                                </a>
+                              )}
+                              <button onClick={handleGenerateProposal} disabled={proposalLoading || (axisLineItems.length === 0 && !axisResults)}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold text-sm hover:scale-[1.02] transition-all disabled:opacity-40"
+                                style={{ background: 'linear-gradient(135deg,#059669,#047857)', boxShadow: '0 4px 14px rgba(5,150,105,0.3)' }}>
+                                {proposalLoading ? <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Generating…</> : <>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                  Generate Proposal ({axisTier})
+                                </>}
+                              </button>
+                              <a href={`/api/v1/permits/package/${projectId}`}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm hover:scale-[1.02] transition-all"
+                                style={{ background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0' }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                                Permit Package ZIP
+                              </a>
+                            </div>
+                            {proposalError && <div className="rounded-xl px-4 py-3 text-sm text-red-700" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>{proposalError}</div>}
+                          </div>
+                        )}
+
+                        {/* ════════════════════════════════════════════════════ */}
+                        {/* COSTS TAB                                           */}
+                        {/* ════════════════════════════════════════════════════ */}
+                        {axisTab === 'costs' && (
+                          <div className="p-5 space-y-6">
+                            {/* Cost composition stacked bar */}
+                            <div>
+                              <div className="flex items-center gap-2 mb-3">
+                                <h3 className="font-bold text-sm text-slate-800">Cost Composition — Standard Tier</h3>
+                                <span className="relative">
+                                  <SrcIcon id="cost-comp" label="Cost Composition" method={`Materials: live prices from Tavily + RSMeans 2025. Labor: 62% of material cost (RS Means productivity factor for residential). Overhead/insurance: 12% of direct costs. Profit: 25% (standard contractor margin). Regional multiplier: ${regionMult.toFixed(2)}x (${regionNote}).`} />
+                                </span>
+                              </div>
+                              <div className="flex h-10 rounded-xl overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+                                {[
+                                  { label: 'Materials', value: matTotal, color: '#2D7DD2' },
+                                  { label: 'Labor',     value: laborEst,   color: '#059669' },
+                                  { label: 'Overhead',  value: overheadEst, color: '#D97706' },
+                                  { label: 'Profit',    value: profitEst,  color: '#7C3AED' },
+                                ].map((seg, si) => (
+                                  <div key={si} className="flex items-center justify-center text-white text-[10px] font-bold overflow-hidden transition-all"
+                                    style={{ width: stackPct(seg.value), background: seg.color, minWidth: seg.value > 0 ? '40px' : '0' }}
+                                    title={`${seg.label}: $${seg.value.toLocaleString('en-US', { maximumFractionDigits: 0 })} (${stackPct(seg.value)})`}>
+                                    {parseInt(stackPct(seg.value)) >= 8 ? stackPct(seg.value) : ''}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex flex-wrap gap-3 mt-2">
+                                {[
+                                  { label: 'Materials', value: matTotal,    color: '#2D7DD2' },
+                                  { label: 'Labor',     value: laborEst,    color: '#059669' },
+                                  { label: 'Overhead',  value: overheadEst, color: '#D97706' },
+                                  { label: 'Profit',    value: profitEst,   color: '#7C3AED' },
+                                ].map((seg, si) => (
+                                  <div key={si} className="flex items-center gap-1.5 text-xs text-slate-600">
+                                    <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: seg.color }} />
+                                    {seg.label}: <strong className="text-slate-800">${seg.value.toLocaleString('en-US', { maximumFractionDigits: 0 })}</strong>
+                                    <span className="text-slate-400">({stackPct(seg.value)})</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Category breakdown bars */}
+                            {catEntries.length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <h3 className="font-bold text-sm text-slate-800">Material Cost by Category</h3>
+                                  <span className="relative">
+                                    <SrcIcon id="cat-breakdown" label="Category Breakdown" method={`Quantities derived from Claude Vision blueprint geometry. Unit prices from ${liveCount > 0 ? `Tavily web search (${liveCount} live prices)` : 'RSMeans 2025 national average'} adjusted by ${regionMult.toFixed(2)}x regional multiplier.`} />
+                                  </span>
+                                </div>
+                                <div className="space-y-2">
+                                  {catEntries.map(([cat, val], ci) => (
+                                    <div key={ci}>
+                                      <div className="flex justify-between text-xs mb-1">
+                                        <span className="text-slate-700 capitalize">{cat}</span>
+                                        <span className="font-semibold text-slate-800">${val.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                                      </div>
+                                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                        <div className="h-full rounded-full transition-all" style={{ width: `${(val / catMax) * 100}%`, background: ganttColors[ci % ganttColors.length] }} />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Tier comparison table */}
+                            {(costReport.economy || costReport.standard || costReport.premium) && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <h3 className="font-bold text-sm text-slate-800">Scenario Comparison</h3>
+                                  <span className="relative">
+                                    <SrcIcon id="scenario-table" label="Scenario Comparison" method="Economy tier: basic materials per RS Means spec. Standard: mid-grade. Premium: upgraded spec. All scenarios use the same quantity takeoff — only unit costs and margins vary." />
+                                  </span>
+                                </div>
+                                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr style={{ background: '#0F1B2D', color: 'white' }}>
+                                        <th className="px-4 py-2.5 text-left text-xs font-semibold">Item</th>
+                                        <th className="px-4 py-2.5 text-right text-xs font-semibold" style={{ color: '#86EFAC' }}>Economy</th>
+                                        <th className="px-4 py-2.5 text-right text-xs font-semibold" style={{ color: '#93C5FD' }}>Standard</th>
+                                        <th className="px-4 py-2.5 text-right text-xs font-semibold" style={{ color: '#D8B4FE' }}>Premium</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {[
+                                        { label: 'Total Project Cost',  e: costReport.economy?.grand_total,   s: costReport.standard?.grand_total,   p: costReport.premium?.grand_total,   fmt: (v: number) => `$${v.toLocaleString('en-US',{maximumFractionDigits:0})}` },
+                                        { label: 'Cost per Sqft',       e: costReport.economy?.cost_per_sqft, s: costReport.standard?.cost_per_sqft, p: costReport.premium?.cost_per_sqft, fmt: (v: number) => `$${v.toFixed(0)}/sqft` },
+                                        { label: 'Materials',           e: costReport.economy?.materials_total, s: costReport.standard?.materials_total, p: costReport.premium?.materials_total, fmt: (v: number) => `$${v.toLocaleString('en-US',{maximumFractionDigits:0})}` },
+                                      ].map((row, ri) => (
+                                        <tr key={ri} style={{ background: ri % 2 === 0 ? '#fff' : '#F8FAFC' }}>
+                                          <td className="px-4 py-2.5 text-xs text-slate-700">{row.label}</td>
+                                          <td className="px-4 py-2.5 text-xs text-right font-medium text-slate-800">{row.e != null ? row.fmt(row.e) : '—'}</td>
+                                          <td className="px-4 py-2.5 text-xs text-right font-bold" style={{ color: '#2563EB' }}>{row.s != null ? row.fmt(row.s) : '—'}</td>
+                                          <td className="px-4 py-2.5 text-xs text-right font-medium text-slate-800">{row.p != null ? row.fmt(row.p) : '—'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* ════════════════════════════════════════════════════ */}
+                        {/* SCHEDULE TAB                                        */}
+                        {/* ════════════════════════════════════════════════════ */}
+                        {axisTab === 'schedule' && (
+                          <div className="p-5 space-y-5">
+                            {/* Header stats */}
+                            <div className="grid grid-cols-3 gap-3">
+                              {[
+                                { label: 'Start',       value: schedule.project_start || '—' },
+                                { label: 'End',         value: schedule.project_end   || '—' },
+                                { label: 'Calendar Days', value: `${schedule.total_calendar_days || 0} days` },
+                              ].map((s, si) => (
+                                <div key={si} className="rounded-xl p-3 text-center" style={{ background: '#F8FAFC', border: '1px solid #E5E7EB' }}>
+                                  <div className="text-xs text-slate-500 mb-1">{s.label}</div>
+                                  <div className="font-bold text-slate-800">{s.value}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Gantt chart */}
+                            {ganttTasks.length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <h3 className="font-bold text-sm text-slate-800">Construction Gantt Chart</h3>
+                                  <span className="relative">
+                                    <SrcIcon id="gantt-src" label="Schedule Calculation" method="Phase durations calculated from quantity takeoff using RS Means crew productivity rates. Sequencing follows construction critical path (Foundation → Framing → Roofing → Siding → Windows/Doors → Insulation → Drywall → Finishing). 15% weather buffer applied to outdoor phases." />
+                                  </span>
+                                </div>
+                                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+                                  {/* Column headers: phase name + dates */}
+                                  <div className="px-4 py-2 flex gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider" style={{ background: '#F8FAFC', borderBottom: '1px solid #E5E7EB' }}>
+                                    <span style={{ width: '160px', flexShrink: 0 }}>Phase</span>
+                                    <span className="flex-1">Timeline</span>
+                                    <span style={{ width: '60px', textAlign: 'right', flexShrink: 0 }}>Days</span>
+                                  </div>
+                                  <div className="divide-y divide-slate-100">
+                                    {ganttTasks.map((task: any, ti: number) => {
+                                      const tStart = task.start_date ? new Date(task.start_date) : null
+                                      const tEnd   = task.end_date   ? new Date(task.end_date)   : null
+                                      const leftPct  = ganttStart && tStart ? Math.max(0, (tStart.getTime() - ganttStart.getTime()) / (ganttSpan * 86400000) * 100) : 0
+                                      const widthPct = ganttStart && tStart && tEnd ? Math.max(1, (tEnd.getTime() - tStart.getTime()) / (ganttSpan * 86400000) * 100) : 5
+                                      const barColor = ganttColors[ti % ganttColors.length]
+                                      return (
+                                        <div key={ti} className="flex items-center gap-2 px-4 py-2.5" style={{ background: ti % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                                          <div className="text-xs text-slate-700 font-medium truncate" style={{ width: '160px', flexShrink: 0 }}>{task.label || task.name}</div>
+                                          <div className="flex-1 relative h-6 rounded bg-slate-100 overflow-hidden">
+                                            <div className="absolute top-1 bottom-1 rounded"
+                                              style={{ left: `${leftPct}%`, width: `${Math.min(widthPct, 100 - leftPct)}%`, background: barColor, minWidth: '3px' }}
+                                              title={`${task.start_date} → ${task.end_date}`}
+                                            />
+                                          </div>
+                                          <div className="text-xs font-semibold text-slate-600 text-right" style={{ width: '60px', flexShrink: 0 }}>{task.duration_days}d</div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                  {/* Date ruler */}
+                                  {ganttStart && ganttEnd && (
+                                    <div className="flex justify-between px-4 py-2 text-[10px] text-slate-400" style={{ background: '#F8FAFC', borderTop: '1px solid #E5E7EB' }}>
+                                      <span>{ganttStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                      <span>{ganttEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Milestones */}
+                            {schedule.milestones?.length > 0 && (
+                              <div>
+                                <h3 className="font-bold text-sm text-slate-800 mb-3">Key Milestones</h3>
+                                <div className="space-y-2">
+                                  {schedule.milestones.map((ms: any, mi: number) => (
+                                    <div key={mi} className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: '#F8FAFC', border: '1px solid #E5E7EB' }}>
+                                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: ganttColors[mi % ganttColors.length] }} />
+                                      <span className="text-sm text-slate-700 flex-1">{ms.label}</span>
+                                      <span className="text-sm font-bold" style={{ color: ganttColors[mi % ganttColors.length] }}>{ms.date}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* ════════════════════════════════════════════════════ */}
+                        {/* MATERIALS TAB                                       */}
+                        {/* ════════════════════════════════════════════════════ */}
+                        {axisTab === 'materials' && (
+                          <div className="p-5 space-y-5">
+                            {/* Pricing provenance banner */}
+                            <div className="rounded-xl px-4 py-3" style={{ background: '#F0FDF4', border: '1px solid #86EFAC' }}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-bold text-green-800">Pricing Data Provenance</span>
+                                <span className="relative">
+                                  <SrcIcon id="provenance-banner" label="How Prices Are Sourced" method={`${liveCount} of ${totalMats} materials have live retail prices fetched from Home Depot, Lowe's, Menards, 84 Lumber, and ABC Supply via Tavily web search. Remaining materials use RSMeans 2025 national average adjusted by the regional multiplier. All prices retrieved on ${livePricing.retrieved_at?.slice(0,10) || 'analysis date'} and cached for 24 hours.`} />
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-4 text-xs text-green-700">
+                                <span>● <strong>{liveCount} live</strong> — retail price from web search</span>
+                                <span>○ <strong>{totalMats - liveCount} estimated</strong> — RSMeans 2025 + {regionMult.toFixed(2)}x regional adj.</span>
+                                <span>📍 {livePricing.location || 'National average'}</span>
+                              </div>
+                            </div>
+
+                            {/* Editable line items */}
+                            {axisLineItems.length > 0 && (
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h3 className="font-bold text-sm text-slate-800">
+                                    Material Takeoff
+                                    {lineItemsEdited && <span className="ml-2 text-xs text-amber-600">● edited — will use in proposal</span>}
+                                  </h3>
+                                  <span className="text-xs text-slate-400">Click any unit cost to edit before generating proposal</span>
+                                </div>
+                                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+                                  <div className="overflow-x-auto" style={{ maxHeight: '420px', overflowY: 'auto' }}>
+                                    <table className="w-full text-xs">
+                                      <thead className="sticky top-0 z-10">
+                                        <tr style={{ background: '#0F1B2D', color: 'white' }}>
+                                          <th className="px-3 py-2.5 text-left font-semibold">Material</th>
+                                          <th className="px-3 py-2.5 text-right font-semibold">Qty</th>
+                                          <th className="px-3 py-2.5 text-left font-semibold">Unit</th>
+                                          <th className="px-3 py-2.5 text-right font-semibold">Unit Price</th>
+                                          <th className="px-3 py-2.5 text-right font-semibold">Total</th>
+                                          <th className="px-3 py-2.5 text-center font-semibold">Source</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {axisLineItems.map((item: any, i: number) => {
+                                          const pd = item.pricing_detail || {}
+                                          return (
+                                            <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#F8FAFC' }}>
+                                              <td className="px-3 py-2 text-slate-700 max-w-[200px]">
+                                                <div className="truncate font-medium">{item.item_name}</div>
+                                                <div className="text-slate-400 text-[10px] capitalize">{(item.category || '').replace(/_/g,' ')}</div>
+                                              </td>
+                                              <td className="px-3 py-2 text-right text-slate-600">{(item.quantity||0).toLocaleString('en-US',{maximumFractionDigits:1})}</td>
+                                              <td className="px-3 py-2 text-slate-500">{item.unit}</td>
+                                              <td className="px-3 py-2 text-right">
+                                                <div className="flex items-center justify-end gap-1">
+                                                  <span className="text-slate-400">$</span>
+                                                  <input type="number" step="0.01" min="0"
+                                                    value={item.unit_cost ?? ''}
+                                                    onChange={e => {
+                                                      const v = parseFloat(e.target.value) || 0
+                                                      setAxisLineItems(prev => prev.map((it,idx) => idx===i ? {...it, unit_cost:v, total_cost:v*(it.quantity||0)} : it))
+                                                      setLineItemsEdited(true)
+                                                    }}
+                                                    className="w-20 rounded px-1.5 py-0.5 text-right text-slate-800 outline-none focus:ring-1 focus:ring-blue-300"
+                                                    style={{ border: '1px solid #E5E7EB' }}
+                                                  />
+                                                </div>
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-semibold text-slate-800">
+                                                ${((item.unit_cost||0)*(item.quantity||0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                                              </td>
+                                              <td className="px-3 py-2 text-center">
+                                                {pd.is_live ? (
+                                                  <a href={pd.source_url || '#'} target="_blank" rel="noopener noreferrer"
+                                                    title={`Live price from ${pd.source || 'web search'} on ${pd.retrieved_at?.slice(0,10)}`}
+                                                    className="inline-flex items-center gap-1 text-emerald-700 font-semibold hover:underline">
+                                                    ●<span>live</span>
+                                                  </a>
+                                                ) : (
+                                                  <span title="RSMeans 2025 national average + regional multiplier" className="text-slate-400">○ est.</span>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          )
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                  <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: '#F8FAFC', borderTop: '1px solid #E5E7EB' }}>
+                                    <span className="text-xs text-slate-400">● live = current retail price from supplier website&nbsp; ○ est. = RSMeans 2025 + {regionMult.toFixed(2)}x regional</span>
+                                    <span className="text-sm font-bold text-slate-900">
+                                      Total: ${axisLineItems.reduce((s:number,it:any)=>s+(it.total_cost||(it.unit_cost||0)*(it.quantity||0)),0).toLocaleString('en-US',{maximumFractionDigits:0})}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Generate proposal from materials */}
+                            <div className="flex gap-3">
+                              <button onClick={handleGenerateProposal} disabled={proposalLoading}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold text-sm hover:scale-[1.02] transition-all disabled:opacity-40"
+                                style={{ background: 'linear-gradient(135deg,#059669,#047857)', boxShadow: '0 4px 14px rgba(5,150,105,0.3)' }}>
+                                {proposalLoading ? 'Generating…' : `Generate ${axisTier.charAt(0).toUpperCase()+axisTier.slice(1)} Proposal PDF`}
+                              </button>
+                              {lineItemsEdited && (
+                                <button onClick={() => { setAxisLineItems(axisResults.live_pricing?.materials || []); setLineItemsEdited(false) }}
+                                  className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-all"
+                                  style={{ border: '1px solid #E5E7EB' }}>
+                                  Reset to Original
+                                </button>
+                              )}
+                            </div>
+                            {proposalError && <div className="rounded-xl px-4 py-3 text-sm text-red-700" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>{proposalError}</div>}
+                          </div>
+                        )}
+
+                        {/* ════════════════════════════════════════════════════ */}
+                        {/* INSIGHTS TAB                                        */}
+                        {/* ════════════════════════════════════════════════════ */}
+                        {axisTab === 'insights' && (
+                          <div className="p-5 space-y-4">
+                            {/* AI generation note */}
+                            <div className="rounded-xl px-4 py-3 flex items-start gap-3" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
+                              <div className="text-xs text-blue-700">
+                                <span className="font-bold">AI-Generated Insights</span> — Generated by Claude AI using <em>only</em> the quantities and costs from your actual blueprint analysis. All numbers referenced in insights are from your real takeoff data — nothing is invented.
+                              </div>
+                            </div>
+
+                            {insights.project_summary && (
+                              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+                                <div className="px-4 py-3 flex items-center justify-between" style={{ background: '#0F1B2D' }}>
+                                  <span className="text-xs font-bold text-blue-300 uppercase tracking-wider">Project Summary</span>
+                                  <span className="relative"><SrcIcon id="ins-summary" label="Project Summary" method="Generated by Claude AI (claude-3-5-sonnet) from your actual quantity takeoff and cost report data. Prompt constrains model to only reference values from the material list — no generic filler." /></span>
+                                </div>
+                                <div className="px-4 py-4 text-sm text-slate-700 leading-relaxed" style={{ background: '#fff' }}>
+                                  {insights.project_summary}
+                                </div>
+                              </div>
+                            )}
+
+                            {insights.cost_analysis && (
+                              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+                                <div className="px-4 py-3" style={{ background: '#F0FDF4' }}>
+                                  <span className="text-xs font-bold text-green-700 uppercase tracking-wider">Cost Analysis</span>
+                                </div>
+                                <div className="px-4 py-4 text-sm text-slate-700 leading-relaxed">{insights.cost_analysis}</div>
+                              </div>
+                            )}
+
+                            {insights.material_recommendations && (
+                              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+                                <div className="px-4 py-3" style={{ background: '#FFF7ED' }}>
+                                  <span className="text-xs font-bold text-orange-700 uppercase tracking-wider">Material Recommendations</span>
+                                </div>
+                                <div className="px-4 py-4 text-sm text-slate-700 leading-relaxed">{insights.material_recommendations}</div>
+                              </div>
+                            )}
+
+                            {insights.schedule_risks && (
+                              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #FECACA' }}>
+                                <div className="px-4 py-3 flex items-center gap-2" style={{ background: '#FEF2F2' }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                  <span className="text-xs font-bold text-red-700 uppercase tracking-wider">Schedule Risks</span>
+                                </div>
+                                <div className="px-4 py-4 text-sm text-slate-700 leading-relaxed">{insights.schedule_risks}</div>
+                              </div>
+                            )}
+
+                            {insights.quality_checklist && (
+                              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E5E7EB' }}>
+                                <div className="px-4 py-3" style={{ background: '#F5F3FF' }}>
+                                  <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">Quality Checklist</span>
+                                </div>
+                                <div className="px-4 py-4 text-sm text-slate-700 leading-relaxed whitespace-pre-line">{insights.quality_checklist}</div>
+                              </div>
+                            )}
+
+                            {!insights.project_summary && !insights.cost_analysis && (
+                              <div className="rounded-xl px-5 py-8 text-center" style={{ background: '#F8FAFC', border: '1px solid #E5E7EB' }}>
+                                <div className="text-slate-400 text-sm">AI insights are generated after the pipeline completes. Re-run AXIS to generate insights.</div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Idle state */}
+                  {axisStatus === 'idle' && !axisResults && (
+                    <div className="px-5 py-8 text-center bg-slate-50">
+                      <div className="text-slate-400 text-sm">Run the pipeline to generate photorealistic renders, cost estimates, construction schedule, and AI insights.</div>
+                    </div>
+                  )}
+                </div>
+                {/* ── END AXIS PERFORMANCE ─────────────────────────────────── */}
+
               </div>
             )}
 

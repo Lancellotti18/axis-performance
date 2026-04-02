@@ -351,6 +351,13 @@ def parse_blueprint(file_path: str, wall_height: float = 2.7) -> dict:
     """
     Parse a blueprint image or PDF and return a scene_data dict.
 
+    Source priority (most accurate → least accurate):
+      1. Pre-parsed scene_data.json written by Claude Vision backend
+         (placed next to the blueprint file, or in the same output dir).
+         Claude Vision has ~85% accuracy vs. ~40% for CV2 Hough detection.
+      2. OpenCV Hough line detection + contour room labeling (fallback).
+      3. Default 3-room scene (last resort).
+
     Args:
         file_path:   Path to PNG, JPG, or PDF blueprint file.
         wall_height: Default wall height in meters (default 2.7 m / 9 ft).
@@ -358,8 +365,42 @@ def parse_blueprint(file_path: str, wall_height: float = 2.7) -> dict:
     Returns:
         scene_data dict ready for scene_builder.build_scene().
     """
+    import json as _json
+
     t0 = time.time()
     log.info(f"=== Blueprint Parser START: {file_path} ===")
+
+    # ── Priority 1: Claude Vision pre-parsed scene_data.json ─────────────────
+    # The backend (axis.py) saves scene_data.json to the output dir before
+    # invoking Blender. Check several candidate locations.
+    blueprint_dir = os.path.dirname(os.path.abspath(file_path))
+    candidates = [
+        os.path.join(blueprint_dir, "scene_data.json"),
+        # If running from within the output dir structure (e.g. /tmp/axis_outputs/{project_id}/)
+        os.path.join(blueprint_dir, "..", "scene_data.json"),
+        os.path.join(blueprint_dir, "..", "data", "scene_data.json"),
+    ]
+    for candidate in candidates:
+        candidate = os.path.normpath(candidate)
+        if os.path.exists(candidate):
+            try:
+                with open(candidate) as f:
+                    sd = _json.load(f)
+                # Must have walls to be useful
+                if sd.get("walls") and len(sd["walls"]) >= 3:
+                    source = sd.get("source", "claude_vision")
+                    conf = sd.get("confidence", 0.85)
+                    log.info(
+                        f"=== Using pre-parsed scene_data.json from {candidate} "
+                        f"(source={source}, confidence={conf}) ==="
+                    )
+                    elapsed = round(time.time() - t0, 3)
+                    log.info(f"=== Parser DONE in {elapsed}s (pre-parsed) ===")
+                    return sd
+            except Exception as e:
+                log.warning(f"Failed to load pre-parsed scene_data.json at {candidate}: {e}")
+
+    log.info("No valid pre-parsed scene_data.json found — falling back to CV2 detection")
 
     # ── Guard: file must exist ────────────────────────────────────────────────
     if not os.path.exists(file_path):

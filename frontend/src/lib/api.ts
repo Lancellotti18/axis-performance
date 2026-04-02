@@ -251,6 +251,68 @@ export const api = {
     get: (projectId: string) =>
       apiRequest<any>(`/api/v1/model3d/${projectId}/model3d`),
   },
+  materialCheck: {
+    uploadFile: (file: File, city: string, state: string, county: string, projectType: string) => {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('city', city)
+      form.append('state', state)
+      form.append('county', county)
+      form.append('project_type', projectType)
+      return fetch(`${API_BASE}/api/v1/material-check/upload`, {
+        method: 'POST',
+        body: form,
+        // No Content-Type header — browser sets multipart boundary automatically
+      }).then(async res => {
+        if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
+        return res.json()
+      })
+    },
+    checkText: (rawText: string, city: string, state: string, county: string, projectType: string) =>
+      apiRequest<any>('/api/v1/material-check/text', {
+        method: 'POST',
+        body: JSON.stringify({ raw_text: rawText, city, state, county, project_type: projectType }),
+      }, 240000),
+  },
+  axis: {
+    run: (projectId: string, options?: {
+      quality?: string
+      roof_type?: string
+      time_of_day?: string
+      wall_material?: string
+      roof_material?: string
+      start_date?: string
+      run_5d?: boolean
+      generate_pdf?: boolean
+      project_name?: string
+      trade_type?: string
+      use_cloud_gpu?: boolean
+    }) =>
+      apiRequest<{ job_id: string; status: string; message: string; blender_available: boolean }>(
+        `/api/v1/axis/${projectId}/run`,
+        { method: 'POST', body: JSON.stringify(options || {}) },
+        300000, // 5-minute timeout for pipeline kickoff
+      ),
+    status: (projectId: string, jobId?: string) =>
+      apiRequest<{ job_id: string | null; status: string; error?: string; elapsed_s: number }>(
+        `/api/v1/axis/${projectId}/status${jobId ? `?job_id=${jobId}` : ''}`
+      ),
+    results: (projectId: string) =>
+      apiRequest<{
+        live_pricing: any
+        summary: any
+        quantities: any
+        cost_report: any
+        schedule: any
+        insights: any
+        render_urls: Record<string, string>
+        pdf_url: string | null
+      }>(`/api/v1/axis/${projectId}/results`),
+    renderUrl: (projectId: string, filename: string) =>
+      `${(process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()}/api/v1/axis/${projectId}/render/${filename}`,
+    reportUrl: (projectId: string) =>
+      `${(process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()}/api/v1/axis/${projectId}/report`,
+  },
 }
 // cache-bust 1774803796
 // cache-bust 1774804395

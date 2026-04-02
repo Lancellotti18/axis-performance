@@ -1,0 +1,64 @@
+{
+  "region": "US_National_Average",
+  "last_updated": "2025-01",
+  "currency": "USD",
+  "materials": {
+    "shingle_3tab":           {"unit": "square", "material": 95.00,  "labor": 85.00},
+    "shingle_architectural":  {"unit": "square", "material": 140.00, "labor": 95.00},
+    "shingle_premium":        {"unit": "square", "material": 220.00, "labor": 110.00},
+    "metal_standing_seam":    {"unit": "sqft",   "material": 8.50,   "labor": 6.50},
+    "metal_corrugated":       {"unit": "sqft",   "material": 5.50,   "labor": 5.00},
+    "clay_tile":              {"unit": "sqft",   "material": 12.00,  "labor": 14.00},
+    "underlayment":           {"unit": "sqft",   "material": 0.18,   "labor": 0.08},
+    "ice_water_shield":       {"unit": "sqft",   "material": 0.95,   "labor": 0.15},
+    "drip_edge":              {"unit": "lf",     "material": 1.20,   "labor": 0.75},
+    "ridge_cap":              {"unit": "lf",     "material": 3.50,   "labor": 2.00},
+    "flashing":               {"unit": "lf",     "material": 4.50,   "labor": 5.00},
+    "vinyl_siding":           {"unit": "sqft",   "material": 4.50,   "labor": 3.75},
+    "fiber_cement_siding":    {"unit": "sqft",   "material": 6.50,   "labor": 5.50},
+    "brick":                  {"unit": "sqft",   "material": 18.00,  "labor": 22.00},
+    "stucco":                 {"unit": "sqft",   "material": 5.00,   "labor": 8.00},
+    "osb_panel":              {"unit": "panel",  "material": 22.00,  "labor": 8.00},
+    "house_wrap":             {"unit": "sqft",   "material": 0.25,   "labor": 0.12},
+    "framing_stud":           {"unit": "each",   "material": 6.50,   "labor": 3.50},
+    "concrete":               {"unit": "cy",     "material": 160.00, "labor": 85.00},
+    "window_standard":        {"unit": "each",   "material": 350.00, "labor": 175.00},
+    "window_premium":         {"unit": "each",   "material": 650.00, "labor": 200.00},
+    "door_exterior":          {"unit": "each",   "material": 450.00, "labor": 200.00},
+    "door_premium":           {"unit": "each",   "material": 950.00, "labor": 250.00},
+    "insulation_batt":        {"unit": "each",   "material": 4.50,   "labor": 2.00},
+    "exterior_paint":         {"unit": "gallon", "material": 45.00,  "labor": 60.00},
+    "subfloor_panel":         {"unit": "panel",  "material": 28.00,  "labor": 10.00},
+    "finish_flooring":        {"unit": "sqft",   "material": 5.50,   "labor": 4.50},
+    "rebar":                  {"unit": "lf",     "material": 0.85,   "labor": 0.45},
+    "plates_lumber":          {"unit": "lf",     "material": 0.75,   "labor": 0.35},
+    "header_lumber":          {"unit": "lf",     "material": 3.50,   "labor": 2.00},
+    "sheathing_wall":         {"unit": "sqft",   "material": 0.65,   "labor": 0.40},
+    "trim_boards":            {"unit": "lf",     "material": 2.20,   "labor": 1.80}
+  },
+  "overhead_profit_pct": 0.15,
+  "contingency_pct": 0.10,
+  "scenarios": {
+    "economy": {
+      "label": "Economy",
+      "roofing": "shingle_3tab",
+      "siding": "vinyl_siding",
+      "window": "window_standard",
+      "door": "door_exterior"
+    },
+    "standard": {
+      "label": "Standard",
+      "roofing": "shingle_architectural",
+      "siding": "fiber_cement_siding",
+      "window": "window_standard",
+      "door": "door_exterior"
+    },
+    "premium": {
+      "label": "Premium",
+      "roofing": "metal_standing_seam",
+      "siding": "brick",
+      "window": "window_premium",
+      "door": "door_premium"
+    }
+  }
+}

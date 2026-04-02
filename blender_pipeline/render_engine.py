@@ -91,12 +91,16 @@ def _configure_cycles(quality: str = "production") -> None:
     # Denoising
     cy.use_denoising = True
     # Try OptiX denoiser (NVIDIA) first, fall back to OpenImageDenoise
-    try:
-        cy.denoiser = "OPTIX"
-    except TypeError:
-        cy.denoiser = "OPENIMAGEDENOISE"
-    cy.denoising_input_passes = "RGB_ALBEDO_NORMAL"
-    cy.denoising_prefilter    = "ACCURATE"
+    for denoiser in ("OPTIX", "OPENIMAGEDENOISE"):
+        try:
+            cy.denoiser = denoiser
+            break
+        except Exception:
+            continue
+    try: cy.denoising_input_passes = "RGB_ALBEDO_NORMAL"
+    except Exception: pass
+    try: cy.denoising_prefilter = "ACCURATE"
+    except Exception: pass
     log.info(f"Denoiser: {cy.denoiser}")
 
     # Film
