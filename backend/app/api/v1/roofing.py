@@ -243,14 +243,38 @@ async def aerial_roof_report_standalone(payload: StandaloneAerialRequest):
     Pass the full address (street, city, state, zip) and get roof measurements.
     """
     from app.services.aerial_roof_service import get_aerial_roof_report
-    if not payload.address.strip():
+    addr = payload.address.strip()
+    if not addr:
         raise HTTPException(status_code=422, detail="Address is required.")
+
+    # Parse city, state, zip from the address string so the service gets
+    # the same context as the project-linked endpoint.
+    # Expected format: "123 Main St, Austin, TX 78701"
+    import re as _re
+    city = ""
+    state = ""
+    zip_code = ""
+    # Zip: last 5-digit group
+    zip_match = _re.search(r'\b(\d{5})\b', addr)
+    if zip_match:
+        zip_code = zip_match.group(1)
+    # State: 2-letter abbreviation before or after zip
+    state_match = _re.search(r',\s*([A-Z]{2})\b', addr)
+    if state_match:
+        state = state_match.group(1)
+    # City: part before the state abbreviation
+    if state_match:
+        before_state = addr[:state_match.start()]
+        parts = [p.strip() for p in before_state.split(',') if p.strip()]
+        if len(parts) >= 2:
+            city = parts[-1]
+
     try:
         result = await get_aerial_roof_report(
-            address=payload.address.strip(),
-            city="",
-            state="",
-            zip_code="",
+            address=addr,
+            city=city,
+            state=state,
+            zip_code=zip_code,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Aerial report failed: {e}")

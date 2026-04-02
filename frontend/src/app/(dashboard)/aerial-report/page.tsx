@@ -40,7 +40,11 @@ export default function AerialReportPage() {
     }
   }
 
-  const confidence = result?.confidence_pct ?? result?.confidence ?? null
+  const rawConfidence = result?.confidence_pct ?? result?.confidence ?? null
+  // Backend returns 0–1 decimal; multiply by 100 for display
+  const confidence = rawConfidence !== null
+    ? (rawConfidence <= 1 ? Math.round(rawConfidence * 100) : Math.round(rawConfidence))
+    : null
   const source = result?.source || null
 
   return (
