@@ -74,17 +74,6 @@ export default function StormReportPage() {
         {/* Input card */}
         <div className="bg-white rounded-2xl p-6 space-y-4" style={cardStyle}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="space-y-1 md:col-span-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">City *</label>
-              <input
-                type="text"
-                value={city}
-                onChange={e => setCity(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                placeholder="Dallas"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300"
-              />
-            </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">State *</label>
               <select
@@ -97,6 +86,17 @@ export default function StormReportPage() {
                   <option key={s.code} value={s.code}>{s.code} — {s.name}</option>
                 ))}
               </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">City *</label>
+              <input
+                type="text"
+                value={city}
+                onChange={e => setCity(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                placeholder="Dallas"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Zip Code</label>
