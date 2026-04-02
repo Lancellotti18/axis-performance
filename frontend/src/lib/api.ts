@@ -261,6 +261,22 @@ export const api = {
     get: (projectId: string) =>
       apiRequest<any>(`/api/v1/model3d/${projectId}/model3d`),
   },
+  visualizer: {
+    generate: (file: File, description: string, city: string, state: string) => {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('description', description)
+      form.append('city', city)
+      form.append('state', state)
+      return fetch(`${API_BASE}/api/v1/visualizer/generate`, {
+        method: 'POST',
+        body: form,
+      }).then(async res => {
+        if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
+        return res.json()
+      })
+    },
+  },
   materialCheck: {
     uploadFile: (file: File, city: string, state: string, county: string, projectType: string) => {
       const form = new FormData()

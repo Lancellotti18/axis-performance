@@ -11,6 +11,7 @@ const NAV = [
   { href: '/projects',        label: 'Projects',         icon: IconProjects },
   { href: '/projects/new',    label: 'Upload Blueprint',  icon: IconUpload },
   { href: '/material-check',  label: 'Material Compliance', icon: IconMaterialCheck },
+  { href: '/home-visualizer', label: 'Home Visualizer',    icon: IconVisualizer },
   { href: '/aerial-report',   label: 'Aerial Roof Report', icon: IconAerial },
   { href: '/storm-report',    label: 'Storm Risk Report',  icon: IconStorm },
   { href: '/crm',             label: 'CRM',              icon: IconCRM },
@@ -70,6 +71,16 @@ function IconMaterialCheck({ active }: { active: boolean }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#2563eb' : '#94a3b8'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+    </svg>
+  )
+}
+
+function IconVisualizer({ active }: { active: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#2563eb' : '#94a3b8'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="14" rx="2"/>
+      <path d="M3 9l4-4 4 4 4-4 4 4"/>
+      <path d="M8 21h8M12 17v4"/>
     </svg>
   )
 }
