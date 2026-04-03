@@ -1654,7 +1654,7 @@ Thank you for your time.`
                       + Add Item
                     </button>
                     <button
-                      onClick={() => api.reports.download(projectId, 'csv').then(({ download_url }) => window.open(download_url)).catch(() => {})}
+                      onClick={() => api.reports.downloadPdf(projectId).then(blob => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `report-${projectId}.pdf`; a.click(); URL.revokeObjectURL(url); }).catch(() => {})}
                       className="flex items-center gap-2 bg-white border text-slate-600 text-sm font-medium px-4 py-2 rounded-xl transition-all hover:border-blue-300 hover:text-blue-600"
                       style={{ borderColor: 'rgba(219,234,254,0.9)' }}
                     >
