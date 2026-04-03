@@ -231,12 +231,21 @@ export const api = {
   crm: {
     listLeads: (userId: string) =>
       apiRequest<any[]>(`/api/v1/crm/leads?user_id=${userId}`),
-    createLead: (lead: any, userId?: string) =>
-      apiRequest<any>(`/api/v1/crm/leads`, { method: 'POST', body: JSON.stringify(lead) }),
+    createLead: (lead: any, userId: string) =>
+      apiRequest<any>(`/api/v1/crm/leads?user_id=${userId}`, { method: 'POST', body: JSON.stringify(lead) }),
     updateLead: (leadId: string, patch: any) =>
       apiRequest<any>(`/api/v1/crm/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
     deleteLead: (leadId: string) =>
       apiRequest<any>(`/api/v1/crm/leads/${leadId}`, { method: 'DELETE' }),
+    getNotes: (leadId: string) =>
+      apiRequest<any[]>(`/api/v1/crm/leads/${leadId}/notes`),
+    addNote: (leadId: string, text: string, userId: string) =>
+      apiRequest<any>(`/api/v1/crm/leads/${leadId}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({ text, user_id: userId }),
+      }),
+    deleteNote: (leadId: string, noteId: string) =>
+      apiRequest<any>(`/api/v1/crm/leads/${leadId}/notes/${noteId}`, { method: 'DELETE' }),
   },
   photos: {
     getUploadUrl: (projectId: string, filename: string, contentType: string) =>

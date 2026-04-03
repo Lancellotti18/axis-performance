@@ -1,9 +1,12 @@
 """
-Basic CRM endpoints for lead management.
-GET    /crm/leads?user_id=...   — list all leads for a user
-POST   /crm/leads               — create a lead
-PATCH  /crm/leads/{lead_id}     — update a lead (stage, notes, etc.)
-DELETE /crm/leads/{lead_id}     — delete a lead
+CRM endpoints for lead management + activity notes.
+GET    /crm/leads?user_id=...        — list all leads
+POST   /crm/leads                    — create a lead
+PATCH  /crm/leads/{lead_id}          — update a lead
+DELETE /crm/leads/{lead_id}          — delete a lead
+GET    /crm/leads/{lead_id}/notes    — get activity notes for a lead
+POST   /crm/leads/{lead_id}/notes    — add a note to a lead
+DELETE /crm/leads/{lead_id}/notes/{note_id} — delete a note
 """
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -40,6 +43,13 @@ class LeadUpdate(BaseModel):
     notes: Optional[str] = None
     estimated_value: Optional[float] = None
 
+
+class NoteCreate(BaseModel):
+    text: str
+    user_id: str
+
+
+# ── Leads ─────────────────────────────────────────────────────────────────────
 
 @router.get("/leads")
 async def list_leads(user_id: str = Query(...)):
@@ -102,3 +112,47 @@ async def delete_lead(lead_id: str):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete lead: {str(e)}")
+
+
+# ── Activity Notes ────────────────────────────────────────────────────────────
+
+@router.get("/leads/{lead_id}/notes")
+async def get_lead_notes(lead_id: str):
+    db = get_supabase()
+    try:
+        result = (
+            db.table("crm_lead_notes")
+            .select("*")
+            .eq("lead_id", lead_id)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch notes: {str(e)}")
+
+
+@router.post("/leads/{lead_id}/notes")
+async def add_lead_note(lead_id: str, payload: NoteCreate):
+    if not payload.text.strip():
+        raise HTTPException(status_code=422, detail="Note text cannot be empty.")
+    db = get_supabase()
+    try:
+        result = db.table("crm_lead_notes").insert({
+            "lead_id": lead_id,
+            "user_id": payload.user_id,
+            "text": payload.text.strip(),
+        }).execute()
+        return result.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add note: {str(e)}")
+
+
+@router.delete("/leads/{lead_id}/notes/{note_id}")
+async def delete_lead_note(lead_id: str, note_id: str):
+    db = get_supabase()
+    try:
+        db.table("crm_lead_notes").delete().eq("id", note_id).eq("lead_id", lead_id).execute()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete note: {str(e)}")
