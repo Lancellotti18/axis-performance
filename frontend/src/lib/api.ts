@@ -122,10 +122,19 @@ export const api = {
       }),
   },
   reports: {
-    generate: (projectId: string) =>
-      apiRequest<any>(`/api/v1/reports/${projectId}/generate`, { method: 'POST' }),
-    download: (projectId: string, format: string) =>
-      apiRequest<{ download_url: string }>(`/api/v1/reports/${projectId}/download?format=${format}`),
+    getFull: (projectId: string) =>
+      apiRequest<any>(`/api/v1/reports/${projectId}/full`, {}, 30000),
+    saveOverrides: (projectId: string, overrides: Record<string, any>) =>
+      apiRequest<any>(`/api/v1/reports/${projectId}/overrides`, {
+        method: 'PATCH',
+        body: JSON.stringify({ overrides }),
+      }),
+    downloadPdf: (projectId: string) =>
+      fetch(`${API_BASE}/api/v1/reports/${projectId}/pdf`, { method: 'POST' })
+        .then(async res => {
+          if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
+          return res.blob()
+        }),
   },
   materials: {
     add: (projectId: string, item: { item_name: string; category: string; quantity: number; unit: string; unit_cost: number; total_cost: number }) =>
