@@ -111,6 +111,27 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
 
 # ── Image utilities ────────────────────────────────────────────────────────────
 
+def _resize_if_needed(jpeg_bytes: bytes, max_bytes: int = 3_500_000) -> bytes:
+    """Resize JPEG down if it exceeds Gemini's ~4MB inline image limit."""
+    if len(jpeg_bytes) <= max_bytes:
+        return jpeg_bytes
+    nparr = np.frombuffer(jpeg_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return jpeg_bytes
+    h, w = img.shape[:2]
+    scale = 0.75
+    while True:
+        new_w, new_h = int(w * scale), int(h * scale)
+        resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        _, buf = cv2.imencode(".jpg", resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        data = buf.tobytes()
+        if len(data) <= max_bytes or scale < 0.2:
+            print(f"[pipeline] resized image {w}x{h} → {new_w}x{new_h} ({len(data)} bytes)", flush=True)
+            return data
+        scale *= 0.75
+
+
 def to_jpeg(image_bytes: bytes, filename: str = "") -> bytes:
     """Convert any supported image/PDF to JPEG bytes."""
     name = filename.lower()
@@ -250,7 +271,15 @@ For the materials list:
 
 Return ONLY the JSON object, no markdown, no explanation."""
 
-    text = llm_vision_sync(jpeg_bytes, "image/jpeg", prompt, max_tokens=8192)
+    # Resize image if too large — Gemini has a 4MB inline limit
+    jpeg_bytes = _resize_if_needed(jpeg_bytes)
+    print(f"[pipeline] sending {len(jpeg_bytes)} bytes to llm_vision_sync", flush=True)
+    try:
+        text = llm_vision_sync(jpeg_bytes, "image/jpeg", prompt, max_tokens=8192)
+    except Exception as e:
+        import traceback
+        print(f"[pipeline] llm_vision_sync FULL ERROR:\n{traceback.format_exc()}", flush=True)
+        raise
     # Strip markdown fences if present
     if "```" in text:
         start = text.find("{", text.find("```"))

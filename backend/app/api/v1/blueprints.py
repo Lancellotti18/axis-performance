@@ -138,7 +138,7 @@ def _set_status(db, blueprint_id: str, status: str, error: str = None):
     # Attempt to store error text separately — non-fatal if column doesn't exist
     if error:
         try:
-            db.table("blueprints").update({"error_message": error[:500]}).eq("id", blueprint_id).execute()
+            db.table("blueprints").update({"error_message": error[-2000:]}).eq("id", blueprint_id).execute()
         except Exception:
             pass  # column doesn't exist — status was already set above, that's enough
 
