@@ -36,7 +36,26 @@ _jobs: dict[str, dict] = {}
 # Root output directory for AXIS pipeline outputs
 AXIS_OUTPUT_ROOT = os.environ.get("AXIS_OUTPUT_DIR", "/tmp/axis_outputs")
 BLENDER_PATH     = os.environ.get("BLENDER_PATH", "blender")
-PIPELINE_DIR     = os.path.join(os.path.dirname(__file__), "../../../../blender_pipeline")
+def _find_pipeline_dir() -> str:
+    # Check env override first
+    env = os.environ.get("PIPELINE_DIR")
+    if env and os.path.isdir(env):
+        return env
+    # Relative to this file: works locally (monorepo) and on Render if full repo deployed
+    candidates = [
+        os.path.join(os.path.dirname(__file__), "../../../../blender_pipeline"),
+        os.path.join(os.path.dirname(__file__), "../../../blender_pipeline"),
+        os.path.join(os.path.dirname(__file__), "../../blender_pipeline"),
+        "/app/blender_pipeline",
+        "/app/backend/blender_pipeline",
+    ]
+    for c in candidates:
+        if os.path.isdir(os.path.abspath(c)):
+            return os.path.abspath(c)
+    # Last resort: return the relative path and let the import fail with a clear message
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../blender_pipeline"))
+
+PIPELINE_DIR = _find_pipeline_dir()
 
 
 class RunRequest(BaseModel):
@@ -156,16 +175,10 @@ def _run_5d_only(job_id: str, project_id: str, request: RunRequest) -> None:
             with open(scene_data_path, "w") as f:
                 json.dump(scene_data, f, indent=2)
 
-        # Add pipeline dir to path so modules are importable
-        import sys
-        pipeline_dir = os.path.abspath(PIPELINE_DIR)
-        if pipeline_dir not in sys.path:
-            sys.path.insert(0, pipeline_dir)
-
-        from quantity_takeoff import run_quantity_takeoff
-        from cost_engine import run_cost_engine
-        from construction_scheduler import run_scheduler
-        from ai_insights import run_ai_insights
+        from app.services.quantity_takeoff import run_quantity_takeoff
+        from app.services.pipeline_cost_engine import run_cost_engine
+        from app.services.construction_scheduler import run_scheduler
+        from app.services.ai_insights import run_ai_insights
 
         quantities  = run_quantity_takeoff(scene_data, out_dir)
 
