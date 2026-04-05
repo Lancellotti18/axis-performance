@@ -115,10 +115,43 @@ async def trigger_analysis(blueprint_id: str, background_tasks: BackgroundTasks)
 
 def _run_analysis_bg(blueprint_id: str):
     import traceback
+    import threading
     from app.services.ai_pipeline import run_analysis_pipeline
     db = get_supabase()
+
+    result = {"error": None}
+
+    def _target():
+        try:
+            run_analysis_pipeline(blueprint_id)
+        except Exception as e:
+            result["error"] = traceback.format_exc()
+
+    thread = threading.Thread(target=_target, daemon=True)
+    thread.start()
+    thread.join(timeout=300)  # 5 minute hard cap
+
+    if thread.is_alive():
+        # Thread is still running after 5 minutes — mark failed
+        db.table("blueprints").update({
+            "status": "failed",
+            "error_message": "Analysis timed out after 5 minutes. Please retry.",
+        }).eq("id", blueprint_id).execute()
+        return
+
+    if result["error"]:
+        short_err = result["error"][-500:]
+        print(f"[analysis] blueprint {blueprint_id} FAILED:\n{result['error']}")
+        try:
+            db.table("blueprints").update({
+                "status": "failed",
+                "error_message": short_err,
+            }).eq("id", blueprint_id).execute()
+        except Exception:
+            pass
+        return
+
     try:
-        run_analysis_pipeline(blueprint_id)
         db.table("blueprints").update({"status": "complete", "error_message": None}).eq("id", blueprint_id).execute()
     except Exception as e:
         err_msg = traceback.format_exc()

@@ -150,10 +150,13 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
     )
 
     def _run():
-        response = model.generate_content(full_prompt)
+        response = model.generate_content(
+            full_prompt,
+            request_options={"timeout": 120},
+        )
         return response.text
 
-    return await asyncio.to_thread(_run)
+    return await asyncio.wait_for(asyncio.to_thread(_run), timeout=130)
 
 
 async def _gemini_vision(
@@ -176,10 +179,13 @@ async def _gemini_vision(
     )
 
     def _run():
-        response = model.generate_content([full_prompt, image])
+        response = model.generate_content(
+            [full_prompt, image],
+            request_options={"timeout": 120},
+        )
         return response.text
 
-    return await asyncio.to_thread(_run)
+    return await asyncio.wait_for(asyncio.to_thread(_run), timeout=130)
 
 
 # ---------------------------------------------------------------------------
