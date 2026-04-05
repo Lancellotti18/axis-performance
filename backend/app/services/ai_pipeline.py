@@ -14,19 +14,26 @@ import uuid
 
 
 def run_analysis_pipeline(blueprint_id: str) -> dict:
+    print(f"[pipeline] START blueprint_id={blueprint_id}", flush=True)
     db = get_supabase()
 
     # 1. Fetch blueprint metadata
+    print(f"[pipeline] fetching metadata", flush=True)
     blueprint = db.table("blueprints").select("*").eq("id", blueprint_id).single().execute().data
     project_id = blueprint["project_id"]
+    file_key = blueprint["file_url"]
+    print(f"[pipeline] file_key={file_key[:80]}", flush=True)
 
     # 2. Download original file bytes
-    file_key = blueprint["file_url"]
+    print(f"[pipeline] downloading file", flush=True)
     image_bytes = download_file(file_key)
     filename = file_key.split("/")[-1].split("?")[0]
+    print(f"[pipeline] downloaded {len(image_bytes)} bytes, filename={filename}", flush=True)
 
-    # 3. Convert to JPEG for Claude (handle PDF + images)
+    # 3. Convert to JPEG
+    print(f"[pipeline] converting to jpeg", flush=True)
     jpeg_bytes = to_jpeg(image_bytes, filename)
+    print(f"[pipeline] jpeg ready {len(jpeg_bytes)} bytes", flush=True)
 
     # 4. Optional preprocessing hints — non-fatal if any step fails
     ocr_results = {}
@@ -49,8 +56,10 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
     except Exception:
         pass
 
-    # 5. Claude Vision — primary analysis + full materials list
+    # 5. LLM Vision — primary analysis + full materials list
+    print(f"[pipeline] calling llm_vision_sync", flush=True)
     structured_data = claude_analyze(jpeg_bytes, rooms_hint, detections, ocr_results)
+    print(f"[pipeline] llm done, confidence={structured_data.get('confidence')}", flush=True)
 
     # 6. Save analysis
     analysis_id = save_analysis(db, blueprint_id, structured_data)
