@@ -28,13 +28,21 @@ from app.core.config import settings
 
 def _provider() -> str:
     if settings.GEMINI_API_KEY:
-        return "gemini"
+        try:
+            import google.generativeai  # noqa: F401
+            return "gemini"
+        except ImportError:
+            pass  # package not installed yet, try next
     if settings.GROQ_API_KEY:
-        return "groq"
+        try:
+            import groq  # noqa: F401
+            return "groq"
+        except ImportError:
+            pass
     if settings.ANTHROPIC_API_KEY:
         return "anthropic"
     raise RuntimeError(
-        "No LLM API key configured. Set GEMINI_API_KEY (free) in your environment."
+        "No LLM API key configured. Set GEMINI_API_KEY (free at aistudio.google.com) in your Render environment."
     )
 
 
@@ -233,6 +241,8 @@ async def _anthropic_vision(
 
 # ---------------------------------------------------------------------------
 # Sync wrappers (for services that are not async)
+# These are called from FastAPI background task threads — always use asyncio.run()
+# since background threads never have a running event loop.
 # ---------------------------------------------------------------------------
 
 def llm_text_sync(
@@ -240,17 +250,8 @@ def llm_text_sync(
     system: Optional[str] = None,
     max_tokens: int = 8192,
 ) -> str:
-    """Synchronous version of llm_text."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, llm_text(prompt, system, max_tokens))
-                return future.result()
-        return loop.run_until_complete(llm_text(prompt, system, max_tokens))
-    except RuntimeError:
-        return asyncio.run(llm_text(prompt, system, max_tokens))
+    """Synchronous version of llm_text. Safe to call from any thread."""
+    return asyncio.run(llm_text(prompt, system, max_tokens))
 
 
 def llm_vision_sync(
@@ -260,16 +261,5 @@ def llm_vision_sync(
     system: Optional[str] = None,
     max_tokens: int = 8192,
 ) -> str:
-    """Synchronous version of llm_vision."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(
-                    asyncio.run, llm_vision(image_bytes, media_type, prompt, system, max_tokens)
-                )
-                return future.result()
-        return loop.run_until_complete(llm_vision(image_bytes, media_type, prompt, system, max_tokens))
-    except RuntimeError:
-        return asyncio.run(llm_vision(image_bytes, media_type, prompt, system, max_tokens))
+    """Synchronous version of llm_vision. Safe to call from any thread."""
+    return asyncio.run(llm_vision(image_bytes, media_type, prompt, system, max_tokens))
