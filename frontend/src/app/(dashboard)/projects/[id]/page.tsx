@@ -633,6 +633,7 @@ export default function ProjectPage() {
   const [tab, setTab]                 = useState<Tab>('overview')
   const [loading, setLoading]         = useState(true)
   const [blueprintStatus, setBlueprintStatus] = useState('pending')
+  const [blueprintError, setBlueprintError] = useState<string | null>(null)
   const [markup, setMarkup]           = useState(15)
   const [expandedItem, setExpandedItem] = useState<string | null>(null)
   const [complianceFilter, setComplianceFilter] = useState<ComplianceSeverity | 'all'>('all')
@@ -720,6 +721,7 @@ export default function ProjectPage() {
       if (blueprints.length > 0) {
         const bp = blueprints[0]
         setBlueprintStatus(bp.status)
+        if (bp.error_message) setBlueprintError(bp.error_message)
         if (bp.id) {
           // Backend proxy URL — streams the file server-side with service role auth
           setBlueprintViewUrl(api.blueprints.viewUrl(bp.id))
@@ -1234,10 +1236,27 @@ Thank you for your time.`
         </div>
       ) : blueprintStatus === 'failed' ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center bg-white rounded-2xl p-10" style={cardStyle}>
+          <div className="text-center bg-white rounded-2xl p-10 max-w-md" style={cardStyle}>
             <div className="text-5xl mb-4">⚠️</div>
             <div className="text-slate-800 font-semibold mb-2">Analysis Failed</div>
-            <div className="text-slate-500 text-sm">The AI could not process this blueprint. Please try re-uploading.</div>
+            <div className="text-slate-500 text-sm mb-4">The AI could not process this blueprint.</div>
+            {blueprintError && (
+              <div className="text-left bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-xs text-red-700 font-mono break-all">
+                {blueprintError}
+              </div>
+            )}
+            <button
+              onClick={async () => {
+                const bp = project?.blueprints?.[0]
+                if (!bp?.id) return
+                setBlueprintStatus('processing')
+                setBlueprintError(null)
+                try { await api.blueprints.retryAnalysis(bp.id) } catch {}
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-6 py-2.5 rounded-xl transition-all"
+            >
+              Retry Analysis
+            </button>
           </div>
         </div>
       ) : (

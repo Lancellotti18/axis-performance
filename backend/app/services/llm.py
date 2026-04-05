@@ -56,14 +56,36 @@ async def llm_text(
     max_tokens: int = 8192,
     json_mode: bool = False,
 ) -> str:
-    """Run a text prompt. Returns the raw text response."""
-    provider = _provider()
+    """
+    Run a text prompt. Tries providers in priority order with automatic fallback.
+    Gemini → Groq → Claude. Raises only if ALL configured providers fail.
+    """
+    errors = []
 
-    if provider == "gemini":
-        return await _gemini_text(prompt, system, max_tokens)
-    if provider == "groq":
-        return await _groq_text(prompt, system, max_tokens)
-    return await _anthropic_text(prompt, system, max_tokens)
+    if settings.GEMINI_API_KEY:
+        try:
+            import google.generativeai  # noqa: F401
+            return await _gemini_text(prompt, system, max_tokens)
+        except Exception as e:
+            errors.append(f"Gemini: {e}")
+
+    if settings.GROQ_API_KEY:
+        try:
+            import groq  # noqa: F401
+            return await _groq_text(prompt, system, max_tokens)
+        except Exception as e:
+            errors.append(f"Groq: {e}")
+
+    if settings.ANTHROPIC_API_KEY:
+        try:
+            return await _anthropic_text(prompt, system, max_tokens)
+        except Exception as e:
+            errors.append(f"Anthropic: {e}")
+
+    raise RuntimeError(
+        f"All LLM providers failed. Set GEMINI_API_KEY (free at aistudio.google.com). "
+        f"Errors: {'; '.join(errors)}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -77,15 +99,36 @@ async def llm_vision(
     system: Optional[str] = None,
     max_tokens: int = 8192,
 ) -> str:
-    """Analyze an image with a text prompt. Returns the raw text response."""
-    provider = _provider()
+    """
+    Analyze an image with a text prompt. Tries providers in priority order with automatic fallback.
+    Gemini → Groq (vision) → Claude. Raises only if ALL configured providers fail.
+    """
+    errors = []
 
-    if provider == "gemini":
-        return await _gemini_vision(image_bytes, media_type, prompt, system, max_tokens)
-    if provider == "groq":
-        # Groq supports vision via llama-3.2-90b-vision but image must be base64
-        return await _groq_vision(image_bytes, media_type, prompt, system, max_tokens)
-    return await _anthropic_vision(image_bytes, media_type, prompt, system, max_tokens)
+    if settings.GEMINI_API_KEY:
+        try:
+            import google.generativeai  # noqa: F401
+            return await _gemini_vision(image_bytes, media_type, prompt, system, max_tokens)
+        except Exception as e:
+            errors.append(f"Gemini: {e}")
+
+    if settings.GROQ_API_KEY:
+        try:
+            import groq  # noqa: F401
+            return await _groq_vision(image_bytes, media_type, prompt, system, max_tokens)
+        except Exception as e:
+            errors.append(f"Groq: {e}")
+
+    if settings.ANTHROPIC_API_KEY:
+        try:
+            return await _anthropic_vision(image_bytes, media_type, prompt, system, max_tokens)
+        except Exception as e:
+            errors.append(f"Anthropic: {e}")
+
+    raise RuntimeError(
+        f"All LLM providers failed. Set GEMINI_API_KEY (free at aistudio.google.com). "
+        f"Errors: {'; '.join(errors)}"
+    )
 
 
 # ---------------------------------------------------------------------------

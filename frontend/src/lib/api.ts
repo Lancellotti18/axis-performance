@@ -104,8 +104,10 @@ export const api = {
       }),
     triggerAnalysis: (blueprintId: string) =>
       apiRequest<{ job_id: string; status: string }>(`/api/v1/blueprints/${blueprintId}/analyze`, { method: 'POST' }),
+    retryAnalysis: (blueprintId: string) =>
+      apiRequest<{ job_id: string; status: string }>(`/api/v1/blueprints/${blueprintId}/retry`, { method: 'POST' }),
     getStatus: (blueprintId: string) =>
-      apiRequest<{ status: string }>(`/api/v1/blueprints/${blueprintId}/status`),
+      apiRequest<{ status: string; error_message?: string }>(`/api/v1/blueprints/${blueprintId}/status`),
     viewUrl: (blueprintId: string) => `${API_BASE}/api/v1/blueprints/${blueprintId}/view`,
   },
   analyses: {

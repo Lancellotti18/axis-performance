@@ -119,14 +119,27 @@ def _run_analysis_bg(blueprint_id: str):
     db = get_supabase()
     try:
         run_analysis_pipeline(blueprint_id)
-        db.table("blueprints").update({"status": "complete"}).eq("id", blueprint_id).execute()
+        db.table("blueprints").update({"status": "complete", "error_message": None}).eq("id", blueprint_id).execute()
     except Exception as e:
         err_msg = traceback.format_exc()
+        short_err = str(e)[:500]
         print(f"[analysis] blueprint {blueprint_id} FAILED:\n{err_msg}")
         try:
-            db.table("blueprints").update({"status": "failed"}).eq("id", blueprint_id).execute()
+            db.table("blueprints").update({
+                "status": "failed",
+                "error_message": short_err,
+            }).eq("id", blueprint_id).execute()
         except Exception as e2:
             print(f"[analysis] could not set failed status: {e2}")
+
+
+@router.post("/{blueprint_id}/retry")
+async def retry_analysis(blueprint_id: str, background_tasks: BackgroundTasks):
+    """Retry a failed blueprint analysis without re-uploading."""
+    db = get_supabase()
+    db.table("blueprints").update({"status": "processing", "error_message": None}).eq("id", blueprint_id).execute()
+    background_tasks.add_task(_run_analysis_bg, blueprint_id)
+    return {"status": "processing", "job_id": blueprint_id}
 
 
 @router.get("/{blueprint_id}/view")
