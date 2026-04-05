@@ -198,9 +198,7 @@ async def fetch_permit_form(project_id: str):
 
 
 def _find_and_analyze_form(city: str, state: str, project_type: str, gov_form_url: str = None):
-    """Use Tavily to find the PDF form, then Claude Vision to extract all fields."""
-    import anthropic, base64
-
+    """Use Tavily to find the PDF form, then LLM Vision to extract all fields."""
     form_url = None
     pdf_bytes = None
 

@@ -227,7 +227,7 @@ def _run_5d_only(job_id: str, project_id: str, request: RunRequest) -> None:
                                        project_name=request.project_name)
 
         if request.generate_pdf:
-            from report_generator import generate_report
+            from app.services.report_generator import generate_report
             generate_report(
                 quantities=quantities,
                 cost_report=cost_report,

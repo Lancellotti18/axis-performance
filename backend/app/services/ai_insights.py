@@ -37,14 +37,8 @@ def _save_cache(cache: dict, cache_file: str) -> None:
 
 
 def _call_claude(prompt: str) -> str:
-    from anthropic import Anthropic
-    client = Anthropic()
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=600,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.content[0].text.strip()
+    from app.services.llm import llm_text_sync
+    return llm_text_sync(prompt, max_tokens=600)
 
 
 def _generate(

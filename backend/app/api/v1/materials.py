@@ -88,8 +88,8 @@ async def search_prices(req: PriceSearchRequest):
     from app.core.config import settings
 
     if not settings.TAVILY_API_KEY:
-        from app.services.pricing_service import _fallback_options
-        return {"options": _fallback_options(req.item_name, req.unit_cost)}
+        from app.services.pricing_service import _fallback_retail, _trade_distributor_entries
+        return {"options": _fallback_retail(req.item_name, req.unit_cost) + _trade_distributor_entries(req.item_name)}
 
     try:
         from tavily import TavilyClient
@@ -98,8 +98,8 @@ async def search_prices(req: PriceSearchRequest):
         return {"options": options}
     except Exception as e:
         logger.warning(f"Price search failed: {e}")
-        from app.services.pricing_service import _fallback_options
-        return {"options": _fallback_options(req.item_name, req.unit_cost)}
+        from app.services.pricing_service import _fallback_retail, _trade_distributor_entries
+        return {"options": _fallback_retail(req.item_name, req.unit_cost) + _trade_distributor_entries(req.item_name)}
 
 
 @router.post("/{project_id}/refresh-all-prices")
