@@ -5,7 +5,8 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { ComplianceCheck, ComplianceItem, ComplianceSeverity } from '@/types'
-import Blueprint3DViewer from './Blueprint3DViewer'
+import dynamic from 'next/dynamic'
+const Blueprint3DViewer = dynamic(() => import('./Blueprint3DViewer'), { ssr: false })
 import RoofingSection from './RoofingSection'
 
 type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'photos' | 'compliance' | 'permits' | 'roofing'
