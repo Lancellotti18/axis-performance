@@ -1087,10 +1087,13 @@ Thank you for your time.`
             if (mats.length > 0) setAxisLineItems(mats)
           } else if (statusResp.status === 'error') {
             clearInterval(axisPollerRef.current!)
+            setAxisStatus('error')
             setAxisError(statusResp.error || 'Pipeline failed.')
           }
         } catch (e: any) {
-          // Don't stop polling on transient errors
+          setAxisError(e.message || 'Unknown error while polling pipeline status.')
+          clearInterval(axisPollerRef.current!)
+          setAxisStatus('error')
         }
       }, 4000)
     } catch (err: any) {
@@ -2197,7 +2200,13 @@ Thank you for your time.`
                 </div>
 
                 {scene3dError && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-sm">{scene3dError}</div>
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start justify-between gap-3">
+                    <pre className="text-red-700 text-xs whitespace-pre-wrap break-all flex-1">{scene3dError}</pre>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(scene3dError)}
+                      className="text-red-400 hover:text-red-600 text-xs font-semibold flex-shrink-0 underline"
+                    >Copy</button>
+                  </div>
                 )}
 
 
@@ -2302,7 +2311,13 @@ Thank you for your time.`
 
                   {/* Error */}
                   {axisError && (
-                    <div className="px-5 py-3 bg-red-50 border-t border-red-100 text-red-700 text-sm">{axisError}</div>
+                    <div className="px-5 py-3 bg-red-50 border-t border-red-100 flex items-start justify-between gap-3">
+                      <pre className="text-red-700 text-xs whitespace-pre-wrap break-all flex-1">{axisError}</pre>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(axisError)}
+                        className="text-red-400 hover:text-red-600 text-xs font-semibold flex-shrink-0 underline mt-0.5"
+                      >Copy</button>
+                    </div>
                   )}
 
                   {/* Progress bar while running */}

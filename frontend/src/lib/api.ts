@@ -54,6 +54,14 @@ export async function apiRequest<T>(
 
   if (!res!.ok) {
     const text = await res!.text()
+    // FastAPI returns {"detail":"..."} — extract just the message
+    try {
+      const json = JSON.parse(text)
+      const detail = typeof json.detail === 'string' ? json.detail : JSON.stringify(json.detail)
+      throw new Error(`[HTTP ${res!.status}] ${detail}`)
+    } catch (parseErr: any) {
+      if (parseErr.message?.startsWith('[HTTP')) throw parseErr
+    }
     throw new Error(text || `HTTP ${res!.status}`)
   }
   return res!.json()
