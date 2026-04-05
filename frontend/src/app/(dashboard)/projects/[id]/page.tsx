@@ -526,7 +526,7 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
           <div className="bg-white rounded-2xl p-5" style={cardStyle}>
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Application Summary</div>
             <div className="space-y-1">
-              {(formData?.fields || []).filter((f: any) => fieldValues[f.key]).slice(0, 8).map((f: any) => (
+              {(Array.isArray(formData?.fields) ? formData.fields : []).filter((f: any) => fieldValues[f.key]).slice(0, 8).map((f: any) => (
                 <div key={f.key} className="flex justify-between py-2 border-b last:border-0" style={{ borderColor: 'rgba(219,234,254,0.5)' }}>
                   <span className="text-slate-400 text-sm">{f.label}</span>
                   <span className="text-slate-800 text-sm font-semibold truncate max-w-[55%] text-right">{fieldValues[f.key]}</span>
@@ -1474,7 +1474,7 @@ Thank you for your time.`
                           )}
                           {riskScore.recommendation && <p className="text-blue-600 text-xs font-semibold mb-2">{riskScore.recommendation}</p>}
                           {riskScore.insurance_note && <p className="text-slate-500 text-xs italic mb-2">{riskScore.insurance_note}</p>}
-                          {riskScore.recent_events?.length > 0 && (
+                          {Array.isArray(riskScore.recent_events) && riskScore.recent_events.length > 0 && (
                             <div className="mt-3 space-y-1.5">
                               <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Recent Events</div>
                               {riskScore.recent_events.slice(0, 4).map((ev: any, i: number) => (
@@ -1615,7 +1615,7 @@ Thank you for your time.`
                     })()}
                   </div>
 
-                  {analysis?.rooms?.length > 0 && (
+                  {Array.isArray(analysis?.rooms) && analysis.rooms.length > 0 && (
                     <div className="bg-white rounded-2xl p-5" style={cardStyle}>
                       <h3 className="text-slate-800 font-bold text-sm mb-3">Rooms Detected</h3>
                       <div className="space-y-1">
@@ -2205,11 +2205,11 @@ Thank you for your time.`
                 {analysis ? (
                   <>
                     <Blueprint3DViewer analysis={analysis} sceneData={sceneData} blueprintUrl={blueprintViewUrl ?? undefined} />
-                    {analysis.rooms?.length > 0 && (
+                    {Array.isArray(analysis.rooms) && analysis.rooms.length > 0 && (
                       <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
                         <h3 className="text-slate-800 font-bold text-sm mb-3">Rooms Detected</h3>
                         <div className="grid grid-cols-3 gap-3">
-                          {(sceneData?.rooms?.length > 0 ? sceneData.rooms : analysis.rooms).map((room: any, i: number) => {
+                          {(Array.isArray(sceneData?.rooms) && sceneData.rooms.length > 0 ? sceneData.rooms : analysis.rooms).map((room: any, i: number) => {
                             const colors = ['bg-blue-50 border-blue-200','bg-green-50 border-green-200','bg-yellow-50 border-yellow-200','bg-rose-50 border-rose-200','bg-purple-50 border-purple-200','bg-cyan-50 border-cyan-200','bg-orange-50 border-orange-200','bg-emerald-50 border-emerald-200']
                             return (
                               <div key={i} className={`rounded-xl border p-3 ${colors[i % colors.length]}`}>
@@ -3426,7 +3426,7 @@ Thank you for your time.`
               </div>
 
               {/* Scope of Work */}
-              {analysis?.rooms?.length > 0 && (
+              {Array.isArray(analysis?.rooms) && analysis.rooms.length > 0 && (
                 <div>
                   <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Scope of Work</div>
                   <div className="bg-slate-50 rounded-xl p-4">
