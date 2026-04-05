@@ -289,9 +289,8 @@ async def _anthropic_vision(
 
 
 # ---------------------------------------------------------------------------
-# Sync wrappers (for services that are not async)
-# These are called from FastAPI background task threads — always use asyncio.run()
-# since background threads never have a running event loop.
+# Sync wrappers — called from background threads, NO asyncio involved at all.
+# Call each provider's SDK directly and synchronously.
 # ---------------------------------------------------------------------------
 
 def llm_text_sync(
@@ -299,8 +298,51 @@ def llm_text_sync(
     system: Optional[str] = None,
     max_tokens: int = 8192,
 ) -> str:
-    """Synchronous version of llm_text. Safe to call from any thread."""
-    return asyncio.run(llm_text(prompt, system, max_tokens))
+    """Synchronous LLM text call. Safe from any thread — no event loop needed."""
+    errors = []
+
+    if settings.GEMINI_API_KEY:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            full_prompt = f"{system}\n\n{prompt}" if system else prompt
+            model = genai.GenerativeModel(
+                GEMINI_MODEL,
+                generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
+            )
+            return model.generate_content(full_prompt, request_options={"timeout": 120}).text
+        except Exception as e:
+            errors.append(f"Gemini: {e}")
+
+    if settings.GROQ_API_KEY:
+        try:
+            from groq import Groq
+            client = Groq(api_key=settings.GROQ_API_KEY)
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+            return client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                max_tokens=min(max_tokens, 8000),
+            ).choices[0].message.content
+        except Exception as e:
+            errors.append(f"Groq: {e}")
+
+    if settings.ANTHROPIC_API_KEY:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            kwargs = {"model": "claude-opus-4-6", "max_tokens": max_tokens,
+                      "messages": [{"role": "user", "content": prompt}]}
+            if system:
+                kwargs["system"] = system
+            return client.messages.create(**kwargs).content[0].text
+        except Exception as e:
+            errors.append(f"Anthropic: {e}")
+
+    raise RuntimeError(f"All LLM providers failed: {'; '.join(errors)}")
 
 
 def llm_vision_sync(
@@ -310,5 +352,65 @@ def llm_vision_sync(
     system: Optional[str] = None,
     max_tokens: int = 8192,
 ) -> str:
-    """Synchronous version of llm_vision. Safe to call from any thread."""
-    return asyncio.run(llm_vision(image_bytes, media_type, prompt, system, max_tokens))
+    """Synchronous LLM vision call. Safe from any thread — no event loop needed."""
+    import io
+    errors = []
+
+    if settings.GEMINI_API_KEY:
+        try:
+            import google.generativeai as genai
+            import PIL.Image
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            image = PIL.Image.open(io.BytesIO(image_bytes))
+            full_prompt = f"{system}\n\n{prompt}" if system else prompt
+            model = genai.GenerativeModel(
+                GEMINI_MODEL,
+                generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
+            )
+            return model.generate_content(
+                [full_prompt, image],
+                request_options={"timeout": 120},
+            ).text
+        except Exception as e:
+            errors.append(f"Gemini: {e}")
+
+    if settings.GROQ_API_KEY:
+        try:
+            import base64
+            from groq import Groq
+            client = Groq(api_key=settings.GROQ_API_KEY)
+            b64 = base64.standard_b64encode(image_bytes).decode()
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{b64}"}},
+                {"type": "text", "text": prompt},
+            ]})
+            return client.chat.completions.create(
+                model="llama-3.2-90b-vision-preview",
+                messages=messages,
+                max_tokens=min(max_tokens, 8000),
+            ).choices[0].message.content
+        except Exception as e:
+            errors.append(f"Groq: {e}")
+
+    if settings.ANTHROPIC_API_KEY:
+        try:
+            import base64
+            import anthropic
+            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            b64 = base64.standard_b64encode(image_bytes).decode()
+            content = [
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
+                {"type": "text", "text": prompt},
+            ]
+            kwargs = {"model": "claude-opus-4-6", "max_tokens": max_tokens,
+                      "messages": [{"role": "user", "content": content}]}
+            if system:
+                kwargs["system"] = system
+            return client.messages.create(**kwargs).content[0].text
+        except Exception as e:
+            errors.append(f"Anthropic: {e}")
+
+    raise RuntimeError(f"All LLM vision providers failed: {'; '.join(errors)}")
