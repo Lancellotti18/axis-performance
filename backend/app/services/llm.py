@@ -132,27 +132,29 @@ async def llm_vision(
 
 
 # ---------------------------------------------------------------------------
-# Gemini implementation
-# Uses google-generativeai (stable SDK). Model: gemini-1.5-flash (production)
+# Gemini implementation — uses new google-genai SDK (google.genai)
 # ---------------------------------------------------------------------------
 
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = "gemini-2.0-flash"
+
+
+def _gemini_client():
+    from google import genai
+    return genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
 async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> str:
-    import google.generativeai as genai
-    genai.configure(api_key=settings.GEMINI_API_KEY)
+    from google import genai
+    from google.genai import types
 
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
-    model = genai.GenerativeModel(
-        GEMINI_MODEL,
-        generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
-    )
 
     def _run():
-        response = model.generate_content(
-            full_prompt,
-            request_options={"timeout": 120},
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=full_prompt,
+            config=types.GenerateContentConfig(max_output_tokens=max_tokens),
         )
         return response.text
 
@@ -166,22 +168,20 @@ async def _gemini_vision(
     system: Optional[str],
     max_tokens: int,
 ) -> str:
-    import google.generativeai as genai
-    import PIL.Image
-    import io
+    from google import genai
+    from google.genai import types
 
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-    image = PIL.Image.open(io.BytesIO(image_bytes))
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
-    model = genai.GenerativeModel(
-        GEMINI_MODEL,
-        generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
-    )
 
     def _run():
-        response = model.generate_content(
-            [full_prompt, image],
-            request_options={"timeout": 120},
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                full_prompt,
+            ],
+            config=types.GenerateContentConfig(max_output_tokens=max_tokens),
         )
         return response.text
 
@@ -235,7 +235,7 @@ async def _groq_vision(
 
     def _run():
         return client.chat.completions.create(
-            model="llama-3.2-90b-vision-preview",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             messages=messages,
             max_tokens=min(max_tokens, 8000),
         ).choices[0].message.content
@@ -303,14 +303,16 @@ def llm_text_sync(
 
     if settings.GEMINI_API_KEY:
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=settings.GEMINI_API_KEY)
+            from google import genai
+            from google.genai import types
             full_prompt = f"{system}\n\n{prompt}" if system else prompt
-            model = genai.GenerativeModel(
-                GEMINI_MODEL,
-                generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=full_prompt,
+                config=types.GenerateContentConfig(max_output_tokens=max_tokens),
             )
-            return model.generate_content(full_prompt, request_options={"timeout": 120}).text
+            return response.text
         except Exception as e:
             errors.append(f"Gemini: {e}")
 
@@ -358,19 +360,19 @@ def llm_vision_sync(
 
     if settings.GEMINI_API_KEY:
         try:
-            import google.generativeai as genai
-            import PIL.Image
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            image = PIL.Image.open(io.BytesIO(image_bytes))
+            from google import genai
+            from google.genai import types
             full_prompt = f"{system}\n\n{prompt}" if system else prompt
-            model = genai.GenerativeModel(
-                GEMINI_MODEL,
-                generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=[
+                    types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                    full_prompt,
+                ],
+                config=types.GenerateContentConfig(max_output_tokens=max_tokens),
             )
-            return model.generate_content(
-                [full_prompt, image],
-                request_options={"timeout": 120},
-            ).text
+            return response.text
         except Exception as e:
             errors.append(f"Gemini: {e}")
 
@@ -388,7 +390,7 @@ def llm_vision_sync(
                 {"type": "text", "text": prompt},
             ]})
             return client.chat.completions.create(
-                model="llama-3.2-90b-vision-preview",
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
                 messages=messages,
                 max_tokens=min(max_tokens, 8000),
             ).choices[0].message.content
