@@ -113,66 +113,78 @@ async def trigger_analysis(blueprint_id: str, background_tasks: BackgroundTasks)
     return {"status": "processing", "job_id": blueprint_id}
 
 
+def _set_status(db, blueprint_id: str, status: str, error: str = None):
+    """
+    Update blueprint status. Always updates status in its own call first —
+    never bundles status + error_message together, because error_message column
+    may not exist yet in older deployments, which would cause the whole update to fail.
+    """
+    try:
+        db.table("blueprints").update({"status": status}).eq("id", blueprint_id).execute()
+    except Exception as e:
+        print(f"[analysis] CRITICAL: could not set status={status} for {blueprint_id}: {e}")
+
+    # Attempt to store error text separately — non-fatal if column doesn't exist
+    if error:
+        try:
+            db.table("blueprints").update({"error_message": error[:500]}).eq("id", blueprint_id).execute()
+        except Exception:
+            pass  # column doesn't exist — status was already set above, that's enough
+
+
 def _run_analysis_bg(blueprint_id: str):
     import traceback
     import threading
     from app.services.ai_pipeline import run_analysis_pipeline
     db = get_supabase()
 
-    result = {"error": None}
+    result = {"error": None, "done": False}
 
     def _target():
         try:
             run_analysis_pipeline(blueprint_id)
-        except Exception as e:
+            result["done"] = True
+        except Exception:
             result["error"] = traceback.format_exc()
 
     thread = threading.Thread(target=_target, daemon=True)
     thread.start()
-    thread.join(timeout=300)  # 5 minute hard cap
+    thread.join(timeout=300)  # 5-minute hard cap
 
     if thread.is_alive():
-        # Thread is still running after 5 minutes — mark failed
-        db.table("blueprints").update({
-            "status": "failed",
-            "error_message": "Analysis timed out after 5 minutes. Please retry.",
-        }).eq("id", blueprint_id).execute()
+        print(f"[analysis] blueprint {blueprint_id} TIMED OUT after 5 minutes")
+        _set_status(db, blueprint_id, "failed", "Analysis timed out after 5 minutes. Please retry.")
         return
 
     if result["error"]:
-        short_err = result["error"][-500:]
         print(f"[analysis] blueprint {blueprint_id} FAILED:\n{result['error']}")
-        try:
-            db.table("blueprints").update({
-                "status": "failed",
-                "error_message": short_err,
-            }).eq("id", blueprint_id).execute()
-        except Exception:
-            pass
+        _set_status(db, blueprint_id, "failed", result["error"])
         return
 
-    try:
-        db.table("blueprints").update({"status": "complete", "error_message": None}).eq("id", blueprint_id).execute()
-    except Exception as e:
-        err_msg = traceback.format_exc()
-        short_err = str(e)[:500]
-        print(f"[analysis] blueprint {blueprint_id} FAILED:\n{err_msg}")
-        try:
-            db.table("blueprints").update({
-                "status": "failed",
-                "error_message": short_err,
-            }).eq("id", blueprint_id).execute()
-        except Exception as e2:
-            print(f"[analysis] could not set failed status: {e2}")
+    _set_status(db, blueprint_id, "complete")
 
 
 @router.post("/{blueprint_id}/retry")
 async def retry_analysis(blueprint_id: str, background_tasks: BackgroundTasks):
     """Retry a failed blueprint analysis without re-uploading."""
     db = get_supabase()
-    db.table("blueprints").update({"status": "processing", "error_message": None}).eq("id", blueprint_id).execute()
+    db.table("blueprints").update({"status": "processing"}).eq("id", blueprint_id).execute()
     background_tasks.add_task(_run_analysis_bg, blueprint_id)
     return {"status": "processing", "job_id": blueprint_id}
+
+
+@router.get("/debug/test-ai")
+async def test_ai():
+    """Quick endpoint to verify the AI provider is working. Hit this to diagnose issues."""
+    from app.services.llm import llm_text
+    try:
+        result = await llm_text(
+            "Reply with exactly: OK",
+            max_tokens=10,
+        )
+        return {"status": "ok", "response": result.strip()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 @router.get("/{blueprint_id}/view")

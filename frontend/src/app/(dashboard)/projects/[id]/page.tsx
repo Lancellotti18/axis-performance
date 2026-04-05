@@ -634,6 +634,7 @@ export default function ProjectPage() {
   const [loading, setLoading]         = useState(true)
   const [blueprintStatus, setBlueprintStatus] = useState('pending')
   const [blueprintError, setBlueprintError] = useState<string | null>(null)
+  const [blueprintId, setBlueprintId] = useState<string | null>(null)
   const [markup, setMarkup]           = useState(15)
   const [expandedItem, setExpandedItem] = useState<string | null>(null)
   const [complianceFilter, setComplianceFilter] = useState<ComplianceSeverity | 'all'>('all')
@@ -722,6 +723,7 @@ export default function ProjectPage() {
         const bp = blueprints[0]
         setBlueprintStatus(bp.status)
         if (bp.error_message) setBlueprintError(bp.error_message)
+        if (bp.id) setBlueprintId(bp.id)
         if (bp.id) {
           // Backend proxy URL — streams the file server-side with service role auth
           setBlueprintViewUrl(api.blueprints.viewUrl(bp.id))
@@ -751,9 +753,20 @@ export default function ProjectPage() {
   useEffect(() => { loadData() }, [loadData])
   useEffect(() => {
     if (blueprintStatus !== 'processing' && blueprintStatus !== 'pending') return
-    const interval = setInterval(loadData, 4000)
+    if (!blueprintId) return
+    const interval = setInterval(async () => {
+      try {
+        const s = await api.blueprints.getStatus(blueprintId)
+        if (s.status !== blueprintStatus) {
+          setBlueprintStatus(s.status)
+          if (s.error_message) setBlueprintError(s.error_message)
+          // If just completed, do a full reload to get analysis data
+          if (s.status === 'complete') loadData()
+        }
+      } catch {}
+    }, 3000)
     return () => clearInterval(interval)
-  }, [blueprintStatus, loadData])
+  }, [blueprintStatus, blueprintId, loadData])
   useEffect(() => {
     if (!projectId) return
     const saved = localStorage.getItem(`job_costs_${projectId}`)
