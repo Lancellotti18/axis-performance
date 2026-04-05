@@ -52,50 +52,28 @@ def detect_jurisdiction(city: str, state: str, address: str = "", project_type: 
     """
     fallback = f"https://www.google.com/search?q={city}+{state}+building+permit+application+site:.gov"
 
-    if not settings.TAVILY_API_KEY:
-        return {
-            "found": False, "authority_name": None, "authority_type": None,
-            "gov_url": None, "permit_form_url": None,
-            "submission_method": "unknown", "submission_email": None,
-            "error": "Search service not configured.",
-            "fallback_search_url": fallback,
-        }
-
     try:
-        from tavily import TavilyClient
-        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        import asyncio
+        from app.services.search import web_search
+
+        def _search_sync(query: str) -> str:
+            return asyncio.run(web_search(query, max_results=8))
 
         # Step 1: Find the official building/permit department
-        portal_results = client.search(
-            query=f"{city} {state} official building permit department site:.gov",
-            search_depth="basic",
-            max_results=8,
-            include_answer=False,
-        )
+        raw1 = _search_sync(f"{city} {state} official building permit department site:.gov")
+        if not raw1:
+            raw1 = _search_sync(f"official building permit {city} {state} government")
 
         gov_url = None
         authority_name = None
-        for r in portal_results.get("results", []):
-            url = r.get("url", "")
-            if _is_official(url) and _url_accessible(url):
-                gov_url = url
-                authority_name = r.get("title", "").split(" - ")[0].split("|")[0].strip()
-                break
-
-        if not gov_url:
-            # Widen search — some cities use .org
-            wider = client.search(
-                query=f"official building permit {city} {state} government",
-                search_depth="basic",
-                max_results=8,
-            )
-            for r in wider.get("results", []):
-                url = r.get("url", "")
-                title = r.get("title", "").lower()
-                if ("permit" in title or "building" in title) and _url_accessible(url):
+        for line in raw1.split("\n"):
+            if line.startswith("Source: "):
+                url = line[8:].strip()
+                if (_is_official(url) or "permit" in url.lower() or "building" in url.lower()) and _url_accessible(url):
                     gov_url = url
-                    authority_name = r.get("title", "").split(" - ")[0].strip()
                     break
+            elif line.startswith("**") and authority_name is None:
+                authority_name = line.strip("*").split(" - ")[0].split("|")[0].strip()
 
         if not gov_url:
             return {
@@ -107,31 +85,27 @@ def detect_jurisdiction(city: str, state: str, address: str = "", project_type: 
             }
 
         # Step 2: Find the actual application form
-        form_results = client.search(
-            query=f"{city} {state} {project_type} building permit application form PDF download site:.gov",
-            search_depth="advanced",
-            max_results=8,
-        )
+        raw2 = _search_sync(f"{city} {state} {project_type} building permit application form PDF download")
 
         permit_form_url = None
-        for r in form_results.get("results", []):
-            url = r.get("url", "")
-            url_lower = url.lower()
-            if ".pdf" in url_lower or ("form" in url_lower and "permit" in url_lower):
-                try:
-                    resp = _requests.head(url, timeout=8, allow_redirects=True,
-                                         headers={"User-Agent": "Mozilla/5.0"})
-                    ct = resp.headers.get("content-type", "")
-                    if resp.status_code < 400 and ("pdf" in ct or ".pdf" in url_lower):
-                        permit_form_url = url
-                        break
-                except Exception:
-                    continue
+        for line in raw2.split("\n"):
+            if line.startswith("Source: "):
+                url = line[8:].strip()
+                url_lower = url.lower()
+                if ".pdf" in url_lower or ("form" in url_lower and "permit" in url_lower):
+                    try:
+                        resp = _requests.head(url, timeout=8, allow_redirects=True,
+                                             headers={"User-Agent": "Mozilla/5.0"})
+                        ct = resp.headers.get("content-type", "")
+                        if resp.status_code < 400 and ("pdf" in ct or ".pdf" in url_lower):
+                            permit_form_url = url
+                            break
+                    except Exception:
+                        continue
 
-        # Step 3: Detect submission method from portal content
-        submission_method, submission_email = _detect_submission_method(
-            client, city, state, gov_url, project_type
-        )
+        # Step 3: Detect submission method from search snippets
+        raw3 = _search_sync(f"{city} {state} how to submit building permit application online portal")
+        submission_method, submission_email = _parse_submission_method(raw3)
 
         # Determine authority type (city vs county)
         authority_type = "city"
@@ -163,20 +137,10 @@ def detect_jurisdiction(city: str, state: str, address: str = "", project_type: 
         }
 
 
-def _detect_submission_method(client, city: str, state: str, portal_url: str, project_type: str):
-    """Analyse the portal to determine how permits are submitted."""
+def _parse_submission_method(raw_text: str):
+    """Parse submission method from raw search text."""
     try:
-        results = client.search(
-            query=f"{city} {state} how to submit building permit application online portal",
-            search_depth="basic",
-            max_results=5,
-            include_answer=True,
-        )
-        answer = (results.get("answer") or "").lower()
-        all_text = answer + " ".join(
-            r.get("content", "") for r in results.get("results", [])
-        ).lower()
-
+        all_text = raw_text.lower()
         email = None
         email_match = re.search(r'[\w.+-]+@[\w-]+\.[a-z]{2,}', all_text)
         if email_match:

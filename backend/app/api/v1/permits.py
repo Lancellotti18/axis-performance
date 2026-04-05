@@ -37,36 +37,38 @@ async def search_permit_portal(
     state: str = Query(...),
     project_type: str = Query(default="residential"),
 ):
-    """Use Tavily to find the official building permit portal for a city."""
-    if not settings.TAVILY_API_KEY:
-        return {"portal_url": None, "portal_name": None, "instructions": None, "source": "fallback"}
-
+    """Search for the official building permit portal for a city."""
+    from app.services.search import web_search
     try:
-        from tavily import TavilyClient
-        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
         query = f"{city} {state} building permit application online portal official government site"
-        results = client.search(query=query, search_depth="basic", max_results=5, include_answer=True)
+        raw = await web_search(query, max_results=6)
 
+        # Parse the first .gov or permit-related URL out of the results
         portal_url = None
         portal_name = None
-        for r in results.get("results", []):
-            url = r.get("url", "")
-            if ".gov" in url or "permit" in url.lower() or "building" in url.lower():
-                portal_url = url
-                portal_name = r.get("title", "Official Permit Portal")
+        for line in raw.split("\n"):
+            if "Source: " in line:
+                url = line.replace("Source: ", "").strip()
+                if ".gov" in url or "permit" in url.lower() or "building" in url.lower():
+                    portal_url = url
+                    break
+        if not portal_url:
+            for line in raw.split("\n"):
+                if "Source: " in line:
+                    portal_url = line.replace("Source: ", "").strip()
+                    break
+
+        # Extract a portal name from bold title lines
+        for line in raw.split("\n"):
+            if line.startswith("**") and "**" in line[2:]:
+                portal_name = line.strip("*").strip()
                 break
 
-        if not portal_url and results.get("results"):
-            first = results["results"][0]
-            portal_url = first.get("url")
-            portal_name = first.get("title", "Permit Portal")
-
-        answer = results.get("answer", "")
         return {
             "portal_url": portal_url,
-            "portal_name": portal_name,
-            "instructions": answer or f"Visit the official {city}, {state} building department to submit your permit application.",
-            "source": "tavily",
+            "portal_name": portal_name or f"{city}, {state} Building Department",
+            "instructions": f"Visit the official {city}, {state} building department website to submit your permit application.",
+            "source": "search",
         }
     except Exception as e:
         logger.warning(f"Permit portal search failed: {e}")
@@ -246,35 +248,18 @@ def _find_and_analyze_form(city: str, state: str, project_type: str, gov_form_ur
 
 
 def _extract_fields_claude(pdf_bytes: bytes, city: str, state: str, project_type: str) -> list:
-    """Use Claude Vision to extract all form fields from the permit PDF."""
-    import anthropic, base64
+    """Use LLM Vision to extract all form fields from the permit PDF."""
     import fitz  # PyMuPDF
+    from app.services.llm import llm_vision_sync
 
-    # Render first 2 pages as images for Claude
+    # Render first page as image — one image keeps token usage reasonable
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    images_b64 = []
-    for page_num in range(min(2, len(doc))):
-        page = doc[page_num]
-        mat = fitz.Matrix(2.0, 2.0)
-        pix = page.get_pixmap(matrix=mat)
-        img_bytes = pix.tobytes("jpeg")
-        images_b64.append({
-            "page": page_num,
-            "b64": base64.standard_b64encode(img_bytes).decode(),
-            "width": pix.width,
-            "height": pix.height,
-        })
+    page = doc[0]
+    mat = fitz.Matrix(2.0, 2.0)
+    pix = page.get_pixmap(matrix=mat)
+    img_bytes = pix.tobytes("jpeg")
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-
-    content = []
-    for img in images_b64:
-        content.append({
-            "type": "image",
-            "source": {"type": "base64", "media_type": "image/jpeg", "data": img["b64"]},
-        })
-
-    content.append({"type": "text", "text": f"""This is a {project_type} building permit application form for {city}, {state}.
+    prompt = f"""This is a {project_type} building permit application form for {city}, {state}.
 
 Extract EVERY form field visible in this document. For each field return:
 - key: snake_case identifier (e.g. property_address, apn_number, owner_name)
@@ -289,16 +274,10 @@ Return ONLY a JSON array. Example:
   {{"key": "apn_number", "label": "APN / Parcel Number", "field_type": "text", "required": true, "section": "Property Information"}}
 ]
 
-Be thorough — capture every blank line, checkbox, signature line, and date field."""})
+Be thorough — capture every blank line, checkbox, signature line, and date field."""
 
-    response = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": content}],
-    )
-
-    text = response.content[0].text.strip()
-    # Strip markdown
+    text = llm_vision_sync(img_bytes, "image/jpeg", prompt, max_tokens=4096)
+    text = text.strip()
     if "```" in text:
         start = text.find("[")
         end = text.rfind("]") + 1

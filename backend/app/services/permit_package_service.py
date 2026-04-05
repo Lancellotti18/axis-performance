@@ -170,44 +170,32 @@ def _fetch_jurisdiction_requirements(city: str, state: str, project_type: str) -
     }
 
     try:
-        from app.core.config import settings
-        if not settings.TAVILY_API_KEY:
-            return result
-
-        from tavily import TavilyClient
-        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        import asyncio
+        from app.services.search import web_search
 
         query = (
             f"{city} {state} building permit requirements checklist "
-            f"{project_type} application documents needed 2024 2025 official"
+            f"{project_type} application documents needed 2025 official"
         )
-        resp = client.search(
-            query=query,
-            search_depth="basic",
-            max_results=5,
-            include_answer=True,
-        )
+        raw = asyncio.run(web_search(query, max_results=5))
 
-        for r in resp.get("results", []):
-            url = r.get("url", "")
-            if ".gov" in url or "building" in url.lower() or "permit" in url.lower():
-                result["portal_url"]   = url
-                result["source_url"]   = url
-                result["source_title"] = r.get("title", url)
-                result["found"]        = True
-
-                # Extract bullet-like requirement mentions from content
-                content = r.get("content", "")
-                for line in content.split("\n"):
-                    line = line.strip("•·- \t")
-                    if len(line) > 20 and any(kw in line.lower() for kw in
-                            ["submit", "required", "application", "plan", "drawing",
-                             "inspection", "insurance", "license", "fee", "affidavit"]):
-                        result["requirements"].append(line[:200])
-                        if len(result["requirements"]) >= 8:
-                            break
-                if result["requirements"]:
-                    break
+        # Parse URLs and requirement lines from raw text
+        for line in raw.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("Source: "):
+                url = stripped[8:].strip()
+                if ".gov" in url or "building" in url.lower() or "permit" in url.lower():
+                    result["portal_url"]   = url
+                    result["source_url"]   = url
+                    result["found"]        = True
+            elif len(stripped) > 20 and any(kw in stripped.lower() for kw in
+                    ["submit", "required", "application", "plan", "drawing",
+                     "inspection", "insurance", "license", "fee", "affidavit"]):
+                clean = stripped.strip("•·-*# \t")
+                if clean and clean not in result["requirements"]:
+                    result["requirements"].append(clean[:200])
+                    if len(result["requirements"]) >= 8:
+                        break
 
         if not result["requirements"]:
             # Generic defaults clearly labeled as estimates

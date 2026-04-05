@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from app.core.auth import get_current_user
 from app.core.supabase import get_supabase
 from app.services.compliance_engine import run_compliance_check, get_state_from_region_code
@@ -170,7 +170,7 @@ async def get_project_compliance(
 
 
 @router.post("/materials-check")
-async def check_project_materials(project_id: str):
+async def check_project_materials(project_id: str = Query(...)):
     """
     Cross-reference the project's generated materials list against local building codes.
     Returns exact rule citations, violations, and fix suggestions.
