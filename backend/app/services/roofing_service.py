@@ -5,16 +5,8 @@ Uses Claude vision to extract roof measurements from uploaded blueprint/aerial i
 import json
 import base64
 import httpx
-import anthropic
 from app.core.config import settings
-
-_client = None
-
-def get_claude():
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    return _client
+from app.services.llm import llm_vision_sync
 
 
 async def download_image(url: str) -> tuple[bytes, str]:
@@ -64,27 +56,9 @@ Measurement guidelines:
 
 Typical residential benchmarks: total_sqft 1500–3500, pitch 4/12–8/12, facets 2–8, ridges_ft 20–60."""
 
-    client = get_claude()
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": media_type,
-                        "data": image_b64,
-                    },
-                },
-                {"type": "text", "text": prompt},
-            ],
-        }],
-    )
-
-    text = message.content[0].text.strip()
+    image_bytes = base64.b64decode(image_b64)
+    text = llm_vision_sync(image_bytes, media_type, prompt, max_tokens=1024)
+    text = text.strip()
     # Strip any accidental markdown fences
     if "```" in text:
         parts = text.split("```")

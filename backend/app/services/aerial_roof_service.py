@@ -15,8 +15,9 @@ import json
 import math
 import asyncio
 import httpx
-import anthropic
 from app.core.config import settings
+from app.services.llm import llm_text
+from app.services.search import web_search
 
 
 async def get_aerial_roof_report(address: str, city: str, state: str, zip_code: str = "") -> dict:
@@ -101,27 +102,13 @@ def _satellite_image_url(lat: float, lng: float) -> str:
 
 
 async def _tavily_research(full_address: str, city: str, state: str, zip_code: str) -> str:
-    """Search Tavily for property records and building footprint data."""
-    if not settings.TAVILY_API_KEY:
-        return ""
-    from tavily import TavilyClient
-    tavily = TavilyClient(api_key=settings.TAVILY_API_KEY)
+    """Search for property records and building footprint data."""
     queries = [
         f'"{full_address}" building square footage property records',
-        f'"{full_address}" site:zillow.com OR site:redfin.com OR site:loopnet.com sqft',
-        f"{city} {state} {zip_code} county assessor {full_address} building area",
+        f"{city} {state} {zip_code} county assessor building area sqft",
     ]
-    snippets = []
-    for q in queries:
-        try:
-            r = await asyncio.to_thread(tavily.search, query=q, search_depth="basic", max_results=4)
-            for item in r.get("results", []):
-                c = item.get("content", "")[:600]
-                if c:
-                    snippets.append(c)
-        except Exception:
-            continue
-    return "\n\n".join(snippets[:8])
+    results = await asyncio.gather(*[web_search(q, max_results=4) for q in queries])
+    return "\n\n".join(r for r in results if r)
 
 
 async def _google_solar_report(full_address: str, research: str) -> dict | None:
@@ -236,16 +223,7 @@ Critical rules:
 - squares = total_sqft / 100 (always)
 - Be accurate — contractors will use this to order materials."""
 
-    def _call_claude(p: str) -> str:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        msg = client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=600,
-            messages=[{"role": "user", "content": p}]
-        )
-        return msg.content[0].text.strip()
-
-    text = await asyncio.to_thread(_call_claude, prompt)
+    text = await llm_text(prompt, max_tokens=600)
     text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
     text = re.sub(r'\s*```\s*$', '', text)
     start = text.find("{")

@@ -6,59 +6,27 @@ with pass/fail, exact rule quote, and fix suggestion for each failure.
 """
 import json
 import re
-import anthropic
+import asyncio
 from app.core.config import settings
-
-_client = None
-
-def get_claude():
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    return _client
+from app.services.llm import llm_text
+from app.services.search import web_search
 
 
 async def fetch_local_codes(city: str, state: str, project_type: str, county: str = "") -> str:
-    """Search Tavily for building code requirements at state, county, and city level."""
-    if not settings.TAVILY_API_KEY:
-        return ""
-    try:
-        from tavily import TavilyClient
-        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+    """Search for building code requirements at state, county, and city level."""
+    location_parts = [p for p in [city, county, state] if p]
+    location_str = ", ".join(location_parts)
 
-        location_parts = [p for p in [city, county, state] if p]
-        location_str = ", ".join(location_parts)
+    queries = [
+        f"{location_str} residential building code material requirements {project_type} 2025",
+        f"{state} state building code {project_type} approved materials IRC amendments",
+    ]
+    if county:
+        queries.append(f"{county} county {state} building ordinance {project_type} materials")
 
-        queries = [
-            f"{location_str} residential building code material requirements {project_type} 2024",
-            f"{state} state building code {project_type} approved materials IRC amendments",
-        ]
-        if county:
-            queries.append(f"{county} county {state} building ordinance {project_type} materials")
-
-        all_results = []
-        for q in queries[:2]:
-            try:
-                results = client.search(
-                    query=q,
-                    search_depth="basic",
-                    max_results=3,
-                    include_answer=True,
-                )
-                if results.get("answer"):
-                    all_results.append(f"SUMMARY: {results['answer']}\n")
-                for r in results.get("results", []):
-                    all_results.append(
-                        f"SOURCE: {r.get('url', '')}\n"
-                        f"TITLE: {r.get('title', '')}\n"
-                        f"CONTENT: {r.get('content', '')[:500]}\n"
-                    )
-            except Exception:
-                continue
-
-        return "\n---\n".join(all_results)
-    except Exception as e:
-        return f"(Code search unavailable: {e})"
+    results = await asyncio.gather(*[web_search(q, max_results=3) for q in queries[:2]])
+    combined = "\n---\n".join(r for r in results if r)
+    return combined or "(No local code data found — using expert knowledge)"
 
 
 def _parse_json_from_claude(text: str) -> dict:
@@ -192,14 +160,8 @@ RULES:
 - Be strict but concise — inspector style, no paragraphs
 - Consider {state} climate zone for insulation R-values, ice/water shield, wind ratings"""
 
-    client = get_claude()
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=8192,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    text = message.content[0].text.strip()
+    text = await llm_text(prompt, max_tokens=8192)
+    text = text.strip()
 
     try:
         result = _parse_json_from_claude(text)

@@ -1,20 +1,16 @@
 """
 Main AI analysis pipeline.
-Claude Vision is the primary engine — it receives the original image and produces
-a complete structural analysis + full materials list directly.
-OCR/scale/object-detection results are passed as hints if available, but Claude
-never depends on them — it will always return a usable result from the image alone.
+LLM Vision (Gemini Flash / Groq / Claude fallback) is the primary engine.
+OCR/scale/object-detection results are passed as hints if available.
 """
 import cv2
 import numpy as np
 import os
-import anthropic
 from app.core.config import settings
 from app.core.supabase import get_supabase
+from app.services.llm import llm_vision_sync
 import json
 import uuid
-
-client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
 def run_analysis_pipeline(blueprint_id: str) -> dict:
@@ -180,9 +176,6 @@ def claude_analyze(jpeg_bytes: bytes, rooms_hint: list, detections: dict, ocr: d
     - Complete materials list with quantities and unit costs
     Hint data from OCR/YOLO is provided as context but Claude decides the final output.
     """
-    import base64
-    image_b64 = base64.standard_b64encode(jpeg_bytes).decode("utf-8")
-
     hint_block = ""
     if rooms_hint or detections or ocr:
         hint_block = f"""
@@ -248,28 +241,7 @@ For the materials list:
 
 Return ONLY the JSON object, no markdown, no explanation."""
 
-    response = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=8192,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": image_b64,
-                        },
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ],
-    )
-
-    text = response.content[0].text.strip()
+    text = llm_vision_sync(jpeg_bytes, "image/jpeg", prompt, max_tokens=8192)
     # Strip markdown fences if present
     if "```" in text:
         start = text.find("{", text.find("```"))

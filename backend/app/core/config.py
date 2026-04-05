@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     S3_ENDPOINT_URL: str = ""
 
+    # Free tier (primary) — get keys at aistudio.google.com and console.groq.com
+    GEMINI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+    HUGGINGFACE_API_KEY: str = ""  # huggingface.co/settings/tokens (free)
+
+    # Paid (optional fallback — only used if free keys not set)
     ANTHROPIC_API_KEY: str = ""
     TAVILY_API_KEY: str = ""
     REPLICATE_API_KEY: str = ""

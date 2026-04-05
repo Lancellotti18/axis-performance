@@ -1,8 +1,7 @@
 import json
-import anthropic
 from app.core.config import settings
-
-claude = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+from app.services.llm import llm_text
+from app.services.search import web_search
 
 COMPLIANCE_PROMPT = """You are a construction law and contractor compliance expert for the United States.
 
@@ -46,32 +45,6 @@ The "severity" for each item must be one of: "required", "recommended", "info".
 Include 15-25 items covering all categories. Be specific to {location} — include state-specific laws, not generic advice."""
 
 
-async def _tavily_search(query: str) -> str:
-    """Run a Tavily search and return formatted results."""
-    if not settings.TAVILY_API_KEY:
-        return ""
-    try:
-        from tavily import TavilyClient
-        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
-        results = client.search(
-            query=query,
-            search_depth="advanced",
-            max_results=5,
-            include_answer=True,
-        )
-        lines = []
-        if results.get("answer"):
-            lines.append(f"Summary: {results['answer']}\n")
-        for r in results.get("results", []):
-            lines.append(f"Source: {r.get('url', '')}")
-            lines.append(f"Title: {r.get('title', '')}")
-            lines.append(f"Content: {r.get('content', '')[:500]}")
-            lines.append("")
-        return "\n".join(lines)
-    except Exception:
-        return ""
-
-
 async def run_compliance_check(
     location: str,
     state_code: str,
@@ -79,30 +52,26 @@ async def run_compliance_check(
     city: str | None = None,
 ) -> dict:
     """
-    Use Tavily + Claude to generate a grounded compliance checklist
+    Use web search + LLM to generate a grounded compliance checklist
     for a given jurisdiction and project type.
     """
     location_str = f"{city}, {location}" if city else location
 
-    # Run parallel Tavily searches for key compliance areas
-    search_results = []
+    import asyncio
     queries = [
-        f"{location_str} contractor licensing requirements {project_type} construction 2024",
+        f"{location_str} contractor licensing requirements {project_type} construction 2025",
         f"{location_str} mechanics lien law contractor notice requirements",
         f"{location_str} contractor contract requirements {project_type} law",
         f"{state_code} contractor insurance bonding requirements building permits",
     ]
 
-    for query in queries:
-        result = await _tavily_search(query)
-        if result:
-            search_results.append(result)
+    search_results = await asyncio.gather(*[web_search(q, max_results=4) for q in queries])
+    combined = "\n---\n".join(r for r in search_results if r)
 
-    if search_results:
-        search_context = "## Live Research Results\n\nThe following information was retrieved from current legal and government sources:\n\n"
-        search_context += "\n---\n".join(search_results[:3])
+    if combined:
+        search_context = "## Live Research Results\n\n" + combined
     else:
-        search_context = "## Note\nUse your expert knowledge of {location} construction law to generate accurate compliance requirements."
+        search_context = "## Note\nUse your expert knowledge of construction law to generate accurate compliance requirements."
 
     prompt = COMPLIANCE_PROMPT.format(
         location=location_str,
@@ -111,13 +80,8 @@ async def run_compliance_check(
         search_context=search_context,
     )
 
-    message = claude.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    raw = message.content[0].text.strip()
+    raw = await llm_text(prompt, max_tokens=4096)
+    raw = raw.strip()
 
     # Strip markdown code fences if present
     if raw.startswith("```"):

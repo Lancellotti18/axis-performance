@@ -14,6 +14,12 @@ pillow==10.2.0
 numpy<2.0
 opencv-python-headless==4.9.0.80
 pytesseract==0.3.10
+# Free tier AI providers (primary)
+google-generativeai>=0.8.0
+groq>=0.9.0
+duckduckgo-search>=6.0.0
+
+# Paid providers (optional fallback — only used if keys are set)
 anthropic>=0.40.0
 tavily-python>=0.3.0
 # ultralytics==8.1.0  # add when GPU worker is ready — pulls in full PyTorch

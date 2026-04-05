@@ -7,9 +7,9 @@ import base64
 import json
 import re
 import asyncio
-import anthropic
 from app.core.config import settings
 from app.core.supabase import get_supabase
+from app.services.llm import llm_vision
 
 VISION_PROMPT = """You are a professional architectural blueprint interpreter. Analyze this floor plan image with extreme precision.
 
@@ -90,44 +90,27 @@ def _download_blueprint(blueprint_id: str) -> tuple:
     return file_data, media_type
 
 
-def _call_claude_vision(file_data: bytes, media_type: str) -> dict:
-    """Sync: send blueprint (image or PDF) to Claude Vision and parse response."""
-    file_b64 = base64.standard_b64encode(file_data).decode("utf-8")
+async def parse_blueprint_3d(blueprint_id: str) -> dict:
+    """
+    Parse a blueprint image with LLM Vision (Gemini/Groq/Claude).
+    Downloads from Supabase Storage, sends to LLM, returns structured scene data.
+    """
+    image_data, media_type = await asyncio.to_thread(_download_blueprint, blueprint_id)
 
-    # PDFs use document type; images use image type
+    # PDFs: convert first page to JPEG since Gemini/Groq don't support PDF natively
     if media_type == "application/pdf":
-        content_block = {
-            "type": "document",
-            "source": {
-                "type": "base64",
-                "media_type": "application/pdf",
-                "data": file_b64,
-            },
-        }
-    else:
-        content_block = {
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": media_type,
-                "data": file_b64,
-            },
-        }
+        try:
+            import fitz  # pymupdf
+            doc = fitz.open(stream=image_data, filetype="pdf")
+            page = doc.load_page(0)
+            pix = page.get_pixmap(dpi=150)
+            image_data = pix.tobytes("jpeg")
+            media_type = "image/jpeg"
+        except Exception:
+            pass  # fall through and let the LLM handle it
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=4096,
-        messages=[{
-            "role": "user",
-            "content": [
-                content_block,
-                {"type": "text", "text": VISION_PROMPT}
-            ],
-        }]
-    )
-
-    text = message.content[0].text.strip()
+    text = await llm_vision(image_data, media_type, VISION_PROMPT, max_tokens=4096)
+    text = text.strip()
     text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
     text = re.sub(r'\s*```\s*$', '', text)
     start = text.find("{")
@@ -139,24 +122,8 @@ def _call_claude_vision(file_data: bytes, media_type: str) -> dict:
 
     data = json.loads(text)
 
-    # Ensure all required arrays exist
     for key in ["rooms", "walls", "doors", "windows", "electrical", "plumbing", "stairs"]:
         if key not in data:
             data[key] = []
 
     return data
-
-
-async def parse_blueprint_3d(blueprint_id: str) -> dict:
-    """
-    Parse a blueprint image with Claude Vision.
-    Downloads from Supabase Storage, sends to Claude, returns structured scene data.
-    All blocking calls run in thread pool to avoid blocking the event loop.
-    """
-    # Download image (blocking Supabase call)
-    image_data, media_type = await asyncio.to_thread(_download_blueprint, blueprint_id)
-
-    # Parse with Claude Vision (blocking API call)
-    scene_data = await asyncio.to_thread(_call_claude_vision, image_data, media_type)
-
-    return scene_data
