@@ -2488,7 +2488,7 @@ Thank you for your time.`
                                       { bg: '#EFF6FF', border: '#93C5FD', badge: '#2563EB', accent: '#2563EB' },
                                       { bg: '#FDF4FF', border: '#D8B4FE', badge: '#7C3AED', accent: '#7C3AED' },
                                     ][ti]
-                                    const phases = cr.phases || []
+                                    const phases = Array.isArray(cr.phases) ? cr.phases : Object.values(cr.phases || {})
                                     return (
                                       <div key={tier} className="rounded-xl p-4" style={{ background: tc.bg, border: `1px solid ${tc.border}` }}>
                                         <div className="flex items-center justify-between mb-3">
