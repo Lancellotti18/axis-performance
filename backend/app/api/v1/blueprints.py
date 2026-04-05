@@ -104,6 +104,17 @@ async def create_blueprint(
     return result.data[0]
 
 
+@router.get("/debug/test-ai")
+async def test_ai():
+    """Verify the AI provider is working. Must be defined BEFORE /{blueprint_id} routes."""
+    from app.services.llm import llm_text
+    try:
+        result = await llm_text("Reply with exactly: OK", max_tokens=10)
+        return {"status": "ok", "response": result.strip()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @router.post("/{blueprint_id}/analyze")
 async def trigger_analysis(blueprint_id: str, background_tasks: BackgroundTasks):
     """Kick off blueprint AI analysis in the background and return immediately."""
@@ -173,18 +184,6 @@ async def retry_analysis(blueprint_id: str, background_tasks: BackgroundTasks):
     return {"status": "processing", "job_id": blueprint_id}
 
 
-@router.get("/debug/test-ai")
-async def test_ai():
-    """Quick endpoint to verify the AI provider is working. Hit this to diagnose issues."""
-    from app.services.llm import llm_text
-    try:
-        result = await llm_text(
-            "Reply with exactly: OK",
-            max_tokens=10,
-        )
-        return {"status": "ok", "response": result.strip()}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
 
 
 @router.get("/{blueprint_id}/view")
@@ -264,10 +263,3 @@ async def get_status(blueprint_id: str):
     return result.data or {"status": "unknown"}
 
 
-@router.post("/{blueprint_id}/retry")
-async def retry_analysis(blueprint_id: str, background_tasks: BackgroundTasks):
-    """Re-trigger analysis for a failed blueprint."""
-    db = get_supabase()
-    db.table("blueprints").update({"status": "processing"}).eq("id", blueprint_id).execute()
-    background_tasks.add_task(_run_analysis_bg, blueprint_id)
-    return {"status": "processing", "blueprint_id": blueprint_id}
