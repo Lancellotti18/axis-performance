@@ -133,12 +133,10 @@ async def llm_vision(
 
 # ---------------------------------------------------------------------------
 # Gemini implementation
+# Uses google-generativeai (stable SDK). Model: gemini-1.5-flash (production)
 # ---------------------------------------------------------------------------
 
-def _gemini_client():
-    import google.generativeai as genai
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-    return genai
+GEMINI_MODEL = "gemini-1.5-flash"
 
 
 async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> str:
@@ -147,12 +145,13 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
 
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
     model = genai.GenerativeModel(
-        "gemini-2.5-flash-preview-04-17",
-        generation_config={"max_output_tokens": max_tokens},
+        GEMINI_MODEL,
+        generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
     )
 
     def _run():
-        return model.generate_content(full_prompt).text
+        response = model.generate_content(full_prompt)
+        return response.text
 
     return await asyncio.to_thread(_run)
 
@@ -172,12 +171,13 @@ async def _gemini_vision(
     image = PIL.Image.open(io.BytesIO(image_bytes))
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
     model = genai.GenerativeModel(
-        "gemini-2.5-flash-preview-04-17",
-        generation_config={"max_output_tokens": max_tokens},
+        GEMINI_MODEL,
+        generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
     )
 
     def _run():
-        return model.generate_content([full_prompt, image]).text
+        response = model.generate_content([full_prompt, image])
+        return response.text
 
     return await asyncio.to_thread(_run)
 
