@@ -368,5 +368,13 @@ export const api = {
       `${(process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()}/api/v1/axis/${projectId}/report`,
   },
 }
+  renders: {
+    generate: (projectId: string, style: string, timeOfDay: string) =>
+      apiRequest<{ exterior: string | null; interior: string | null; style: string; time_of_day: string }>(
+        `/api/v1/renders/${projectId}/generate`,
+        { method: 'POST', body: JSON.stringify({ style, time_of_day: timeOfDay }) },
+        120000,
+      ),
+  },
 // cache-bust 1774803796
 // cache-bust 1774804395
