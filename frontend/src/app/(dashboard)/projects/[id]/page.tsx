@@ -760,6 +760,10 @@ export default function ProjectPage() {
   }, [projectId])
 
   useEffect(() => { loadData() }, [loadData])
+  // Wake Render free tier as soon as the page loads so it's ready when the user clicks Generate
+  useEffect(() => {
+    fetch('https://build-backend-jcp9.onrender.com/health').catch(() => {})
+  }, [])
   useEffect(() => {
     if (blueprintStatus !== 'processing' && blueprintStatus !== 'pending') return
     if (!blueprintId) return

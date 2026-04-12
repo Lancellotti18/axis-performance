@@ -372,7 +372,7 @@ export const api = {
       apiRequest<{ exterior: string | null; interior: string | null; style: string; time_of_day: string }>(
         `/api/v1/renders/${projectId}/generate`,
         { method: 'POST', body: JSON.stringify({ style, time_of_day: timeOfDay }) },
-        120000,
+        180000,
       ),
   },
 }
