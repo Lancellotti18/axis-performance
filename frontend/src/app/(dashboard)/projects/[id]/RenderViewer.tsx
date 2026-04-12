@@ -48,6 +48,19 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
   const [feetPerPixel,   setFeetPerPixel]   = useState<number | null>(null)
   const [calConfirmed,   setCalConfirmed]   = useState(false)
 
+  // Attach wheel listener as non-passive so preventDefault() works in Safari
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? 0.85 : 1.18
+      setZoom(z => clampZoom(z * delta))
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [])
+
   // Derive a rough default scale from sqft when image loads
   useEffect(() => {
     if (!imgNatural || !totalSqft || feetPerPixel) return
@@ -119,12 +132,6 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
   }
 
   // ── Mouse / touch handlers ────────────────────────────────────────────────
-
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    const delta = e.deltaY > 0 ? 0.85 : 1.18
-    setZoom(z => clampZoom(z * delta))
-  }, [])
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (measuring || calibrating) return   // don't pan while placing points
@@ -297,7 +304,6 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
         ref={containerRef}
         className="relative overflow-hidden bg-slate-100 select-none"
         style={{ aspectRatio: '16/9', cursor }}
-        onWheel={onWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
