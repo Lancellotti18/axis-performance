@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import type { ComplianceCheck, ComplianceItem, ComplianceSeverity } from '@/types'
 import dynamic from 'next/dynamic'
 const Blueprint3DViewer = dynamic(() => import('./Blueprint3DViewer'), { ssr: false })
+const RenderViewer = dynamic(() => import('./RenderViewer'), { ssr: false })
 import RoofingSection from './RoofingSection'
 
 type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'photos' | 'compliance' | 'permits' | 'roofing'
@@ -2253,7 +2254,7 @@ Thank you for your time.`
                     <div className="flex items-center justify-between flex-wrap gap-4">
                       <div>
                         <h3 className="text-slate-800 font-bold text-base">AI Photorealistic Renders</h3>
-                        <p className="text-slate-400 text-xs mt-0.5">Generate exterior and interior renders from your blueprint using Imagen 3</p>
+                        <p className="text-slate-400 text-xs mt-0.5">Generate exterior and interior renders from your blueprint — zoom, pan, and measure directly on the image</p>
                       </div>
                       <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-2">
@@ -2319,32 +2320,25 @@ Thank you for your time.`
                       <svg className="animate-spin text-indigo-400" width="32" height="32" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
                       <div className="text-slate-500 text-sm text-center">
                         <div className="font-semibold">Generating photorealistic renders…</div>
-                        <div className="text-slate-400 text-xs mt-1">Imagen 3 is rendering exterior and interior views. This takes ~30 seconds.</div>
+                        <div className="text-slate-400 text-xs mt-1">Generating exterior and interior views. This takes ~30 seconds.</div>
                       </div>
                     </div>
                   )}
 
                   {!renderLoading && renders && (
                     <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {[['exterior','Exterior View'],['interior','Interior View']].map(([key, label]) => {
+                      {([['exterior','Exterior View'],['interior','Interior View']] as const).map(([key, label]) => {
                         const src = renders[key as 'exterior' | 'interior']
-                        return (
-                          <div key={key} className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(219,234,254,0.8)' }}>
-                            <div className="px-4 py-2.5 bg-slate-50 border-b flex items-center justify-between" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
-                              <span className="text-slate-700 text-xs font-bold uppercase tracking-wider">{label}</span>
-                              {src && (
-                                <a href={src} download={`${key}_render.png`} className="text-blue-500 hover:text-blue-700 text-xs font-semibold">
-                                  ↓ Download
-                                </a>
-                              )}
-                            </div>
-                            {src ? (
-                              <img src={src} alt={label} className="w-full object-cover" style={{ aspectRatio: '16/9' }} />
-                            ) : (
-                              <div className="flex items-center justify-center bg-slate-50 text-slate-400 text-sm" style={{ aspectRatio: '16/9' }}>
-                                Render unavailable
-                              </div>
-                            )}
+                        return src ? (
+                          <RenderViewer
+                            key={key}
+                            src={src}
+                            label={label}
+                            totalSqft={analysis?.total_sqft ?? undefined}
+                          />
+                        ) : (
+                          <div key={key} className="rounded-xl overflow-hidden flex items-center justify-center bg-slate-50 text-slate-400 text-sm" style={{ border: '1px solid rgba(219,234,254,0.8)', aspectRatio: '16/9' }}>
+                            Render unavailable
                           </div>
                         )
                       })}
