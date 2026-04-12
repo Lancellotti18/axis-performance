@@ -1,12 +1,10 @@
 """
 renders.py — AI Photorealistic Render Generation
 =================================================
-Uses HuggingFace Inference API (free) or Replicate SDXL (paid fallback)
-to generate photorealistic exterior and interior renders from blueprint data.
-
-Priority:
-  1. HuggingFace SDXL (HUGGINGFACE_API_KEY — free)
-  2. Replicate SDXL  (REPLICATE_API_KEY — ~$0.004/image)
+Provider priority (first available wins):
+  1. Pollinations.ai  — free, no API key required
+  2. HuggingFace SDXL — free with HUGGINGFACE_API_KEY
+  3. Replicate SDXL   — paid fallback with REPLICATE_API_KEY
 """
 
 from __future__ import annotations
@@ -14,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import urllib.parse
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -25,10 +24,11 @@ from app.core.supabase import get_supabase
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-HF_API        = "https://api-inference.huggingface.co/models"
-HF_T2I_MODEL  = "stabilityai/stable-diffusion-xl-base-1.0"
-REPLICATE_API = "https://api.replicate.com/v1"
-SDXL_MODEL    = "stability-ai/sdxl"
+POLLINATIONS_API = "https://image.pollinations.ai/prompt"
+HF_API           = "https://api-inference.huggingface.co/models"
+HF_T2I_MODEL     = "stabilityai/stable-diffusion-xl-base-1.0"
+REPLICATE_API    = "https://api.replicate.com/v1"
+SDXL_MODEL       = "stability-ai/sdxl"
 
 
 class RenderRequest(BaseModel):
@@ -113,6 +113,29 @@ NEGATIVE_PROMPT = (
 )
 
 
+async def _generate_via_pollinations(prompt: str) -> str:
+    """
+    Pollinations.ai — free, no API key required.
+    Returns a data URI (downloads the image bytes so it works cross-origin).
+    """
+    params = {
+        "width": 1280,
+        "height": 720,
+        "model": "flux",
+        "seed": 42,
+        "nologo": "true",
+    }
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    url = f"{POLLINATIONS_API}/{urllib.parse.quote(prompt)}?{query}"
+
+    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        if not r.content or len(r.content) < 1000:
+            raise ValueError("Pollinations returned empty or too-small image")
+        return "data:image/jpeg;base64," + base64.b64encode(r.content).decode()
+
+
 async def _generate_via_hf(prompt: str) -> str:
     """HuggingFace SDXL text-to-image. Returns base64 data URI."""
     headers = {
@@ -192,7 +215,12 @@ async def _generate_via_replicate(prompt: str) -> str:
 
 
 async def _generate_image(prompt: str) -> str | None:
-    """Try HF first, then Replicate. Returns image data URI / URL, or None."""
+    """Try Pollinations (free/no key) → HF → Replicate. Returns data URI / URL, or None."""
+    try:
+        return await _generate_via_pollinations(prompt)
+    except Exception as e:
+        log.warning(f"[Renders] Pollinations failed: {e} — trying HuggingFace...")
+
     if settings.HUGGINGFACE_API_KEY:
         try:
             return await _generate_via_hf(prompt)
@@ -212,11 +240,6 @@ async def _generate_image(prompt: str) -> str | None:
 
 @router.post("/{project_id}/generate")
 async def generate_renders(project_id: str, request: RenderRequest):
-    if not settings.HUGGINGFACE_API_KEY and not settings.REPLICATE_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="No image generation key configured. Set HUGGINGFACE_API_KEY or REPLICATE_API_KEY.",
-        )
 
     db = get_supabase()
 
@@ -258,5 +281,5 @@ async def generate_renders(project_id: str, request: RenderRequest):
         "prompts":     {"exterior": exterior_prompt, "interior": interior_prompt},
         "style":       request.style,
         "time_of_day": request.time_of_day,
-        "provider":    "huggingface" if settings.HUGGINGFACE_API_KEY else "replicate",
+        "provider":    "pollinations" if not settings.HUGGINGFACE_API_KEY else "huggingface",
     }
