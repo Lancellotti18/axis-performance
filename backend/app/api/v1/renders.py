@@ -116,7 +116,7 @@ NEGATIVE_PROMPT = (
 async def _generate_via_pollinations(prompt: str) -> str:
     """
     Pollinations.ai — free, no API key required.
-    Returns a data URI (downloads the image bytes so it works cross-origin).
+    Returns the direct image URL (avoids large base64 payloads that break Safari).
     """
     params = {
         "width": 1280,
@@ -124,16 +124,19 @@ async def _generate_via_pollinations(prompt: str) -> str:
         "model": "flux",
         "seed": 42,
         "nologo": "true",
+        "cache": "true",
     }
     query = "&".join(f"{k}={v}" for k, v in params.items())
     url = f"{POLLINATIONS_API}/{urllib.parse.quote(prompt)}?{query}"
 
+    # Verify the URL actually returns an image before sending it to the client
     async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
         r = await client.get(url)
         r.raise_for_status()
         if not r.content or len(r.content) < 1000:
             raise ValueError("Pollinations returned empty or too-small image")
-        return "data:image/jpeg;base64," + base64.b64encode(r.content).decode()
+        # Return the final (post-redirect) URL so the browser loads it directly
+        return str(r.url)
 
 
 async def _generate_via_hf(prompt: str) -> str:
