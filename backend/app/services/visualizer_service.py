@@ -30,8 +30,9 @@ def _hf_key() -> str:
 def _rep_key() -> str:
     return os.environ.get("REPLICATE_API_KEY") or settings.REPLICATE_API_KEY or ""
 
-HF_API = "https://router.huggingface.co/hf-inference/models"
-HF_IMG2IMG_MODEL = "black-forest-labs/FLUX.1-schnell"
+HF_API            = "https://router.huggingface.co/hf-inference/models"
+# instruct-pix2pix: true img2img — preserves house structure, applies only the requested changes
+HF_IMG2IMG_MODEL  = "timbrooks/instruct-pix2pix"
 
 REPLICATE_API = "https://api.replicate.com/v1"
 SDXL_MODEL = "stability-ai/sdxl"
@@ -42,8 +43,8 @@ SDXL_MODEL = "stability-ai/sdxl"
 async def _generate_image(image_bytes: bytes, content_type: str, description: str) -> str:
     """
     Generate a visualization image.
-    Tries HuggingFace (free) first, falls back to Replicate if configured.
-    Returns a URL or data URI of the generated image.
+    Uses instruct-pix2pix (img2img) so the original house shape is preserved.
+    Falls back to Replicate SDXL img2img if HF fails.
     """
     hf_key  = _hf_key()
     rep_key = _rep_key()
@@ -66,20 +67,31 @@ async def _generate_image(image_bytes: bytes, content_type: str, description: st
 
 async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") -> str:
     """
-    Use HuggingFace FLUX.1-schnell to generate a photorealistic home render.
+    Use instruct-pix2pix to apply changes to the uploaded photo while preserving
+    the original house shape, roofline, and structure.
     Returns a data URI (base64 PNG).
     """
-    prompt = (
-        f"photorealistic exterior home, professional real estate photography, "
-        f"high resolution, natural daylight, {description}, beautiful curb appeal, "
-        f"sharp focus, no people, wide angle lens"
+    # instruct-pix2pix expects a short imperative instruction
+    instruction = (
+        f"Apply these changes to this house: {description}. "
+        f"Keep the exact same house shape, roofline, windows, doors, and structure. "
+        f"Only change the specified materials and features. "
+        f"Photorealistic, professional real estate photography."
     )
 
     payload = {
-        "inputs": prompt,
+        "inputs": {
+            "image": base64.b64encode(image_bytes).decode(),
+            "prompt": instruction,
+        },
         "parameters": {
-            "num_inference_steps": 4,
-            "guidance_scale": 0.0,
+            "image_guidance_scale": 1.8,   # higher = more faithful to original structure
+            "guidance_scale":       7.5,
+            "num_inference_steps":  30,
+            "negative_prompt": (
+                "blurry, low quality, distorted, different house shape, "
+                "different roofline, cartoon, painting, watermark, people"
+            ),
         },
     }
 
@@ -98,6 +110,8 @@ async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") ->
                 log.info(f"[visualizer] HF model loading, waiting {wait_time}s...")
                 await asyncio.sleep(min(wait_time, 30))
                 continue
+            if r.status_code == 410:
+                raise ValueError(f"Model deprecated: {r.text[:200]}")
             r.raise_for_status()
             img_b64 = base64.b64encode(r.content).decode()
             return f"data:image/png;base64,{img_b64}"
