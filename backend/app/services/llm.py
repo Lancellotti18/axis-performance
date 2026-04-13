@@ -29,7 +29,7 @@ from app.core.config import settings
 def _provider() -> str:
     if settings.GEMINI_API_KEY:
         try:
-            import google.generativeai  # noqa: F401
+            from google import genai  # noqa: F401
             return "gemini"
         except ImportError:
             pass  # package not installed yet, try next
@@ -64,7 +64,7 @@ async def llm_text(
 
     if settings.GEMINI_API_KEY:
         try:
-            import google.generativeai  # noqa: F401
+            from google import genai  # noqa: F401
             return await _gemini_text(prompt, system, max_tokens)
         except Exception as e:
             errors.append(f"Gemini: {e}")
@@ -107,7 +107,7 @@ async def llm_vision(
 
     if settings.GEMINI_API_KEY:
         try:
-            import google.generativeai  # noqa: F401
+            from google import genai  # noqa: F401
             return await _gemini_vision(image_bytes, media_type, prompt, system, max_tokens)
         except Exception as e:
             errors.append(f"Gemini: {e}")
