@@ -31,8 +31,7 @@ def _rep_key() -> str:
     return os.environ.get("REPLICATE_API_KEY") or settings.REPLICATE_API_KEY or ""
 
 HF_API = "https://router.huggingface.co/hf-inference/models"
-# instruct-pix2pix: img2img via text instruction — preserves structure, applies changes
-HF_IMG2IMG_MODEL = "timbrooks/instruct-pix2pix"
+HF_IMG2IMG_MODEL = "black-forest-labs/FLUX.1-schnell"
 
 REPLICATE_API = "https://api.replicate.com/v1"
 SDXL_MODEL = "stability-ai/sdxl"
@@ -67,25 +66,20 @@ async def _generate_image(image_bytes: bytes, content_type: str, description: st
 
 async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") -> str:
     """
-    Use HuggingFace instruct-pix2pix to apply changes to the home photo.
-    Returns a data URI (base64 PNG) so it works without external hosting.
+    Use HuggingFace FLUX.1-schnell to generate a photorealistic home render.
+    Returns a data URI (base64 PNG).
     """
-    positive_prompt = (
+    prompt = (
         f"photorealistic exterior home, professional real estate photography, "
-        f"high resolution, natural daylight, {description}, beautiful curb appeal"
+        f"high resolution, natural daylight, {description}, beautiful curb appeal, "
+        f"sharp focus, no people, wide angle lens"
     )
 
     payload = {
-        "inputs": base64.b64encode(image_bytes).decode(),
+        "inputs": prompt,
         "parameters": {
-            "prompt": positive_prompt,
-            "negative_prompt": (
-                "blurry, low quality, distorted, cartoon, anime, painting, "
-                "watermark, text, people, interior, abstract"
-            ),
-            "image_guidance_scale": 1.5,
-            "guidance_scale": 7.5,
-            "num_inference_steps": 30,
+            "num_inference_steps": 4,
+            "guidance_scale": 0.0,
         },
     }
 
@@ -95,17 +89,16 @@ async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") ->
     }
 
     async with httpx.AsyncClient(timeout=120) as client:
-        # HuggingFace may queue the model — retry up to 3 times
         for attempt in range(3):
             r = await client.post(f"{HF_API}/{HF_IMG2IMG_MODEL}", headers=headers, json=payload)
             if r.status_code == 503:
-                # Model is loading
-                wait_time = r.json().get("estimated_time", 20)
+                wait_time = 20
+                try: wait_time = r.json().get("estimated_time", 20)
+                except: pass
                 log.info(f"[visualizer] HF model loading, waiting {wait_time}s...")
                 await asyncio.sleep(min(wait_time, 30))
                 continue
             r.raise_for_status()
-            # Response is raw image bytes
             img_b64 = base64.b64encode(r.content).decode()
             return f"data:image/png;base64,{img_b64}"
 

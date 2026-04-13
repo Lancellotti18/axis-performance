@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 POLLINATIONS_API = "https://image.pollinations.ai/prompt"
 HF_API           = "https://router.huggingface.co/hf-inference/models"
-HF_T2I_MODEL     = "stabilityai/stable-diffusion-xl-base-1.0"
+HF_T2I_MODEL     = "black-forest-labs/FLUX.1-schnell"
 REPLICATE_API    = "https://api.replicate.com/v1"
 SDXL_MODEL       = "stability-ai/sdxl"
 
@@ -148,11 +148,8 @@ async def _generate_via_hf(prompt: str) -> str:
     payload = {
         "inputs": prompt,
         "parameters": {
-            "negative_prompt":    NEGATIVE_PROMPT,
-            "num_inference_steps": 30,
-            "guidance_scale":     7.5,
-            "width":              1024,
-            "height":             576,
+            "num_inference_steps": 4,
+            "guidance_scale":      0.0,
         },
     }
     async with httpx.AsyncClient(timeout=120) as client:
