@@ -326,12 +326,25 @@ async def generate_visualization(
     """
     log.info(f"[visualizer] Starting generation for: '{description[:60]}' — {city}, {state}")
 
-    # Run image generation + cost estimate concurrently
+    # Run image generation + cost estimate concurrently.
+    # Use return_exceptions=True so a cost estimate failure doesn't kill the image result.
     image_task = asyncio.create_task(_generate_image(image_bytes, content_type, description))
     cost_task  = asyncio.create_task(_cost_estimate(description, city, state))
 
-    generated_url, cost_estimate = await asyncio.gather(image_task, cost_task)
-    log.info(f"[visualizer] Done — image ready, cost estimate complete")
+    results = await asyncio.gather(image_task, cost_task, return_exceptions=True)
+    img_result, cost_result = results
+
+    if isinstance(img_result, Exception):
+        raise img_result  # image failure is fatal
+
+    generated_url = img_result
+    if isinstance(cost_result, Exception):
+        log.warning(f"[visualizer] Cost estimate failed (image OK): {cost_result}")
+        cost_estimate = None
+    else:
+        cost_estimate = cost_result
+
+    log.info(f"[visualizer] Done — image ready, cost estimate: {'ok' if cost_estimate else 'unavailable'}")
 
     location_str = ", ".join(filter(None, [city, state]))
 
