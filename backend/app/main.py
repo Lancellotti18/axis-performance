@@ -73,3 +73,23 @@ async def debug_test_hf():
             return {"status": r.status_code, "body": r.text[:300], "key_prefix": key[:8]}
     except Exception as e:
         return {"error": str(e), "key_prefix": key[:8]}
+
+
+@app.get("/debug/test-pollinations")
+async def debug_test_pollinations():
+    """Test if the backend can reach Pollinations.ai"""
+    import urllib.parse, httpx
+    prompt = "a simple house exterior"
+    params = "width=256&height=256&model=flux&seed=42&nologo=true"
+    url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?{params}"
+    try:
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            r = await client.get(url)
+            return {
+                "status":        r.status_code,
+                "content_type":  r.headers.get("content-type", ""),
+                "content_length": len(r.content),
+                "final_url":     str(r.url)[:100],
+            }
+    except Exception as e:
+        return {"error": str(e)}
