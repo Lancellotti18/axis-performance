@@ -174,7 +174,7 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
       const { supabase } = await import('@/lib/supabase')
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
       const res = await fetch(`${API_BASE}/api/v1/permits/generate-pdf/${projectId}`, {
         method: 'POST',
