@@ -30,7 +30,7 @@ def _hf_key() -> str:
 def _rep_key() -> str:
     return os.environ.get("REPLICATE_API_KEY") or settings.REPLICATE_API_KEY or ""
 
-HF_API = "https://api-inference.huggingface.co/models"
+HF_API = "https://router.huggingface.co/hf-inference/models"
 # instruct-pix2pix: img2img via text instruction — preserves structure, applies changes
 HF_IMG2IMG_MODEL = "timbrooks/instruct-pix2pix"
 

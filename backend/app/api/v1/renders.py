@@ -25,7 +25,7 @@ router = APIRouter()
 log = logging.getLogger(__name__)
 
 POLLINATIONS_API = "https://image.pollinations.ai/prompt"
-HF_API           = "https://api-inference.huggingface.co/models"
+HF_API           = "https://router.huggingface.co/hf-inference/models"
 HF_T2I_MODEL     = "stabilityai/stable-diffusion-xl-base-1.0"
 REPLICATE_API    = "https://api.replicate.com/v1"
 SDXL_MODEL       = "stability-ai/sdxl"
