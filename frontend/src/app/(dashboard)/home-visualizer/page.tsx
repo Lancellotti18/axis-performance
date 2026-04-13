@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { STATES } from '@/lib/jurisdictions'
 
@@ -16,7 +16,12 @@ const EXAMPLE_PROMPTS = [
   'Install a large front deck, add exterior lighting and landscaping',
 ]
 
+const BACKEND = 'https://build-backend-jcp9.onrender.com'
+
 export default function HomeVisualizerPage() {
+  // Wake the Render free tier backend as soon as the page loads
+  useEffect(() => { fetch(`${BACKEND}/health`).catch(() => {}) }, [])
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver]       = useState(false)
   const [file, setFile]               = useState<File | null>(null)

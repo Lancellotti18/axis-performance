@@ -296,10 +296,11 @@ export const api = {
       form.append('description', description)
       form.append('city', city)
       form.append('state', state)
-      return fetch(`${API_BASE}/api/v1/visualizer/generate`, {
-        method: 'POST',
-        body: form,
-      }).then(async res => {
+      return fetchWithTimeout(
+        `${API_BASE}/api/v1/visualizer/generate`,
+        { method: 'POST', body: form },
+        180000,  // 3-minute timeout — image generation can be slow on first run
+      ).then(async res => {
         if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
         return res.json()
       })
