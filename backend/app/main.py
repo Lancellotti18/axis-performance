@@ -44,3 +44,13 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "0.1.0"}
+
+@app.get("/debug/keys")
+async def debug_keys():
+    import os
+    return {
+        "HUGGINGFACE_API_KEY": "set" if os.environ.get("HUGGINGFACE_API_KEY") else "NOT SET",
+        "HUGGINGFACE_API_KEY_starts_with": os.environ.get("HUGGINGFACE_API_KEY","")[:6] or "empty",
+        "GEMINI_API_KEY": "set" if os.environ.get("GEMINI_API_KEY") else "NOT SET",
+        "settings_hf": "set" if settings.HUGGINGFACE_API_KEY else "NOT SET",
+    }
