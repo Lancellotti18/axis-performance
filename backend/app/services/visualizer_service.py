@@ -31,8 +31,8 @@ def _rep_key() -> str:
     return os.environ.get("REPLICATE_API_KEY") or settings.REPLICATE_API_KEY or ""
 
 HF_API            = "https://router.huggingface.co/hf-inference/models"
-# instruct-pix2pix: true img2img — preserves house structure, applies only the requested changes
-HF_IMG2IMG_MODEL  = "timbrooks/instruct-pix2pix"
+# SD v1.5 img2img — preserves house structure while applying requested changes
+HF_IMG2IMG_MODEL  = "runwayml/stable-diffusion-v1-5"
 
 REPLICATE_API = "https://api.replicate.com/v1"
 SDXL_MODEL = "stability-ai/sdxl"
@@ -71,26 +71,22 @@ async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") ->
     the original house shape, roofline, and structure.
     Returns a data URI (base64 PNG).
     """
-    # instruct-pix2pix expects a short imperative instruction
-    instruction = (
-        f"Apply these changes to this house: {description}. "
-        f"Keep the exact same house shape, roofline, windows, doors, and structure. "
-        f"Only change the specified materials and features. "
-        f"Photorealistic, professional real estate photography."
+    prompt = (
+        f"exterior photo of the same house with {description}, "
+        f"same roofline, same windows, same structure, same angle, "
+        f"photorealistic, professional real estate photography, sharp focus"
     )
 
     payload = {
-        "inputs": {
-            "image": base64.b64encode(image_bytes).decode(),
-            "prompt": instruction,
-        },
+        "inputs": base64.b64encode(image_bytes).decode(),
         "parameters": {
-            "image_guidance_scale": 1.8,   # higher = more faithful to original structure
-            "guidance_scale":       7.5,
+            "prompt": prompt,
+            "strength": 0.55,           # 0=identical to original, 1=ignore original; 0.55 changes materials but keeps structure
+            "guidance_scale":       8.0,
             "num_inference_steps":  30,
             "negative_prompt": (
-                "blurry, low quality, distorted, different house shape, "
-                "different roofline, cartoon, painting, watermark, people"
+                "different house shape, different roofline, blurry, low quality, "
+                "distorted, cartoon, painting, watermark, people, text"
             ),
         },
     }
@@ -111,7 +107,9 @@ async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") ->
                 await asyncio.sleep(min(wait_time, 30))
                 continue
             if r.status_code == 410:
-                raise ValueError(f"Model deprecated: {r.text[:200]}")
+                raise ValueError(f"HF model deprecated — contact support: {r.text[:200]}")
+            if not r.is_success:
+                raise ValueError(f"HF returned {r.status_code}: {r.text[:200]}")
             r.raise_for_status()
             img_b64 = base64.b64encode(r.content).decode()
             return f"data:image/png;base64,{img_b64}"

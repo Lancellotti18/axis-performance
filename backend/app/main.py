@@ -66,7 +66,7 @@ async def debug_test_hf():
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(
-                "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0",
+                "https://router.huggingface.co/hf-inference/models/runwayml/stable-diffusion-v1-5",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={"inputs": "a house", "parameters": {"num_inference_steps": 1}},
             )
