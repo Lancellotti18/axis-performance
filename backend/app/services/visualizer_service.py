@@ -14,12 +14,21 @@ import json
 import re
 import logging
 
+import os
+
 import httpx
 from app.core.config import settings
 from app.services.llm import llm_text
 from app.services.search import web_search_multi
 
 log = logging.getLogger(__name__)
+
+# Read keys at call time via os.environ to avoid pydantic-settings startup order issues
+def _hf_key() -> str:
+    return os.environ.get("HUGGINGFACE_API_KEY") or settings.HUGGINGFACE_API_KEY or ""
+
+def _rep_key() -> str:
+    return os.environ.get("REPLICATE_API_KEY") or settings.REPLICATE_API_KEY or ""
 
 HF_API = "https://api-inference.huggingface.co/models"
 # instruct-pix2pix: img2img via text instruction — preserves structure, applies changes
@@ -37,9 +46,9 @@ async def _generate_image(image_bytes: bytes, content_type: str, description: st
     Tries HuggingFace (free) first, falls back to Replicate if configured.
     Returns a URL or data URI of the generated image.
     """
-    import os
-    hf_key = settings.HUGGINGFACE_API_KEY or os.environ.get("HUGGINGFACE_API_KEY", "")
-    rep_key = settings.REPLICATE_API_KEY or os.environ.get("REPLICATE_API_KEY", "")
+    hf_key  = _hf_key()
+    rep_key = _rep_key()
+    log.info(f"[visualizer] HF key present: {bool(hf_key)}, Replicate key: {bool(rep_key)}")
 
     if hf_key:
         try:
@@ -80,10 +89,8 @@ async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") ->
         },
     }
 
-    import os
-    key = hf_key or settings.HUGGINGFACE_API_KEY or os.environ.get("HUGGINGFACE_API_KEY", "")
     headers = {
-        "Authorization": f"Bearer {key}",
+        "Authorization": f"Bearer {hf_key or _hf_key()}",
         "Content-Type": "application/json",
     }
 

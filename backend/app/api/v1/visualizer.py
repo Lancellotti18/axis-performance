@@ -47,6 +47,8 @@ async def generate_home_visualization(
         raise HTTPException(status_code=422, detail="Image file appears to be empty or corrupt.")
 
     from app.services.visualizer_service import generate_visualization
+    import os
+    log.info(f"[visualizer] HF key present: {bool(os.environ.get('HUGGINGFACE_API_KEY'))}, starts: {os.environ.get('HUGGINGFACE_API_KEY','')[:6]}")
     try:
         result = await generate_visualization(
             image_bytes=image_bytes,
