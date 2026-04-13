@@ -13,6 +13,7 @@ import base64
 import json
 import re
 import logging
+import urllib.parse
 
 import os
 
@@ -34,8 +35,42 @@ HF_API            = "https://router.huggingface.co/hf-inference/models"
 # SD v1.5 img2img — preserves house structure while applying requested changes
 HF_IMG2IMG_MODEL  = "runwayml/stable-diffusion-v1-5"
 
-REPLICATE_API = "https://api.replicate.com/v1"
-SDXL_MODEL = "stability-ai/sdxl"
+REPLICATE_API     = "https://api.replicate.com/v1"
+SDXL_MODEL        = "stability-ai/sdxl"
+
+POLLINATIONS_API  = "https://image.pollinations.ai/prompt"
+
+
+# ── Pollinations fallback (always available, no key required) ─────────────────
+
+async def _pollinations_t2i(description: str) -> str:
+    """
+    Generate a visualization via Pollinations.ai text-to-image.
+    Used as the final fallback when img2img is unavailable.
+    Returns the direct image URL.
+    """
+    prompt = (
+        f"photorealistic exterior home renovation, professional architectural photography, "
+        f"high resolution, sharp focus, natural daylight, {description}, "
+        f"real estate photography style, beautiful curb appeal, no people, no text"
+    )
+    params = {
+        "width":   1280,
+        "height":  720,
+        "model":   "flux",
+        "seed":    42,
+        "nologo":  "true",
+        "cache":   "true",
+    }
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    url   = f"{POLLINATIONS_API}/{urllib.parse.quote(prompt)}?{query}"
+
+    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        if not r.content or len(r.content) < 1000:
+            raise ValueError("Pollinations returned empty or too-small image")
+        return str(r.url)
 
 
 # ── Image generation ──────────────────────────────────────────────────────────
@@ -43,8 +78,10 @@ SDXL_MODEL = "stability-ai/sdxl"
 async def _generate_image(image_bytes: bytes, content_type: str, description: str) -> str:
     """
     Generate a visualization image.
-    Uses instruct-pix2pix (img2img) so the original house shape is preserved.
-    Falls back to Replicate SDXL img2img if HF fails.
+    Provider chain:
+      1. HuggingFace SD v1.5 img2img  — preserves house structure
+      2. Replicate SDXL img2img       — paid fallback
+      3. Pollinations.ai text-to-image — free, always available
     """
     hf_key  = _hf_key()
     rep_key = _rep_key()
@@ -54,14 +91,23 @@ async def _generate_image(image_bytes: bytes, content_type: str, description: st
         try:
             return await _hf_img2img(image_bytes, description, hf_key)
         except Exception as e:
-            log.warning(f"[visualizer] HuggingFace failed: {e}. Trying Replicate...")
+            log.warning(f"[visualizer] HuggingFace img2img failed: {e}. Trying next provider...")
 
     if rep_key:
-        return await _replicate_img2img(image_bytes, content_type, description)
+        try:
+            return await _replicate_img2img(image_bytes, content_type, description)
+        except Exception as e:
+            log.warning(f"[visualizer] Replicate failed: {e}. Falling back to Pollinations...")
+
+    # Always-available free fallback
+    try:
+        log.info("[visualizer] Using Pollinations.ai text-to-image fallback")
+        return await _pollinations_t2i(description)
+    except Exception as e:
+        log.error(f"[visualizer] Pollinations fallback also failed: {e}")
 
     raise ValueError(
-        "No image generation key configured. "
-        "Set HUGGINGFACE_API_KEY (free at huggingface.co) in your environment."
+        "All image generation providers failed. Please try again in a moment."
     )
 
 
