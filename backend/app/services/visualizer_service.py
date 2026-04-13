@@ -37,13 +37,17 @@ async def _generate_image(image_bytes: bytes, content_type: str, description: st
     Tries HuggingFace (free) first, falls back to Replicate if configured.
     Returns a URL or data URI of the generated image.
     """
-    if settings.HUGGINGFACE_API_KEY:
+    import os
+    hf_key = settings.HUGGINGFACE_API_KEY or os.environ.get("HUGGINGFACE_API_KEY", "")
+    rep_key = settings.REPLICATE_API_KEY or os.environ.get("REPLICATE_API_KEY", "")
+
+    if hf_key:
         try:
-            return await _hf_img2img(image_bytes, description)
+            return await _hf_img2img(image_bytes, description, hf_key)
         except Exception as e:
             log.warning(f"[visualizer] HuggingFace failed: {e}. Trying Replicate...")
 
-    if settings.REPLICATE_API_KEY:
+    if rep_key:
         return await _replicate_img2img(image_bytes, content_type, description)
 
     raise ValueError(
@@ -52,7 +56,7 @@ async def _generate_image(image_bytes: bytes, content_type: str, description: st
     )
 
 
-async def _hf_img2img(image_bytes: bytes, description: str) -> str:
+async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") -> str:
     """
     Use HuggingFace instruct-pix2pix to apply changes to the home photo.
     Returns a data URI (base64 PNG) so it works without external hosting.
@@ -76,8 +80,10 @@ async def _hf_img2img(image_bytes: bytes, description: str) -> str:
         },
     }
 
+    import os
+    key = hf_key or settings.HUGGINGFACE_API_KEY or os.environ.get("HUGGINGFACE_API_KEY", "")
     headers = {
-        "Authorization": f"Bearer {settings.HUGGINGFACE_API_KEY}",
+        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
     }
 
