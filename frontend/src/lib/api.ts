@@ -370,10 +370,15 @@ export const api = {
   },
   renders: {
     generate: (projectId: string, style: string, timeOfDay: string) =>
-      apiRequest<{ exterior: string | null; interior: string | null; style: string; time_of_day: string }>(
+      apiRequest<{
+        exterior_views: { angle: string; label: string; url: string | null }[]
+        room_renders:   { name: string; url: string | null }[]
+        style:          string
+        time_of_day:    string
+      }>(
         `/api/v1/renders/${projectId}/generate`,
         { method: 'POST', body: JSON.stringify({ style, time_of_day: timeOfDay }) },
-        180000,
+        240000,  // 4-min timeout — 10 images generated concurrently
       ),
   },
 }

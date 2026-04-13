@@ -1,0 +1,154 @@
+'use client'
+/**
+ * ExteriorCarousel — 360° exterior view navigator
+ * Shows 4 angle views (front, left-side, right-side, rear) with
+ * arrow navigation, dot indicators, and keyboard support.
+ */
+
+import React, { useState, useEffect, useCallback } from 'react'
+
+interface ExteriorView {
+  angle: string
+  label?: string
+  url:   string | null
+}
+
+interface Props {
+  views: ExteriorView[]
+}
+
+const ANGLE_LABEL: Record<string, string> = {
+  'front':      'Front',
+  'left-side':  'Left Side',
+  'right-side': 'Right Side',
+  'rear':       'Rear',
+}
+
+export default function ExteriorCarousel({ views }: Props) {
+  const [idx, setIdx] = useState(0)
+
+  const prev = useCallback(() => setIdx(i => (i === 0 ? views.length - 1 : i - 1)), [views.length])
+  const next = useCallback(() => setIdx(i => (i === views.length - 1 ? 0 : i + 1)), [views.length])
+
+  // Keyboard navigation
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft')  prev()
+      if (e.key === 'ArrowRight') next()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [prev, next])
+
+  if (!views.length) return null
+
+  const current = views[idx]
+  const label   = ANGLE_LABEL[current.angle] ?? current.label ?? current.angle
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(219,234,254,0.8)', background: '#fff', boxShadow: '0 2px 12px rgba(59,130,246,0.08)' }}>
+
+      {/* Header */}
+      <div className="px-5 py-3 border-b flex items-center justify-between" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+        <div className="flex items-center gap-2">
+          <span className="text-slate-700 font-bold text-sm">360° Exterior View</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 font-semibold">
+            ← → keys
+          </span>
+        </div>
+        <span className="text-slate-400 text-xs">{idx + 1} / {views.length}</span>
+      </div>
+
+      {/* Image */}
+      <div className="relative bg-slate-100 select-none" style={{ aspectRatio: '16/9' }}>
+        {current.url ? (
+          <img
+            src={current.url}
+            alt={`Exterior ${label}`}
+            className="absolute inset-0 w-full h-full object-cover"
+            draggable={false}
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <rect x="3" y="3" width="18" height="14" rx="2"/>
+              <path d="M3 9l4-4 4 4 4-4 4 4"/>
+            </svg>
+            <span className="text-sm">{label} render unavailable</span>
+          </div>
+        )}
+
+        {/* Angle badge */}
+        <div
+          className="absolute bottom-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-white"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
+        >
+          {label}
+        </div>
+
+        {/* Download */}
+        {current.url && (
+          <a
+            href={current.url}
+            target="_blank"
+            rel="noreferrer"
+            download={`exterior_${current.angle}.jpg`}
+            className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full text-xs font-semibold text-white"
+            style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(6px)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            ↓ Save
+          </a>
+        )}
+
+        {/* Prev arrow */}
+        <button
+          onClick={prev}
+          aria-label="Previous view"
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white text-xl font-bold transition-all hover:scale-110"
+          style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
+        >
+          ‹
+        </button>
+
+        {/* Next arrow */}
+        <button
+          onClick={next}
+          aria-label="Next view"
+          className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white text-xl font-bold transition-all hover:scale-110"
+          style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
+        >
+          ›
+        </button>
+      </div>
+
+      {/* Angle selector tabs */}
+      <div className="flex border-t" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+        {views.map((v, i) => {
+          const lbl = ANGLE_LABEL[v.angle] ?? v.label ?? v.angle
+          const active = i === idx
+          return (
+            <button
+              key={i}
+              onClick={() => setIdx(i)}
+              className="flex-1 py-2.5 text-xs font-semibold transition-all border-r last:border-r-0 relative"
+              style={{
+                borderColor:     'rgba(219,234,254,0.8)',
+                color:           active ? '#6366f1' : '#94a3b8',
+                background:      active ? '#f5f3ff' : 'transparent',
+              }}
+            >
+              {lbl}
+              {active && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-400" />
+              )}
+              {!v.url && (
+                <span className="ml-1 text-[9px] text-slate-300">●</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

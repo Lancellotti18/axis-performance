@@ -1,10 +1,16 @@
 """
 renders.py — AI Photorealistic Render Generation
 =================================================
+Generates:
+  • 4 exterior angle views (front, left-side, right-side, rear)
+  • Up to 6 per-room interior renders (from blueprint analysis)
+
 Provider priority (first available wins):
   1. Pollinations.ai  — free, no API key required
-  2. HuggingFace SDXL — free with HUGGINGFACE_API_KEY
+  2. HuggingFace FLUX — free with HUGGINGFACE_API_KEY
   3. Replicate SDXL   — paid fallback with REPLICATE_API_KEY
+
+Each image uses a unique seed so renders vary on every generation.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import random
 import urllib.parse
 
 import httpx
@@ -30,6 +37,19 @@ HF_T2I_MODEL     = "black-forest-labs/FLUX.1-schnell"
 REPLICATE_API    = "https://api.replicate.com/v1"
 SDXL_MODEL       = "stability-ai/sdxl"
 
+NEGATIVE_PROMPT = (
+    "blurry, low quality, distorted, warped, cartoon, anime, painting, sketch, "
+    "watermark, text overlay, people, vehicles, abstract, render artifacts"
+)
+
+# 4 exterior camera angles
+EXTERIOR_ANGLES = [
+    ("front",      "straight-on front elevation view centered on the main entrance"),
+    ("left-side",  "three-quarter left-side view showing the front and left facade"),
+    ("right-side", "three-quarter right-side view showing the front and right facade"),
+    ("rear",       "rear elevation view showing the backyard and rear facade"),
+]
+
 
 class RenderRequest(BaseModel):
     style:       str = "modern"       # modern | traditional | farmhouse | contemporary | craftsman
@@ -38,7 +58,9 @@ class RenderRequest(BaseModel):
 
 # ── Prompt builders ───────────────────────────────────────────────────────────
 
-def _build_exterior_prompt(project: dict, analysis: dict, style: str, time_of_day: str) -> str:
+def _build_exterior_prompt(
+    project: dict, analysis: dict, style: str, time_of_day: str, angle_desc: str
+) -> str:
     sqft        = analysis.get("total_sqft", 0)
     room_count  = analysis.get("room_count") or len(analysis.get("rooms", []))
     bp_type     = (project.get("blueprint_type") or "residential").replace("_", " ")
@@ -61,31 +83,24 @@ def _build_exterior_prompt(project: dict, analysis: dict, style: str, time_of_da
         "craftsman":     "craftsman bungalow, tapered columns, covered front porch, exposed rafter tails",
     }.get(style, "modern architecture, clean lines")
 
-    sqft_str = f"{int(sqft):,} square feet, " if sqft else ""
-    room_str = f"{room_count} rooms, " if room_count else ""
+    sqft_str  = f"{int(sqft):,} square feet, " if sqft else ""
+    room_str  = f"{room_count} rooms, " if room_count else ""
 
     return (
         f"Photorealistic architectural exterior render of a {stories} {bp_type} home, "
         f"{style_desc}, {sqft_str}{room_str}located in {location}. "
-        f"Beautifully landscaped front yard with green lawn, mature trees, concrete driveway. "
-        f"Photographed from a slight angle showing front and side elevation. "
+        f"Beautifully landscaped yard with green lawn, mature trees, concrete driveway. "
+        f"{angle_desc.capitalize()}. "
         f"{time_desc.capitalize()}. "
         f"Ultra-high quality architectural photography, 8K resolution, photorealistic, "
         f"professional real estate photography, no people, sharp focus, wide angle lens."
     )
 
 
-def _build_interior_prompt(project: dict, analysis: dict, style: str) -> str:
-    sqft    = analysis.get("total_sqft", 0)
-    rooms   = analysis.get("rooms", [])
+def _build_room_prompt(
+    project: dict, analysis: dict, style: str, room_name: str, room_sqft: int
+) -> str:
     bp_type = (project.get("blueprint_type") or "residential").replace("_", " ")
-
-    living_room = next(
-        (r for r in rooms if any(k in (r.get("name") or "").lower()
-         for k in ["living", "great room", "family", "lounge"])),
-        None,
-    )
-    room_sqft = int(living_room.get("sqft", 0)) if living_room else (int(sqft * 0.18) if sqft else 300)
 
     style_desc = {
         "modern":       "modern interior design, minimalist, neutral palette, clean lines, recessed lighting",
@@ -95,9 +110,11 @@ def _build_interior_prompt(project: dict, analysis: dict, style: str) -> str:
         "craftsman":    "craftsman interior, built-in bookshelves, warm wood trim, mission-style furniture",
     }.get(style, "modern interior design, minimalist, neutral palette")
 
+    sqft_str = f"approximately {room_sqft} square feet, " if room_sqft else ""
+
     return (
-        f"Photorealistic interior render of a {bp_type} living room, "
-        f"{style_desc}, approximately {room_sqft} square feet, "
+        f"Photorealistic interior render of a {bp_type} {room_name}, "
+        f"{style_desc}, {sqft_str}"
         f"large windows with natural light flooding in, hardwood floors, "
         f"high ceilings, tasteful furniture and decor. "
         f"Ultra-high quality architectural interior photography, 8K resolution, photorealistic, "
@@ -107,53 +124,44 @@ def _build_interior_prompt(project: dict, analysis: dict, style: str) -> str:
 
 # ── Image generation ──────────────────────────────────────────────────────────
 
-NEGATIVE_PROMPT = (
-    "blurry, low quality, distorted, warped, cartoon, anime, painting, sketch, "
-    "watermark, text overlay, people, vehicles, abstract, render artifacts"
-)
-
-
-async def _generate_via_pollinations(prompt: str) -> str:
+async def _generate_via_pollinations(prompt: str, seed: int) -> str:
     """
     Pollinations.ai — free, no API key required.
-    Returns the direct image URL (avoids large base64 payloads that break Safari).
+    Each call uses a unique seed so images vary across requests.
+    Returns the direct image URL (avoids large base64 payloads).
     """
     params = {
-        "width": 1280,
+        "width":  1280,
         "height": 720,
-        "model": "flux",
-        "seed": 42,
+        "model":  "flux",
+        "seed":   seed,
         "nologo": "true",
-        "cache": "true",
+        # no "cache" param — Pollinations' cache is keyed by URL so changing
+        # the seed already produces a fresh URL and bypasses any previous cache.
     }
     query = "&".join(f"{k}={v}" for k, v in params.items())
     url = f"{POLLINATIONS_API}/{urllib.parse.quote(prompt)}?{query}"
 
-    # Verify the URL actually returns an image before sending it to the client
     async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
         r = await client.get(url)
         r.raise_for_status()
         if not r.content or len(r.content) < 1000:
             raise ValueError("Pollinations returned empty or too-small image")
-        # Return the final (post-redirect) URL so the browser loads it directly
         return str(r.url)
 
 
 async def _generate_via_hf(prompt: str) -> str:
-    """HuggingFace SDXL text-to-image. Returns base64 data URI."""
+    """HuggingFace FLUX text-to-image. Returns base64 data URI."""
     headers = {
         "Authorization": f"Bearer {settings.HUGGINGFACE_API_KEY}",
-        "Content-Type": "application/json",
+        "Content-Type":  "application/json",
     }
     payload = {
         "inputs": prompt,
-        "parameters": {
-            "num_inference_steps": 4,
-            "guidance_scale":      0.0,
-        },
+        "parameters": {"num_inference_steps": 4, "guidance_scale": 0.0},
     }
     async with httpx.AsyncClient(timeout=120) as client:
-        for attempt in range(3):
+        for _ in range(3):
             r = await client.post(f"{HF_API}/{HF_T2I_MODEL}", headers=headers, json=payload)
             if r.status_code == 503:
                 wait = 20
@@ -161,7 +169,7 @@ async def _generate_via_hf(prompt: str) -> str:
                     wait = r.json().get("estimated_time", 20)
                 except Exception:
                     pass
-                log.info(f"[Renders] HF model loading, waiting {wait}s...")
+                log.info(f"[Renders] HF model loading, waiting {wait}s…")
                 await asyncio.sleep(min(wait, 30))
                 continue
             r.raise_for_status()
@@ -214,18 +222,18 @@ async def _generate_via_replicate(prompt: str) -> str:
     raise TimeoutError("Replicate generation timed out.")
 
 
-async def _generate_image(prompt: str) -> str | None:
-    """Try Pollinations (free/no key) → HF → Replicate. Returns data URI / URL, or None."""
+async def _generate_image(prompt: str, seed: int) -> str | None:
+    """Try Pollinations → HF → Replicate. Returns URL / data URI, or None on total failure."""
     try:
-        return await _generate_via_pollinations(prompt)
+        return await _generate_via_pollinations(prompt, seed)
     except Exception as e:
-        log.warning(f"[Renders] Pollinations failed: {e} — trying HuggingFace...")
+        log.warning(f"[Renders] Pollinations failed (seed={seed}): {e} — trying HuggingFace…")
 
     if settings.HUGGINGFACE_API_KEY:
         try:
             return await _generate_via_hf(prompt)
         except Exception as e:
-            log.warning(f"[Renders] HuggingFace failed: {e} — trying Replicate...")
+            log.warning(f"[Renders] HuggingFace failed: {e} — trying Replicate…")
 
     if settings.REPLICATE_API_KEY:
         try:
@@ -248,38 +256,88 @@ async def generate_renders(project_id: str, request: RenderRequest):
         raise HTTPException(status_code=404, detail="Project not found.")
     project = proj_row.data[0]
 
-    bp_row = db.table("blueprints").select("id").eq("project_id", project_id)\
-               .order("created_at", desc=True).limit(1).execute()
-    analysis = {}
+    bp_row = (
+        db.table("blueprints")
+        .select("id")
+        .eq("project_id", project_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    analysis: dict = {}
     if bp_row.data:
-        an_row = db.table("analyses").select("*")\
-                   .eq("blueprint_id", bp_row.data[0]["id"]).limit(1).execute()
+        an_row = (
+            db.table("analyses")
+            .select("*")
+            .eq("blueprint_id", bp_row.data[0]["id"])
+            .limit(1)
+            .execute()
+        )
         if an_row.data:
             analysis = an_row.data[0]
 
-    exterior_prompt = _build_exterior_prompt(project, analysis, request.style, request.time_of_day)
-    interior_prompt = _build_interior_prompt(project, analysis, request.style)
+    # Each image gets a unique seed so renders vary on every click of Generate.
+    # base_seed is random per request; each image is offset by its index (0-9).
+    base_seed = random.randint(100, 9999)
 
-    # Generate both renders concurrently
-    exterior_img, interior_img = await asyncio.gather(
-        _generate_image(exterior_prompt),
-        _generate_image(interior_prompt),
-    )
+    # ── 4 exterior angle views ──
+    exterior_tasks = [
+        _generate_image(
+            _build_exterior_prompt(project, analysis, request.style, request.time_of_day, angle_desc),
+            base_seed + i,
+        )
+        for i, (_, angle_desc) in enumerate(EXTERIOR_ANGLES)
+    ]
 
-    if not exterior_img and not interior_img:
+    # ── Up to 6 room interior views ──
+    rooms = analysis.get("rooms", [])[:6]
+    room_tasks = [
+        _generate_image(
+            _build_room_prompt(
+                project, analysis, request.style,
+                room.get("name", f"Room {j + 1}"),
+                int(room.get("sqft", 0)),
+            ),
+            base_seed + 4 + j,
+        )
+        for j, room in enumerate(rooms)
+    ]
+
+    all_results = await asyncio.gather(*exterior_tasks, *room_tasks, return_exceptions=True)
+    ext_results  = all_results[:4]
+    room_results = all_results[4:]
+
+    exterior_views = [
+        {
+            "angle": EXTERIOR_ANGLES[i][0],
+            "label": EXTERIOR_ANGLES[i][0].replace("-", " ").title(),
+            "url":   r if isinstance(r, str) else None,
+        }
+        for i, r in enumerate(ext_results)
+    ]
+
+    room_renders = [
+        {
+            "name": rooms[j].get("name", f"Room {j + 1}") if j < len(rooms) else f"Room {j + 1}",
+            "url":  r if isinstance(r, str) else None,
+        }
+        for j, r in enumerate(room_results)
+    ]
+
+    any_success = any(v["url"] for v in exterior_views) or any(v["url"] for v in room_renders)
+    if not any_success:
         raise HTTPException(
             status_code=500,
             detail=(
-                "Image generation failed. "
-                "Check that HUGGINGFACE_API_KEY or REPLICATE_API_KEY is set correctly in Railway."
+                "Image generation failed across all providers. "
+                "Pollinations.ai may be temporarily overloaded — please try again in a moment."
             ),
         )
 
     return {
-        "exterior":    exterior_img,
-        "interior":    interior_img,
-        "prompts":     {"exterior": exterior_prompt, "interior": interior_prompt},
-        "style":       request.style,
-        "time_of_day": request.time_of_day,
-        "provider":    "pollinations" if not settings.HUGGINGFACE_API_KEY else "huggingface",
+        "exterior_views": exterior_views,
+        "room_renders":   room_renders,
+        "style":          request.style,
+        "time_of_day":    request.time_of_day,
+        "provider":       "pollinations",
     }

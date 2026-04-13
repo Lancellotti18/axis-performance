@@ -6,8 +6,8 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { ComplianceCheck, ComplianceItem, ComplianceSeverity } from '@/types'
 import dynamic from 'next/dynamic'
-const Blueprint3DViewer = dynamic(() => import('./Blueprint3DViewer'), { ssr: false })
 const RenderViewer = dynamic(() => import('./RenderViewer'), { ssr: false })
+const ExteriorCarousel = dynamic(() => import('./ExteriorCarousel'), { ssr: false })
 import RoofingSection from './RoofingSection'
 
 type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'photos' | 'compliance' | 'permits' | 'roofing'
@@ -689,16 +689,17 @@ export default function ProjectPage() {
   const [quoteGenerated, setQuoteGenerated] = useState(false)
   const [quoteCopied, setQuoteCopied] = useState(false)
   // 3D Model
-  const [sceneData, setSceneData] = useState<any>(null)
-  const [scene3dLoading, setScene3dLoading] = useState(false)
-  const [scene3dError, setScene3dError] = useState<string | null>(null)
+  // scene3d state removed — floor plan viewer removed
 
   // AI Renders
   const [renderStyle, setRenderStyle] = useState('modern')
   const [renderTimeOfDay, setRenderTimeOfDay] = useState('golden_hour')
   const [renderLoading, setRenderLoading] = useState(false)
   const [renderError, setRenderError] = useState<string | null>(null)
-  const [renders, setRenders] = useState<{ exterior: string | null; interior: string | null } | null>(null)
+  const [renders, setRenders] = useState<{
+    exterior_views: { angle: string; label: string; url: string | null }[]
+    room_renders:   { name: string; url: string | null }[]
+  } | null>(null)
 
   // AXIS Performance 5D pipeline
   const [axisJobId, setAxisJobId]       = useState<string | null>(null)
@@ -1020,18 +1021,6 @@ Thank you for your time.`
     } catch {}
   }
 
-  async function handleGenerate3D() {
-    setScene3dLoading(true)
-    setScene3dError(null)
-    try {
-      const result = await api.model3d.parse(projectId)
-      setSceneData(result)
-    } catch (err: any) {
-      setScene3dError(err.message || '3D generation failed. Please try again.')
-    }
-    setScene3dLoading(false)
-  }
-
   async function handleGenerateProposal() {
     setProposalLoading(true)
     setProposalError(null)
@@ -1133,22 +1122,6 @@ Thank you for your time.`
   useEffect(() => {
     return () => { if (axisPollerRef.current) clearInterval(axisPollerRef.current) }
   }, [])
-
-  useEffect(() => {
-    if (tab !== 'view3d' || sceneData || scene3dLoading) return
-    api.model3d.get(projectId)
-      .then(r => {
-        if (r?.scene_data) {
-          setSceneData(r.scene_data)
-        } else if (hasBlueprint) {
-          handleGenerate3D()
-        }
-      })
-      .catch(() => {
-        if (hasBlueprint) handleGenerate3D()
-      })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab])
 
   function updateActualCost(category: string, value: number) {
     const updated = { ...actualCosts, [category]: value }
@@ -2182,78 +2155,27 @@ Thank you for your time.`
               <div className="max-w-5xl space-y-4">
                 <div>
                   <h2 className="text-slate-800 font-bold text-lg">AI Renders</h2>
-                  <p className="text-slate-400 text-xs mt-0.5">Generate photorealistic exterior and interior views to share with clients — zoom, pan, and measure directly on the image.</p>
+                  <p className="text-slate-400 text-xs mt-0.5">Generate 4 exterior angles and per-room interior renders from your blueprint — zoom, pan, and measure directly on any image.</p>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-slate-700 font-bold text-sm">Interactive Floor Plan</h3>
-                    <p className="text-slate-400 text-xs mt-0.5">
-                      {sceneData
-                        ? `Claude Vision parsed · ${sceneData.walls?.length || 0} walls · ${sceneData.rooms?.length || 0} rooms · ${sceneData.electrical?.length || 0} electrical · ${sceneData.plumbing?.length || 0} plumbing`
-                        : 'Generate an interactive floor plan from the uploaded blueprint.'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {sceneData && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          ✓ Vision Parsed · {Math.round((sceneData.confidence || 0) * 100)}% confidence
-                        </span>
-                      </div>
-                    )}
-                    <button
-                      onClick={handleGenerate3D}
-                      disabled={scene3dLoading || !hasBlueprint}
-                      title={!hasBlueprint ? 'Upload a blueprint first' : 'Parse blueprint with Claude Vision'}
-                      className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
-                      style={{ background: scene3dLoading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
-                    >
-                      {scene3dLoading
-                        ? <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Analyzing Blueprint…</>
-                        : sceneData ? '🔄 Re-generate 3D' : '✦ Generate 3D Model'}
-                    </button>
-                  </div>
-                </div>
-
-                {scene3dError && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start justify-between gap-3">
-                    <pre className="text-red-700 text-xs whitespace-pre-wrap break-all flex-1">{scene3dError}</pre>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(scene3dError)}
-                      className="text-red-400 hover:text-red-600 text-xs font-semibold flex-shrink-0 underline"
-                    >Copy</button>
-                  </div>
-                )}
-
-
-
-                {analysis ? (
-                  <>
-                    <Blueprint3DViewer analysis={analysis} sceneData={sceneData} blueprintUrl={blueprintViewUrl ?? undefined} />
-                    {Array.isArray(analysis.rooms) && analysis.rooms.length > 0 && (
-                      <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
-                        <h3 className="text-slate-800 font-bold text-sm mb-3">Rooms Detected</h3>
-                        <div className="grid grid-cols-3 gap-3">
-                          {(Array.isArray(sceneData?.rooms) && sceneData.rooms.length > 0 ? sceneData.rooms : analysis.rooms).map((room: any, i: number) => {
-                            const colors = ['bg-blue-50 border-blue-200','bg-green-50 border-green-200','bg-yellow-50 border-yellow-200','bg-rose-50 border-rose-200','bg-purple-50 border-purple-200','bg-cyan-50 border-cyan-200','bg-orange-50 border-orange-200','bg-emerald-50 border-emerald-200']
-                            return (
-                              <div key={i} className={`rounded-xl border p-3 ${colors[i % colors.length]}`}>
-                                <div className="text-slate-800 font-semibold text-sm">{room.name}</div>
-                                <div className="text-slate-500 text-xs mt-0.5">{room.sqft ? `${Math.round(room.sqft)} sqft` : '—'}</div>
-                                {(room.dimensions || room.width) && (
-                                  <div className="text-slate-400 text-xs">{(room.dimensions?.width || room.width)?.toFixed(0)}′ × {(room.dimensions?.height || room.depth)?.toFixed(0)}′</div>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="bg-white rounded-2xl p-12 text-center text-slate-400" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
-                    Run a blueprint analysis first to generate the 3D view.
+                {/* ── Rooms from blueprint analysis ──────────────────── */}
+                {Array.isArray(analysis?.rooms) && analysis.rooms.length > 0 && (
+                  <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
+                    <h3 className="text-slate-800 font-bold text-sm mb-3">
+                      Rooms on Blueprint
+                      <span className="ml-2 text-[11px] font-normal text-slate-400">({analysis.rooms.length} room{analysis.rooms.length !== 1 ? 's' : ''} detected)</span>
+                    </h3>
+                    <div className="grid grid-cols-3 gap-3">
+                      {analysis.rooms.map((room: any, i: number) => {
+                        const colors = ['bg-blue-50 border-blue-200','bg-green-50 border-green-200','bg-yellow-50 border-yellow-200','bg-rose-50 border-rose-200','bg-purple-50 border-purple-200','bg-cyan-50 border-cyan-200','bg-orange-50 border-orange-200','bg-emerald-50 border-emerald-200']
+                        return (
+                          <div key={i} className={`rounded-xl border p-3 ${colors[i % colors.length]}`}>
+                            <div className="text-slate-800 font-semibold text-sm">{room.name}</div>
+                            <div className="text-slate-500 text-xs mt-0.5">{room.sqft ? `${Math.round(room.sqft)} sqft` : '—'}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -2263,7 +2185,7 @@ Thank you for your time.`
                     <div className="flex items-center justify-between flex-wrap gap-4">
                       <div>
                         <h3 className="text-slate-800 font-bold text-base">AI Photorealistic Renders</h3>
-                        <p className="text-slate-400 text-xs mt-0.5">Generate exterior and interior renders from your blueprint — zoom, pan, and measure directly on the image</p>
+                        <p className="text-slate-400 text-xs mt-0.5">360° exterior views + interior render for every room on the blueprint</p>
                       </div>
                       <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-2">
@@ -2329,28 +2251,46 @@ Thank you for your time.`
                       <svg className="animate-spin text-indigo-400" width="32" height="32" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
                       <div className="text-slate-500 text-sm text-center">
                         <div className="font-semibold">Generating photorealistic renders…</div>
-                        <div className="text-slate-400 text-xs mt-1">Generating photorealistic exterior and interior views. This takes 30–60 seconds.</div>
+                        <div className="text-slate-400 text-xs mt-1">
+                          Building 4 exterior angles + {analysis?.rooms?.length ? `${Math.min(analysis.rooms.length, 6)} room interiors` : 'room interiors'}. This takes 60–90 seconds.
+                        </div>
                       </div>
                     </div>
                   )}
 
                   {!renderLoading && renders && (
-                    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {([['exterior','Exterior View'],['interior','Interior View']] as const).map(([key, label]) => {
-                        const src = renders[key as 'exterior' | 'interior']
-                        return src ? (
-                          <RenderViewer
-                            key={key}
-                            src={src}
-                            label={label}
-                            totalSqft={analysis?.total_sqft ?? undefined}
-                          />
-                        ) : (
-                          <div key={key} className="rounded-xl overflow-hidden flex items-center justify-center bg-slate-50 text-slate-400 text-sm" style={{ border: '1px solid rgba(219,234,254,0.8)', aspectRatio: '16/9' }}>
-                            Render unavailable
+                    <div className="p-6 space-y-6">
+                      {/* 360° Exterior carousel */}
+                      {renders.exterior_views.length > 0 && (
+                        <ExteriorCarousel views={renders.exterior_views} />
+                      )}
+
+                      {/* Per-room interior renders */}
+                      {renders.room_renders.length > 0 && (
+                        <div>
+                          <h4 className="text-slate-700 font-bold text-sm mb-3">Room Interiors</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {renders.room_renders.map((room, i) =>
+                              room.url ? (
+                                <RenderViewer
+                                  key={i}
+                                  src={room.url}
+                                  label={room.name}
+                                  totalSqft={analysis?.total_sqft ?? undefined}
+                                />
+                              ) : (
+                                <div
+                                  key={i}
+                                  className="rounded-xl flex items-center justify-center bg-slate-50 text-slate-400 text-sm"
+                                  style={{ border: '1px solid rgba(219,234,254,0.8)', aspectRatio: '16/9' }}
+                                >
+                                  {room.name} — render unavailable
+                                </div>
+                              )
+                            )}
                           </div>
-                        )
-                      })}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -2358,7 +2298,7 @@ Thank you for your time.`
                     <div className="px-6 py-12 text-center text-slate-400 text-sm">
                       <div className="text-2xl mb-3">🏠</div>
                       <div className="font-semibold text-slate-500">No renders yet</div>
-                      <div className="text-xs mt-1">Choose a style and click Generate Renders to create photorealistic exterior and interior images of your building.</div>
+                      <div className="text-xs mt-1">Choose a style and click Generate Renders to create 4 exterior angles and per-room interior views.</div>
                     </div>
                   )}
                 </div>
