@@ -1207,7 +1207,7 @@ Thank you for your time.`
     ...(isRoofing ? [{ id: 'roofing' as Tab, label: '🏠 Roof' }] : []),
     { id: 'materials',  label: 'Materials', badge: materials.length || undefined },
     { id: 'cost',       label: 'Cost Estimate' },
-    { id: 'view3d',     label: '3D View' },
+    { id: 'view3d',     label: '✦ Renders' },
     { id: 'photos' as Tab,     label: '📸 Photos', badge: photos.length || undefined },
     { id: 'compliance', label: 'Compliance', badge: (requiredCount + (matCheckResult?.violations?.length ?? 0)) || undefined },
     { id: 'permits',    label: 'Permits' },
@@ -2180,13 +2180,18 @@ Thank you for your time.`
             {/* ── 3D VIEW ───────────────────────────────────────────────── */}
             {tab === 'view3d' && (
               <div className="max-w-5xl space-y-4">
+                <div>
+                  <h2 className="text-slate-800 font-bold text-lg">AI Renders</h2>
+                  <p className="text-slate-400 text-xs mt-0.5">Generate photorealistic exterior and interior views to share with clients — zoom, pan, and measure directly on the image.</p>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-slate-800 font-bold text-lg">3D Floor Plan</h2>
+                    <h3 className="text-slate-700 font-bold text-sm">Interactive Floor Plan</h3>
                     <p className="text-slate-400 text-xs mt-0.5">
                       {sceneData
                         ? `Claude Vision parsed · ${sceneData.walls?.length || 0} walls · ${sceneData.rooms?.length || 0} rooms · ${sceneData.electrical?.length || 0} electrical · ${sceneData.plumbing?.length || 0} plumbing`
-                        : 'Generate a 3D model from the uploaded blueprint using Claude Vision.'}
+                        : 'Generate an interactive floor plan from the uploaded blueprint.'}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -2324,7 +2329,7 @@ Thank you for your time.`
                       <svg className="animate-spin text-indigo-400" width="32" height="32" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
                       <div className="text-slate-500 text-sm text-center">
                         <div className="font-semibold">Generating photorealistic renders…</div>
-                        <div className="text-slate-400 text-xs mt-1">Generating exterior and interior views. This takes ~30 seconds.</div>
+                        <div className="text-slate-400 text-xs mt-1">Generating photorealistic exterior and interior views. This takes 30–60 seconds.</div>
                       </div>
                     </div>
                   )}
