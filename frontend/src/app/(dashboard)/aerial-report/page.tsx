@@ -115,66 +115,117 @@ function Spinner({ size = 16 }: { size?: number }) {
 
 function MeasurementsPanel({ result, photoResult }: { result: any; photoResult: any }) {
   const confidence = result.confidence_pct ?? result.confidence ?? null
-  const confPct    = confidence !== null ? (confidence <= 1 ? Math.round(confidence * 100) : Math.round(confidence)) : null
+  const satPct     = confidence !== null ? (confidence <= 1 ? Math.round(confidence * 100) : Math.round(confidence)) : null
   const hasPhotos  = photoResult?.success
+
+  // Photo reconciliation — use photo values when they're more confident than satellite
+  const photoPitchConf   = hasPhotos ? (photoResult.pitch_confidence ?? 0) : 0
+  const photoStoriesMax  = hasPhotos
+    ? Math.max(0, ...(photoResult.per_photo ?? []).filter((p: any) => p.usable).map((p: any) => p.stories_visible || 0))
+    : 0
+
+  // Override pitch with photo value if photo confidence ≥ 65% (close-up > aerial for pitch)
+  const pitchFromPhoto  = hasPhotos && photoResult.pitch_estimate && photoPitchConf >= 0.65
+  const effectivePitch  = pitchFromPhoto ? photoResult.pitch_estimate : (result.pitch || '—')
+  const pitchChanged    = pitchFromPhoto && photoResult.pitch_estimate !== result.pitch
+
+  // Override stories if photo detected more floors than satellite estimate
+  const storiesFromPhoto = photoStoriesMax > 0 && photoStoriesMax !== (result.stories || 1)
+  const effectiveStories = storiesFromPhoto ? photoStoriesMax : (result.stories || null)
+
+  const boostPct  = hasPhotos ? Math.round((photoResult.confidence_boost || 0) * 100) : 0
+  const totalPct  = satPct !== null ? Math.min(satPct + boostPct, 100) : null
+
+  const metrics = [
+    { label: 'Roof Sqft',  value: (result.total_sqft || 0).toLocaleString(), fromPhoto: false },
+    { label: 'Squares',    value: `${result.squares || '—'}`,                fromPhoto: false },
+    { label: 'Pitch',      value: effectivePitch,                             fromPhoto: !!pitchChanged },
+    { label: 'Segments',   value: `${result.roof_segments || '—'}`,           fromPhoto: false },
+  ]
 
   return (
     <div className="space-y-3">
-      <SectionHeader title="Roof Measurements" badge={result.source || 'AI Estimate'} />
+      <SectionHeader
+        title="Roof Measurements"
+        badge={hasPhotos ? '📸 Photo-Enhanced' : (result.source || 'AI Estimate')}
+      />
 
+      {/* Photo-enhanced banner */}
+      {hasPhotos && (
+        <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+          <span className="text-emerald-600 text-[11px] font-semibold">
+            ✓ Measurements refined using {photoResult.photos_analyzed} photo{photoResult.photos_analyzed !== 1 ? 's' : ''}
+          </span>
+          {pitchChanged && <span className="text-[9px] bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded-full font-bold">pitch updated</span>}
+          {storiesFromPhoto && <span className="text-[9px] bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded-full font-bold">stories updated</span>}
+        </div>
+      )}
+
+      {/* Metric cards */}
       <div className="grid grid-cols-2 gap-2">
-        {[
-          { label: 'Roof Sqft',  value: (result.total_sqft || 0).toLocaleString() },
-          { label: 'Squares',    value: `${result.squares || '—'}` },
-          { label: 'Pitch',      value: result.pitch || '—' },
-          { label: 'Segments',   value: `${result.roof_segments || '—'}` },
-        ].map(m => (
-          <div key={m.label} className="rounded-xl bg-slate-50 px-3 py-2.5 text-center" style={cardStyle}>
+        {metrics.map(m => (
+          <div key={m.label} className="rounded-xl px-3 py-2.5 text-center relative"
+            style={{ ...cardStyle, background: m.fromPhoto ? 'rgba(236,253,245,0.8)' : '#f8fafc', borderColor: m.fromPhoto ? 'rgba(52,211,153,0.4)' : undefined }}>
+            {m.fromPhoto && (
+              <span className="absolute top-1 right-1.5 text-[8px] text-emerald-600 font-bold">📸</span>
+            )}
             <div className="text-slate-800 font-black text-lg leading-none">{m.value}</div>
             <div className="text-slate-400 text-[10px] font-semibold mt-0.5 uppercase">{m.label}</div>
           </div>
         ))}
       </div>
 
-      {(result.stories || result.house_sqft) && (
+      {/* Secondary info */}
+      {(effectiveStories || result.house_sqft) && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 px-1">
-          {result.stories    && <span><span className="text-slate-400">Stories</span> {result.stories}</span>}
+          {effectiveStories && (
+            <span>
+              <span className="text-slate-400">Stories</span>{' '}
+              <span style={storiesFromPhoto ? { color: '#059669', fontWeight: 700 } : {}}>{effectiveStories}</span>
+              {storiesFromPhoto && <span className="text-[9px] text-emerald-500 ml-1">📸</span>}
+            </span>
+          )}
           {result.house_sqft && <span><span className="text-slate-400">House sqft</span> {result.house_sqft.toLocaleString()}</span>}
         </div>
       )}
 
-      {confPct !== null && (
+      {/* Confidence bar — split to show satellite vs photo contribution */}
+      {satPct !== null && (
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] text-slate-400 font-semibold">Measurement Confidence</span>
-            <span className="text-xs font-bold" style={{ color: confPct >= 80 ? '#22c55e' : confPct >= 60 ? '#f59e0b' : '#ef4444' }}>
-              {Math.min(confPct + (hasPhotos ? Math.round((photoResult.confidence_boost || 0) * 100) : 0), 100)}%
+            <span className="text-xs font-bold" style={{ color: (totalPct ?? 0) >= 80 ? '#22c55e' : (totalPct ?? 0) >= 60 ? '#f59e0b' : '#ef4444' }}>
+              {totalPct ?? satPct}%
             </span>
           </div>
-          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all"
-              style={{ width: `${Math.min(confPct + (hasPhotos ? Math.round((photoResult.confidence_boost || 0) * 100) : 0), 100)}%`,
-                       background: confPct >= 80 ? '#22c55e' : confPct >= 60 ? '#f59e0b' : '#ef4444' }} />
+          <div className="h-2 bg-slate-100 rounded-full overflow-hidden flex">
+            {/* Satellite baseline */}
+            <div className="h-full transition-all rounded-l-full"
+              style={{ width: `${satPct}%`, background: satPct >= 80 ? '#22c55e' : satPct >= 60 ? '#f59e0b' : '#ef4444' }} />
+            {/* Photo boost segment */}
+            {boostPct > 0 && (
+              <div className="h-full transition-all rounded-r-full"
+                style={{ width: `${boostPct}%`, background: '#34d399' }} />
+            )}
           </div>
-          {hasPhotos && (
-            <p className="text-[10px] text-emerald-600 mt-1">
-              +{Math.round((photoResult.confidence_boost || 0) * 100)}% from {photoResult.photos_analyzed} uploaded photo{photoResult.photos_analyzed !== 1 ? 's' : ''}
-            </p>
-          )}
+          <div className="flex items-center gap-3 mt-1">
+            <span className="text-[10px] text-slate-400">🛰 Satellite: {satPct}%</span>
+            {boostPct > 0 && <span className="text-[10px] text-emerald-600">📸 Photos: +{boostPct}%</span>}
+          </div>
         </div>
       )}
 
-      {hasPhotos && photoResult.pitch_estimate && (
-        <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5">
-          <div className="text-emerald-700 text-xs font-bold mb-0.5">📸 Photo Analysis</div>
-          <div className="text-emerald-600 text-[11px]">
-            Pitch confirmed: <strong>{photoResult.pitch_estimate}</strong> ({Math.round(photoResult.pitch_confidence * 100)}% confidence)
+      {/* Photo features detected */}
+      {hasPhotos && photoResult.features_detected?.length > 0 && (
+        <div className="bg-slate-50 rounded-xl px-3 py-2" style={cardStyle}>
+          <div className="text-slate-500 text-[10px] font-semibold mb-1">Features detected in photos</div>
+          <div className="flex flex-wrap gap-1">
+            {photoResult.features_detected.map((f: string) => (
+              <span key={f} className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-semibold capitalize border border-indigo-100">
+                {f.replace(/_/g, ' ')}
+              </span>
+            ))}
           </div>
-          {photoResult.features_detected?.length > 0 && (
-            <div className="text-emerald-500 text-[10px] mt-1">
-              Features: {photoResult.features_detected.join(' · ')}
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -575,19 +626,28 @@ export default function AerialReportPage() {
     setPhotos(prev => [...prev, ...accepted].slice(0, 20))
   }
 
-  const runPhotoAnalysis = async () => {
-    if (!photos.length) return
+  const runPhotoAnalysis = useCallback(async (currentPhotos?: File[]) => {
+    const ps = currentPhotos ?? photos
+    if (!ps.length) return
     setPhotoLoading(true)
     setPhotoError(null)
     try {
-      const pr = await api.roofing.analyzePhotos(photos, result?.address || address)
+      const pr = await api.roofing.analyzePhotos(ps, result?.address || address)
       setPhotoResult(pr)
     } catch (err: any) {
       setPhotoError(err.message || 'Photo analysis failed.')
     } finally {
       setPhotoLoading(false)
     }
-  }
+  }, [photos, result, address])
+
+  // Auto-run photo analysis when the aerial report loads if photos are already queued
+  useEffect(() => {
+    if (result && photos.length > 0 && !photoResult && !photoLoading) {
+      runPhotoAnalysis(photos)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result])
 
   const damageZones: DamageZone[] = damageResult?.vision_analysis?.zones || []
 
@@ -686,8 +746,11 @@ export default function AerialReportPage() {
       {/* Photo upload */}
       <div className="space-y-2">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-          Upload Photos <span className="text-slate-300 normal-case font-normal">(boosts accuracy + damage detection)</span>
+          Property Photos
         </label>
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-[10px] text-indigo-700 leading-relaxed">
+          📸 Photos refine pitch, stories, and features that satellite imagery can't resolve — and detect close-up damage invisible from orbit.
+        </div>
         <div
           className="border-2 border-dashed border-slate-200 rounded-xl p-3 cursor-pointer hover:border-indigo-300 transition-colors text-center"
           onClick={() => fileInputRef.current?.click()}
@@ -697,7 +760,7 @@ export default function AerialReportPage() {
           <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden"
             onChange={e => handlePhotos(e.target.files)} />
           <p className="text-slate-400 text-xs">Drop photos or click to upload</p>
-          <p className="text-slate-300 text-[10px]">Front · sides · rear · close-ups · up to 20</p>
+          <p className="text-slate-300 text-[10px]">Front · sides · rear · roof close-ups · up to 20</p>
         </div>
 
         {photos.length > 0 && (
@@ -712,12 +775,14 @@ export default function AerialReportPage() {
               ))}
               {photos.length > 8 && <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 font-bold">+{photos.length - 8}</div>}
             </div>
-            <button onClick={runPhotoAnalysis} disabled={photoLoading}
+            <button onClick={() => runPhotoAnalysis()} disabled={photoLoading}
               className="w-full py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
               style={{ background: photoLoading ? '#94a3b8' : 'linear-gradient(135deg,#059669,#047857)', color: 'white' }}>
               {photoLoading
-                ? <span className="flex items-center justify-center gap-1.5"><Spinner size={12} />Analyzing photos…</span>
-                : `📸 Analyze ${photos.length} Photo${photos.length > 1 ? 's' : ''}`}
+                ? <span className="flex items-center justify-center gap-1.5"><Spinner size={12} />Analyzing &amp; updating measurements…</span>
+                : photoResult
+                  ? `🔄 Re-analyze ${photos.length} Photo${photos.length > 1 ? 's' : ''}`
+                  : `📸 Analyze ${photos.length} Photo${photos.length > 1 ? 's' : ''} → Refine Measurements`}
             </button>
             {photoError && <p className="text-red-500 text-[10px] mt-1">{photoError}</p>}
           </div>
