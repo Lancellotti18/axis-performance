@@ -32,10 +32,11 @@ from app.core.supabase import get_supabase
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-# Limit concurrent Gemini image-gen calls to avoid hitting free-tier rate limits.
-# Gemini allows ~10 RPM on the free tier; with 10 images firing simultaneously
-# requests 2-10 get rate-limited and fall back to Pollinations (which doesn't load).
-_gemini_sem = asyncio.Semaphore(4)
+# Serialize Gemini image-gen calls to stay under the free-tier rate limit.
+# Gemini free tier = 10 RPM. With semaphore(1) and ~10s per image we hit ~6 RPM —
+# safely under the cap. Concurrent calls (semaphore>1) cause 429s that fall back to
+# Pollinations (cloud IPs blocked) so only 1 image ever loads.
+_gemini_sem = asyncio.Semaphore(1)
 
 POLLINATIONS_API = "https://image.pollinations.ai/prompt"
 HF_API           = "https://router.huggingface.co/hf-inference/models"
