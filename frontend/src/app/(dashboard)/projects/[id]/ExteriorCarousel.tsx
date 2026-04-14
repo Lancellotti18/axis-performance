@@ -104,13 +104,21 @@ export default function ExteriorCarousel({ views }: Props) {
             onError={() => setImgErrors(prev => ({ ...prev, [idx]: true }))}
           />
         ) : !current.url || imgErrors[idx] ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900 text-slate-400">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <rect x="3" y="3" width="18" height="14" rx="2"/>
               <path d="M3 9l4-4 4 4 4-4 4 4"/>
             </svg>
             <span className="text-sm">{label} — render unavailable</span>
-            <span className="text-xs text-slate-500">Re-generate to retry</span>
+            {imgErrors[idx] && (
+              <button
+                onClick={() => setImgErrors(prev => { const n = {...prev}; delete n[idx]; return n })}
+                className="mt-1 px-3 py-1 rounded-lg text-xs font-semibold text-white"
+                style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
+              >
+                ↺ Retry
+              </button>
+            )}
           </div>
         ) : null}
 
