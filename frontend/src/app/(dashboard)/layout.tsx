@@ -141,19 +141,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }, 1000)
     }, 4000)
 
-    fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(90000) })
+    // AbortSignal.timeout() is not supported in Safari < 16.4 — use AbortController instead
+    const abortCtrl  = new AbortController()
+    const abortTimer = setTimeout(() => abortCtrl.abort(), 90000)
+
+    fetch(`${API_BASE}/health`, { signal: abortCtrl.signal })
       .then(() => {
+        clearTimeout(abortTimer)
         clearTimeout(bannerTimer)
         clearInterval(countInterval)
         setServerWaking(false)
       })
       .catch(() => {
+        clearTimeout(abortTimer)
         clearTimeout(bannerTimer)
         clearInterval(countInterval)
         setServerWaking(false)
       })
 
-    return () => { clearTimeout(bannerTimer); clearInterval(countInterval) }
+    return () => { clearTimeout(abortTimer); clearTimeout(bannerTimer); clearInterval(countInterval) }
   }, [router])
 
   async function handleSignOut() {

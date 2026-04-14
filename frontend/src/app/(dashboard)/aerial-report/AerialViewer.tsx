@@ -77,7 +77,7 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
     setPan({ x: (cW - IMG_W) / 2, y: (cH - IMG_H) / 2 })
   }, [])
 
-  // Scroll-to-zoom (passive:false for Safari)
+  // Scroll-to-zoom (passive:false required for Safari + Firefox)
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
@@ -88,6 +88,62 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
+  }, [zoomAt])
+
+  // Touch pan + pinch-to-zoom (iOS Safari, Android Chrome)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+
+    let touchDragging = false
+    let lastTX = 0, lastTY = 0, lastDist = 0
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        touchDragging = true
+        lastTX = e.touches[0].clientX
+        lastTY = e.touches[0].clientY
+      } else if (e.touches.length === 2) {
+        touchDragging = false
+        const dx = e.touches[0].clientX - e.touches[1].clientX
+        const dy = e.touches[0].clientY - e.touches[1].clientY
+        lastDist = Math.sqrt(dx * dx + dy * dy)
+      }
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault()
+      if (e.touches.length === 1 && touchDragging) {
+        const dx = e.touches[0].clientX - lastTX
+        const dy = e.touches[0].clientY - lastTY
+        setPan(p => ({ x: p.x + dx, y: p.y + dy }))
+        lastTX = e.touches[0].clientX
+        lastTY = e.touches[0].clientY
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX
+        const dy = e.touches[0].clientY - e.touches[1].clientY
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (lastDist > 0) {
+          const factor = dist / lastDist
+          const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2
+          const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2
+          const rect = el.getBoundingClientRect()
+          zoomAt(factor, midX - rect.left, midY - rect.top)
+        }
+        lastDist = dist
+      }
+    }
+
+    const onTouchEnd = () => { touchDragging = false; lastDist = 0 }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove',  onTouchMove,  { passive: false })
+    el.addEventListener('touchend',   onTouchEnd)
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove',  onTouchMove)
+      el.removeEventListener('touchend',   onTouchEnd)
+    }
   }, [zoomAt])
 
   // Drag-to-pan
@@ -225,10 +281,11 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
       <div
         ref={wrapRef}
         style={{
-          position: 'relative',
-          height:   520,
-          overflow: 'hidden',
-          cursor:   measuring ? 'crosshair' : 'grab',
+          position:    'relative',
+          height:      520,
+          overflow:    'hidden',
+          cursor:      measuring ? 'crosshair' : 'grab',
+          touchAction: 'none',  // prevent iOS scroll hijacking during pan/pinch
         }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
@@ -316,12 +373,12 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
           style={{ pointerEvents: 'none' }}
         >
           <div className="px-2.5 py-1 rounded-full text-[10px] font-bold text-slate-300"
-            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}>
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
             {Math.round(zoom * 100)}%
           </div>
           {/* Scale bar */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
-            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}>
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
             <div className="relative flex items-center" style={{ width: Math.min(scaleBarViewPx, 120), height: 10 }}>
               <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-white/50" />
               <div className="absolute left-0 w-px h-2.5 bg-white/70" />
@@ -334,7 +391,7 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
         {/* Measure result badge bottom-right */}
         {distFt !== null && (
           <div className="absolute bottom-3 right-3 px-3 py-1.5 rounded-xl text-sm font-bold text-white"
-            style={{ background: 'rgba(245,158,11,0.93)', backdropFilter: 'blur(6px)', pointerEvents: 'none' }}>
+            style={{ background: 'rgba(245,158,11,0.93)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', pointerEvents: 'none' }}>
             📏 {fmtDist(distFt)}
           </div>
         )}
@@ -343,10 +400,11 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
         <div
           className="absolute text-[10px] font-bold text-indigo-300 px-2 py-0.5 rounded-full"
           style={{
-            background:  'rgba(99,102,241,0.25)',
-            border:      '1px solid rgba(99,102,241,0.4)',
-            backdropFilter: 'blur(4px)',
-            pointerEvents:  'none',
+            background:          'rgba(99,102,241,0.25)',
+            border:              '1px solid rgba(99,102,241,0.4)',
+            backdropFilter:      'blur(4px)',
+            WebkitBackdropFilter:'blur(4px)',
+            pointerEvents:       'none',
             // Position: top of the outer ring (r=28) in viewport coords
             left: pan.x + hx * zoom - 30,
             top:  pan.y + (hy - 28) * zoom - 24,

@@ -5,7 +5,7 @@
  * arrow navigation, dot indicators, and keyboard support.
  */
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 
 interface ExteriorView {
   angle: string
@@ -26,11 +26,12 @@ const ANGLE_LABEL: Record<string, string> = {
 
 export default function ExteriorCarousel({ views }: Props) {
   const [idx, setIdx] = useState(0)
+  const imgRef = useRef<HTMLDivElement>(null)
 
   const prev = useCallback(() => setIdx(i => (i === 0 ? views.length - 1 : i - 1)), [views.length])
   const next = useCallback(() => setIdx(i => (i === views.length - 1 ? 0 : i + 1)), [views.length])
 
-  // Keyboard navigation
+  // Keyboard navigation (all browsers)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft')  prev()
@@ -38,6 +39,24 @@ export default function ExteriorCarousel({ views }: Props) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [prev, next])
+
+  // Touch swipe navigation (iOS Safari, Android Chrome)
+  useEffect(() => {
+    const el = imgRef.current
+    if (!el) return
+    let startX = 0
+    const onTouchStart = (e: TouchEvent) => { startX = e.touches[0].clientX }
+    const onTouchEnd   = (e: TouchEvent) => {
+      const dx = e.changedTouches[0].clientX - startX
+      if (Math.abs(dx) > 40) dx < 0 ? next() : prev()
+    }
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchend',   onTouchEnd,   { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchend',   onTouchEnd)
+    }
   }, [prev, next])
 
   if (!views.length) return null
@@ -60,7 +79,7 @@ export default function ExteriorCarousel({ views }: Props) {
       </div>
 
       {/* Image */}
-      <div className="relative bg-slate-100 select-none" style={{ aspectRatio: '16/9' }}>
+      <div ref={imgRef} className="relative bg-slate-100 select-none" style={{ aspectRatio: '16/9' }}>
         {current.url ? (
           <img
             src={current.url}
@@ -81,7 +100,7 @@ export default function ExteriorCarousel({ views }: Props) {
         {/* Angle badge */}
         <div
           className="absolute bottom-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-white"
-          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
         >
           {label}
         </div>
@@ -94,7 +113,7 @@ export default function ExteriorCarousel({ views }: Props) {
             rel="noreferrer"
             download={`exterior_${current.angle}.jpg`}
             className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full text-xs font-semibold text-white"
-            style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(6px)' }}
+            style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
             onClick={e => e.stopPropagation()}
           >
             ↓ Save
@@ -106,7 +125,7 @@ export default function ExteriorCarousel({ views }: Props) {
           onClick={prev}
           aria-label="Previous view"
           className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white text-xl font-bold transition-all hover:scale-110"
-          style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
+          style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
         >
           ‹
         </button>
@@ -116,7 +135,7 @@ export default function ExteriorCarousel({ views }: Props) {
           onClick={next}
           aria-label="Next view"
           className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white text-xl font-bold transition-all hover:scale-110"
-          style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
+          style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
         >
           ›
         </button>
