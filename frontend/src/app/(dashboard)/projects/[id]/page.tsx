@@ -6,8 +6,9 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { ComplianceCheck, ComplianceItem, ComplianceSeverity } from '@/types'
 import dynamic from 'next/dynamic'
-const RenderViewer = dynamic(() => import('./RenderViewer'), { ssr: false })
-const ExteriorCarousel = dynamic(() => import('./ExteriorCarousel'), { ssr: false })
+const RenderViewer      = dynamic(() => import('./RenderViewer'),      { ssr: false })
+const ExteriorCarousel  = dynamic(() => import('./ExteriorCarousel'),  { ssr: false })
+const AerialViewer      = dynamic(() => import('../../aerial-report/AerialViewer'), { ssr: false })
 import RoofingSection from './RoofingSection'
 
 type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'photos' | 'compliance' | 'permits' | 'roofing'
@@ -1522,54 +1523,38 @@ Thank you for your time.`
                             </div>
                           </div>
 
-                          {/* Satellite image with measurement overlay */}
+                          {/* Satellite image — interactive viewer with zoom, pan, highlight, measure */}
                           {aerialResult.satellite_image_url && (
-                            <div className="relative rounded-xl overflow-hidden mb-3 border border-slate-200" style={{ background: '#0f172a' }}>
-                              <img
-                                src={aerialResult.satellite_image_url}
-                                alt={`Satellite view of ${aerialResult.address}`}
-                                className="w-full object-cover"
-                                style={{ display: 'block', minHeight: 180 }}
-                                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                            <div className="mb-3">
+                              <AerialViewer
+                                imageUrl={aerialResult.satellite_image_url}
+                                lat={aerialResult.lat ?? null}
+                                address={aerialResult.address}
                               />
-                              {/* Dark gradient overlay at bottom */}
-                              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '55%', background: 'linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%)' }} />
+                            </div>
+                          )}
 
-                              {/* Address label top-left */}
-                              <div style={{ position: 'absolute', top: 10, left: 10 }}>
-                                <div style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)', color: '#fff', fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 6, whiteSpace: 'nowrap' }}>
-                                  📍 {aerialResult.address}
-                                </div>
+                          {/* Measurement badges (shown below the viewer when satellite image present) */}
+                          {aerialResult.satellite_image_url && (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                              <div style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', color: '#4f46e5', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{(aerialResult.total_sqft || 0).toLocaleString()}</div>
+                                <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.7, marginTop: 2 }}>ROOF SQFT</div>
                               </div>
-
-                              {/* Source badge top-right */}
-                              <div style={{ position: 'absolute', top: 10, right: 10 }}>
-                                <div style={{ background: isSatellite ? 'rgba(16,185,129,0.85)' : 'rgba(245,158,11,0.85)', color: '#fff', fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 6, whiteSpace: 'nowrap' }}>
-                                  {isSatellite ? '🛰 Google Solar' : '📋 Estimated'}
-                                </div>
+                              <div style={{ background: 'rgba(15,23,42,0.06)', border: '1px solid rgba(15,23,42,0.12)', color: '#334155', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.squares || '—'}</div>
+                                <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.6, marginTop: 2 }}>SQUARES</div>
                               </div>
-
-                              {/* Measurement badges bottom overlay */}
-                              <div style={{ position: 'absolute', bottom: 10, left: 10, right: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                <div style={{ background: 'rgba(99,102,241,0.92)', backdropFilter: 'blur(6px)', color: '#fff', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
-                                  <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{(aerialResult.total_sqft || 0).toLocaleString()}</div>
-                                  <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>ROOF SQFT</div>
-                                </div>
-                                <div style={{ background: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(6px)', color: '#fff', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
-                                  <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.squares || '—'}</div>
-                                  <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>SQUARES</div>
-                                </div>
-                                <div style={{ background: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(6px)', color: '#fff', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
-                                  <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.pitch || '—'}</div>
-                                  <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>PITCH</div>
-                                </div>
-                                {aerialResult.roof_segments > 0 && (
-                                  <div style={{ background: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(6px)', color: '#fff', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
-                                    <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.roof_segments}</div>
-                                    <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>SEGMENTS</div>
-                                  </div>
-                                )}
+                              <div style={{ background: 'rgba(15,23,42,0.06)', border: '1px solid rgba(15,23,42,0.12)', color: '#334155', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.pitch || '—'}</div>
+                                <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.6, marginTop: 2 }}>PITCH</div>
                               </div>
+                              {aerialResult.roof_segments > 0 && (
+                                <div style={{ background: 'rgba(15,23,42,0.06)', border: '1px solid rgba(15,23,42,0.12)', color: '#334155', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.roof_segments}</div>
+                                  <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.6, marginTop: 2 }}>SEGMENTS</div>
+                                </div>
+                              )}
                             </div>
                           )}
 
