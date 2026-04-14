@@ -97,7 +97,7 @@ def _satellite_image_url(lat: float, lng: float) -> str:
     return (
         "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export"
         f"?bbox={west:.6f},{south:.6f},{east:.6f},{north:.6f}"
-        "&bboxSR=4326&imageSR=4326&size=1280,840&format=png32&f=image"
+        "&bboxSR=4326&imageSR=4326&size=1280,840&format=png&f=image"
     )
 
 

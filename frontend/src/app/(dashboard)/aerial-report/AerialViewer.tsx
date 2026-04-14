@@ -92,12 +92,25 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
     }
   }, [])
 
-  // Center the image in the viewport on first render
+  // Center the image once the flex container has a real size.
+  // A plain useEffect runs before the browser finishes flex layout, returning
+  // width=0/height=0, which would pan the image completely off-screen.
+  // ResizeObserver fires after layout, guaranteeing real dimensions.
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
-    const { width: cW, height: cH } = el.getBoundingClientRect()
-    setPan(clampPan({ x: (cW - IMG_W) / 2, y: (cH - IMG_H) / 2 }, 1))
+    let centered = false
+    const center = () => {
+      if (centered) return
+      const { width: cW, height: cH } = el.getBoundingClientRect()
+      if (cW <= 0 || cH <= 0) return
+      centered = true
+      setPan(clampPan({ x: (cW - IMG_W) / 2, y: (cH - IMG_H) / 2 }, 1))
+    }
+    center()  // try immediately in case element already has size
+    const ro = new ResizeObserver(center)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [clampPan])
 
   // Zoom centred on a given viewport point
@@ -370,6 +383,11 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
             height={IMG_NATIVE_H}
             draggable={false}
             style={{ display: 'block', width: IMG_W, height: IMG_H, imageRendering: 'auto' }}
+            onError={e => {
+              const img = e.currentTarget
+              img.style.opacity = '0.15'
+              img.style.filter = 'grayscale(1)'
+            }}
           />
 
           {/* SVG overlay — same coordinate space as image */}

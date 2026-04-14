@@ -6,14 +6,62 @@ import { api } from '@/lib/api'
 import type { DamageZone } from './AerialViewer'
 
 const AerialViewer = dynamic(() => import('./AerialViewer'), { ssr: false })
-const RoofModel3D  = dynamic(() => import('./RoofModel3D'),  { ssr: false })
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── US States + Census FIPS codes ─────────────────────────────────────────────
 
-type ViewMode     = 'satellite' | '3d'
-type Material3D   = 'asphalt' | 'metal' | 'tile'
-type Model3DMode  = 'solid' | 'wireframe' | 'measurements'
-type MobileTab    = 'input' | 'view' | 'analysis'
+const US_STATES = [
+  { abbr: 'AL', name: 'Alabama',            fips: '01' },
+  { abbr: 'AK', name: 'Alaska',             fips: '02' },
+  { abbr: 'AZ', name: 'Arizona',            fips: '04' },
+  { abbr: 'AR', name: 'Arkansas',           fips: '05' },
+  { abbr: 'CA', name: 'California',         fips: '06' },
+  { abbr: 'CO', name: 'Colorado',           fips: '08' },
+  { abbr: 'CT', name: 'Connecticut',        fips: '09' },
+  { abbr: 'DE', name: 'Delaware',           fips: '10' },
+  { abbr: 'DC', name: 'District of Columbia', fips: '11' },
+  { abbr: 'FL', name: 'Florida',            fips: '12' },
+  { abbr: 'GA', name: 'Georgia',            fips: '13' },
+  { abbr: 'HI', name: 'Hawaii',             fips: '15' },
+  { abbr: 'ID', name: 'Idaho',              fips: '16' },
+  { abbr: 'IL', name: 'Illinois',           fips: '17' },
+  { abbr: 'IN', name: 'Indiana',            fips: '18' },
+  { abbr: 'IA', name: 'Iowa',               fips: '19' },
+  { abbr: 'KS', name: 'Kansas',             fips: '20' },
+  { abbr: 'KY', name: 'Kentucky',           fips: '21' },
+  { abbr: 'LA', name: 'Louisiana',          fips: '22' },
+  { abbr: 'ME', name: 'Maine',              fips: '23' },
+  { abbr: 'MD', name: 'Maryland',           fips: '24' },
+  { abbr: 'MA', name: 'Massachusetts',      fips: '25' },
+  { abbr: 'MI', name: 'Michigan',           fips: '26' },
+  { abbr: 'MN', name: 'Minnesota',          fips: '27' },
+  { abbr: 'MS', name: 'Mississippi',        fips: '28' },
+  { abbr: 'MO', name: 'Missouri',           fips: '29' },
+  { abbr: 'MT', name: 'Montana',            fips: '30' },
+  { abbr: 'NE', name: 'Nebraska',           fips: '31' },
+  { abbr: 'NV', name: 'Nevada',             fips: '32' },
+  { abbr: 'NH', name: 'New Hampshire',      fips: '33' },
+  { abbr: 'NJ', name: 'New Jersey',         fips: '34' },
+  { abbr: 'NM', name: 'New Mexico',         fips: '35' },
+  { abbr: 'NY', name: 'New York',           fips: '36' },
+  { abbr: 'NC', name: 'North Carolina',     fips: '37' },
+  { abbr: 'ND', name: 'North Dakota',       fips: '38' },
+  { abbr: 'OH', name: 'Ohio',               fips: '39' },
+  { abbr: 'OK', name: 'Oklahoma',           fips: '40' },
+  { abbr: 'OR', name: 'Oregon',             fips: '41' },
+  { abbr: 'PA', name: 'Pennsylvania',       fips: '42' },
+  { abbr: 'RI', name: 'Rhode Island',       fips: '44' },
+  { abbr: 'SC', name: 'South Carolina',     fips: '45' },
+  { abbr: 'SD', name: 'South Dakota',       fips: '46' },
+  { abbr: 'TN', name: 'Tennessee',          fips: '47' },
+  { abbr: 'TX', name: 'Texas',              fips: '48' },
+  { abbr: 'UT', name: 'Utah',               fips: '49' },
+  { abbr: 'VT', name: 'Vermont',            fips: '50' },
+  { abbr: 'VA', name: 'Virginia',           fips: '51' },
+  { abbr: 'WA', name: 'Washington',         fips: '53' },
+  { abbr: 'WV', name: 'West Virginia',      fips: '54' },
+  { abbr: 'WI', name: 'Wisconsin',          fips: '55' },
+  { abbr: 'WY', name: 'Wyoming',            fips: '56' },
+]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,6 +75,22 @@ const RISK_COLOR: Record<string, string> = { low: '#22c55e', medium: '#f59e0b', 
 const ZONE_ICON: Record<string, string> = {
   missing_shingles: '🔴', staining: '🟠', debris: '🟡',
   structural_damage: '⛔', discoloration: '🟠', moss_algae: '🟢',
+}
+
+const selectStyle: React.CSSProperties = {
+  width: '100%',
+  border: '1px solid #e2e8f0',
+  borderRadius: 12,
+  padding: '10px 12px',
+  fontSize: 13,
+  color: '#334155',
+  background: 'white',
+  outline: 'none',
+  appearance: 'none',
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 12px center',
+  paddingRight: 32,
 }
 
 function SectionHeader({ title, badge }: { title: string; badge?: string }) {
@@ -58,7 +122,6 @@ function MeasurementsPanel({ result, photoResult }: { result: any; photoResult: 
     <div className="space-y-3">
       <SectionHeader title="Roof Measurements" badge={result.source || 'AI Estimate'} />
 
-      {/* Primary metrics */}
       <div className="grid grid-cols-2 gap-2">
         {[
           { label: 'Roof Sqft',  value: (result.total_sqft || 0).toLocaleString() },
@@ -73,22 +136,19 @@ function MeasurementsPanel({ result, photoResult }: { result: any; photoResult: 
         ))}
       </div>
 
-      {/* Secondary */}
-      {(result.stories || result.house_sqft || result.year_built) && (
+      {(result.stories || result.house_sqft) && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 px-1">
-          {result.stories   && <span><span className="text-slate-400">Stories</span> {result.stories}</span>}
+          {result.stories    && <span><span className="text-slate-400">Stories</span> {result.stories}</span>}
           {result.house_sqft && <span><span className="text-slate-400">House sqft</span> {result.house_sqft.toLocaleString()}</span>}
-          {result.year_built && <span><span className="text-slate-400">Built</span> {result.year_built}</span>}
         </div>
       )}
 
-      {/* Confidence */}
       {confPct !== null && (
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] text-slate-400 font-semibold">Measurement Confidence</span>
             <span className="text-xs font-bold" style={{ color: confPct >= 80 ? '#22c55e' : confPct >= 60 ? '#f59e0b' : '#ef4444' }}>
-              {confPct + (hasPhotos ? Math.round((photoResult.confidence_boost || 0) * 100) : 0)}%
+              {Math.min(confPct + (hasPhotos ? Math.round((photoResult.confidence_boost || 0) * 100) : 0), 100)}%
             </span>
           </div>
           <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -104,7 +164,6 @@ function MeasurementsPanel({ result, photoResult }: { result: any; photoResult: 
         </div>
       )}
 
-      {/* Photo analysis pitch */}
       {hasPhotos && photoResult.pitch_estimate && (
         <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5">
           <div className="text-emerald-700 text-xs font-bold mb-0.5">📸 Photo Analysis</div>
@@ -131,7 +190,6 @@ function DamagePanel({ damageResult, loading }: { damageResult: any; loading: bo
       </div>
     </div>
   )
-
   if (!damageResult) return null
 
   const va = damageResult.vision_analysis || {}
@@ -147,18 +205,16 @@ function DamagePanel({ damageResult, loading }: { damageResult: any; loading: bo
         <p className="text-slate-400 text-xs">{va.analyst_notes || 'Vision analysis unavailable for this image.'}</p>
       ) : (
         <>
-          {/* Condition score */}
           <div className="flex items-center gap-3 bg-slate-50 rounded-xl px-3 py-2.5" style={cardStyle}>
             <div className="text-2xl font-black leading-none" style={{ color: CONDITION_COLOR(score) }}>
               {score !== null ? score : '—'}
             </div>
             <div>
-              <div className="text-slate-700 text-xs font-bold capitalize">{condition.replace('_', ' ')}</div>
-              <div className="text-slate-400 text-[10px]">Condition score out of 100</div>
+              <div className="text-slate-700 text-xs font-bold capitalize">{condition.replace(/_/g, ' ')}</div>
+              <div className="text-slate-400 text-[10px]">Condition score / 100</div>
             </div>
           </div>
 
-          {/* Damage zones */}
           {zones.length === 0 ? (
             <p className="text-emerald-600 text-xs bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100">
               ✓ No visible damage detected in satellite imagery
@@ -169,28 +225,22 @@ function DamagePanel({ damageResult, loading }: { damageResult: any; loading: bo
                 <div key={i} className="bg-red-50 border border-red-100 rounded-xl px-3 py-2">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span>{ZONE_ICON[z.type] || '⚠️'}</span>
-                    <span className="text-red-700 text-[11px] font-bold capitalize">{z.type.replace(/_/g,' ')}</span>
+                    <span className="text-red-700 text-[11px] font-bold capitalize">{z.type.replace(/_/g, ' ')}</span>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase ${z.severity === 'high' ? 'bg-red-200 text-red-800' : z.severity === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
                       {z.severity}
                     </span>
                     <span className="text-slate-400 text-[9px] ml-auto">{Math.round(z.confidence * 100)}% conf.</span>
                   </div>
                   <p className="text-red-600 text-[10px] leading-snug">{z.description}</p>
-                  {z.location_description && (
-                    <p className="text-slate-400 text-[10px] mt-0.5">📍 {z.location_description}</p>
-                  )}
+                  {z.location_description && <p className="text-slate-400 text-[10px] mt-0.5">📍 {z.location_description}</p>}
                 </div>
               ))}
             </div>
           )}
 
-          {/* Analyst note */}
-          {va.analyst_notes && (
-            <p className="text-slate-400 text-[10px] italic">{va.analyst_notes}</p>
-          )}
-
+          {va.analyst_notes && <p className="text-slate-400 text-[10px] italic">{va.analyst_notes}</p>}
           <p className="text-slate-400 text-[10px]">
-            ⚠ Satellite imagery at ≈0.6 m/pixel. Major damage visible; individual shingles not resolvable. Physical inspection recommended.
+            ⚠ Satellite at ≈0.3 m/px. Major damage visible; individual shingles not resolvable. Physical inspection recommended.
           </p>
         </>
       )}
@@ -230,7 +280,7 @@ function WeatherRiskPanel({ damageResult, loading }: { damageResult: any; loadin
           {events.map((ev: any, i: number) => (
             <div key={i} className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
               <div className="flex items-center gap-2">
-                <span className="text-amber-700 text-[11px] font-bold capitalize">{ev.type?.replace(/_/g,' ')}</span>
+                <span className="text-amber-700 text-[11px] font-bold capitalize">{ev.type?.replace(/_/g, ' ')}</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${ev.severity === 'high' ? 'bg-red-100 text-red-700' : ev.severity === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
                   {ev.severity}
                 </span>
@@ -244,9 +294,8 @@ function WeatherRiskPanel({ damageResult, loading }: { damageResult: any; loadin
       )}
 
       {wr.note && <p className="text-slate-400 text-[10px]">{wr.note}</p>}
-
       <p className="text-slate-400 text-[10px]">
-        Data from web search of NOAA records and local news. For complete official records visit ncdc.noaa.gov/stormevents
+        Data from NOAA Storm Events & local news. Full records: ncdc.noaa.gov/stormevents
       </p>
     </div>
   )
@@ -263,7 +312,7 @@ function PhotoDamagePanel({ photoResult }: { photoResult: any }) {
       {flags.map((f: any, i: number) => (
         <div key={i} className="bg-orange-50 border border-orange-100 rounded-xl px-3 py-2">
           <div className="flex items-center gap-2 mb-0.5">
-            <span className="text-orange-700 text-[11px] font-bold capitalize">{f.type?.replace(/_/g,' ')}</span>
+            <span className="text-orange-700 text-[11px] font-bold capitalize">{f.type?.replace(/_/g, ' ')}</span>
             <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${f.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{f.severity}</span>
             <span className="text-slate-400 text-[9px] ml-auto">{Math.round((f.confidence || 0) * 100)}% conf.</span>
           </div>
@@ -290,7 +339,6 @@ function ReportModal({ result, damageResult, photoResult, type, onClose }: {
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-        {/* Report header */}
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
           <div>
             <div className="text-slate-800 font-bold text-base">
@@ -306,8 +354,7 @@ function ReportModal({ result, damageResult, photoResult, type, onClose }: {
           </div>
         </div>
 
-        <div className="px-6 py-5 space-y-6" id="report-content">
-          {/* Property */}
+        <div className="px-6 py-5 space-y-6">
           <div>
             <h3 className="text-slate-700 font-bold text-sm mb-2">Property Information</h3>
             <table className="w-full text-xs text-slate-600 border-collapse">
@@ -327,7 +374,6 @@ function ReportModal({ result, damageResult, photoResult, type, onClose }: {
             </table>
           </div>
 
-          {/* Measurements */}
           <div>
             <h3 className="text-slate-700 font-bold text-sm mb-2">Roof Measurements</h3>
             <table className="w-full text-xs text-slate-600 border-collapse">
@@ -337,7 +383,7 @@ function ReportModal({ result, damageResult, photoResult, type, onClose }: {
                   ['Roofing Squares', `${result.squares || '—'} squares`],
                   ['Pitch', result.pitch || '—'],
                   ['Roof Segments', `${result.roof_segments || '—'}`],
-                  ...(result.stories ? [['Stories', `${result.stories}`]] : []),
+                  ...(result.stories    ? [['Stories', `${result.stories}`]] : []),
                   ...(result.house_sqft ? [['House Sqft', `${result.house_sqft.toLocaleString()} sq ft`]] : []),
                 ].map(([k, v]) => (
                   <tr key={k} className="border-b" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
@@ -349,7 +395,6 @@ function ReportModal({ result, damageResult, photoResult, type, onClose }: {
             </table>
           </div>
 
-          {/* Condition (contractor only) */}
           {type === 'contractor' && va.can_analyze && (
             <div>
               <h3 className="text-slate-700 font-bold text-sm mb-2">Condition Assessment — Satellite Vision AI</h3>
@@ -357,7 +402,7 @@ function ReportModal({ result, damageResult, photoResult, type, onClose }: {
                 <div className="text-2xl font-black" style={{ color: CONDITION_COLOR(va.condition_score) }}>
                   {va.condition_score ?? '—'}/100
                 </div>
-                <div className="text-slate-600 text-xs capitalize">{(va.overall_condition || '').replace('_', ' ')}</div>
+                <div className="text-slate-600 text-xs capitalize">{(va.overall_condition || '').replace(/_/g, ' ')}</div>
               </div>
               {zones.length === 0 ? (
                 <p className="text-emerald-700 text-xs bg-emerald-50 px-3 py-2 rounded-lg">No visible damage detected in satellite imagery.</p>
@@ -384,12 +429,11 @@ function ReportModal({ result, damageResult, photoResult, type, onClose }: {
                 </table>
               )}
               <p className="text-slate-400 text-[10px] mt-2 italic">
-                Satellite imagery at ≈0.6 m/pixel. Physical inspection required before material procurement.
+                Satellite at ≈0.3 m/px. Physical inspection required before material procurement.
               </p>
             </div>
           )}
 
-          {/* Weather risk (contractor) */}
           {type === 'contractor' && wr.events_found && (
             <div>
               <h3 className="text-slate-700 font-bold text-sm mb-2">Weather Risk History</h3>
@@ -399,17 +443,15 @@ function ReportModal({ result, damageResult, photoResult, type, onClose }: {
               </div>
               {(wr.events || []).map((ev: any, i: number) => (
                 <div key={i} className="text-xs text-slate-600 mb-1">
-                  <strong>{ev.date}</strong> — {ev.type?.replace(/_/g,' ')} ({ev.severity}) — {ev.description} {ev.source && `[${ev.source}]`}
+                  <strong>{ev.date}</strong> — {ev.type?.replace(/_/g, ' ')} ({ev.severity}) — {ev.description} {ev.source && `[${ev.source}]`}
                 </div>
               ))}
             </div>
           )}
 
-          {/* Disclaimer */}
           <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700 leading-relaxed">
             <strong>Disclaimer:</strong> Measurements derived from {result.source || 'AI analysis of satellite imagery and property records'}.
             All figures are estimates for planning purposes. Verify with physical inspection before material procurement.
-            Damage assessment based on satellite imagery at ≈0.6 m/pixel — not a substitute for professional inspection.
           </div>
         </div>
       </div>
@@ -419,14 +461,24 @@ function ReportModal({ result, damageResult, photoResult, type, onClose }: {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function AerialReportPage() {
-  // Core report state
-  const [address,   setAddress]   = useState('')
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState<string | null>(null)
-  const [result,    setResult]    = useState<any>(null)
+type MobileTab = 'input' | 'view' | 'analysis'
 
-  // Damage analysis (auto-triggered)
+export default function AerialReportPage() {
+  // Location selector state
+  const [locState,   setLocState]   = useState('')
+  const [locCounty,  setLocCounty]  = useState('')
+  const [locZip,     setLocZip]     = useState('')
+  const [locAddress, setLocAddress] = useState('')
+  const [counties,   setCounties]   = useState<string[]>([])
+  const [countiesLoading, setCountiesLoading] = useState(false)
+
+  // Report state
+  const [address,  setAddress]  = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+  const [result,   setResult]   = useState<any>(null)
+
+  // Damage analysis
   const [damageLoading, setDamageLoading] = useState(false)
   const [damageResult,  setDamageResult]  = useState<any>(null)
 
@@ -437,11 +489,6 @@ export default function AerialReportPage() {
   const [photoError,   setPhotoError]   = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // View mode
-  const [viewMode,   setViewMode]   = useState<ViewMode>('satellite')
-  const [mat3d,      setMat3d]      = useState<Material3D>('asphalt')
-  const [model3dMode, setModel3dMode] = useState<Model3DMode>('solid')
-
   // Report modal
   const [reportType,    setReportType]    = useState<'contractor' | 'customer'>('contractor')
   const [reportVisible, setReportVisible] = useState(false)
@@ -449,7 +496,41 @@ export default function AerialReportPage() {
   // Mobile tab
   const [mobileTab, setMobileTab] = useState<MobileTab>('view')
 
-  // ── Actions ────────────────────────────────────────────────────────────────
+  // ── County loader (Census Bureau — free, no key) ────────────────────────────
+
+  useEffect(() => {
+    if (!locState) { setCounties([]); setLocCounty(''); return }
+    const st = US_STATES.find(s => s.abbr === locState)
+    if (!st) return
+    setCountiesLoading(true)
+    setLocCounty('')
+    setCounties([])
+    fetch(`https://api.census.gov/data/2020/dec/pl?get=NAME&for=county:*&in=state:${st.fips}`)
+      .then(r => r.json())
+      .then((rows: string[][]) => {
+        const names = rows.slice(1)
+          .map(row => row[0].replace(/,\s*.+$/, ''))   // strip ", StateName" suffix
+          .sort()
+        setCounties(names)
+      })
+      .catch(() => setCounties([]))
+      .finally(() => setCountiesLoading(false))
+  }, [locState])
+
+  // ── Address builder ─────────────────────────────────────────────────────────
+
+  const buildAddress = useCallback(() => {
+    const parts: string[] = []
+    if (locAddress.trim()) parts.push(locAddress.trim())
+    if (locCounty.trim())  parts.push(locCounty.trim())
+    if (locState)          parts.push(locState)
+    if (locZip.trim())     parts.push(locZip.trim())
+    return parts.join(', ')
+  }, [locAddress, locCounty, locState, locZip])
+
+  const canSubmit = !!locState && !loading
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
 
   const runDamageAnalysis = useCallback(async (res: any) => {
     if (!res?.satellite_image_url) return
@@ -460,27 +541,29 @@ export default function AerialReportPage() {
       )
       setDamageResult(dr)
     } catch {
-      setDamageResult({ vision_analysis: { can_analyze: false, zones: [], analyst_notes: 'Analysis failed.' }, weather_risk: { events_found: false } })
+      setDamageResult({ vision_analysis: { can_analyze: false, zones: [], analyst_notes: 'Analysis unavailable.' }, weather_risk: { events_found: false } })
     } finally {
       setDamageLoading(false)
     }
   }, [address])
 
   const handleSubmit = async () => {
-    if (!address.trim() || loading) return
+    if (!canSubmit) return
+    const addr = buildAddress()
+    if (!addr.trim()) return
+    setAddress(addr)
     setLoading(true)
     setError(null)
     setResult(null)
     setDamageResult(null)
     setPhotoResult(null)
-    setViewMode('satellite')
     try {
-      const res = await api.roofing.aerialReportStandalone(address.trim())
+      const res = await api.roofing.aerialReportStandalone(addr.trim())
       setResult(res)
       setMobileTab('view')
-      runDamageAnalysis(res)  // background — non-blocking
+      runDamageAnalysis(res)
     } catch (err: any) {
-      setError(err.message || 'Aerial report failed. Check the address and try again.')
+      setError(err.message || 'Aerial report failed. Check the location and try again.')
     } finally {
       setLoading(false)
     }
@@ -508,27 +591,90 @@ export default function AerialReportPage() {
 
   const damageZones: DamageZone[] = damageResult?.vision_analysis?.zones || []
 
-  // ── Layout: Left panel ─────────────────────────────────────────────────────
+  // ── Left panel ──────────────────────────────────────────────────────────────
 
   const leftPanel = (
-    <div className="h-full overflow-y-auto p-4 space-y-4" style={{ background: 'rgba(255,255,255,0.97)' }}>
+    <div className="h-full overflow-y-auto p-4 space-y-5" style={{ background: 'rgba(255,255,255,0.97)' }}>
 
-      {/* Address input */}
-      <div className="space-y-2">
-        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Property Address</label>
-        <input
-          type="text"
-          value={address}
-          onChange={e => setAddress(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-          placeholder="123 Main St, Austin, TX 78701"
-          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        />
+      {/* Location selector */}
+      <div className="space-y-3">
+        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Property Location</label>
+
+        {/* State */}
+        <div>
+          <div className="text-[10px] text-slate-400 mb-1 font-semibold">State</div>
+          <select
+            value={locState}
+            onChange={e => setLocState(e.target.value)}
+            style={selectStyle}
+          >
+            <option value="">Select state…</option>
+            {US_STATES.map(s => (
+              <option key={s.abbr} value={s.abbr}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* County */}
+        <div>
+          <div className="text-[10px] text-slate-400 mb-1 font-semibold flex items-center gap-1.5">
+            County {countiesLoading && <Spinner size={10} />}
+          </div>
+          <select
+            value={locCounty}
+            onChange={e => setLocCounty(e.target.value)}
+            disabled={!locState || countiesLoading}
+            style={{ ...selectStyle, opacity: !locState ? 0.5 : 1, cursor: !locState ? 'not-allowed' : 'pointer' }}
+          >
+            <option value="">{!locState ? 'Select state first' : countiesLoading ? 'Loading counties…' : 'Select county…'}</option>
+            {counties.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Zip code */}
+        <div>
+          <div className="text-[10px] text-slate-400 mb-1 font-semibold">Zip Code</div>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={5}
+            value={locZip}
+            onChange={e => setLocZip(e.target.value.replace(/\D/g, '').slice(0, 5))}
+            placeholder="e.g. 78701"
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+
+        {/* Street address (optional) */}
+        <div>
+          <div className="text-[10px] text-slate-400 mb-1 font-semibold">
+            Street Address <span className="text-slate-300 font-normal">(optional — narrows to specific property)</span>
+          </div>
+          <input
+            type="text"
+            value={locAddress}
+            onChange={e => setLocAddress(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+            placeholder="123 Main St"
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+
+        {/* Address preview */}
+        {locState && (
+          <div className="bg-slate-50 rounded-xl px-3 py-2 text-[11px] text-slate-500" style={cardStyle}>
+            <span className="text-slate-300 font-semibold mr-1">Searching:</span>
+            {buildAddress() || locState}
+          </div>
+        )}
+
         <button
           onClick={handleSubmit}
-          disabled={!address.trim() || loading}
+          disabled={!canSubmit}
           className="w-full py-2.5 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-50"
-          style={{ background: !address.trim() || loading ? '#94a3b8' : 'linear-gradient(135deg,#7c3aed,#5b21b6)' }}
+          style={{ background: !canSubmit ? '#94a3b8' : 'linear-gradient(135deg,#7c3aed,#5b21b6)' }}
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2"><Spinner size={14} />Analyzing…</span>
@@ -537,54 +683,10 @@ export default function AerialReportPage() {
         {error && <p className="text-red-500 text-xs">{error}</p>}
       </div>
 
-      {/* View toggle (only when result is loaded) */}
-      {result && (
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">View Mode</label>
-          <div className="grid grid-cols-2 gap-1.5">
-            {(['satellite', '3d'] as ViewMode[]).map(v => (
-              <button key={v} onClick={() => setViewMode(v)}
-                className="py-2 rounded-xl text-xs font-semibold transition-all"
-                style={{
-                  background: viewMode === v ? 'linear-gradient(135deg,#6366f1,#4f46e5)' : '#f1f5f9',
-                  color: viewMode === v ? 'white' : '#64748b',
-                }}>
-                {v === 'satellite' ? '🛰 Satellite' : '🏠 3D Model'}
-              </button>
-            ))}
-          </div>
-
-          {/* 3D controls */}
-          {viewMode === '3d' && (
-            <div className="space-y-2 pt-1">
-              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Material</div>
-              <div className="flex gap-1.5">
-                {(['asphalt', 'metal', 'tile'] as Material3D[]).map(m => (
-                  <button key={m} onClick={() => setMat3d(m)}
-                    className="flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all capitalize"
-                    style={{ background: mat3d === m ? '#4f46e5' : '#f1f5f9', color: mat3d === m ? 'white' : '#64748b' }}>
-                    {m}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-1.5">
-                {(['solid', 'wireframe', 'measurements'] as Model3DMode[]).map(m => (
-                  <button key={m} onClick={() => setModel3dMode(m)}
-                    className="flex-1 py-1.5 rounded-lg text-[9px] font-bold transition-all capitalize"
-                    style={{ background: model3dMode === m ? '#0f172a' : '#f1f5f9', color: model3dMode === m ? 'white' : '#64748b' }}>
-                    {m === 'solid' ? 'Solid' : m === 'wireframe' ? 'Wire' : 'Labels'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Photo upload */}
       <div className="space-y-2">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-          Upload Photos <span className="text-slate-300 normal-case font-normal">(boosts accuracy)</span>
+          Upload Photos <span className="text-slate-300 normal-case font-normal">(boosts accuracy + damage detection)</span>
         </label>
         <div
           className="border-2 border-dashed border-slate-200 rounded-xl p-3 cursor-pointer hover:border-indigo-300 transition-colors text-center"
@@ -598,7 +700,6 @@ export default function AerialReportPage() {
           <p className="text-slate-300 text-[10px]">Front · sides · rear · close-ups · up to 20</p>
         </div>
 
-        {/* Photo thumbnails */}
         {photos.length > 0 && (
           <div>
             <div className="flex flex-wrap gap-1 mb-2">
@@ -614,7 +715,9 @@ export default function AerialReportPage() {
             <button onClick={runPhotoAnalysis} disabled={photoLoading}
               className="w-full py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
               style={{ background: photoLoading ? '#94a3b8' : 'linear-gradient(135deg,#059669,#047857)', color: 'white' }}>
-              {photoLoading ? <span className="flex items-center justify-center gap-1.5"><Spinner size={12} />Analyzing photos…</span> : `📸 Analyze ${photos.length} Photo${photos.length > 1 ? 's' : ''}`}
+              {photoLoading
+                ? <span className="flex items-center justify-center gap-1.5"><Spinner size={12} />Analyzing photos…</span>
+                : `📸 Analyze ${photos.length} Photo${photos.length > 1 ? 's' : ''}`}
             </button>
             {photoError && <p className="text-red-500 text-[10px] mt-1">{photoError}</p>}
           </div>
@@ -645,7 +748,7 @@ export default function AerialReportPage() {
     </div>
   )
 
-  // ── Layout: Center panel ───────────────────────────────────────────────────
+  // ── Center panel ─────────────────────────────────────────────────────────────
 
   const centerPanel = (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: '#0f172a' }}>
@@ -654,9 +757,9 @@ export default function AerialReportPage() {
           <div className="text-6xl">🛰</div>
           <div className="text-white font-bold text-xl">Aerial Roofing Intelligence</div>
           <p className="text-slate-400 text-sm max-w-sm">
-            Enter a property address to pull satellite roof measurements, AI damage analysis, weather risk history, and an interactive 3D model.
+            Select a state, county, and zip code — then optionally enter a street address — to pull satellite roof measurements, AI damage analysis, and weather risk history.
           </p>
-          <p className="text-slate-600 text-xs">All data sourced from Google Solar API, Esri satellite imagery, NOAA records, and AI vision analysis.</p>
+          <p className="text-slate-600 text-xs">Imagery: Esri World Imagery · Measurements: Google Solar API / AI estimate · Weather: NOAA records</p>
         </div>
       )}
 
@@ -668,7 +771,7 @@ export default function AerialReportPage() {
         </div>
       )}
 
-      {result && viewMode === 'satellite' && (
+      {result && result.satellite_image_url && (
         <div className="flex-1 overflow-hidden">
           <AerialViewer
             imageUrl={result.satellite_image_url}
@@ -680,71 +783,32 @@ export default function AerialReportPage() {
         </div>
       )}
 
-      {result && !result.satellite_image_url && viewMode === 'satellite' && (
-        <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
-          No satellite image available for this address
+      {result && !result.satellite_image_url && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
+          <div className="text-4xl">🗺</div>
+          <p className="text-slate-400 text-sm">Satellite image unavailable for this location.<br/>Geocoding may not have resolved a precise coordinate.</p>
         </div>
       )}
 
-      {result && viewMode === '3d' && (
-        <div className="flex-1 overflow-hidden">
-          <RoofModel3D
-            totalSqft={result.total_sqft}
-            pitch={result.pitch || '6/12'}
-            segments={result.roof_segments || 2}
-            material={mat3d}
-            viewMode={model3dMode}
-          />
-        </div>
-      )}
-
-      {/* View toggle overlay (bottom of center) */}
-      {result && (
-        <div className="flex-shrink-0 flex items-center justify-center gap-2 py-2 px-4"
+      {result && damageZones.length > 0 && (
+        <div className="flex-shrink-0 flex items-center justify-center py-2 px-4"
           style={{ background: 'rgba(15,23,42,0.97)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          {(['satellite', '3d'] as ViewMode[]).map(v => (
-            <button key={v} onClick={() => setViewMode(v)}
-              className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
-              style={{ background: viewMode === v ? '#6366f1' : 'rgba(255,255,255,0.08)', color: viewMode === v ? 'white' : '#94a3b8' }}>
-              {v === 'satellite' ? '🛰 Satellite' : '🏠 3D Model'}
-            </button>
-          ))}
-          {viewMode === '3d' && (
-            <>
-              <span className="text-slate-600 text-[10px] ml-2">Material:</span>
-              {(['asphalt','metal','tile'] as Material3D[]).map(m => (
-                <button key={m} onClick={() => setMat3d(m)}
-                  className="px-2.5 py-1 rounded-lg text-[10px] font-bold capitalize transition-all"
-                  style={{ background: mat3d === m ? '#0f172a' : 'transparent', color: mat3d === m ? '#a5b4fc' : '#475569', border: mat3d === m ? '1px solid #6366f1' : '1px solid transparent' }}>
-                  {m}
-                </button>
-              ))}
-              <span className="text-slate-600 text-[10px] ml-1">View:</span>
-              {(['solid','wireframe','measurements'] as Model3DMode[]).map(m => (
-                <button key={m} onClick={() => setModel3dMode(m)}
-                  className="px-2.5 py-1 rounded-lg text-[10px] font-bold capitalize transition-all"
-                  style={{ background: model3dMode === m ? '#0f172a' : 'transparent', color: model3dMode === m ? '#a5b4fc' : '#475569', border: model3dMode === m ? '1px solid #6366f1' : '1px solid transparent' }}>
-                  {m === 'solid' ? 'Solid' : m === 'wireframe' ? 'Wire' : 'Labels'}
-                </button>
-              ))}
-            </>
-          )}
-          {viewMode === 'satellite' && damageZones.length > 0 && (
-            <span className="text-amber-400 text-[10px] ml-2 font-semibold">{damageZones.length} damage zone{damageZones.length > 1 ? 's' : ''} highlighted</span>
-          )}
+          <span className="text-amber-400 text-[11px] font-semibold">
+            {damageZones.length} damage zone{damageZones.length > 1 ? 's' : ''} highlighted on image
+          </span>
         </div>
       )}
     </div>
   )
 
-  // ── Layout: Right panel ────────────────────────────────────────────────────
+  // ── Right panel ──────────────────────────────────────────────────────────────
 
   const rightPanel = (
     <div className="h-full overflow-y-auto p-4 space-y-5" style={{ background: 'rgba(255,255,255,0.97)' }}>
       {!result && (
         <div className="flex flex-col items-center justify-center h-full text-center gap-3">
           <div className="text-3xl">📊</div>
-          <p className="text-slate-400 text-sm">Measurements, AI analysis, and weather risk will appear here after pulling a report.</p>
+          <p className="text-slate-400 text-sm">Measurements, AI condition analysis, and weather risk will appear here after pulling a report.</p>
         </div>
       )}
 
@@ -766,9 +830,9 @@ export default function AerialReportPage() {
             <SectionHeader title="Data Sources" />
             <div className="space-y-1 text-[10px] text-slate-400">
               <p>📡 <strong>Measurements:</strong> {result.source || 'AI property record estimate'}</p>
-              <p>🛰 <strong>Imagery:</strong> Esri World Imagery (public satellite)</p>
-              <p>🤖 <strong>Damage:</strong> {damageResult?.vision_analysis?.can_analyze ? 'Claude/Gemini vision analysis of satellite image' : 'Pending or unavailable'}</p>
-              <p>🔍 <strong>Weather:</strong> Web search of NOAA Storm Events and local news</p>
+              <p>🛰 <strong>Imagery:</strong> Esri World Imagery (public satellite, 1280×840 @ ≈0.3 m/px)</p>
+              <p>🤖 <strong>Condition:</strong> {damageResult?.vision_analysis?.can_analyze ? 'AI vision analysis of satellite image' : 'Pending or unavailable'}</p>
+              <p>🔍 <strong>Weather:</strong> NOAA Storm Events + local news web search</p>
               {photoResult?.success && <p>📸 <strong>Photos:</strong> {photoResult.photos_analyzed} photos analyzed by AI vision</p>}
             </div>
           </div>
@@ -777,47 +841,34 @@ export default function AerialReportPage() {
     </div>
   )
 
-  // ── Mobile tab bar ─────────────────────────────────────────────────────────
-
   const TABS: { id: MobileTab; label: string }[] = [
     { id: 'input',    label: '⚙ Input' },
     { id: 'view',     label: '🛰 View' },
     { id: 'analysis', label: '📊 Analysis' },
   ]
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-
   return (
     <div className="h-full flex flex-col overflow-hidden">
-
-      {/* Report modal */}
       {reportVisible && result && (
         <ReportModal result={result} damageResult={damageResult} photoResult={photoResult}
           type={reportType} onClose={() => setReportVisible(false)} />
       )}
 
-      {/* ── Desktop 3-panel ── */}
+      {/* Desktop 3-panel */}
       <div className="hidden lg:flex flex-1 min-h-0 overflow-hidden">
-
-        {/* Left */}
         <div className="w-72 flex-shrink-0 border-r" style={{ borderColor: 'rgba(219,234,254,0.9)' }}>
           {leftPanel}
         </div>
-
-        {/* Center */}
         <div className="flex-1 min-w-0 overflow-hidden">
           {centerPanel}
         </div>
-
-        {/* Right */}
         <div className="w-80 flex-shrink-0 border-l" style={{ borderColor: 'rgba(219,234,254,0.9)' }}>
           {rightPanel}
         </div>
       </div>
 
-      {/* ── Mobile tab layout ── */}
+      {/* Mobile tab layout */}
       <div className="flex lg:hidden flex-col flex-1 min-h-0 overflow-hidden">
-        {/* Tab bar */}
         <div className="flex-shrink-0 flex border-b bg-white" style={{ borderColor: 'rgba(219,234,254,0.9)' }}>
           {TABS.map(t => (
             <button key={t.id} onClick={() => setMobileTab(t.id)}
@@ -828,14 +879,12 @@ export default function AerialReportPage() {
             </button>
           ))}
         </div>
-        {/* Active tab */}
         <div className="flex-1 min-h-0 overflow-hidden">
           {mobileTab === 'input'    && leftPanel}
           {mobileTab === 'view'     && centerPanel}
           {mobileTab === 'analysis' && rightPanel}
         </div>
       </div>
-
     </div>
   )
 }
