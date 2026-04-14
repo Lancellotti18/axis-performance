@@ -26,7 +26,8 @@ const ANGLE_LABEL: Record<string, string> = {
 
 export default function ExteriorCarousel({ views }: Props) {
   const [idx, setIdx] = useState(0)
-  const [imgErrors, setImgErrors] = useState<Record<number, boolean>>({})
+  const [imgErrors,  setImgErrors]  = useState<Record<number, boolean>>({})
+  const [imgLoaded,  setImgLoaded]  = useState<Record<number, boolean>>({})
   const imgRef = useRef<HTMLDivElement>(null)
 
   const prev = useCallback(() => setIdx(i => (i === 0 ? views.length - 1 : i - 1)), [views.length])
@@ -81,24 +82,37 @@ export default function ExteriorCarousel({ views }: Props) {
 
       {/* Image */}
       <div ref={imgRef} className="relative bg-slate-100 select-none" style={{ aspectRatio: '16/9' }}>
+        {/* Loading spinner — shown until image resolves or errors */}
+        {current.url && !imgLoaded[idx] && !imgErrors[idx] && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-900">
+            <svg className="animate-spin text-indigo-400" width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+            </svg>
+            <span className="text-slate-400 text-xs">Generating {label.toLowerCase()} view…</span>
+          </div>
+        )}
+
         {current.url && !imgErrors[idx] ? (
           <img
             src={current.url}
             alt={`Exterior ${label}`}
             className="absolute inset-0 w-full h-full object-cover"
+            style={{ opacity: imgLoaded[idx] ? 1 : 0, transition: 'opacity 0.4s' }}
             draggable={false}
+            onLoad={() => setImgLoaded(prev => ({ ...prev, [idx]: true }))}
             onError={() => setImgErrors(prev => ({ ...prev, [idx]: true }))}
           />
-        ) : (
+        ) : !current.url || imgErrors[idx] ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <rect x="3" y="3" width="18" height="14" rx="2"/>
               <path d="M3 9l4-4 4 4 4-4 4 4"/>
             </svg>
             <span className="text-sm">{label} — render unavailable</span>
-            {imgErrors[idx] && <span className="text-xs text-slate-300">Image failed to load — re-generate to retry</span>}
+            <span className="text-xs text-slate-500">Re-generate to retry</span>
           </div>
-        )}
+        ) : null}
 
         {/* Angle badge */}
         <div

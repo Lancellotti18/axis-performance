@@ -124,45 +124,22 @@ def _build_room_prompt(
 
 # ── Image generation ──────────────────────────────────────────────────────────
 
-async def _generate_via_pollinations(prompt: str, seed: int) -> str:
+def _pollinations_url(prompt: str, seed: int) -> str:
     """
-    Pollinations.ai — free, no API key required.
-    Downloads the generated image and returns a base64 data URI so the
-    browser can display it without any cross-origin or URL-loading issues.
+    Build a Pollinations.ai image URL.
+    The URL is loaded by the browser directly — Pollinations accepts browser
+    GET requests and generates the image on the fly. Cloud-server IPs are
+    often blocked by Pollinations, so we never download server-side.
     """
-    params = {
-        "width":  1280,
-        "height": 720,
-        "model":  "flux",
-        "seed":   seed,
-        "nologo": "true",
-    }
-    query = "&".join(f"{k}={v}" for k, v in params.items())
-    url = f"{POLLINATIONS_API}/{urllib.parse.quote(prompt, safe='')}?{query}"
+    encoded = urllib.parse.quote(prompt, safe='')
+    return (
+        f"{POLLINATIONS_API}/{encoded}"
+        f"?width=1280&height=720&model=flux&seed={seed}&nologo=true"
+    )
 
-    async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
-        r = await client.get(url)
-        if r.status_code >= 400:
-            raise ValueError(f"Pollinations returned HTTP {r.status_code}")
-        ct = r.headers.get("content-type", "")
-        body = r.content
-        # Validate image magic bytes: JPEG=FF D8, PNG=89 50, WEBP=52 49 46 46
-        is_image = (
-            body[:2] == b'\xff\xd8'               # JPEG
-            or body[:4] == b'\x89PNG'             # PNG
-            or body[8:12] == b'WEBP'              # WebP
-        )
-        if not is_image:
-            snippet = body[:120].decode("utf-8", errors="replace")
-            raise ValueError(f"Pollinations returned non-image bytes (ct={ct!r}): {snippet!r}")
-        # Use detected mime type from magic bytes rather than trusting the header
-        if body[:2] == b'\xff\xd8':
-            mime = "image/jpeg"
-        elif body[:4] == b'\x89PNG':
-            mime = "image/png"
-        else:
-            mime = "image/webp"
-        return f"data:{mime};base64," + base64.b64encode(body).decode()
+
+async def _generate_via_pollinations(prompt: str, seed: int) -> str:
+    return _pollinations_url(prompt, seed)
 
 
 async def _generate_via_hf(prompt: str) -> str:
@@ -342,16 +319,6 @@ async def generate_renders(project_id: str, request: RenderRequest):
         }
         for j, r in enumerate(room_results)
     ]
-
-    any_success = any(v["url"] for v in exterior_views) or any(v["url"] for v in room_renders)
-    if not any_success:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Image generation failed across all providers. "
-                "Pollinations.ai may be temporarily overloaded — please try again in a moment."
-            ),
-        )
 
     return {
         "exterior_views": exterior_views,
