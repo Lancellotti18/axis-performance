@@ -13,8 +13,9 @@ const IMG_H = 420
 const ZOOM_LEVEL = 18
 const ESRI_MPP0 = 156543.03392   // metres/pixel at zoom 0 at equator
 const M_TO_FT   = 3.28084
-const MIN_ZOOM  = 0.8
-const MAX_ZOOM  = 14
+const MIN_ZOOM        = 1     // no blank space — can't zoom below natural image size
+const MAX_ZOOM        = 14
+const HIGHLIGHT_MAX_Z = 1.57  // hide highlight above 157% zoom
 
 interface Props {
   imageUrl: string
@@ -39,26 +40,43 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
   const dragging  = useRef(false)
   const dragStart = useRef<Pt>({ x: 0, y: 0 })
   const panStart  = useRef<Pt>({ x: 0, y: 0 })
+  const zoomRef   = useRef(1)   // mirror of zoom state for use inside event-handler closures
+
+  // Clamp pan so the image never exposes the dark background outside its edges
+  const clampPan = useCallback((p: Pt, z: number): Pt => {
+    const el = wrapRef.current
+    if (!el) return p
+    const cW = el.clientWidth
+    const cH = el.clientHeight
+    const sw = IMG_W * z
+    const sh = IMG_H * z
+    return {
+      // if image is wider than viewport: allow panning within bounds; else center it
+      x: sw >= cW ? Math.min(0, Math.max(cW - sw, p.x)) : (cW - sw) / 2,
+      y: sh >= cH ? Math.min(0, Math.max(cH - sh, p.y)) : (cH - sh) / 2,
+    }
+  }, [])
 
   // Center the image in the viewport on first render
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
     const { width: cW, height: cH } = el.getBoundingClientRect()
-    setPan({ x: (cW - IMG_W) / 2, y: (cH - IMG_H) / 2 })
-  }, [])
+    setPan(clampPan({ x: (cW - IMG_W) / 2, y: (cH - IMG_H) / 2 }, 1))
+  }, [clampPan])
 
   // Zoom centred on a given viewport point
   const zoomAt = useCallback((factor: number, cx: number, cy: number) => {
     setZoom(z => {
       const next = Math.min(Math.max(z * factor, MIN_ZOOM), MAX_ZOOM)
-      setPan(p => ({
+      zoomRef.current = next
+      setPan(p => clampPan({
         x: cx - (cx - p.x) * (next / z),
         y: cy - (cy - p.y) * (next / z),
-      }))
+      }, next))
       return next
     })
-  }, [])
+  }, [clampPan])
 
   // Zoom centred on viewport centre (for toolbar buttons)
   const zoomCenter = useCallback((factor: number) => {
@@ -68,14 +86,15 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
     zoomAt(factor, cW / 2, cH / 2)
   }, [zoomAt])
 
-  // Reset to initial centered fit
+  // Reset to 100% centered
   const reset = useCallback(() => {
     const el = wrapRef.current
     if (!el) return
     const { width: cW, height: cH } = el.getBoundingClientRect()
+    zoomRef.current = 1
     setZoom(1)
-    setPan({ x: (cW - IMG_W) / 2, y: (cH - IMG_H) / 2 })
-  }, [])
+    setPan(clampPan({ x: (cW - IMG_W) / 2, y: (cH - IMG_H) / 2 }, 1))
+  }, [clampPan])
 
   // Scroll-to-zoom (passive:false required for Safari + Firefox)
   useEffect(() => {
@@ -116,7 +135,7 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
       if (e.touches.length === 1 && touchDragging) {
         const dx = e.touches[0].clientX - lastTX
         const dy = e.touches[0].clientY - lastTY
-        setPan(p => ({ x: p.x + dx, y: p.y + dy }))
+        setPan(p => clampPan({ x: p.x + dx, y: p.y + dy }, zoomRef.current))
         lastTX = e.touches[0].clientX
         lastTY = e.touches[0].clientY
       } else if (e.touches.length === 2) {
@@ -144,7 +163,7 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
       el.removeEventListener('touchmove',  onTouchMove)
       el.removeEventListener('touchend',   onTouchEnd)
     }
-  }, [zoomAt])
+  }, [zoomAt, clampPan])
 
   // Drag-to-pan
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -156,11 +175,11 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragging.current) return
-    setPan({
+    setPan(clampPan({
       x: panStart.current.x + (e.clientX - dragStart.current.x),
       y: panStart.current.y + (e.clientY - dragStart.current.y),
-    })
-  }, [])
+    }, zoomRef.current))
+  }, [clampPan])
 
   const onMouseUp = useCallback(() => { dragging.current = false }, [])
 
@@ -323,8 +342,8 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
             viewBox={`0 0 ${IMG_W} ${IMG_H}`}
             style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', overflow: 'visible' }}
           >
-            {/* ── House highlight (only when lat is known = accurate position) ── */}
-            {lat !== null && (
+            {/* ── House highlight — visible up to 157% zoom, hidden when zoomed in close ── */}
+            {lat !== null && zoom <= HIGHLIGHT_MAX_Z && (
               <>
                 {/* Radar-ping animation — expands outward and fades */}
                 <circle cx={hx} cy={hy} r={20} fill="none" stroke="#facc15" strokeWidth={2.5} opacity={0}>
@@ -415,8 +434,8 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
           </div>
         )}
 
-        {/* "Property" label badge — floats above the highlight ring, only when lat is known */}
-        {lat !== null && (
+        {/* "Property" label badge — disappears with the highlight above 157% zoom */}
+        {lat !== null && zoom <= HIGHLIGHT_MAX_Z && (
           <div
             className="absolute text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
             style={{
