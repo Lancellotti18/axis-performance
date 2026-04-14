@@ -127,9 +127,10 @@ def _build_room_prompt(
 async def _generate_via_pollinations(prompt: str, seed: int) -> str:
     """
     Pollinations.ai — free, no API key required.
-    Returns the image URL directly without downloading it on the backend.
-    The browser loads the URL itself, which is faster and eliminates
-    concurrent-download timeouts when generating many images at once.
+    Returns the image URL directly. The browser loads the URL itself,
+    which is faster and eliminates concurrent-download timeouts when
+    generating many images at once. No HEAD validation — Pollinations
+    does not support HEAD on its generation endpoint.
     """
     params = {
         "width":  1280,
@@ -139,18 +140,7 @@ async def _generate_via_pollinations(prompt: str, seed: int) -> str:
         "nologo": "true",
     }
     query = "&".join(f"{k}={v}" for k, v in params.items())
-    url = f"{POLLINATIONS_API}/{urllib.parse.quote(prompt)}?{query}"
-
-    # Do a lightweight HEAD check (no body download) to confirm the model
-    # will generate this request, then return the URL for the browser to load.
-    # This is fast (~1-3s) vs downloading 100-300KB images 10× concurrently.
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        r = await client.head(url)
-        # 200 or any 2xx means the generation will succeed
-        if r.status_code >= 400:
-            raise ValueError(f"Pollinations returned {r.status_code}")
-    # Return the original URL — browsers handle the redirect automatically
-    return url
+    return f"{POLLINATIONS_API}/{urllib.parse.quote(prompt)}?{query}"
 
 
 async def _generate_via_hf(prompt: str) -> str:
