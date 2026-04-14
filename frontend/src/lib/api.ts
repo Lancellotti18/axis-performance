@@ -246,6 +246,31 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ city, state, zip_code: zipCode || '' }),
       }, 60000),
+    analyzeAerialDamage: (satelliteImageUrl: string, address: string, lat?: number | null, lng?: number | null) =>
+      apiRequest<any>(`/api/v1/roofing/aerial-damage`, {
+        method: 'POST',
+        body: JSON.stringify({ satellite_image_url: satelliteImageUrl, address, lat, lng }),
+      }, 90000),
+    analyzePhotos: async (photos: File[], address: string): Promise<any> => {
+      const { data: { session } } = await (await import('./supabase')).supabase.auth.getSession()
+      const token = session?.access_token
+      const form = new FormData()
+      photos.forEach(p => form.append('photos', p))
+      form.append('address', address)
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 180000)
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/roofing/analyze-photos`, {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: form,
+          signal: controller.signal,
+        })
+        clearTimeout(timer)
+        if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
+        return res.json()
+      } catch (err) { clearTimeout(timer); throw err }
+    },
   },
   crm: {
     listLeads: (userId: string) =>

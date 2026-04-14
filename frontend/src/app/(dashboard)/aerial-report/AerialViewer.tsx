@@ -17,10 +17,24 @@ const MIN_ZOOM        = 1     // no blank space — can't zoom below natural ima
 const MAX_ZOOM        = 14
 const HIGHLIGHT_MAX_Z = 1.57  // hide highlight above 157% zoom
 
+export interface DamageZone {
+  type:                 'missing_shingles' | 'staining' | 'debris' | 'structural_damage' | 'discoloration' | 'moss_algae'
+  severity:             'low' | 'medium' | 'high'
+  location_description?: string
+  x_pct:  number   // 0–1 fraction of image width
+  y_pct:  number   // 0–1 fraction of image height
+  w_pct:  number
+  h_pct:  number
+  description: string
+  confidence:  number
+}
+
 interface Props {
-  imageUrl: string
-  lat:      number | null   // null = geocoding failed; viewer still works, highlight hidden
-  address?: string
+  imageUrl:     string
+  lat:          number | null
+  address?:     string
+  damageZones?: DamageZone[]   // from aerial damage analysis — overlaid on satellite
+  fillHeight?:  boolean        // true = fill parent height instead of fixed 520px
 }
 
 type Pt = { x: number; y: number }
@@ -29,7 +43,24 @@ function mpp(lat: number) {
   return (ESRI_MPP0 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, ZOOM_LEVEL)
 }
 
-export default function AerialViewer({ imageUrl, lat, address }: Props) {
+const ZONE_COLOR: Record<string, string> = {
+  missing_shingles:  'rgba(239,68,68,0.45)',
+  staining:          'rgba(245,158,11,0.40)',
+  debris:            'rgba(234,179,8,0.40)',
+  structural_damage: 'rgba(127,29,29,0.55)',
+  discoloration:     'rgba(249,115,22,0.38)',
+  moss_algae:        'rgba(34,197,94,0.38)',
+}
+const ZONE_STROKE: Record<string, string> = {
+  missing_shingles:  '#ef4444',
+  staining:          '#f59e0b',
+  debris:            '#eab308',
+  structural_damage: '#7f1d1d',
+  discoloration:     '#f97316',
+  moss_algae:        '#22c55e',
+}
+
+export default function AerialViewer({ imageUrl, lat, address, damageZones, fillHeight }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)   // the fixed-height viewport
   const [zoom,    setZoom]    = useState(1)
   const [pan,     setPan]     = useState<Pt>({ x: 0, y: 0 })
@@ -302,10 +333,10 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
         ref={wrapRef}
         style={{
           position:    'relative',
-          height:      520,
+          height:      fillHeight ? '100%' : 520,
           overflow:    'hidden',
           cursor:      measuring ? 'crosshair' : 'grab',
-          touchAction: 'none',  // prevent iOS scroll hijacking during pan/pinch
+          touchAction: 'none',
         }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
@@ -372,6 +403,27 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
                 <line x1={hx} y1={hy+24} x2={hx} y2={hy+50} stroke="#facc15" strokeWidth={1}   strokeLinecap="round" strokeOpacity={0.9} />
               </>
             )}
+
+            {/* ── Damage zone overlays (from AI vision analysis) ── */}
+            {damageZones && damageZones.map((z, i) => {
+              const x = z.x_pct * IMG_W
+              const y = z.y_pct * IMG_H
+              const w = z.w_pct * IMG_W
+              const h = z.h_pct * IMG_H
+              const fill   = ZONE_COLOR[z.type]   ?? 'rgba(239,68,68,0.4)'
+              const stroke = ZONE_STROKE[z.type]  ?? '#ef4444'
+              return (
+                <g key={i}>
+                  <rect x={x} y={y} width={w} height={h} fill={fill} stroke={stroke}
+                    strokeWidth={1.5} strokeDasharray="6,3" rx={3} />
+                  {/* Severity badge at top-left of zone */}
+                  <rect x={x} y={y - 14} width={w < 50 ? 50 : w} height={14} fill={stroke} opacity={0.9} rx={2} />
+                  <text x={x + 4} y={y - 4} fill="white" fontSize={9} fontWeight="700" style={{ textTransform: 'uppercase' }}>
+                    {z.type.replace(/_/g, ' ')} · {z.severity}
+                  </text>
+                </g>
+              )
+            })}
 
             {/* ── Measure points + line ── */}
             {ptA && (

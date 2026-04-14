@@ -5,6 +5,7 @@ POST /roofing/{blueprint_id}/confirm   — User confirms/adjusts measurements
 GET  /roofing/{blueprint_id}/measurements — Get stored measurements
 GET  /roofing/{project_id}/shingle-estimate — Calculate shingle material list
 """
+import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
@@ -279,6 +280,269 @@ async def aerial_roof_report_standalone(payload: StandaloneAerialRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Aerial report failed: {e}")
     return result
+
+
+class AerialDamageRequest(BaseModel):
+    satellite_image_url: str
+    address: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+@router.post("/aerial-damage")
+async def aerial_damage_analysis(payload: AerialDamageRequest):
+    """
+    Two-part analysis run automatically after every aerial report:
+      1. AI vision: download satellite image → Claude/Gemini vision → real damage zones
+      2. Weather research: web search NOAA/news for hail/wind history at this address
+    Returns only what is actually found — no fabricated damage or events.
+    """
+    from app.services.llm import llm_vision, llm_text
+    from app.services.search import web_search_multi
+    import httpx, json, re as _re
+
+    # ── 1. Download satellite image ───────────────────────────────────────────
+    image_bytes = None
+    media_type = "image/png"
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            r = await client.get(payload.satellite_image_url)
+            r.raise_for_status()
+            image_bytes = r.content
+            ct = r.headers.get("content-type", "image/png")
+            media_type = "image/jpeg" if ("jpeg" in ct or "jpg" in ct) else "image/png"
+    except Exception as e:
+        image_bytes = None
+
+    # ── 2. Vision analysis ────────────────────────────────────────────────────
+    async def run_vision() -> dict:
+        if not image_bytes:
+            return {"can_analyze": False, "zones": [], "overall_condition": "cannot_determine",
+                    "condition_score": None, "analyst_notes": "Satellite image could not be downloaded."}
+        vision_prompt = f"""You are a licensed roofing inspector analyzing a satellite aerial image.
+
+Address: {payload.address}
+Imagery: Esri World Imagery, zoom 18 (≈0.6 m/pixel resolution)
+
+TASK: Identify any roof damage or condition issues visible in this image.
+
+STRICT HONESTY REQUIREMENTS:
+- At 0.6 m/pixel you CAN detect: large missing sections (>0.5 m), significant staining/discoloration,
+  debris accumulation, sagging, large flashing gaps, severe moss/algae coverage
+- You CANNOT reliably detect: individual shingle cracks, small hail marks, granule loss, minor gaps
+- Report ONLY what you actually see — do NOT invent zones to appear thorough
+- If the roof looks clean and undamaged, say so clearly with an empty zones array
+
+Return ONLY valid JSON (no text outside the JSON block):
+{{
+  "can_analyze": true,
+  "image_quality": "clear|partial|obscured",
+  "overall_condition": "good|fair|poor|cannot_determine",
+  "condition_score": 85,
+  "zones": [
+    {{
+      "type": "missing_shingles|staining|debris|structural_damage|discoloration|moss_algae",
+      "severity": "low|medium|high",
+      "location_description": "northwest corner of main slope",
+      "x_pct": 0.2, "y_pct": 0.3, "w_pct": 0.12, "h_pct": 0.10,
+      "description": "Precise description of what is visible in the image",
+      "confidence": 0.70
+    }}
+  ],
+  "analyst_notes": "Honest summary of what can and cannot be determined at this resolution"
+}}
+
+If no damage is visible, return zones as []. condition_score: 0 = destroyed, 100 = perfect."""
+        try:
+            text = await llm_vision(image_bytes, media_type, vision_prompt, max_tokens=1500)
+            text = text.strip()
+            text = _re.sub(r'^```(?:json)?\s*', '', text, flags=_re.MULTILINE)
+            text = _re.sub(r'\s*```\s*$', '', text)
+            idx = text.find('{')
+            if idx > 0:
+                text = text[idx:]
+            return json.loads(text)
+        except Exception as e:
+            return {"can_analyze": False, "zones": [], "overall_condition": "cannot_determine",
+                    "condition_score": None, "analyst_notes": f"Vision analysis error: {str(e)[:120]}"}
+
+    # ── 3. Weather / hail history ─────────────────────────────────────────────
+    async def run_weather() -> dict:
+        queries = [
+            f'"{payload.address}" hail storm damage history site:weather.gov OR site:noaa.gov',
+            f"{payload.address} hail storm wind damage report 2020 2021 2022 2023 2024",
+            f"{payload.address} severe weather roof damage insurance claims history",
+        ]
+        try:
+            research = await web_search_multi(queries, max_results=4)
+        except Exception:
+            research = ""
+
+        if not research or len(research.strip()) < 50:
+            return {"events_found": False, "hail_risk": "unknown", "wind_risk": "unknown",
+                    "events": [], "note": "No weather history found via web search. Consult NOAA Storm Events Database at www.ncdc.noaa.gov/stormevents/ for official records."}
+
+        parse_prompt = f"""Extract structured weather risk data for this property from the web research below.
+Address: {payload.address}
+
+RESEARCH:
+{research[:3500]}
+
+STRICT RULES:
+- Include ONLY events explicitly mentioned in the research above — never fabricate dates or events
+- If no specific events are mentioned, set events_found to false and events to []
+- hail_risk / wind_risk based ONLY on actual found events, not assumed geography
+
+Return ONLY valid JSON:
+{{
+  "events_found": true,
+  "hail_risk": "low|medium|high|unknown",
+  "wind_risk": "low|medium|high|unknown",
+  "events": [
+    {{
+      "date": "2023-04-15",
+      "type": "hail|wind|tornado|severe_thunderstorm",
+      "severity": "low|medium|high",
+      "description": "Factual description from the source",
+      "source": "Source name / URL"
+    }}
+  ],
+  "note": "Brief summary of what research found"
+}}"""
+        try:
+            text = await llm_text(parse_prompt, max_tokens=900)
+            text = text.strip()
+            text = _re.sub(r'^```(?:json)?\s*', '', text, flags=_re.MULTILINE)
+            text = _re.sub(r'\s*```\s*$', '', text)
+            idx = text.find('{')
+            if idx > 0:
+                text = text[idx:]
+            return json.loads(text)
+        except Exception as e:
+            return {"events_found": False, "hail_risk": "unknown", "wind_risk": "unknown",
+                    "events": [], "note": f"Weather research retrieved but could not be parsed: {str(e)[:100]}"}
+
+    vision_result, weather_result = await asyncio.gather(
+        run_vision(), run_weather(), return_exceptions=False
+    )
+
+    return {
+        "address": payload.address,
+        "vision_analysis": vision_result,
+        "weather_risk": weather_result,
+    }
+
+
+from fastapi import File, Form, UploadFile
+from typing import List as TypingList
+
+
+@router.post("/analyze-photos")
+async def analyze_uploaded_photos(
+    photos: TypingList[UploadFile] = File(...),
+    address: str = Form(""),
+):
+    """
+    AI vision analysis of user-uploaded property photos (up to 20).
+    Each photo is analyzed by Claude/Gemini Vision for:
+      - Roof pitch estimation
+      - Visible features (ridges, valleys, vents, etc.)
+      - Damage flags (with honest confidence scores)
+    Results are aggregated across photos. No data is fabricated.
+    """
+    from app.services.llm import llm_vision
+    import json, re as _re
+
+    if not photos:
+        raise HTTPException(status_code=422, detail="No photos uploaded.")
+
+    photos = photos[:20]  # hard cap
+
+    prompt_tpl = """You are a licensed roofing inspector analyzing a property photo.
+Address: {address}   Photo {idx} of {total}
+
+TASK: Extract measurable roofing data from this photo.
+
+STRICT RULES:
+- Only report measurements you can ACTUALLY DETERMINE — return null for anything uncertain
+- Never estimate sqft without a clear scale reference in the image
+- Confidence must be honest (0.0–1.0) — do not inflate
+
+Return ONLY valid JSON:
+{{
+  "usable": true,
+  "quality_score": 85,
+  "view_type": "front|side_left|side_right|rear|aerial|close_up|unknown",
+  "pitch_estimate": "6/12",
+  "pitch_confidence": 0.75,
+  "stories_visible": 1,
+  "features_visible": ["ridge","valley","eave","rake","vent","chimney","skylight","gutter","flashing"],
+  "damage_flags": [
+    {{
+      "type": "missing_shingles|cracking|granule_loss|impact_damage|moss_algae|flashing_issue|sagging|debris",
+      "severity": "low|medium|high",
+      "location": "where in the image",
+      "confidence": 0.80,
+      "description": "Exact description of what you see"
+    }}
+  ],
+  "notes": "What was and wasn't determinable from this specific photo"
+}}
+If the image is unusable (blurry, wrong subject, etc.), set usable to false and all other fields to null."""
+
+    async def analyze_one(photo: UploadFile, idx: int) -> dict:
+        try:
+            content = await photo.read()
+            if not content:
+                return {"usable": False, "filename": photo.filename, "error": "Empty file"}
+            mt = (photo.content_type or "image/jpeg").split(";")[0].strip()
+            if mt not in ("image/jpeg", "image/png", "image/webp"):
+                mt = "image/jpeg"
+            prompt = prompt_tpl.format(address=address or "unknown", idx=idx + 1, total=len(photos))
+            text = await llm_vision(content, mt, prompt, max_tokens=800)
+            text = text.strip()
+            text = _re.sub(r'^```(?:json)?\s*', '', text, flags=_re.MULTILINE)
+            text = _re.sub(r'\s*```\s*$', '', text)
+            i = text.find('{')
+            if i > 0:
+                text = text[i:]
+            result = json.loads(text)
+            result["filename"] = photo.filename
+            return result
+        except Exception as e:
+            return {"usable": False, "filename": getattr(photo, "filename", "unknown"), "error": str(e)[:200]}
+
+    per_photo = await asyncio.gather(*[analyze_one(p, i) for i, p in enumerate(photos)])
+    usable = [r for r in per_photo if r.get("usable")]
+
+    if not usable:
+        return {"success": False,
+                "message": "No usable photos — upload clear, well-lit images of the roof from multiple angles.",
+                "per_photo": per_photo}
+
+    # Aggregate pitch (highest-confidence wins)
+    pitches = [(r["pitch_estimate"], r.get("pitch_confidence", 0.5))
+               for r in usable if r.get("pitch_estimate")]
+    best_pitch = max(pitches, key=lambda x: x[1])[0] if pitches else None
+    avg_pitch_conf = sum(p[1] for p in pitches) / len(pitches) if pitches else 0.0
+
+    features: set = set()
+    all_damage: list = []
+    for r in usable:
+        features.update(r.get("features_visible") or [])
+        all_damage.extend(r.get("damage_flags") or [])
+
+    return {
+        "success": True,
+        "photos_analyzed": len(usable),
+        "photos_failed": len(per_photo) - len(usable),
+        "pitch_estimate": best_pitch,
+        "pitch_confidence": round(avg_pitch_conf, 2),
+        "features_detected": sorted(features),
+        "damage_flags": all_damage,
+        "confidence_boost": 0.12,   # photos add 12 pp to measurement confidence
+        "per_photo": per_photo,
+    }
 
 
 @router.post("/storm-risk")
