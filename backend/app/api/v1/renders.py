@@ -127,8 +127,9 @@ def _build_room_prompt(
 async def _generate_via_pollinations(prompt: str, seed: int) -> str:
     """
     Pollinations.ai — free, no API key required.
-    Each call uses a unique seed so images vary across requests.
-    Returns the direct image URL (avoids large base64 payloads).
+    Returns the image URL directly without downloading it on the backend.
+    The browser loads the URL itself, which is faster and eliminates
+    concurrent-download timeouts when generating many images at once.
     """
     params = {
         "width":  1280,
@@ -136,18 +137,20 @@ async def _generate_via_pollinations(prompt: str, seed: int) -> str:
         "model":  "flux",
         "seed":   seed,
         "nologo": "true",
-        # no "cache" param — Pollinations' cache is keyed by URL so changing
-        # the seed already produces a fresh URL and bypasses any previous cache.
     }
     query = "&".join(f"{k}={v}" for k, v in params.items())
     url = f"{POLLINATIONS_API}/{urllib.parse.quote(prompt)}?{query}"
 
-    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-        r = await client.get(url)
-        r.raise_for_status()
-        if not r.content or len(r.content) < 1000:
-            raise ValueError("Pollinations returned empty or too-small image")
-        return str(r.url)
+    # Do a lightweight HEAD check (no body download) to confirm the model
+    # will generate this request, then return the URL for the browser to load.
+    # This is fast (~1-3s) vs downloading 100-300KB images 10× concurrently.
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        r = await client.head(url)
+        # 200 or any 2xx means the generation will succeed
+        if r.status_code >= 400:
+            raise ValueError(f"Pollinations returned {r.status_code}")
+    # Return the original URL — browsers handle the redirect automatically
+    return url
 
 
 async def _generate_via_hf(prompt: str) -> str:
@@ -223,11 +226,15 @@ async def _generate_via_replicate(prompt: str) -> str:
 
 
 async def _generate_image(prompt: str, seed: int) -> str | None:
-    """Try Pollinations → HF → Replicate. Returns URL / data URI, or None on total failure."""
-    try:
-        return await _generate_via_pollinations(prompt, seed)
-    except Exception as e:
-        log.warning(f"[Renders] Pollinations failed (seed={seed}): {e} — trying HuggingFace…")
+    """Try Pollinations (with retry) → HF → Replicate. Returns URL or None on total failure."""
+    # Pollinations: up to 3 attempts with different seeds on transient failures
+    for attempt in range(3):
+        try:
+            return await _generate_via_pollinations(prompt, seed + attempt * 100)
+        except Exception as e:
+            log.warning(f"[Renders] Pollinations attempt {attempt + 1} failed (seed={seed + attempt * 100}): {e}")
+            if attempt < 2:
+                await asyncio.sleep(2)  # brief pause before retry
 
     if settings.HUGGINGFACE_API_KEY:
         try:

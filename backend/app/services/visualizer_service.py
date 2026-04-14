@@ -54,23 +54,24 @@ async def _pollinations_t2i(description: str) -> str:
         f"high resolution, sharp focus, natural daylight, {description}, "
         f"real estate photography style, beautiful curb appeal, no people, no text"
     )
+    import random
+    seed = random.randint(100, 9999)
     params = {
-        "width":   1280,
-        "height":  720,
-        "model":   "flux",
-        "seed":    42,
-        "nologo":  "true",
-        "cache":   "true",
+        "width":  1280,
+        "height": 720,
+        "model":  "flux",
+        "seed":   seed,
+        "nologo": "true",
     }
     query = "&".join(f"{k}={v}" for k, v in params.items())
     url   = f"{POLLINATIONS_API}/{urllib.parse.quote(prompt)}?{query}"
 
-    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-        r = await client.get(url)
-        r.raise_for_status()
-        if not r.content or len(r.content) < 1000:
-            raise ValueError("Pollinations returned empty or too-small image")
-        return str(r.url)
+    # HEAD check only — return URL for browser to load directly
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        r = await client.head(url)
+        if r.status_code >= 400:
+            raise ValueError(f"Pollinations returned {r.status_code}")
+    return url
 
 
 # ── Image generation ──────────────────────────────────────────────────────────
