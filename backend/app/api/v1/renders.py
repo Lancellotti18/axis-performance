@@ -32,6 +32,11 @@ from app.core.supabase import get_supabase
 router = APIRouter()
 log = logging.getLogger(__name__)
 
+# Limit concurrent Gemini image-gen calls to avoid hitting free-tier rate limits.
+# Gemini allows ~10 RPM on the free tier; with 10 images firing simultaneously
+# requests 2-10 get rate-limited and fall back to Pollinations (which doesn't load).
+_gemini_sem = asyncio.Semaphore(2)
+
 POLLINATIONS_API = "https://image.pollinations.ai/prompt"
 HF_API           = "https://router.huggingface.co/hf-inference/models"
 HF_T2I_MODEL     = "black-forest-labs/FLUX.1-schnell"
@@ -134,48 +139,58 @@ def _pollinations_url(prompt: str, seed: int) -> str:
     )
 
 
-async def _generate_via_gemini(prompt: str) -> str:
-    """
-    Google Gemini image generation — free with GEMINI_API_KEY.
-    Tries multiple model names since preview/experimental names change.
-    Returns a base64 data URI.
-    """
+def _gemini_call(prompt: str) -> str:
+    """Synchronous Gemini image generation — runs in a thread via asyncio.to_thread."""
     from google import genai
     from google.genai import types
 
-    # Try model names in order — Gemini image gen model name has changed across SDK versions
     MODELS = [
         "gemini-2.0-flash-preview-image-generation",
         "gemini-2.0-flash-exp-image-generation",
         "gemini-2.0-flash-exp",
     ]
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    last_err: Exception = ValueError("No models tried")
+    for model in MODELS:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
+            )
+            for part in response.candidates[0].content.parts:
+                if part.inline_data is not None:
+                    mime = part.inline_data.mime_type or "image/jpeg"
+                    encoded = base64.b64encode(part.inline_data.data).decode("ascii")
+                    return f"data:{mime};base64,{encoded}"
+            last_err = ValueError(f"{model}: no image parts in response")
+        except Exception as e:
+            last_err = e
+            log.warning(f"[Renders] Gemini {model!r}: {e}")
+    raise last_err
 
-    def _run():
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        last_err = None
-        for model in MODELS:
+
+async def _generate_via_gemini(prompt: str) -> str:
+    """
+    Rate-limited Gemini image generation.
+    Uses a semaphore (max 2 concurrent) to avoid hitting free-tier quota.
+    Retries up to 3× on rate-limit errors with backoff.
+    """
+    async with _gemini_sem:
+        for attempt in range(3):
             try:
-                response = client.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["IMAGE", "TEXT"],
-                    ),
+                return await asyncio.wait_for(
+                    asyncio.to_thread(_gemini_call, prompt), timeout=90
                 )
-                for part in response.candidates[0].content.parts:
-                    if part.inline_data is not None:
-                        mime = part.inline_data.mime_type or "image/jpeg"
-                        # inline_data.data is raw bytes — must base64-encode
-                        encoded = base64.b64encode(part.inline_data.data).decode("ascii")
-                        return f"data:{mime};base64,{encoded}"
-                last_err = ValueError(f"{model}: response had no image parts")
             except Exception as e:
-                last_err = e
-                log.warning(f"[Renders] Gemini model {model!r} failed: {e}")
-                continue
-        raise last_err or ValueError("All Gemini models failed")
-
-    return await asyncio.wait_for(asyncio.to_thread(_run), timeout=90)
+                err = str(e)
+                if any(x in err for x in ("429", "RESOURCE_EXHAUSTED", "quota", "rate")):
+                    wait = 12 * (attempt + 1)   # 12s, 24s, 36s
+                    log.warning(f"[Renders] Gemini rate-limited, retrying in {wait}s (attempt {attempt + 1})")
+                    await asyncio.sleep(wait)
+                else:
+                    raise
+        raise RuntimeError("Gemini rate limit persisted after 3 retries")
 
 
 async def _generate_via_pollinations(prompt: str, seed: int) -> str:

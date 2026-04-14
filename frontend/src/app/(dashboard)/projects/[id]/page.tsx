@@ -11,25 +11,8 @@ const ExteriorCarousel  = dynamic(() => import('./ExteriorCarousel'),  { ssr: fa
 const AerialViewer      = dynamic(() => import('../../aerial-report/AerialViewer'), { ssr: false })
 import RoofingSection from './RoofingSection'
 
-// Delays rendering RenderViewer until after `delayMs` to stagger Pollinations requests
-function StaggeredRender({ src, label, totalSqft, delayMs }: { src: string; label: string; totalSqft?: number; delayMs: number }) {
-  const [ready, setReady] = useState(delayMs === 0)
-  useEffect(() => {
-    if (delayMs === 0) return
-    const t = setTimeout(() => setReady(true), delayMs)
-    return () => clearTimeout(t)
-  }, [delayMs])
-
-  if (!ready) return (
-    <div className="rounded-xl flex flex-col items-center justify-center gap-3 bg-slate-900"
-      style={{ border: '1px solid rgba(219,234,254,0.15)', aspectRatio: '16/9' }}>
-      <svg className="animate-spin text-indigo-400" width="24" height="24" viewBox="0 0 24 24" fill="none">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-      </svg>
-      <span className="text-slate-500 text-xs">Generating {label}…</span>
-    </div>
-  )
+// Images are base64 data URIs from backend — no staggering needed
+function StaggeredRender({ src, label, totalSqft }: { src: string; label: string; totalSqft?: number }) {
   return <RenderViewer src={src} label={label} totalSqft={totalSqft} />
 }
 
@@ -2288,7 +2271,6 @@ Thank you for your time.`
                                   src={room.url}
                                   label={room.name}
                                   totalSqft={analysis?.total_sqft ?? undefined}
-                                  delayMs={i * 5000}
                                 />
                               ) : (
                                 <div
