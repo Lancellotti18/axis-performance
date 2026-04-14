@@ -2205,6 +2205,10 @@ Thank you for your time.`
                             setRenderError(null)
                             try {
                               const result = await api.renders.generate(projectId, renderStyle, renderTimeOfDay)
+                              // Log first URL for debugging broken images
+                              const firstUrl = result.exterior_views?.[0]?.url ?? null
+                              if (firstUrl) console.log('[renders] first url type:', firstUrl.startsWith('data:') ? 'base64 data URI' : 'external URL', '| length:', firstUrl.length)
+                              else console.warn('[renders] first url is null — all images failed generation')
                               setRenders(result)
                             } catch (err: any) {
                               setRenderError(err.message || 'Render generation failed.')

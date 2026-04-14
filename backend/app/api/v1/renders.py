@@ -143,12 +143,26 @@ async def _generate_via_pollinations(prompt: str, seed: int) -> str:
     async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
         r = await client.get(url)
         if r.status_code >= 400:
-            raise ValueError(f"Pollinations returned {r.status_code}")
-        ct = r.headers.get("content-type", "image/jpeg")
-        if "image" not in ct:
-            raise ValueError(f"Pollinations returned non-image content: {ct}")
-        mime = ct.split(";")[0].strip() or "image/jpeg"
-        return f"data:{mime};base64," + base64.b64encode(r.content).decode()
+            raise ValueError(f"Pollinations returned HTTP {r.status_code}")
+        ct = r.headers.get("content-type", "")
+        body = r.content
+        # Validate image magic bytes: JPEG=FF D8, PNG=89 50, WEBP=52 49 46 46
+        is_image = (
+            body[:2] == b'\xff\xd8'               # JPEG
+            or body[:4] == b'\x89PNG'             # PNG
+            or body[8:12] == b'WEBP'              # WebP
+        )
+        if not is_image:
+            snippet = body[:120].decode("utf-8", errors="replace")
+            raise ValueError(f"Pollinations returned non-image bytes (ct={ct!r}): {snippet!r}")
+        # Use detected mime type from magic bytes rather than trusting the header
+        if body[:2] == b'\xff\xd8':
+            mime = "image/jpeg"
+        elif body[:4] == b'\x89PNG':
+            mime = "image/png"
+        else:
+            mime = "image/webp"
+        return f"data:{mime};base64," + base64.b64encode(body).decode()
 
 
 async def _generate_via_hf(prompt: str) -> str:

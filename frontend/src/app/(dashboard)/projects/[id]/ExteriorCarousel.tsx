@@ -26,6 +26,7 @@ const ANGLE_LABEL: Record<string, string> = {
 
 export default function ExteriorCarousel({ views }: Props) {
   const [idx, setIdx] = useState(0)
+  const [imgErrors, setImgErrors] = useState<Record<number, boolean>>({})
   const imgRef = useRef<HTMLDivElement>(null)
 
   const prev = useCallback(() => setIdx(i => (i === 0 ? views.length - 1 : i - 1)), [views.length])
@@ -80,12 +81,13 @@ export default function ExteriorCarousel({ views }: Props) {
 
       {/* Image */}
       <div ref={imgRef} className="relative bg-slate-100 select-none" style={{ aspectRatio: '16/9' }}>
-        {current.url ? (
+        {current.url && !imgErrors[idx] ? (
           <img
             src={current.url}
             alt={`Exterior ${label}`}
             className="absolute inset-0 w-full h-full object-cover"
             draggable={false}
+            onError={() => setImgErrors(prev => ({ ...prev, [idx]: true }))}
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
@@ -93,7 +95,8 @@ export default function ExteriorCarousel({ views }: Props) {
               <rect x="3" y="3" width="18" height="14" rx="2"/>
               <path d="M3 9l4-4 4 4 4-4 4 4"/>
             </svg>
-            <span className="text-sm">{label} render unavailable</span>
+            <span className="text-sm">{label} — render unavailable</span>
+            {imgErrors[idx] && <span className="text-xs text-slate-300">Image failed to load — re-generate to retry</span>}
           </div>
         )}
 

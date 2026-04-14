@@ -319,6 +319,16 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
             const img = e.currentTarget
             setImgNatural({ w: img.naturalWidth, h: img.naturalHeight })
           }}
+          onError={e => {
+            e.currentTarget.style.display = 'none'
+            const parent = e.currentTarget.parentElement
+            if (parent) {
+              const msg = document.createElement('div')
+              msg.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#94a3b8;font-size:14px;'
+              msg.innerHTML = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/></svg><span>Image failed to load</span>'
+              parent.appendChild(msg)
+            }
+          }}
           style={{
             position:        'absolute',
             top:             '50%',
