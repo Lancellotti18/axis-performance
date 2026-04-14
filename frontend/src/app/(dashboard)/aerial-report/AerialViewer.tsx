@@ -8,8 +8,12 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react'
 
+// The backend now serves 1280×840 images (2× resolution for the same geographic area).
+// We display them at 640×420 CSS pixels → retina-quality at all zoom levels.
 const IMG_W = 640
 const IMG_H = 420
+const IMG_NATIVE_W = 1280   // actual pixel dimensions of the fetched image
+const IMG_NATIVE_H = 840
 const ZOOM_LEVEL = 18
 const ESRI_MPP0 = 156543.03392   // metres/pixel at zoom 0 at equator
 const M_TO_FT   = 3.28084
@@ -333,7 +337,7 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
         ref={wrapRef}
         style={{
           position:    'relative',
-          height:      fillHeight ? '100%' : 520,
+          height:      fillHeight ? '100%' : 580,
           overflow:    'hidden',
           cursor:      measuring ? 'crosshair' : 'grab',
           touchAction: 'none',
@@ -344,26 +348,28 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
         onMouseLeave={onMouseUp}
         onClick={onClick}
       >
-        {/* Transformed image layer */}
+        {/* Transformed image layer — translate3d forces GPU compositing, rounded coords eliminate subpixel blur */}
         <div
           style={{
             position:        'absolute',
             top:             0,
             left:            0,
-            transform:       `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transform:       `translate3d(${Math.round(pan.x * 2) / 2}px, ${Math.round(pan.y * 2) / 2}px, 0) scale(${zoom})`,
             transformOrigin: '0 0',
             width:           IMG_W,
             height:          IMG_H,
             lineHeight:      0,
+            willChange:      'transform',
           }}
         >
+          {/* Source is 1280×840 px; displayed at 640×420 → retina-quality downscale */}
           <img
             src={imageUrl}
             alt={address ? `Aerial view of ${address}` : 'Aerial view'}
-            width={IMG_W}
-            height={IMG_H}
+            width={IMG_NATIVE_W}
+            height={IMG_NATIVE_H}
             draggable={false}
-            style={{ display: 'block', width: IMG_W, height: IMG_H }}
+            style={{ display: 'block', width: IMG_W, height: IMG_H, imageRendering: 'auto' }}
           />
 
           {/* SVG overlay — same coordinate space as image */}
@@ -511,7 +517,7 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
         className="flex items-center justify-between px-4 py-2"
         style={{ background: 'rgba(15,23,42,0.97)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
       >
-        <span className="text-slate-600 text-[10px]">Esri World Imagery · zoom {ZOOM_LEVEL}{lat !== null ? ` · ~${feetPerPx.toFixed(1)} ft/pixel` : ''}</span>
+        <span className="text-slate-600 text-[10px]">Esri World Imagery · 2× resolution{lat !== null ? ` · ~${(feetPerPx / 2).toFixed(2)} ft/px` : ''}</span>
         {address && <span className="text-slate-500 text-[10px] truncate max-w-xs ml-4">{address}</span>}
       </div>
     </div>
