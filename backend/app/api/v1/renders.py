@@ -166,25 +166,13 @@ def _gemini_call(prompt: str) -> str:
 
 async def _generate_via_gemini(prompt: str) -> str:
     """
-    Rate-limited Gemini image generation.
-    Uses a semaphore (max 2 concurrent) to avoid hitting free-tier quota.
-    Retries up to 3× on rate-limit errors with backoff.
+    Gemini image generation with concurrency limit.
+    Fails fast on any error — no retry sleep that would block the semaphore.
     """
     async with _gemini_sem:
-        for attempt in range(3):
-            try:
-                return await asyncio.wait_for(
-                    asyncio.to_thread(_gemini_call, prompt), timeout=90
-                )
-            except Exception as e:
-                err = str(e)
-                if any(x in err for x in ("429", "RESOURCE_EXHAUSTED", "quota", "rate")):
-                    wait = 12 * (attempt + 1)   # 12s, 24s, 36s
-                    log.warning(f"[Renders] Gemini rate-limited, retrying in {wait}s (attempt {attempt + 1})")
-                    await asyncio.sleep(wait)
-                else:
-                    raise
-        raise RuntimeError("Gemini rate limit persisted after 3 retries")
+        return await asyncio.wait_for(
+            asyncio.to_thread(_gemini_call, prompt), timeout=25
+        )
 
 
 async def _generate_via_pollinations(prompt: str, seed: int) -> str:
