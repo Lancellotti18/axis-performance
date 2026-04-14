@@ -278,8 +278,18 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
 
   return (
     <div
-      className="rounded-2xl overflow-hidden select-none"
-      style={{ border: '1px solid rgba(219,234,254,0.8)', background: '#0f172a', boxShadow: '0 4px 20px rgba(59,130,246,0.12)' }}
+      className="overflow-hidden select-none"
+      style={{
+        background: '#0f172a',
+        // When filling the parent, become a flex column so the toolbar/footer
+        // take natural height and the viewport gets the rest via flex-1.
+        // Without this, `height: '100%'` on the viewport resolves to 0 because
+        // the parent has no explicit height (auto).
+        ...(fillHeight
+          ? { display: 'flex', flexDirection: 'column', height: '100%' }
+          : { borderRadius: 16, border: '1px solid rgba(219,234,254,0.8)', boxShadow: '0 4px 20px rgba(59,130,246,0.12)' }
+        ),
+      }}
     >
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
       <div
@@ -350,7 +360,9 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
         ref={wrapRef}
         style={{
           position:    'relative',
-          height:      fillHeight ? '100%' : 580,
+          // flex-1 lets the flex-column parent distribute remaining height;
+          // explicit px height used when not filling a parent container.
+          ...(fillHeight ? { flex: '1 1 0', minHeight: 0 } : { height: 580 }),
           overflow:    'hidden',
           cursor:      measuring ? 'crosshair' : 'grab',
           touchAction: 'none',
