@@ -6,9 +6,10 @@ Generates:
   • Up to 6 per-room interior renders (from blueprint analysis)
 
 Provider priority (first available wins):
-  1. Pollinations.ai  — free, no API key required
-  2. HuggingFace FLUX — free with HUGGINGFACE_API_KEY
-  3. Replicate SDXL   — paid fallback with REPLICATE_API_KEY
+  1. Google Gemini image generation — free with GEMINI_API_KEY, returns base64
+  2. HuggingFace FLUX               — free with HUGGINGFACE_API_KEY, returns base64
+  3. Replicate SDXL                 — paid fallback with REPLICATE_API_KEY
+  4. Pollinations.ai URL            — free, no key; browser loads the URL directly
 
 Each image uses a unique seed so renders vary on every generation.
 """
@@ -125,17 +126,38 @@ def _build_room_prompt(
 # ── Image generation ──────────────────────────────────────────────────────────
 
 def _pollinations_url(prompt: str, seed: int) -> str:
-    """
-    Build a Pollinations.ai image URL.
-    The URL is loaded by the browser directly — Pollinations accepts browser
-    GET requests and generates the image on the fly. Cloud-server IPs are
-    often blocked by Pollinations, so we never download server-side.
-    """
+    """Pollinations URL — last resort, loaded by the browser directly."""
     encoded = urllib.parse.quote(prompt, safe='')
     return (
         f"{POLLINATIONS_API}/{encoded}"
         f"?width=1280&height=720&model=flux&seed={seed}&nologo=true"
     )
+
+
+async def _generate_via_gemini(prompt: str) -> str:
+    """
+    Google Gemini image generation — free with GEMINI_API_KEY.
+    Uses gemini-2.0-flash-preview-image-generation. Returns base64 data URI.
+    """
+    from google import genai
+    from google.genai import types
+
+    def _run():
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-preview-image-generation",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"],
+            ),
+        )
+        for part in response.candidates[0].content.parts:
+            if part.inline_data is not None:
+                mime = part.inline_data.mime_type or "image/jpeg"
+                return f"data:{mime};base64,{part.inline_data.data}"
+        raise ValueError("Gemini returned no image in response")
+
+    return await asyncio.wait_for(asyncio.to_thread(_run), timeout=90)
 
 
 async def _generate_via_pollinations(prompt: str, seed: int) -> str:
@@ -214,22 +236,22 @@ async def _generate_via_replicate(prompt: str) -> str:
     raise TimeoutError("Replicate generation timed out.")
 
 
-async def _generate_image(prompt: str, seed: int) -> str | None:
-    """Try Pollinations (with retry) → HF → Replicate. Returns URL or None on total failure."""
-    # Pollinations: up to 3 attempts with different seeds on transient failures
-    for attempt in range(3):
+async def _generate_image(prompt: str, seed: int) -> str:
+    """
+    Try providers in order. Always returns a string (base64 data URI or Pollinations URL).
+    Priority: Gemini → HuggingFace → Replicate → Pollinations URL
+    """
+    if settings.GEMINI_API_KEY:
         try:
-            return await _generate_via_pollinations(prompt, seed + attempt * 100)
+            return await _generate_via_gemini(prompt)
         except Exception as e:
-            log.warning(f"[Renders] Pollinations attempt {attempt + 1} failed (seed={seed + attempt * 100}): {e}")
-            if attempt < 2:
-                await asyncio.sleep(2)  # brief pause before retry
+            log.warning(f"[Renders] Gemini image gen failed: {e}")
 
     if settings.HUGGINGFACE_API_KEY:
         try:
             return await _generate_via_hf(prompt)
         except Exception as e:
-            log.warning(f"[Renders] HuggingFace failed: {e} — trying Replicate…")
+            log.warning(f"[Renders] HuggingFace failed: {e}")
 
     if settings.REPLICATE_API_KEY:
         try:
@@ -237,7 +259,9 @@ async def _generate_image(prompt: str, seed: int) -> str | None:
         except Exception as e:
             log.warning(f"[Renders] Replicate failed: {e}")
 
-    return None
+    # Last resort: return a Pollinations URL for the browser to load directly
+    log.warning("[Renders] All server-side providers failed — returning Pollinations URL")
+    return _pollinations_url(prompt, seed)
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
