@@ -18,7 +18,7 @@ const MAX_ZOOM  = 14
 
 interface Props {
   imageUrl: string
-  lat:      number
+  lat:      number | null   // null = geocoding failed; viewer still works, highlight hidden
   address?: string
 }
 
@@ -190,7 +190,7 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
     clearMeasure()
   }, [clearMeasure])
 
-  const feetPerPx = mpp(lat) * M_TO_FT
+  const feetPerPx = mpp(lat ?? 39.5) * M_TO_FT  // default to US center if lat unavailable
   const distFt = ptA && ptB
     ? Math.round(Math.sqrt((ptB.x - ptA.x) ** 2 + (ptB.y - ptA.y) ** 2) * feetPerPx)
     : null
@@ -274,7 +274,8 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
 
         <div className="flex-1" />
 
-        <span className="text-slate-600 text-[10px]">Scroll to zoom · Drag to pan</span>
+        <span className="text-slate-600 text-[10px] hidden sm:inline">Scroll to zoom · Drag to pan</span>
+        <span className="text-slate-600 text-[10px] sm:hidden">Pinch to zoom · Drag to pan</span>
       </div>
 
       {/* ── Map viewport ─────────────────────────────────────────────── */}
@@ -322,18 +323,36 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
             viewBox={`0 0 ${IMG_W} ${IMG_H}`}
             style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', overflow: 'visible' }}
           >
-            {/* ── House highlight ── */}
-            {/* Outer glow ring (always visible, especially at zoom-out) */}
-            <circle cx={hx} cy={hy} r={28} fill="rgba(99,102,241,0.12)" stroke="rgba(99,102,241,0.35)" strokeWidth={1.5} />
-            {/* Mid ring */}
-            <circle cx={hx} cy={hy} r={14} fill="rgba(99,102,241,0.18)" stroke="#818cf8" strokeWidth={2} />
-            {/* Center dot */}
-            <circle cx={hx} cy={hy} r={4}  fill="#c7d2fe" />
-            {/* Crosshair ticks */}
-            <line x1={hx-44} y1={hy} x2={hx-16} y2={hy} stroke="#818cf8" strokeWidth={1.5} strokeLinecap="round" />
-            <line x1={hx+16} y1={hy} x2={hx+44} y2={hy} stroke="#818cf8" strokeWidth={1.5} strokeLinecap="round" />
-            <line x1={hx} y1={hy-44} x2={hx} y2={hy-16} stroke="#818cf8" strokeWidth={1.5} strokeLinecap="round" />
-            <line x1={hx} y1={hy+16} x2={hx} y2={hy+44} stroke="#818cf8" strokeWidth={1.5} strokeLinecap="round" />
+            {/* ── House highlight (only when lat is known = accurate position) ── */}
+            {lat !== null && (
+              <>
+                {/* Radar-ping animation — expands outward and fades */}
+                <circle cx={hx} cy={hy} r={20} fill="none" stroke="#facc15" strokeWidth={2.5} opacity={0}>
+                  <animate attributeName="r"       from="20"  to="64"  dur="2.2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" from="0.9" to="0"   dur="2.2s" repeatCount="indefinite" />
+                </circle>
+                {/* Second offset ping for continuous feel */}
+                <circle cx={hx} cy={hy} r={20} fill="none" stroke="#facc15" strokeWidth={2} opacity={0}>
+                  <animate attributeName="r"       from="20"  to="64"  dur="2.2s" begin="1.1s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" from="0.7" to="0"   dur="2.2s" begin="1.1s" repeatCount="indefinite" />
+                </circle>
+                {/* White drop-shadow ring behind main ring */}
+                <circle cx={hx} cy={hy} r={20} fill="rgba(255,255,255,0.25)" stroke="white" strokeWidth={4} />
+                {/* Main vivid ring */}
+                <circle cx={hx} cy={hy} r={20} fill="rgba(250,204,21,0.22)" stroke="#facc15" strokeWidth={2.5} />
+                {/* Inner dot */}
+                <circle cx={hx} cy={hy} r={5} fill="#fde047" stroke="white" strokeWidth={2} />
+                {/* Crosshair ticks */}
+                <line x1={hx-50} y1={hy} x2={hx-24} y2={hy} stroke="white"   strokeWidth={1.5} strokeLinecap="round" strokeOpacity={0.7} />
+                <line x1={hx+24} y1={hy} x2={hx+50} y2={hy} stroke="white"   strokeWidth={1.5} strokeLinecap="round" strokeOpacity={0.7} />
+                <line x1={hx} y1={hy-50} x2={hx} y2={hy-24} stroke="white"   strokeWidth={1.5} strokeLinecap="round" strokeOpacity={0.7} />
+                <line x1={hx} y1={hy+24} x2={hx} y2={hy+50} stroke="white"   strokeWidth={1.5} strokeLinecap="round" strokeOpacity={0.7} />
+                <line x1={hx-50} y1={hy} x2={hx-24} y2={hy} stroke="#facc15" strokeWidth={1}   strokeLinecap="round" strokeOpacity={0.9} />
+                <line x1={hx+24} y1={hy} x2={hx+50} y2={hy} stroke="#facc15" strokeWidth={1}   strokeLinecap="round" strokeOpacity={0.9} />
+                <line x1={hx} y1={hy-50} x2={hx} y2={hy-24} stroke="#facc15" strokeWidth={1}   strokeLinecap="round" strokeOpacity={0.9} />
+                <line x1={hx} y1={hy+24} x2={hx} y2={hy+50} stroke="#facc15" strokeWidth={1}   strokeLinecap="round" strokeOpacity={0.9} />
+              </>
+            )}
 
             {/* ── Measure points + line ── */}
             {ptA && (
@@ -396,22 +415,24 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
           </div>
         )}
 
-        {/* "Property" label badge — top of highlight, fixed to map coords */}
-        <div
-          className="absolute text-[10px] font-bold text-indigo-300 px-2 py-0.5 rounded-full"
-          style={{
-            background:          'rgba(99,102,241,0.25)',
-            border:              '1px solid rgba(99,102,241,0.4)',
-            backdropFilter:      'blur(4px)',
-            WebkitBackdropFilter:'blur(4px)',
-            pointerEvents:       'none',
-            // Position: top of the outer ring (r=28) in viewport coords
-            left: pan.x + hx * zoom - 30,
-            top:  pan.y + (hy - 28) * zoom - 24,
-          }}
-        >
-          Property
-        </div>
+        {/* "Property" label badge — floats above the highlight ring, only when lat is known */}
+        {lat !== null && (
+          <div
+            className="absolute text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
+            style={{
+              background:          'rgba(250,204,21,0.22)',
+              border:              '1px solid rgba(250,204,21,0.75)',
+              color:               '#fde047',
+              backdropFilter:      'blur(4px)',
+              WebkitBackdropFilter:'blur(4px)',
+              pointerEvents:       'none',
+              left: pan.x + hx * zoom - 32,
+              top:  pan.y + (hy - 20) * zoom - 30,
+            }}
+          >
+            📍 Property
+          </div>
+        )}
       </div>
 
       {/* ── Footer ─────────────────────────────────────────────────── */}
@@ -419,7 +440,7 @@ export default function AerialViewer({ imageUrl, lat, address }: Props) {
         className="flex items-center justify-between px-4 py-2"
         style={{ background: 'rgba(15,23,42,0.97)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
       >
-        <span className="text-slate-600 text-[10px]">Esri World Imagery · zoom {ZOOM_LEVEL} · ~{feetPerPx.toFixed(1)} ft/pixel</span>
+        <span className="text-slate-600 text-[10px]">Esri World Imagery · zoom {ZOOM_LEVEL}{lat !== null ? ` · ~${feetPerPx.toFixed(1)} ft/pixel` : ''}</span>
         {address && <span className="text-slate-500 text-[10px] truncate max-w-xs ml-4">{address}</span>}
       </div>
     </div>

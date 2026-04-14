@@ -153,23 +153,13 @@ export default function AerialReportPage() {
               )}
             </div>
 
-            {/* Satellite image — interactive viewer */}
-            {result.satellite_image_url && result.lat && (
+            {/* Satellite image — always show interactive viewer when image is available */}
+            {result.satellite_image_url && (
               <AerialViewer
                 imageUrl={result.satellite_image_url}
-                lat={result.lat}
+                lat={result.lat ?? null}
                 address={result.address || address}
               />
-            )}
-            {result.satellite_image_url && !result.lat && (
-              <div className="rounded-2xl overflow-hidden" style={cardStyle}>
-                <img
-                  src={result.satellite_image_url}
-                  alt={`Satellite view of ${result.address || address}`}
-                  className="w-full object-cover"
-                  style={{ maxHeight: 340 }}
-                />
-              </div>
             )}
 
             {/* Key metrics */}
