@@ -1,7 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import { api } from '@/lib/api'
+
+const AerialViewer = dynamic(() => import('./AerialViewer'), { ssr: false })
 
 const cardStyle = {
   boxShadow: '0 2px 12px rgba(59,130,246,0.07)',
@@ -150,8 +153,15 @@ export default function AerialReportPage() {
               )}
             </div>
 
-            {/* Satellite image */}
-            {result.satellite_image_url && (
+            {/* Satellite image — interactive viewer */}
+            {result.satellite_image_url && result.lat && (
+              <AerialViewer
+                imageUrl={result.satellite_image_url}
+                lat={result.lat}
+                address={result.address || address}
+              />
+            )}
+            {result.satellite_image_url && !result.lat && (
               <div className="rounded-2xl overflow-hidden" style={cardStyle}>
                 <img
                   src={result.satellite_image_url}
