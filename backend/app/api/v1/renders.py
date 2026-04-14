@@ -137,25 +137,43 @@ def _pollinations_url(prompt: str, seed: int) -> str:
 async def _generate_via_gemini(prompt: str) -> str:
     """
     Google Gemini image generation — free with GEMINI_API_KEY.
-    Uses gemini-2.0-flash-preview-image-generation. Returns base64 data URI.
+    Tries multiple model names since preview/experimental names change.
+    Returns a base64 data URI.
     """
     from google import genai
     from google.genai import types
 
+    # Try model names in order — Gemini image gen model name has changed across SDK versions
+    MODELS = [
+        "gemini-2.0-flash-preview-image-generation",
+        "gemini-2.0-flash-exp-image-generation",
+        "gemini-2.0-flash-exp",
+    ]
+
     def _run():
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-preview-image-generation",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"],
-            ),
-        )
-        for part in response.candidates[0].content.parts:
-            if part.inline_data is not None:
-                mime = part.inline_data.mime_type or "image/jpeg"
-                return f"data:{mime};base64,{part.inline_data.data}"
-        raise ValueError("Gemini returned no image in response")
+        last_err = None
+        for model in MODELS:
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["IMAGE", "TEXT"],
+                    ),
+                )
+                for part in response.candidates[0].content.parts:
+                    if part.inline_data is not None:
+                        mime = part.inline_data.mime_type or "image/jpeg"
+                        # inline_data.data is raw bytes — must base64-encode
+                        encoded = base64.b64encode(part.inline_data.data).decode("ascii")
+                        return f"data:{mime};base64,{encoded}"
+                last_err = ValueError(f"{model}: response had no image parts")
+            except Exception as e:
+                last_err = e
+                log.warning(f"[Renders] Gemini model {model!r} failed: {e}")
+                continue
+        raise last_err or ValueError("All Gemini models failed")
 
     return await asyncio.wait_for(asyncio.to_thread(_run), timeout=90)
 
