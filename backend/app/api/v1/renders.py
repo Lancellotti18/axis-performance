@@ -35,7 +35,7 @@ log = logging.getLogger(__name__)
 # Limit concurrent Gemini image-gen calls to avoid hitting free-tier rate limits.
 # Gemini allows ~10 RPM on the free tier; with 10 images firing simultaneously
 # requests 2-10 get rate-limited and fall back to Pollinations (which doesn't load).
-_gemini_sem = asyncio.Semaphore(2)
+_gemini_sem = asyncio.Semaphore(4)
 
 POLLINATIONS_API = "https://image.pollinations.ai/prompt"
 HF_API           = "https://router.huggingface.co/hf-inference/models"
@@ -93,13 +93,10 @@ def _build_exterior_prompt(
     room_str  = f"{room_count} rooms, " if room_count else ""
 
     return (
-        f"Photorealistic architectural exterior render of a {stories} {bp_type} home, "
-        f"{style_desc}, {sqft_str}{room_str}located in {location}. "
-        f"Beautifully landscaped yard with green lawn, mature trees, concrete driveway. "
-        f"{angle_desc.capitalize()}. "
-        f"{time_desc.capitalize()}. "
-        f"Ultra-high quality architectural photography, 8K resolution, photorealistic, "
-        f"professional real estate photography, no people, sharp focus, wide angle lens."
+        f"{stories} {bp_type} home, {style_desc}, {sqft_str}in {location}. "
+        f"{angle_desc.capitalize()}. {time_desc.capitalize()}. "
+        f"Landscaped yard, concrete driveway. "
+        f"Architectural photography, no people, sharp focus."
     )
 
 
@@ -119,12 +116,9 @@ def _build_room_prompt(
     sqft_str = f"approximately {room_sqft} square feet, " if room_sqft else ""
 
     return (
-        f"Photorealistic interior render of a {bp_type} {room_name}, "
-        f"{style_desc}, {sqft_str}"
-        f"large windows with natural light flooding in, hardwood floors, "
-        f"high ceilings, tasteful furniture and decor. "
-        f"Ultra-high quality architectural interior photography, 8K resolution, photorealistic, "
-        f"designed by top interior designer, no people, sharp focus, wide angle lens."
+        f"{bp_type} {room_name}, {style_desc}, {sqft_str}"
+        f"natural light, hardwood floors, high ceilings, tasteful furniture. "
+        f"Interior photography, no people, wide angle."
     )
 
 
@@ -342,8 +336,8 @@ async def generate_renders(project_id: str, request: RenderRequest):
         for i, (_, angle_desc) in enumerate(EXTERIOR_ANGLES)
     ]
 
-    # ── Up to 6 room interior views ──
-    rooms = analysis.get("rooms", [])[:6]
+    # ── Up to 3 room interior views (fastest rooms first) ──
+    rooms = analysis.get("rooms", [])[:3]
     room_tasks = [
         _generate_image(
             _build_room_prompt(
