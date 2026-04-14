@@ -403,7 +403,7 @@ export const api = {
       }>(
         `/api/v1/renders/${projectId}/generate`,
         { method: 'POST', body: JSON.stringify({ style, time_of_day: timeOfDay }) },
-        240000,  // 4-min timeout — 10 images generated concurrently
+        300000,  // 5-min timeout — images generated serially with 10s gaps to respect Gemini rate limits
       ),
   },
 }

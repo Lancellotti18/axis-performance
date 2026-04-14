@@ -167,13 +167,19 @@ def _gemini_call(prompt: str) -> str:
 
 async def _generate_via_gemini(prompt: str) -> str:
     """
-    Gemini image generation with concurrency limit.
-    Fails fast on any error — no retry sleep that would block the semaphore.
+    Gemini image generation, serialized by semaphore.
+    10s sleep after every call (success or fail) keeps us at ≤5 RPM on the
+    image-gen free-tier quota; without this, calls 2-7 get 429 and fall
+    back to Pollinations (cloud IPs blocked), leaving only 1 image loaded.
     """
     async with _gemini_sem:
-        return await asyncio.wait_for(
-            asyncio.to_thread(_gemini_call, prompt), timeout=25
-        )
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(_gemini_call, prompt), timeout=25
+            )
+        finally:
+            # Always wait — even on failure — so the next call doesn't hit rate limits.
+            await asyncio.sleep(10)
 
 
 async def _generate_via_pollinations(prompt: str, seed: int) -> str:
@@ -325,8 +331,8 @@ async def generate_renders(project_id: str, request: RenderRequest):
         for i, (_, angle_desc) in enumerate(EXTERIOR_ANGLES)
     ]
 
-    # ── Up to 3 room interior views (fastest rooms first) ──
-    rooms = analysis.get("rooms", [])[:3]
+    # ── Up to 2 room interior views (keeps total within rate-limit budget) ──
+    rooms = analysis.get("rooms", [])[:2]
     room_tasks = [
         _generate_image(
             _build_room_prompt(
