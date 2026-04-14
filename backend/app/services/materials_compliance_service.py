@@ -26,7 +26,9 @@ async def fetch_local_codes(city: str, state: str, project_type: str, county: st
 
     results = await asyncio.gather(*[web_search(q, max_results=3) for q in queries[:2]])
     combined = "\n---\n".join(r for r in results if r)
-    return combined or "(No local code data found — using expert knowledge)"
+    combined = combined or "(No local code data found — using expert knowledge)"
+    # Truncate to keep total prompt within Groq's 12k TPM free-tier limit
+    return combined[:4000] if len(combined) > 4000 else combined
 
 
 def _parse_json_from_claude(text: str) -> dict:
