@@ -50,6 +50,7 @@ def _get_gemini_sem() -> asyncio.Semaphore:
         _gemini_sem = asyncio.Semaphore(1)
     return _gemini_sem
 
+POLLINATIONS_API = "https://image.pollinations.ai/prompt"
 HF_API       = "https://router.huggingface.co/hf-inference/models"
 HF_T2I_MODEL = "black-forest-labs/FLUX.1-schnell"
 REPLICATE_API = "https://api.replicate.com/v1"
@@ -68,7 +69,7 @@ EXTERIOR_ANGLES = [
     ("rear",       "rear elevation view showing the backyard and rear facade"),
 ]
 
-MAX_ROOM_RENDERS = 5  # 4 exterior + 5 rooms = 9 × 22s = ~198s; fits in 300s budget
+MAX_ROOM_RENDERS = 2  # 4 exterior + 2 rooms = 6 × 22s = 132s + 20s vision + 75s cold start = 227s < 300s
 
 
 class RenderRequest(BaseModel):
@@ -123,19 +124,22 @@ async def _analyze_blueprint(blueprint_id: str) -> dict:
             return {}
 
         from app.services.llm import llm_vision
-        analysis_text = await llm_vision(
-            image_bytes=image_bytes,
-            media_type=mime,
-            prompt=(
-                "Analyze this architectural blueprint. Extract ONLY what is clearly visible. "
-                "Return a JSON object with these keys (omit any key you cannot determine):\n"
-                '{"stories": 1 or 2, "style_cues": "brief phrase e.g. gable roof, open floor plan", '
-                '"exterior_materials": "e.g. brick, wood siding, stucco", '
-                '"key_features": "e.g. front porch, attached garage, large windows", '
-                '"rooms": ["list", "of", "room", "names", "visible"]}\n'
-                "Be concise. Do not guess. Return only the JSON."
+        # Hard 20s cap — blueprint vision is best-effort; we can't let it eat into the image-gen budget
+        analysis_text = await asyncio.wait_for(
+            llm_vision(
+                image_bytes=image_bytes,
+                media_type=mime,
+                prompt=(
+                    "Analyze this architectural blueprint. Extract ONLY what is clearly visible. "
+                    "Return a JSON object with these keys (omit any key you cannot determine):\n"
+                    '{"stories": 1, "style_cues": "gable roof, open floor plan", '
+                    '"exterior_materials": "brick, wood siding", '
+                    '"key_features": "front porch, attached garage"}\n'
+                    "Be concise. Return only the JSON, no markdown."
+                ),
+                max_tokens=256,
             ),
-            max_tokens=512,
+            timeout=20,
         )
 
         # Parse response
@@ -381,17 +385,25 @@ async def _generate_via_replicate(prompt: str) -> str:
     raise TimeoutError("Replicate generation timed out.")
 
 
-async def _generate_image(prompt: str) -> str:
+def _pollinations_url(prompt: str, seed: int) -> str:
+    encoded = urllib.parse.quote(prompt[:500], safe='')
+    return (
+        f"{POLLINATIONS_API}/{encoded}"
+        f"?width=1280&height=720&model=flux&seed={seed}&nologo=true"
+    )
+
+
+async def _generate_image(prompt: str, seed: int = 0) -> str:
     """
-    Try providers in order. Always returns a base64 data URI string.
-    Priority: Gemini → HuggingFace → Replicate
-    Raises if all providers fail (caller uses return_exceptions=True).
+    Try providers in order. Always returns a string — never raises.
+    Priority: Gemini → HuggingFace → Replicate → Pollinations URL
+    Pollinations is a URL the browser loads directly (not downloaded server-side).
     """
     if settings.GEMINI_API_KEY:
         try:
             return await _generate_via_gemini(prompt)
         except Exception as e:
-            log.warning(f"[Renders] Gemini image gen failed: {e}")
+            log.warning(f"[Renders] Gemini failed: {e}")
 
     if settings.HUGGINGFACE_API_KEY:
         try:
@@ -405,7 +417,9 @@ async def _generate_image(prompt: str) -> str:
         except Exception as e:
             log.warning(f"[Renders] Replicate failed: {e}")
 
-    raise RuntimeError("All image generation providers failed.")
+    # Last resort: Pollinations URL — browser loads it directly (not server-side)
+    log.warning("[Renders] All server-side providers failed — returning Pollinations URL")
+    return _pollinations_url(prompt, seed)
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
@@ -456,35 +470,42 @@ async def generate_renders(project_id: str, request: RenderRequest):
     # Use all rooms from blueprint analysis, capped to MAX_ROOM_RENDERS
     rooms = analysis.get("rooms", [])[:MAX_ROOM_RENDERS]
 
-    # Build prompts
-    exterior_prompts = [
-        _build_exterior_prompt(project, analysis, bp_vision, request.style, request.time_of_day, angle_desc, user_context)
-        for _, angle_desc in EXTERIOR_ANGLES
+    base_seed = random.randint(100, 9999)
+
+    # Build (prompt, seed) pairs
+    exterior_pairs = [
+        (_build_exterior_prompt(project, analysis, bp_vision, request.style, request.time_of_day, angle_desc, user_context), base_seed + i)
+        for i, (_, angle_desc) in enumerate(EXTERIOR_ANGLES)
     ]
-    room_prompts = [
-        _build_room_prompt(
-            project, analysis, bp_vision, request.style,
-            room.get("name", f"Room {j + 1}"),
-            int(room.get("sqft", 0)),
-            user_context,
+    room_pairs = [
+        (
+            _build_room_prompt(project, analysis, bp_vision, request.style, room.get("name", f"Room {j+1}"), int(room.get("sqft", 0)), user_context),
+            base_seed + 4 + j,
         )
         for j, room in enumerate(rooms)
     ]
 
-    all_prompts = exterior_prompts + room_prompts
+    all_pairs = exterior_pairs + room_pairs
     all_results = await asyncio.gather(
-        *[_generate_image(p) for p in all_prompts],
+        *[_generate_image(prompt, seed) for prompt, seed in all_pairs],
         return_exceptions=True,
     )
 
     ext_results  = all_results[:4]
     room_results = all_results[4:]
 
+    def _url(r) -> str | None:
+        if isinstance(r, str) and r:
+            return r
+        if isinstance(r, Exception):
+            log.error(f"[Renders] Image task failed: {r}")
+        return None
+
     exterior_views = [
         {
             "angle": EXTERIOR_ANGLES[i][0],
             "label": EXTERIOR_ANGLES[i][0].replace("-", " ").title(),
-            "url":   r if isinstance(r, str) else None,
+            "url":   _url(r),
         }
         for i, r in enumerate(ext_results)
     ]
@@ -492,7 +513,7 @@ async def generate_renders(project_id: str, request: RenderRequest):
     room_renders = [
         {
             "name": rooms[j].get("name", f"Room {j + 1}") if j < len(rooms) else f"Room {j + 1}",
-            "url":  r if isinstance(r, str) else None,
+            "url":  _url(r),
         }
         for j, r in enumerate(room_results)
     ]
