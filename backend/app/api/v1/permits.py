@@ -37,42 +37,46 @@ async def search_permit_portal(
     state: str = Query(...),
     project_type: str = Query(default="residential"),
 ):
-    """Search for the official building permit portal for a city."""
-    from app.services.search import web_search
+    """Search for the official building permit portal for a city using LLM-assisted URL selection."""
+    from app.services.jurisdiction_service import detect_jurisdiction
+    import asyncio
+
+    google_fallback = (
+        f"https://www.google.com/search?q="
+        f"{city.replace(' ', '+')}+{state}+building+permit+application+official"
+    )
+
     try:
-        query = f"{city} {state} building permit application online portal official government site"
-        raw = await web_search(query, max_results=6)
+        # Run jurisdiction detection in a thread (it uses sync requests internally)
+        jurisdiction = await asyncio.to_thread(
+            detect_jurisdiction, city, state, project_type=project_type
+        )
 
-        # Parse the first .gov or permit-related URL out of the results
-        portal_url = None
-        portal_name = None
-        for line in raw.split("\n"):
-            if "Source: " in line:
-                url = line.replace("Source: ", "").strip()
-                if ".gov" in url or "permit" in url.lower() or "building" in url.lower():
-                    portal_url = url
-                    break
-        if not portal_url:
-            for line in raw.split("\n"):
-                if "Source: " in line:
-                    portal_url = line.replace("Source: ", "").strip()
-                    break
-
-        # Extract a portal name from bold title lines
-        for line in raw.split("\n"):
-            if line.startswith("**") and "**" in line[2:]:
-                portal_name = line.strip("*").strip()
-                break
+        portal_url  = jurisdiction.get("gov_url") or jurisdiction.get("fallback_search_url")
+        portal_name = jurisdiction.get("authority_name") or f"{city}, {state} Building Department"
 
         return {
-            "portal_url": portal_url,
-            "portal_name": portal_name or f"{city}, {state} Building Department",
-            "instructions": f"Visit the official {city}, {state} building department website to submit your permit application.",
-            "source": "search",
+            "portal_url":   portal_url,
+            "portal_name":  portal_name,
+            "instructions": (
+                f"Visit the official {portal_name} website to submit your permit application."
+                if jurisdiction.get("found")
+                else f"No verified portal found — use the search link to locate the {city}, {state} building department."
+            ),
+            "source":            "jurisdiction_service",
+            "submission_method": jurisdiction.get("submission_method"),
+            "submission_email":  jurisdiction.get("submission_email"),
+            "found":             jurisdiction.get("found", False),
         }
     except Exception as e:
         logger.warning(f"Permit portal search failed: {e}")
-        return {"portal_url": None, "portal_name": None, "instructions": f"Contact the {city}, {state} building department directly.", "source": "error"}
+        return {
+            "portal_url":  google_fallback,
+            "portal_name": f"{city}, {state} Building Department",
+            "instructions": f"Search Google for the {city}, {state} building department.",
+            "source": "fallback",
+            "found": False,
+        }
 
 
 # ── Fetch & Analyze Form ────────────────────────────────────────────────────
