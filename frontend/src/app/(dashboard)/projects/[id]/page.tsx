@@ -700,6 +700,7 @@ export default function ProjectPage() {
   // AI Renders
   const [renderStyle, setRenderStyle] = useState('modern')
   const [renderTimeOfDay, setRenderTimeOfDay] = useState('golden_hour')
+  const [renderUserContext, setRenderUserContext] = useState('')
   const [renderLoading, setRenderLoading] = useState(false)
   const [renderError, setRenderError] = useState<string | null>(null)
   const [renders, setRenders] = useState<{
@@ -2172,48 +2173,65 @@ Thank you for your time.`
                 {/* ── AI PHOTOREALISTIC RENDERS ──────────────────────── */}
                 <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }}>
                   <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                      <div>
-                        <h3 className="text-slate-800 font-bold text-base">AI Photorealistic Renders</h3>
-                        <p className="text-slate-400 text-xs mt-0.5">360° exterior views + interior render for every room on the blueprint</p>
-                      </div>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-500 text-xs font-semibold">Style</span>
-                          <select
-                            value={renderStyle}
-                            onChange={e => setRenderStyle(e.target.value)}
-                            className="text-xs rounded-lg px-2.5 py-1.5 border text-slate-700 focus:outline-none focus:border-blue-400"
-                            style={{ borderColor: 'rgba(219,234,254,0.9)', background: '#f8faff' }}
-                          >
-                            {[['modern','Modern'],['traditional','Traditional'],['farmhouse','Farmhouse'],['contemporary','Contemporary'],['craftsman','Craftsman']].map(([v,l]) => (
-                              <option key={v} value={v}>{l}</option>
-                            ))}
-                          </select>
+                    <div className="space-y-4">
+                      <div className="flex items-start justify-between flex-wrap gap-4">
+                        <div>
+                          <h3 className="text-slate-800 font-bold text-base">AI Photorealistic Renders</h3>
+                          <p className="text-slate-400 text-xs mt-0.5">AI reads your blueprint for accurate context · 360° exterior + every room interior</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-500 text-xs font-semibold">Time</span>
-                          <select
-                            value={renderTimeOfDay}
-                            onChange={e => setRenderTimeOfDay(e.target.value)}
-                            className="text-xs rounded-lg px-2.5 py-1.5 border text-slate-700 focus:outline-none focus:border-blue-400"
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-500 text-xs font-semibold">Style</span>
+                            <select
+                              value={renderStyle}
+                              onChange={e => setRenderStyle(e.target.value)}
+                              className="text-xs rounded-lg px-2.5 py-1.5 border text-slate-700 focus:outline-none focus:border-blue-400"
+                              style={{ borderColor: 'rgba(219,234,254,0.9)', background: '#f8faff' }}
+                            >
+                              {[['modern','Modern'],['traditional','Traditional'],['farmhouse','Farmhouse'],['contemporary','Contemporary'],['craftsman','Craftsman']].map(([v,l]) => (
+                                <option key={v} value={v}>{l}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-500 text-xs font-semibold">Time</span>
+                            <select
+                              value={renderTimeOfDay}
+                              onChange={e => setRenderTimeOfDay(e.target.value)}
+                              className="text-xs rounded-lg px-2.5 py-1.5 border text-slate-700 focus:outline-none focus:border-blue-400"
+                              style={{ borderColor: 'rgba(219,234,254,0.9)', background: '#f8faff' }}
+                            >
+                              {[['day','Midday'],['golden_hour','Golden Hour'],['dusk','Dusk']].map(([v,l]) => (
+                                <option key={v} value={v}>{l}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Context input + Generate button */}
+                      <div className="flex gap-3 items-end">
+                        <div className="flex-1">
+                          <label className="text-slate-500 text-xs font-semibold block mb-1.5">
+                            Additional context <span className="font-normal text-slate-400">(optional — describe materials, colors, features)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={renderUserContext}
+                            onChange={e => setRenderUserContext(e.target.value)}
+                            placeholder='e.g. "red brick exterior, white trim, wraparound porch, coastal setting"'
+                            disabled={renderLoading}
+                            className="w-full text-xs rounded-xl px-3.5 py-2.5 border text-slate-700 placeholder-slate-300 focus:outline-none focus:border-indigo-400 disabled:opacity-50"
                             style={{ borderColor: 'rgba(219,234,254,0.9)', background: '#f8faff' }}
-                          >
-                            {[['day','Midday'],['golden_hour','Golden Hour'],['dusk','Dusk']].map(([v,l]) => (
-                              <option key={v} value={v}>{l}</option>
-                            ))}
-                          </select>
+                            onKeyDown={e => { if (e.key === 'Enter' && !renderLoading && hasBlueprint) (e.target as HTMLInputElement).blur() }}
+                          />
                         </div>
                         <button
                           onClick={async () => {
                             setRenderLoading(true)
                             setRenderError(null)
                             try {
-                              const result = await api.renders.generate(projectId, renderStyle, renderTimeOfDay)
-                              // Log first URL for debugging broken images
-                              const firstUrl = result.exterior_views?.[0]?.url ?? null
-                              if (firstUrl) console.log('[renders] first url type:', firstUrl.startsWith('data:') ? 'base64 data URI' : 'external URL', '| length:', firstUrl.length)
-                              else console.warn('[renders] first url is null — all images failed generation')
+                              const result = await api.renders.generate(projectId, renderStyle, renderTimeOfDay, renderUserContext)
                               setRenders(result)
                             } catch (err: any) {
                               setRenderError(err.message || 'Render generation failed.')
@@ -2222,7 +2240,7 @@ Thank you for your time.`
                           }}
                           disabled={renderLoading || !hasBlueprint}
                           title={!hasBlueprint ? 'Upload a blueprint first' : 'Generate AI renders'}
-                          className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
+                          className="flex items-center gap-2 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02] flex-shrink-0"
                           style={{ background: renderLoading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
                         >
                           {renderLoading
@@ -2246,7 +2264,7 @@ Thank you for your time.`
                       <div className="text-slate-500 text-sm text-center">
                         <div className="font-semibold">Generating photorealistic renders…</div>
                         <div className="text-slate-400 text-xs mt-1">
-                          Building 4 exterior angles + {analysis?.rooms?.length ? `${Math.min(analysis.rooms.length, 6)} room interiors` : 'room interiors'}. This takes 60–90 seconds.
+                          Reading blueprint · building 4 exterior angles + {analysis?.rooms?.length ? `${Math.min(analysis.rooms.length, 5)} room interior${Math.min(analysis.rooms.length, 5) !== 1 ? 's' : ''}` : 'room interiors'}. Takes ~2 minutes.
                         </div>
                       </div>
                     </div>

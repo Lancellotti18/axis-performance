@@ -394,15 +394,16 @@ export const api = {
       `${(process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()}/api/v1/axis/${projectId}/report`,
   },
   renders: {
-    generate: (projectId: string, style: string, timeOfDay: string) =>
+    generate: (projectId: string, style: string, timeOfDay: string, userContext = '') =>
       apiRequest<{
-        exterior_views: { angle: string; label: string; url: string | null }[]
-        room_renders:   { name: string; url: string | null }[]
-        style:          string
-        time_of_day:    string
+        exterior_views:     { angle: string; label: string; url: string | null }[]
+        room_renders:       { name: string; url: string | null }[]
+        style:              string
+        time_of_day:        string
+        blueprint_context?: Record<string, any>
       }>(
         `/api/v1/renders/${projectId}/generate`,
-        { method: 'POST', body: JSON.stringify({ style, time_of_day: timeOfDay }) },
+        { method: 'POST', body: JSON.stringify({ style, time_of_day: timeOfDay, user_context: userContext }) },
         300000,  // 5-min timeout — images generated serially with 10s gaps to respect Gemini rate limits
       ),
   },
