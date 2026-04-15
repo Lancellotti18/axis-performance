@@ -180,10 +180,24 @@ export const api = {
         `/api/v1/permits/portal-search?${params}`
       )
     },
-    fetchForm: (projectId: string) =>
-      apiRequest<{ form_url: string | null; city: string; state: string; project_type: string; fields: any[] }>(
+    analyzeRequirements: (projectId: string, notes: string, files: File[]) => {
+      const form = new FormData()
+      form.append('project_id', projectId)
+      form.append('notes', notes)
+      for (const f of files) form.append('files', f)
+      return fetchWithTimeout(
+        `${API_BASE}/api/v1/permits/analyze-requirements`,
+        { method: 'POST', body: form },
+        120000,
+      ).then(async res => {
+        if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
+        return res.json() as Promise<{ fields: Record<string, string>; summary: string; files_processed: number }>
+      })
+    },
+    fetchForm: (projectId: string, requirementsFields: Record<string, string> = {}) =>
+      apiRequest<{ form_url: string | null; city: string; state: string; project_type: string; fields: any[]; jurisdiction: any }>(
         `/api/v1/permits/fetch-form/${projectId}`,
-        { method: 'POST' },
+        { method: 'POST', body: JSON.stringify({ requirements_context: JSON.stringify(requirementsFields) }) },
         60000
       ),
     generatePdf: (projectId: string, fields: any[], formUrl: string | null, useWebForm: boolean) =>

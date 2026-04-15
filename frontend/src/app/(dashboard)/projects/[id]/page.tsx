@@ -68,11 +68,19 @@ const RISK_BANNER: Record<string, string> = {
 function PermitPortalSection({ project, projectId }: { project: any; projectId: string }) {
   const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }
 
-  // Step state: 'portal' | 'form' | 'review'
-  const [step, setStep] = useState<'portal' | 'form' | 'review'>('portal')
+  // Step state: 'portal' | 'requirements' | 'form' | 'review'
+  const [step, setStep] = useState<'portal' | 'requirements' | 'form' | 'review'>('portal')
   const [portal, setPortal] = useState<any>(null)
   const [portalLoading, setPortalLoading] = useState(false)
   const [portalError, setPortalError] = useState<string | null>(null)
+
+  // Requirements upload state
+  const [reqNotes, setReqNotes] = useState('')
+  const [reqFiles, setReqFiles] = useState<File[]>([])
+  const [reqLoading, setReqLoading] = useState(false)
+  const [reqError, setReqError] = useState<string | null>(null)
+  const [reqSummary, setReqSummary] = useState<string | null>(null)
+  const [reqFields, setReqFields] = useState<Record<string, string>>({})
 
   // Form state
   const [formData, setFormData] = useState<any>(null)   // { form_url, fields, city, state, jurisdiction }
@@ -130,16 +138,35 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
     setPortalLoading(false)
   }
 
-  async function handleFetchForm() {
+  async function handleAnalyzeRequirements() {
+    setReqLoading(true)
+    setReqError(null)
+    try {
+      const result = await api.permits.analyzeRequirements(projectId, reqNotes, reqFiles)
+      setReqFields(result.fields || {})
+      setReqSummary(result.summary || null)
+      // Proceed directly to fetching + filling the form
+      await handleFetchForm(result.fields || {})
+    } catch (err: any) {
+      setReqError(err.message || 'Failed to analyze requirements. Please try again.')
+      setReqLoading(false)
+    }
+  }
+
+  async function handleFetchForm(requirementsFields: Record<string, string> = reqFields) {
     setFormLoading(true)
     setFormError(null)
     try {
-      const data = await api.permits.fetchForm(projectId)
+      const data = await api.permits.fetchForm(projectId, requirementsFields)
       setFormData(data)
-      // Merge auto-filled values
+      // Merge: requirements fields > auto-filled from project > blank
       const vals: Record<string, string> = { ...fieldValues }
       for (const f of data.fields) {
         if (f.value && !vals[f.key]) vals[f.key] = f.value
+      }
+      // Requirements fields take highest priority
+      for (const [k, v] of Object.entries(requirementsFields)) {
+        if (v) vals[k] = v
       }
       setFieldValues(vals)
       setStep('form')
@@ -147,6 +174,7 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
       setFormError(err.message || 'Failed to fetch permit form. Please try again.')
     }
     setFormLoading(false)
+    setReqLoading(false)
   }
 
   async function handleSaveProfile() {
@@ -229,27 +257,31 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
   return (
     <div className="space-y-4">
       {/* Progress steps */}
-      <div className="flex items-center gap-3 bg-white rounded-2xl px-5 py-4" style={cardStyle}>
+      <div className="flex items-center gap-2 bg-white rounded-2xl px-5 py-4" style={cardStyle}>
         {[
-          { key: 'portal', label: 'Find Portal' },
-          { key: 'form',   label: 'Fill Application' },
-          { key: 'review', label: 'Download & Submit' },
+          { key: 'portal',       label: 'Find Portal' },
+          { key: 'requirements', label: 'Requirements' },
+          { key: 'form',         label: 'Fill Permit' },
+          { key: 'review',       label: 'Download' },
         ].map((s, i) => {
-          const isActive = step === s.key
-          const isDone = (step === 'form' && s.key === 'portal') || (step === 'review' && s.key !== 'review')
+          const steps = ['portal', 'requirements', 'form', 'review']
+          const currentIdx = steps.indexOf(step)
+          const thisIdx    = steps.indexOf(s.key)
+          const isActive   = step === s.key
+          const isDone     = thisIdx < currentIdx
           return (
             <React.Fragment key={s.key}>
-              <div className="flex items-center gap-2">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
                   isDone ? 'bg-emerald-500 text-white' : isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
                 }`}>
                   {isDone ? '✓' : i + 1}
                 </div>
-                <span className={`text-sm font-semibold ${isActive ? 'text-blue-600' : isDone ? 'text-emerald-600' : 'text-slate-400'}`}>
+                <span className={`text-xs font-semibold truncate ${isActive ? 'text-blue-600' : isDone ? 'text-emerald-600' : 'text-slate-400'}`}>
                   {s.label}
                 </span>
               </div>
-              {i < 2 && <div className="flex-1 h-px bg-slate-200" />}
+              {i < 3 && <div className="flex-1 h-px bg-slate-200 min-w-[8px]" />}
             </React.Fragment>
           )
         })}
@@ -345,9 +377,9 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                   </a>
                 )}
-                <button onClick={handleFetchForm} disabled={formLoading}
-                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-xl text-sm transition-all disabled:opacity-50">
-                  {formLoading ? <><svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Analyzing Form…</> : 'Prepare Application →'}
+                <button onClick={() => setStep('requirements')}
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-xl text-sm transition-all">
+                  Upload Requirements →
                 </button>
               </div>
             </div>
@@ -355,7 +387,113 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
         </>
       )}
 
-      {/* Step 2 — Fill form (loading skeleton) */}
+      {/* Step 2: Requirements Upload */}
+      {step === 'requirements' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-slate-800 font-bold text-sm">Upload Your Requirements</h3>
+              <p className="text-slate-400 text-xs mt-0.5">Add any documents, screenshots, or notes — the AI will read them and fill your permit accordingly</p>
+            </div>
+            <button onClick={() => setStep('portal')} className="text-slate-400 text-xs hover:text-slate-600 transition-colors">← Back</button>
+          </div>
+
+          {/* Text notes */}
+          <div className="bg-white rounded-2xl p-5" style={cardStyle}>
+            <label className="text-slate-700 font-semibold text-sm block mb-2">Notes <span className="text-slate-400 font-normal">(optional)</span></label>
+            <textarea
+              value={reqNotes}
+              onChange={e => setReqNotes(e.target.value)}
+              placeholder="e.g. Owner: John Smith, 123 Main St, Charlotte NC 28202, phone 704-555-1234 · APN: 123-456-789 · 2,400 sq ft new residential build · Estimated cost $280,000"
+              rows={4}
+              className="w-full text-sm rounded-xl px-3.5 py-2.5 border text-slate-700 placeholder-slate-300 focus:outline-none focus:border-indigo-400 resize-none"
+              style={{ borderColor: 'rgba(219,234,254,0.9)', background: '#f8faff' }}
+            />
+          </div>
+
+          {/* File upload */}
+          <div className="bg-white rounded-2xl p-5" style={cardStyle}>
+            <label className="text-slate-700 font-semibold text-sm block mb-2">Upload Documents <span className="text-slate-400 font-normal">(PDF, PNG, JPG, screenshot)</span></label>
+            <label
+              className="flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-xl py-8 px-4 cursor-pointer transition-all hover:border-indigo-400 hover:bg-indigo-50/30"
+              style={{ borderColor: 'rgba(99,102,241,0.3)', background: '#f8faff' }}
+            >
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <div className="text-center">
+                <div className="text-slate-700 font-semibold text-sm">Click to upload or drag & drop</div>
+                <div className="text-slate-400 text-xs mt-0.5">PDFs, images, screenshots — anything with permit-relevant info</div>
+              </div>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.png,.jpg,.jpeg,.webp,image/*,application/pdf"
+                className="hidden"
+                onChange={e => {
+                  const newFiles = Array.from(e.target.files || [])
+                  setReqFiles(prev => {
+                    const existing = new Set(prev.map(f => f.name + f.size))
+                    return [...prev, ...newFiles.filter(f => !existing.has(f.name + f.size))]
+                  })
+                  e.target.value = ''
+                }}
+              />
+            </label>
+
+            {/* Uploaded file list */}
+            {reqFiles.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {reqFiles.map((file, i) => (
+                  <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg flex-shrink-0">
+                        {file.type.includes('pdf') ? '📄' : '🖼️'}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-slate-700 text-xs font-semibold truncate">{file.name}</div>
+                        <div className="text-slate-400 text-[10px]">{(file.size / 1024).toFixed(0)} KB</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setReqFiles(prev => prev.filter((_, j) => j !== i))}
+                      className="text-slate-300 hover:text-red-400 transition-colors flex-shrink-0 ml-2"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {reqError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm">{reqError}</div>
+          )}
+
+          <button
+            onClick={handleAnalyzeRequirements}
+            disabled={reqLoading || (reqFiles.length === 0 && !reqNotes.trim())}
+            className="w-full text-white font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-40"
+            style={{ background: reqLoading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
+          >
+            {reqLoading ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                Reading documents & filling permit…
+              </span>
+            ) : 'Analyze & Fill Permit →'}
+          </button>
+
+          <button
+            onClick={() => handleFetchForm({})}
+            disabled={formLoading}
+            className="w-full text-slate-400 text-sm py-2 hover:text-slate-600 transition-colors"
+          >
+            Skip — fill permit from project data only →
+          </button>
+        </div>
+      )}
+
+      {/* Step 3 — Fill form (loading skeleton) */}
       {step === 'form' && !formData && (
         <div className="space-y-4">
           {[1,2,3].map(i => (
@@ -382,7 +520,7 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
                 Fill in all required fields marked with *
               </p>
             </div>
-            <button onClick={() => setStep('portal')} className="text-slate-400 text-sm hover:text-slate-600 transition-colors">← Back</button>
+            <button onClick={() => setStep('requirements')} className="text-slate-400 text-sm hover:text-slate-600 transition-colors">← Back</button>
           </div>
 
           {/* Jurisdiction card */}

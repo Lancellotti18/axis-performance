@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
@@ -27,6 +27,9 @@ class GeneratePDFRequest(BaseModel):
     fields: List[PermitField]
     form_url: Optional[str] = None
     use_web_form: bool = False   # True = generate clean web-style PDF, False = overlay on original
+
+class FetchFormRequest(BaseModel):
+    requirements_context: str = ""  # extracted text from uploaded requirements docs
 
 
 # ── Portal Search (existing) ────────────────────────────────────────────────
@@ -79,10 +82,167 @@ async def search_permit_portal(
         }
 
 
+# ── Analyze Requirements Uploads ───────────────────────────────────────────
+
+@router.post("/analyze-requirements")
+async def analyze_requirements(
+    project_id: str = Form(...),
+    notes: str = Form(default=""),
+    files: List[UploadFile] = File(default=[]),
+):
+    """
+    Process uploaded requirement documents (PDFs, images, screenshots) + text notes.
+    Runs vision AI on each file to extract text, then uses LLM to map everything
+    to standard permit field values. Returns extracted field values ready to
+    pre-fill the permit form.
+    """
+    from app.services.llm import llm_vision, llm_text
+    import asyncio
+
+    extracted_texts: list[str] = []
+
+    # Add user's typed notes first
+    if notes.strip():
+        extracted_texts.append(f"User notes:\n{notes.strip()}")
+
+    # Process each uploaded file
+    for upload in files:
+        try:
+            content = await upload.read()
+            filename = (upload.filename or "").lower()
+            content_type = (upload.content_type or "").lower()
+
+            # PDF — render first 2 pages as images and run vision on each
+            if "pdf" in content_type or filename.endswith(".pdf"):
+                try:
+                    import fitz  # PyMuPDF
+                    doc = fitz.open(stream=content, filetype="pdf")
+                    page_texts = []
+                    for page_num in range(min(2, len(doc))):
+                        page = doc[page_num]
+                        # Try extracting text directly first (fastest)
+                        text = page.get_text().strip()
+                        if len(text) > 50:
+                            page_texts.append(text)
+                        else:
+                            # Render to image and run vision AI
+                            pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
+                            img_bytes = pix.tobytes("jpeg")
+                            vision_text = await llm_vision(
+                                image_bytes=img_bytes,
+                                media_type="image/jpeg",
+                                prompt=(
+                                    "Extract all text and data from this document page. "
+                                    "Focus on: names, addresses, phone numbers, emails, "
+                                    "parcel/APN numbers, square footage, project descriptions, "
+                                    "costs, dates, license numbers. Return as plain text."
+                                ),
+                                max_tokens=1024,
+                            )
+                            page_texts.append(vision_text)
+                    if page_texts:
+                        extracted_texts.append(f"From {upload.filename}:\n" + "\n".join(page_texts))
+                except Exception as e:
+                    logger.warning(f"PDF processing failed for {upload.filename}: {e}")
+
+            # Image (PNG, JPG, WEBP, screenshot)
+            elif any(t in content_type for t in ("image/", "jpeg", "jpg", "png", "webp")):
+                # Validate magic bytes
+                is_jpeg = content[:2] == b'\xff\xd8'
+                is_png  = content[:4] == b'\x89PNG'
+                is_webp = content[8:12] == b'WEBP' if len(content) >= 12 else False
+                if not (is_jpeg or is_png or is_webp):
+                    continue
+
+                mime = "image/jpeg" if is_jpeg else ("image/webp" if is_webp else "image/png")
+                vision_text = await llm_vision(
+                    image_bytes=content,
+                    media_type=mime,
+                    prompt=(
+                        "Extract all text and data visible in this image. "
+                        "This may be a screenshot, photo of a document, or form. "
+                        "Focus on: names, addresses, phone numbers, emails, "
+                        "parcel/APN numbers, square footage, costs, license numbers, "
+                        "project descriptions, dates. Return as plain text."
+                    ),
+                    max_tokens=1024,
+                )
+                extracted_texts.append(f"From {upload.filename}:\n{vision_text}")
+
+        except Exception as e:
+            logger.warning(f"File processing failed for {upload.filename}: {e}")
+            continue
+
+    if not extracted_texts:
+        return {"fields": {}, "summary": "No readable content found in uploaded files."}
+
+    combined_text = "\n\n---\n\n".join(extracted_texts)
+
+    # Use LLM to map extracted text to permit field values
+    mapping_prompt = f"""You are extracting permit application data from uploaded documents.
+
+EXTRACTED CONTENT FROM DOCUMENTS:
+{combined_text[:6000]}
+
+Map the above content to these standard permit form fields. Return ONLY a JSON object
+with the field keys below and the extracted values (leave as empty string "" if not found):
+
+{{
+  "owner_name": "",
+  "owner_phone": "",
+  "owner_email": "",
+  "owner_address": "",
+  "property_address": "",
+  "apn_number": "",
+  "legal_description": "",
+  "zoning_district": "",
+  "city": "",
+  "state": "",
+  "zip_code": "",
+  "contractor_name": "",
+  "license_number": "",
+  "contractor_phone": "",
+  "contractor_email": "",
+  "contractor_address": "",
+  "project_name": "",
+  "project_description": "",
+  "total_sqft": "",
+  "estimated_cost": "",
+  "num_bedrooms": "",
+  "num_bathrooms": "",
+  "start_date": "",
+  "completion_date": ""
+}}
+
+Rules:
+- Extract EXACT values from the documents — do not guess or fabricate
+- For costs, include the $ sign and commas (e.g. "$125,000")
+- For addresses, include full address string
+- Return only the JSON object, no markdown"""
+
+    try:
+        result_text = await llm_text(mapping_prompt, max_tokens=1024)
+        result_text = result_text.strip()
+        result_text = result_text[result_text.find("{"):result_text.rfind("}") + 1]
+        fields = json.loads(result_text)
+        # Strip empty values
+        fields = {k: v for k, v in fields.items() if v and str(v).strip()}
+    except Exception as e:
+        logger.warning(f"Field mapping LLM failed: {e}")
+        fields = {}
+
+    return {
+        "fields": fields,
+        "raw_text": combined_text[:2000],  # For debugging
+        "files_processed": len([f for f in files if f.filename]),
+        "summary": f"Extracted {len(fields)} field values from {len(extracted_texts)} source(s).",
+    }
+
+
 # ── Fetch & Analyze Form ────────────────────────────────────────────────────
 
 @router.post("/fetch-form/{project_id}")
-async def fetch_permit_form(project_id: str):
+async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormRequest()):
     """
     1. Load project data (city, state, sqft, type, estimate).
     2. Check permit_form_cache for this city/state/type.
@@ -160,9 +320,9 @@ async def fetch_permit_form(project_id: str):
         except Exception as e:
             logger.warning(f"Cache upsert failed: {e}")
 
-    # Pre-fill known values
+    # Base prefill from project + contractor data
     project_name = proj.get("name") or ""
-    filled = _prefill_fields(raw_fields, {
+    base_data = {
         "project_name":     project_name,
         "city":             city,
         "state":            state,
@@ -180,7 +340,20 @@ async def fetch_permit_form(project_id: str):
         "contractor_city":  contractor.get("city") or "",
         "contractor_state": contractor.get("state") or "",
         "contractor_zip":   contractor.get("zip_code") or "",
-    })
+    }
+
+    # If requirements context was provided (parsed from uploaded docs), use it to
+    # parse additional fields. Requirements data overrides generic project defaults.
+    if body.requirements_context:
+        try:
+            req_fields = json.loads(body.requirements_context)
+            if isinstance(req_fields, dict):
+                # Requirements fields take priority — they come from actual uploaded documents
+                base_data = {**base_data, **{k: v for k, v in req_fields.items() if v}}
+        except Exception:
+            pass
+
+    filled = _prefill_fields(raw_fields, base_data)
 
     return {
         "form_url": form_url,
