@@ -32,11 +32,17 @@ from app.core.supabase import get_supabase
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-# Serialize Gemini image-gen calls to stay under the free-tier rate limit.
-# Gemini free tier = 10 RPM. With semaphore(1) and ~10s per image we hit ~6 RPM —
-# safely under the cap. Concurrent calls (semaphore>1) cause 429s that fall back to
-# Pollinations (cloud IPs blocked) so only 1 image ever loads.
-_gemini_sem = asyncio.Semaphore(1)
+# Lazily initialized — asyncio.Semaphore must be created inside a running event loop
+# (Python 3.10+ requirement). Module-level Semaphore creation is deprecated.
+_gemini_sem: asyncio.Semaphore | None = None
+
+def _get_gemini_sem() -> asyncio.Semaphore:
+    global _gemini_sem
+    if _gemini_sem is None:
+        # Serialize Gemini image-gen calls to stay ≤5 RPM on the free-tier quota.
+        # Concurrent calls cause 429s that fall back to Pollinations (blocked on Render).
+        _gemini_sem = asyncio.Semaphore(1)
+    return _gemini_sem
 
 POLLINATIONS_API = "https://image.pollinations.ai/prompt"
 HF_API           = "https://router.huggingface.co/hf-inference/models"
@@ -172,7 +178,7 @@ async def _generate_via_gemini(prompt: str) -> str:
     image-gen free-tier quota; without this, calls 2-7 get 429 and fall
     back to Pollinations (cloud IPs blocked), leaving only 1 image loaded.
     """
-    async with _gemini_sem:
+    async with _get_gemini_sem():
         try:
             return await asyncio.wait_for(
                 asyncio.to_thread(_gemini_call, prompt), timeout=25
@@ -244,8 +250,9 @@ async def _generate_via_replicate(prompt: str) -> str:
         prediction_id = r.json()["id"]
 
     async with httpx.AsyncClient(timeout=15) as client:
-        start = asyncio.get_event_loop().time()
-        while asyncio.get_event_loop().time() - start < 240:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        while loop.time() - start < 240:
             r = await client.get(f"{REPLICATE_API}/predictions/{prediction_id}", headers=auth)
             data = r.json()
             status = data.get("status")
