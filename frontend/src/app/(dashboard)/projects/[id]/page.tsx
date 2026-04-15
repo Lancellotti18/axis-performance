@@ -366,7 +366,7 @@ function PermitPortalSection({ project, projectId }: { project: any; projectId: 
               {formError && (
                 <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm flex items-center justify-between gap-3">
                   <span>{formError}</span>
-                  <button onClick={handleFetchForm} className="text-red-600 font-bold text-xs underline whitespace-nowrap">Retry</button>
+                  <button onClick={() => handleFetchForm(reqFields)} className="text-red-600 font-bold text-xs underline whitespace-nowrap">Retry</button>
                 </div>
               )}
               <div className="flex items-center gap-3 pt-1">
