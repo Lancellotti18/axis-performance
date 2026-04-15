@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     S3_ENDPOINT_URL: str = ""
 
+    # Image generation — fal.ai FLUX.1.1-pro (~$0.03/image, no rate limits, photorealistic)
+    FAL_API_KEY: str = ""  # get at fal.ai — set as FAL_KEY env var too
+
     # Free tier (primary) — get keys at aistudio.google.com and console.groq.com
     GEMINI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
