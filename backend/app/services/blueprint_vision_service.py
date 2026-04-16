@@ -66,8 +66,17 @@ CRITICAL RULES:
 - Include ALL visible electrical symbols: outlets (circle with lines), switches (S), ceiling fixtures (X in circle), panels
 - Include ALL visible plumbing: toilets, sinks, tubs, showers, water heaters, kitchen sinks
 - rooms: use interior clear dimensions (inside wall faces)
-- If no scale found, estimate from typical room sizes, set confidence 0.4
-- Extract from the FLOOR PLAN view (not elevation drawings)"""
+- Extract from the FLOOR PLAN view (not elevation drawings)
+
+SCALE RULES (accuracy-critical — read carefully):
+- If a scale notation, scale bar, or labeled dimension is visible on the drawing,
+  use it and report "scale_detected" as the literal notation (e.g. "1/4 inch = 1 foot").
+- If NO scale is present anywhere on the image, set scale_detected=null,
+  scale_unverified=true, and confidence=0.30. All dimensions you return in that
+  case must be flagged as approximate — the downstream estimator will prompt the
+  user to enter real dimensions rather than order materials from a guess.
+- Do NOT invent room sizes from "typical residential layouts" to paper over a
+  missing scale. A blueprint with no scale is a signal to ask, not to guess."""
 
 
 def _download_blueprint(blueprint_id: str) -> tuple:
