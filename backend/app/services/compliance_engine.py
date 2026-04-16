@@ -1,7 +1,10 @@
 import json
+import logging
 from app.core.config import settings
 from app.services.llm import llm_text
 from app.services.search import web_search
+
+logger = logging.getLogger(__name__)
 
 COMPLIANCE_PROMPT = """You are a construction law and contractor compliance expert for the United States.
 
@@ -9,7 +12,7 @@ A contractor is working on a {project_type} construction project in {location}.
 
 {search_context}
 
-Using the above research and your expert knowledge, generate a comprehensive compliance checklist covering ALL of the following categories:
+Generate a comprehensive compliance checklist covering ALL of the following categories:
 1. **Licensing** - What contractor licenses are required in this state/jurisdiction
 2. **Permits** - What building permits are needed for this type of project
 3. **Contract Requirements** - Legally required clauses, disclosures, or terms in contractor agreements
@@ -17,6 +20,17 @@ Using the above research and your expert knowledge, generate a comprehensive com
 5. **Insurance & Bonding** - Minimum coverage requirements to operate legally
 6. **Building Codes** - Relevant code standards (IBC, IRC, state amendments)
 7. **Labor Laws** - Prevailing wage, worker classification, subcontractor rules
+
+CRITICAL ACCURACY RULES — follow these without exception:
+- Every item you return MUST be directly supported by the research results above.
+- Quote the governing statute, code section, agency, or ordinance EXACTLY as it appears
+  in the research (e.g. "Tex. Occ. Code §53.105" — NOT "Texas Contractor Law").
+- If the research does not support a specific category or jurisdictional detail, OMIT
+  that item rather than inventing one. A shorter accurate list beats a long fabricated one.
+- If a number, deadline, or dollar threshold is not present in the research, leave the
+  corresponding field as null. Do not guess.
+- Set "verified": true only when the item is directly grounded in a specific snippet of
+  the research; otherwise "verified": false.
 
 Return ONLY a valid JSON object in this exact format:
 {{
@@ -35,14 +49,15 @@ Return ONLY a valid JSON object in this exact format:
       "action": "Specific action the contractor must take to comply",
       "deadline": "Timing requirement if applicable, or null",
       "penalty": "Consequence of non-compliance if known, or null",
-      "source": "Law name, code section, or agency"
+      "source": "Law name, code section, or agency — verbatim from the research",
+      "verified": true
     }}
   ]
 }}
 
 The "risk_level" must be one of: "low", "medium", "high".
 The "severity" for each item must be one of: "required", "recommended", "info".
-Include 15-25 items covering all categories. Be specific to {location} — include state-specific laws, not generic advice."""
+Return as many items as are supported by the research (typically 10-25). Be specific to {location}."""
 
 
 async def run_compliance_check(
@@ -68,10 +83,30 @@ async def run_compliance_check(
     search_results = await asyncio.gather(*[web_search(q, max_results=4) for q in queries])
     combined = "\n---\n".join(r for r in search_results if r)
 
-    if combined:
-        search_context = "## Live Research Results\n\n" + combined
-    else:
-        search_context = "## Note\nUse your expert knowledge of construction law to generate accurate compliance requirements."
+    # Without live research the model tends to hallucinate plausible-sounding
+    # IRC/IBC/state-code citations. Refuse to produce a fabricated checklist and
+    # return an explicit unavailable state the UI can render as "research
+    # required — please retry later or contact a licensed attorney".
+    if not combined or len(combined.strip()) < 200:
+        logger.warning(
+            "compliance: insufficient research for %s / %s — returning unavailable",
+            location_str, project_type,
+        )
+        return {
+            "state": state_code,
+            "location": location_str,
+            "project_type": project_type,
+            "summary": (
+                "We could not verify live compliance data for this jurisdiction right now. "
+                "Rather than guess, BuildAI is returning no items. Please retry shortly, "
+                "or consult your state contractor board for authoritative requirements."
+            ),
+            "risk_level": "low",
+            "research_unavailable": True,
+            "items": [],
+        }
+
+    search_context = "## Live Research Results\n\n" + combined
 
     prompt = COMPLIANCE_PROMPT.format(
         location=location_str,
@@ -92,6 +127,7 @@ async def run_compliance_check(
     raw = raw.strip()
 
     data = json.loads(raw)
+    data.setdefault("research_unavailable", False)
     return data
 
 
