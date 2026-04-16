@@ -8,6 +8,11 @@ class Settings(BaseSettings):
 
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
+    # JWT secret from Supabase → Settings → API → JWT Secret.
+    # When set and AUTH_ENFORCE_SIGNATURE=true, tokens are verified for real.
+    # When empty, auth runs in legacy (unsafe) mode — logs a warning on every request.
+    SUPABASE_JWT_SECRET: str = ""
+    AUTH_ENFORCE_SIGNATURE: bool = False  # flip to true once shadow logs are clean
 
     REDIS_URL: str = "redis://redis:6379/0"
 
