@@ -333,9 +333,13 @@ def save_estimates(db, analysis_id: str, project_id: str, materials: list, costs
     import json as _json
 
     if materials:
+        # Columns material_estimates has. Any other keys set by the estimator
+        # (e.g. in-memory flags like `price_unverified`) are dropped so inserts
+        # don't fail against the current schema.
+        _COLS = {"category", "item_name", "quantity", "unit", "unit_cost", "total_cost", "region"}
         rows = []
         for item in materials:
-            row = {k: v for k, v in item.items() if k != "vendor_options"}
+            row = {k: v for k, v in item.items() if k in _COLS}
             row["analysis_id"] = analysis_id
             row["vendor_options"] = _json.dumps(item.get("vendor_options", []))
             rows.append(row)

@@ -3,8 +3,11 @@ Material estimation engine — comprehensive takeoff based on blueprint analysis
 Covers: lumber, sheathing, drywall, insulation, roofing, concrete/foundation,
         flooring, windows/doors, electrical, plumbing, finishing materials.
 """
+import logging
 import math
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -157,8 +160,24 @@ class MaterialEstimator:
 
     def _item(self, category: str, name: str, qty: float, unit: str,
               base_price_key: str = None, override_price: float = None) -> dict:
-        price = override_price if override_price is not None else BASE_PRICES.get(base_price_key or name, 10.0)
-        qty   = max(1, round(qty))
+        price_unverified = False
+        if override_price is not None:
+            price = override_price
+        else:
+            key = base_price_key or name
+            if key in BASE_PRICES:
+                price = BASE_PRICES[key]
+            else:
+                # No base price on file — flag so the UI can surface "price unverified"
+                # and so the refresh-prices flow prioritizes a live lookup for this row.
+                price = 10.0
+                price_unverified = True
+                logger.warning(
+                    "estimator: no base price for key=%r (item=%r, category=%r); "
+                    "using placeholder $10.00 and flagging price_unverified",
+                    key, name, category,
+                )
+        qty = max(1, round(qty))
         return {
             "category":  category,
             "item_name": name,
@@ -166,6 +185,7 @@ class MaterialEstimator:
             "unit":      unit,
             "unit_cost": price,
             "total_cost": round(qty * price, 2),
+            "price_unverified": price_unverified,
         }
 
     # ── Lumber ──────────────────────────────────────────────────────────────
