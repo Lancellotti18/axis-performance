@@ -150,6 +150,15 @@ function MeasurementsPanel({ result, photoResult }: { result: any; photoResult: 
         badge={hasPhotos ? '📸 Photo-Enhanced' : (result.source || 'AI Estimate')}
       />
 
+      {/* Unverified warning — backend returned no real measurement data */}
+      {result.measurements_unverified && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+          <span className="text-amber-600 text-[11px] font-semibold leading-snug">
+            ⚠ We couldn't verify measurements for this address from public records. The numbers below are placeholders — please enter them manually or upload a blueprint instead of relying on this estimate.
+          </span>
+        </div>
+      )}
+
       {/* Photo-enhanced banner */}
       {hasPhotos && (
         <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">

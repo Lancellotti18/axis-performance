@@ -188,46 +188,105 @@ async def _google_solar_report(full_address: str, research: str) -> dict | None:
         }
 
 
+def _research_has_sqft_signal(research: str) -> bool:
+    """True if the research contains at least one concrete sqft figure."""
+    if not research or len(research.strip()) < 200:
+        return False
+    return bool(re.search(
+        r'(\d{2,3}[,\d]*)\s*(?:sq(?:uare)?\s*f(?:oo)?t|sqft|sf)\b',
+        research, re.IGNORECASE,
+    ))
+
+
 async def _claude_estimate(full_address: str, city: str, state: str, zip_code: str, research: str) -> dict:
     """
     Use property record research + Claude to estimate roof area.
     Handles both residential and large commercial buildings correctly.
+
+    Refuses to fabricate: if the research does not contain a real sqft figure
+    we return measurements_unverified=true with nulls instead of made-up numbers.
+    The UI renders this as "Couldn't measure — please verify manually" so the
+    contractor never sees a confident-looking but invented number.
     """
-    prompt = f"""You are a professional roofing estimator and property analyst. Estimate the roof area for this address using the property research below.
+    coords = await _geocode_address(full_address)
+
+    if not _research_has_sqft_signal(research):
+        logger.warning(
+            "aerial_roof: no sqft signal in research for %s — returning unverified placeholder",
+            full_address,
+        )
+        base = {
+            "source": "Unavailable — no verifiable property records found",
+            "source_icon": "alert",
+            "address": full_address,
+            "total_sqft": None,
+            "squares": None,
+            "pitch": None,
+            "pitch_degrees": None,
+            "roof_segments": None,
+            "stories": None,
+            "house_sqft": None,
+            "building_type": None,
+            "confidence": 0.0,
+            "measurements_unverified": True,
+            "note": (
+                "We could not find verifiable property records for this address. "
+                "BuildAI will not estimate a roof size without real data — please "
+                "provide blueprints, manual measurements, or try a more specific "
+                "address."
+            ),
+            "max_sunshine_hours_yr": None,
+        }
+        if coords:
+            base["lat"] = coords[0]
+            base["lng"] = coords[1]
+            base["satellite_image_url"] = _satellite_image_url(*coords)
+        return base
+
+    prompt = f"""You are a professional roofing estimator and property analyst. Estimate the roof area for this address using ONLY the property research below.
 
 Address: {full_address}
 
 PROPERTY RESEARCH:
-{research if research else f"No records found. Use your best knowledge of typical building sizes for this address type in {state}."}
+{research}
 
-Return ONLY valid JSON — no text before or after:
+Return ONLY valid JSON — no text before or after. All numbers MUST be derived from
+the research. If the research does not specify a value, set that field to null
+rather than guessing.
+
 {{
   "source": "Property records estimate",
   "source_icon": "database",
   "address": "{full_address}",
-  "total_sqft": 2100,
-  "squares": 21.0,
-  "pitch": "6/12",
-  "pitch_degrees": 26.6,
-  "roof_segments": 2,
-  "stories": 1,
-  "house_sqft": 1800,
-  "building_type": "residential",
-  "confidence": 0.58,
+  "total_sqft": null,
+  "squares": null,
+  "pitch": null,
+  "pitch_degrees": null,
+  "roof_segments": null,
+  "stories": null,
+  "house_sqft": null,
+  "building_type": null,
+  "confidence": 0.6,
+  "measurements_unverified": false,
   "note": "Estimated from property records. Physical inspection recommended before ordering materials.",
   "max_sunshine_hours_yr": null
 }}
 
 Critical rules:
-- Read the research carefully. If it mentions a specific square footage for the building, USE THAT NUMBER as your starting point — do not ignore it.
-- For single-story commercial buildings (big box retail, warehouses, grocery stores): roof area ≈ building footprint (floor sqft). These have flat or very low-slope roofs.
-- For residential buildings: roof area = floor sqft × 1.15 to 1.40 depending on pitch and overhang.
-- For multi-story buildings: roof area ≈ footprint of ONE floor (the building footprint), not total floor area.
-- pitch: "1/12" to "3/12" for flat commercial roofs, "4/12" to "12/12" for residential.
-- building_type: "residential", "commercial", or "industrial"
-- confidence: 0.70–0.85 if research contains explicit sqft figures; 0.40–0.60 if estimating from general knowledge.
-- squares = total_sqft / 100 (always)
-- Be accurate — contractors will use this to order materials."""
+- If the research mentions a specific square footage for the building, USE THAT
+  NUMBER as your starting point. Do NOT ignore it.
+- For single-story commercial buildings (big box retail, warehouses, grocery stores):
+  roof area ≈ building footprint (floor sqft). Flat or very low-slope roofs.
+- For residential buildings: roof area = floor sqft × 1.15 to 1.40.
+- For multi-story buildings: roof area ≈ footprint of ONE floor, not total floor area.
+- pitch: "1/12" to "3/12" for flat commercial, "4/12" to "12/12" for residential.
+- building_type: "residential", "commercial", or "industrial".
+- confidence: 0.70–0.85 if research contains an explicit sqft figure;
+  0.40–0.60 if the sqft is indirect (lot size, year, type only).
+- If you CANNOT derive total_sqft from the research, return null for every
+  numeric field and set measurements_unverified=true — do not invent a number.
+- squares = total_sqft / 100 when total_sqft is present; otherwise null.
+- Contractors order materials from this — accuracy matters more than coverage."""
 
     text = await llm_text(prompt, max_tokens=600)
     text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
@@ -236,9 +295,8 @@ Critical rules:
     if start > 0:
         text = text[start:]
     result = json.loads(text)
+    result.setdefault("measurements_unverified", result.get("total_sqft") is None)
 
-    # Geocode (Google → Nominatim fallback) and attach Esri satellite image
-    coords = await _geocode_address(full_address)
     if coords:
         result["lat"] = coords[0]
         result["lng"] = coords[1]
