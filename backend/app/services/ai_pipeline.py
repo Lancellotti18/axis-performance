@@ -97,7 +97,8 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
     try:
         from app.services.cost_engine import CostEngine
         cost_engine = CostEngine()
-        costs = cost_engine.calculate(materials, region)
+        total_sqft = float(structured_data.get("total_sqft") or 0)
+        costs = cost_engine.calculate(materials, region, total_sqft=total_sqft)
     except Exception:
         logger.warning("CostEngine failed, using simple total-based fallback", exc_info=True)
         total = sum(m.get("total_cost", 0) for m in materials)
