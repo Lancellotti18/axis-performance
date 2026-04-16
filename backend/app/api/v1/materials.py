@@ -38,11 +38,46 @@ def _get_analysis_id(project_id: str):
 
 @router.post("/{project_id}/add")
 async def add_material(project_id: str, item: MaterialItem):
-    """Add a new material item to a project's estimate."""
+    """Add a new material item to a project's estimate.
+
+    Runs a vendor price search immediately so the new item lands in the DB
+    with working distributor URLs — never an empty vendor_options. Falls back
+    to retail search links if Tavily is unavailable, so every item has at
+    least one clickable link out to a real store.
+    """
     analysis_id = _get_analysis_id(project_id)
     if not analysis_id:
         raise HTTPException(status_code=404, detail="No analysis found for project")
+
     db = get_supabase()
+
+    # Resolve region/city for the search so we bias toward local distributors.
+    proj = db.table("projects").select("region, city").eq("id", project_id).single().execute()
+    region = (proj.data or {}).get("region", "US-TX")
+    city = (proj.data or {}).get("city", "") or ""
+
+    # Search for vendor options so the added item is never unpriced.
+    from app.services.pricing_service import (
+        _search_material_prices,
+        _fallback_retail,
+        _trade_distributor_entries,
+    )
+    from app.core.config import settings
+
+    options: list = []
+    if settings.TAVILY_API_KEY:
+        try:
+            from tavily import TavilyClient
+            client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+            options = _search_material_prices(
+                client, item.item_name, item.category, region, item.unit_cost, city=city
+            )
+        except Exception:
+            logger.warning("Tavily search failed on material add, using retail fallback", exc_info=True)
+
+    if not options:
+        options = _fallback_retail(item.item_name, item.unit_cost) + _trade_distributor_entries(item.item_name)
+
     result = db.table("material_estimates").insert({
         "analysis_id": analysis_id,
         "item_name": item.item_name,
@@ -51,7 +86,7 @@ async def add_material(project_id: str, item: MaterialItem):
         "unit": item.unit,
         "unit_cost": item.unit_cost,
         "total_cost": item.total_cost,
-        "vendor_options": json.dumps([]),
+        "vendor_options": json.dumps(options),
     }).execute()
     return result.data[0]
 
