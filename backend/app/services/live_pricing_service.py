@@ -28,8 +28,17 @@ import re
 import time
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import quote_plus
 
 import httpx
+
+
+def _home_depot_search_url(material: str) -> str:
+    """Last-resort source URL so every pricing response has a clickable link
+    that takes the contractor to a real distributor search — never an empty
+    string. Home Depot is chosen because it has the broadest SKU coverage
+    and works nationally."""
+    return f"https://www.homedepot.com/s/{quote_plus(material.strip())}"
 
 log = logging.getLogger(__name__)
 
@@ -134,6 +143,7 @@ def _search_price(material: str, zip_code: str, city: str = "") -> dict:
 
     if not settings.TAVILY_API_KEY:
         result["note"] = "Tavily not configured — using national average estimate"
+        result["source_url"] = _home_depot_search_url(material)
         return result
 
     try:
@@ -179,10 +189,12 @@ def _search_price(material: str, zip_code: str, city: str = "") -> dict:
             result["note"] = f"Live retail price from {best_source.split(' ')[0] if best_source else 'web search'}"
         else:
             result["note"] = "Price not found in search results — using national average estimate"
+            result["source_url"] = _home_depot_search_url(material)
 
     except Exception as e:
         log.warning(f"Tavily price search failed for '{material}': {e}")
         result["note"] = f"Search unavailable — using national average estimate"
+        result["source_url"] = _home_depot_search_url(material)
 
     return result
 
