@@ -37,27 +37,33 @@ async def analyze_roof_image(image_url: str) -> dict:
 Extract all measurable roof data. Return ONLY valid JSON with this exact structure — no prose, no markdown fences:
 
 {
-  "total_sqft": <number — total roof surface area in square feet>,
-  "pitch": "<string — e.g. '6/12', '4/12', '8/12'. Use 'Unknown' if not determinable>",
-  "facets": <integer — number of distinct roof planes/sections>,
-  "ridges_ft": <number — total linear feet of ridge lines>,
-  "valleys_ft": <number — total linear feet of valleys>,
-  "eaves_ft": <number — total linear feet of eave edges>,
-  "rakes_ft": <number — total linear feet of rake edges>,
-  "waste_pct": <number — recommended waste % between 10 and 25>,
+  "total_sqft": <number or null — total roof surface area in square feet>,
+  "pitch": "<string or null — e.g. '6/12', '4/12', '8/12'. null if not determinable>",
+  "facets": <integer or null — number of distinct roof planes/sections>,
+  "ridges_ft": <number or null — total linear feet of ridge lines>,
+  "valleys_ft": <number or null — total linear feet of valleys>,
+  "eaves_ft": <number or null — total linear feet of eave edges>,
+  "rakes_ft": <number or null — total linear feet of rake edges>,
+  "waste_pct": <number or null — recommended waste % between 10 and 25>,
   "roof_type": "<one of: gable | hip | complex | flat | gambrel | mansard | shed | unknown>",
-  "stories": <integer — number of stories visible, default 1>,
+  "stories": <integer or null — number of stories visible>,
   "confidence": <integer 0–100 — how confident you are in these measurements>,
+  "measurement_unverified": <boolean — true if any core field was guessed rather than read from the image>,
   "notes": "<string — key observations, assumptions made, or areas of uncertainty>"
 }
 
 Measurement guidelines:
 - total_sqft: The ACTUAL sloped roof surface area (not footprint). For a 2000 sq ft footprint with 6/12 pitch, multiply by ~1.12.
 - waste_pct: 10% for simple gable, 12–15% for hip, 15–20% for complex multi-facet roofs.
-- If this appears to be a floor plan (not a roof plan), estimate roof area based on footprint × pitch multiplier.
-- If you cannot determine a value, use a reasonable estimate for a typical residential roof and note it.
-
-Typical residential benchmarks: total_sqft 1500–3500, pitch 4/12–8/12, facets 2–8, ridges_ft 20–60."""
+- If this appears to be a floor plan (not a roof plan) and the footprint is clearly
+  visible with a dimension scale, compute roof area as footprint × pitch multiplier.
+- ACCURACY RULE: If you cannot determine a value from the image (dimensions absent,
+  view obstructed, scale missing, etc.), return null for that field and set
+  measurement_unverified=true. Do NOT substitute a "typical residential" guess —
+  the downstream estimate treats null as "needs manual entry", and a guessed number
+  would push the contractor to order the wrong quantity of materials.
+- confidence: 80–95 when dimensions are clearly labeled, 50–75 when partially visible,
+  below 50 when the image is unclear. Low confidence should accompany null fields."""
 
     image_bytes = base64.b64decode(image_b64)
     text = llm_vision_sync(image_bytes, media_type, prompt, max_tokens=1024)
