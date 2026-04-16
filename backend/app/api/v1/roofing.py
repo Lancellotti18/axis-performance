@@ -9,6 +9,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
 from app.core.supabase import get_supabase
@@ -188,6 +189,93 @@ async def get_shingle_estimate(project_id: str):
         "total_materials_cost": round(total_materials_cost, 2),
         "squares": round(measurements["total_sqft"] / 100, 1),
     }
+
+
+@router.get("/project/{project_id}/pdf-report")
+async def roof_pdf_report(project_id: str):
+    """
+    Generate an EagleView-style professional roof report PDF for a project.
+    Pulls confirmed measurements + satellite imagery + shingle materials and
+    returns a downloadable PDF.
+    """
+    from app.services.roof_report_pdf import generate_roof_report_pdf
+
+    db = get_supabase()
+
+    proj = db.table("projects").select("*").eq("id", project_id).single().execute()
+    if not proj.data:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project = proj.data
+
+    measurements: dict = {}
+    try:
+        m_res = db.table("roof_measurements").select("*").eq("project_id", project_id).limit(1).execute()
+        if m_res.data:
+            measurements = m_res.data[0]
+    except Exception:
+        logger.debug("roof_measurements lookup failed for project %s", project_id, exc_info=True)
+
+    if not measurements or not (measurements.get("total_sqft") or 0):
+        raise HTTPException(
+            status_code=422,
+            detail="No roof measurements available. Run AI measurement and confirm values before generating a report.",
+        )
+
+    # Aerial imagery is a nice-to-have — try once but do not fail the report
+    # if the aerial pipeline hasn't been run yet.
+    aerial = None
+    try:
+        from app.services.aerial_roof_service import get_aerial_roof_report
+        city = project.get("city", "") or ""
+        region = project.get("region", "US-TX") or "US-TX"
+        zip_code = project.get("zip_code", "") or ""
+        state = region.replace("US-", "") if region else "TX"
+        full_address = ", ".join(filter(None, [
+            project.get("address") or "",
+            city,
+            f"{state} {zip_code}".strip(),
+        ])).strip(", ")
+        if full_address:
+            aerial = await get_aerial_roof_report(
+                address=full_address, city=city, state=state, zip_code=zip_code,
+            )
+    except Exception:
+        logger.debug("aerial lookup failed during pdf-report, continuing without image", exc_info=True)
+        aerial = None
+
+    materials: list = []
+    total_materials_cost = 0.0
+    if measurements.get("confirmed") and measurements.get("total_sqft"):
+        try:
+            materials = calculate_shingle_materials(
+                total_sqft=float(measurements["total_sqft"]),
+                waste_pct=float(measurements.get("waste_pct") or 10),
+                pitch=measurements.get("pitch") or "6/12",
+                ridges_ft=float(measurements.get("ridges_ft") or 0),
+                valleys_ft=float(measurements.get("valleys_ft") or 0),
+                eaves_ft=float(measurements.get("eaves_ft") or 0),
+                rakes_ft=float(measurements.get("rakes_ft") or 0),
+                stories=int(measurements.get("stories") or 1),
+            )
+            total_materials_cost = sum(m.get("total_cost", 0) for m in materials)
+        except Exception:
+            logger.debug("shingle material calc failed during pdf-report", exc_info=True)
+            materials = []
+
+    pdf_bytes = await asyncio.to_thread(
+        generate_roof_report_pdf,
+        project, measurements, aerial, materials, total_materials_cost,
+    )
+
+    slug = (project.get("name") or "project").strip().lower()
+    slug = "".join(c if c.isalnum() else "-" for c in slug).strip("-") or "project"
+    filename = f"roof-report-{slug}-{project_id[:8]}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 class AerialReportRequest(BaseModel):

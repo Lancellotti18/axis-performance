@@ -267,6 +267,28 @@ export const api = {
       apiRequest<RoofMeasurements>(`/api/v1/roofing/${blueprintId}/measurements`),
     getShingleEstimate: (projectId: string) =>
       apiRequest<Record<string, unknown>>(`/api/v1/roofing/project/${projectId}/shingle-estimate`),
+    downloadPdfReport: async (projectId: string) => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const res = await fetch(`${API_BASE}/api/v1/roofing/project/${projectId}/pdf-report`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '')
+        throw new Error(msg || `PDF report failed (${res.status})`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const cd = res.headers.get('content-disposition') || ''
+      const m = /filename="([^"]+)"/.exec(cd)
+      a.download = m ? m[1] : `roof-report-${projectId.slice(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 2000)
+    },
     aerialReport: (projectId: string, address: string) =>
       apiRequest<Record<string, unknown>>(`/api/v1/roofing/aerial-report`, {
         method: 'POST',

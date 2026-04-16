@@ -63,6 +63,8 @@ export default function RoofingSection({
   const [shingleData, setShingleData] = useState<any>(null)
   const [loadingShingles, setLoadingShingles] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [pdfError, setPdfError] = useState<string | null>(null)
 
   // Load existing measurements on mount
   useEffect(() => {
@@ -116,6 +118,17 @@ export default function RoofingSection({
       setDraft({ ...data })
     } catch {}
     setConfirming(false)
+  }
+
+  async function handleDownloadPdf() {
+    setDownloadingPdf(true)
+    setPdfError(null)
+    try {
+      await api.roofing.downloadPdfReport(projectId)
+    } catch (err: any) {
+      setPdfError(err?.message || 'Could not generate PDF. Please try again.')
+    }
+    setDownloadingPdf(false)
   }
 
   function updateDraft(field: keyof RoofMeasurements, value: any) {
@@ -192,13 +205,42 @@ export default function RoofingSection({
             <>
               {/* Confirmed / unconfirmed banner */}
               {measurements.confirmed ? (
-                <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-3">
+                <div className="flex flex-wrap items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-3">
                   <span className="text-emerald-500 text-xl">✓</span>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-emerald-700 font-semibold text-sm">Measurements Confirmed</div>
                     <div className="text-emerald-600 text-xs">These measurements are being used for the shingle estimator.</div>
                   </div>
-                  <button onClick={handleAnalyze} className="ml-auto text-xs text-emerald-600 underline hover:no-underline">Re-analyze</button>
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      onClick={handleDownloadPdf}
+                      disabled={downloadingPdf}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-3 py-1.5 rounded-xl transition-all hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{ background: 'linear-gradient(135deg, #059669, #047857)', boxShadow: '0 2px 10px rgba(5,150,105,0.25)' }}
+                      title="Download professional roof report PDF"
+                    >
+                      {downloadingPdf ? (
+                        <>
+                          <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                          </svg>
+                          Generating…
+                        </>
+                      ) : (
+                        <>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                          Download PDF Report
+                        </>
+                      )}
+                    </button>
+                    <button onClick={handleAnalyze} className="text-xs text-emerald-600 underline hover:no-underline">Re-analyze</button>
+                  </div>
+                  {pdfError && (
+                    <div className="basis-full text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 mt-1">
+                      {pdfError}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3">
