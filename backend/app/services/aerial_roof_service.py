@@ -12,12 +12,15 @@ Geocoding tries Google first (if key set), then Nominatim/OSM as fallback.
 """
 import re
 import json
+import logging
 import math
 import asyncio
 import httpx
 from app.core.config import settings
 from app.services.llm import llm_text
 from app.services.search import web_search
+
+logger = logging.getLogger(__name__)
 
 
 async def get_aerial_roof_report(address: str, city: str, state: str, zip_code: str = "") -> dict:
@@ -36,6 +39,7 @@ async def get_aerial_roof_report(address: str, city: str, state: str, zip_code: 
             if result:
                 return result
         except Exception:
+            logger.warning("Google Solar roof report failed, falling back to Claude estimate", exc_info=True)
             pass
 
     return await _claude_estimate(full_address, city, state, zip_code, research)
@@ -59,6 +63,7 @@ async def _geocode_address(full_address: str) -> tuple[float, float] | None:
                     loc = data["results"][0]["geometry"]["location"]
                     return loc["lat"], loc["lng"]
         except Exception:
+            logger.debug("Google geocode failed, trying Nominatim fallback", exc_info=True)
             pass
 
     # Fallback: Nominatim (OpenStreetMap) — free, no API key required
@@ -75,6 +80,7 @@ async def _geocode_address(full_address: str) -> tuple[float, float] | None:
             if results:
                 return float(results[0]["lat"]), float(results[0]["lon"])
     except Exception:
+        logger.debug("Nominatim geocode failed", exc_info=True)
         pass
 
     return None

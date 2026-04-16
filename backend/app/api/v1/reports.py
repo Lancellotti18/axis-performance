@@ -64,6 +64,7 @@ async def get_full_report_data(project_id: str):
             if not materials and cost.get("material_estimates"):
                 materials = cost["material_estimates"]
     except Exception:
+        log.debug("cost_estimates fetch failed", exc_info=True)
         pass
 
     # Compliance check
@@ -89,6 +90,7 @@ async def get_full_report_data(project_id: str):
             )
             compliance_items = ci_res.data or []
     except Exception:
+        log.debug("compliance_checks fetch failed", exc_info=True)
         pass
 
     # Permit portal info (from permit_form_cache if available)
@@ -110,6 +112,7 @@ async def get_full_report_data(project_id: str):
             if cache_res.data:
                 permit_info = cache_res.data[0]
     except Exception:
+        log.debug("permit_form_cache fetch failed", exc_info=True)
         pass
 
     # Saved report overrides (user edits)
@@ -119,6 +122,7 @@ async def get_full_report_data(project_id: str):
         if ov_res.data:
             overrides = ov_res.data.get("overrides") or {}
     except Exception:
+        log.debug("project_reports overrides fetch failed", exc_info=True)
         pass
 
     return {

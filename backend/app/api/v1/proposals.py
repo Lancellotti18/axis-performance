@@ -44,6 +44,7 @@ def _load_axis_json(project_id: str, filename: str) -> dict | None:
             with open(path) as f:
                 return json.load(f)
         except Exception:
+            log.debug("axis json parse failed: %s", path, exc_info=True)
             pass
     return None
 

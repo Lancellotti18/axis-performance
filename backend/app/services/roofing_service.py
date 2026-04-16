@@ -4,9 +4,12 @@ Uses Claude vision to extract roof measurements from uploaded blueprint/aerial i
 """
 import json
 import base64
+import logging
 import httpx
 from app.core.config import settings
 from app.services.llm import llm_vision_sync
+
+logger = logging.getLogger(__name__)
 
 
 async def download_image(url: str) -> tuple[bytes, str]:
@@ -69,6 +72,7 @@ Typical residential benchmarks: total_sqft 1500–3500, pitch 4/12–8/12, facet
             try:
                 return json.loads(part)
             except Exception:
+                logger.debug("json parse of fenced block failed, trying next", exc_info=True)
                 continue
 
     return json.loads(text)
@@ -97,6 +101,7 @@ def calculate_shingle_materials(
     try:
         rise = float(pitch.split("/")[0]) if "/" in pitch else 4
     except Exception:
+        logger.debug("failed to parse roof pitch rise from text", exc_info=True)
         rise = 4
     # Steeper pitch = higher cost
     pitch_mult = 1.0 + max(0, (rise - 4) * 0.05)

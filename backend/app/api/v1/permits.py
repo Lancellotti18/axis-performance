@@ -285,6 +285,7 @@ async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormR
             if cp.data:
                 contractor = cp.data[0]
     except Exception:
+        logger.debug("contractor profile lookup failed", exc_info=True)
         pass
 
     # Jurisdiction detection — only proceed with verified .gov source
@@ -351,6 +352,7 @@ async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormR
                 # Requirements fields take priority — they come from actual uploaded documents
                 base_data = {**base_data, **{k: v for k, v in req_fields.items() if v}}
         except Exception:
+            logger.debug("requirements_context parse failed, using base project data", exc_info=True)
             pass
 
     filled = _prefill_fields(raw_fields, base_data)
@@ -405,6 +407,7 @@ def _find_and_analyze_form(city: str, state: str, project_type: str, gov_form_ur
                             pdf_bytes = resp.content
                             break
                     except Exception:
+                        logger.debug("permit form candidate fetch failed, trying next URL", exc_info=True)
                         continue
         except Exception as e:
             logger.warning(f"Tavily form search failed: {e}")
@@ -748,6 +751,7 @@ async def generate_permit_package(project_id: str):
             if cp.data:
                 contractor = cp.data[0]
     except Exception:
+        logger.debug("contractor profile lookup failed", exc_info=True)
         pass
 
     # Load materials + pricing (AXIS first, estimator fallback)
@@ -763,6 +767,7 @@ async def generate_permit_package(project_id: str):
             with open(scene_path) as f:
                 scene_data = _json.load(f)
         except Exception:
+            logger.debug("scene_data.json load failed", exc_info=True)
             pass
 
     project_type = (project.get("blueprint_type") or "residential").lower()

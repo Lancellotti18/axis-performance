@@ -14,9 +14,12 @@ Runs outside Blender as a standard Python module.
 
 import csv
 import json
+import logging
 import math
 import os
 from datetime import date, timedelta
+
+logger = logging.getLogger(__name__)
 
 
 # ── phase definitions ──────────────────────────────────────────────────────────
@@ -284,11 +287,11 @@ def run_scheduler(
     with open(summ_path, "w") as f:
         json.dump(summary, f, indent=2)
 
-    print(f"[AXIS 5D] Schedule saved → {sched_path}")
-    print(f"[AXIS 5D] Gantt CSV   → {csv_path}")
-    print(f"[AXIS 5D] Duration: {schedule['total_calendar_days']} calendar days "
-          f"({schedule['total_working_days']} working) | "
-          f"{schedule['total_labor_hours']} labor hrs")
+    logger.info(f"Schedule saved → {sched_path}")
+    logger.info(f"Gantt CSV   → {csv_path}")
+    logger.info(f"Duration: {schedule['total_calendar_days']} calendar days "
+                f"({schedule['total_working_days']} working) | "
+                f"{schedule['total_labor_hours']} labor hrs")
 
     return schedule
 

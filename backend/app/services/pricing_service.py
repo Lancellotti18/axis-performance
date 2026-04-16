@@ -249,6 +249,7 @@ def enrich_materials_with_pricing(materials: List[dict], region: str, city: str 
             options = _search_material_prices(tavily, item_name, category, region, base_price, city=city)
             category_price_cache[category] = options
         except Exception:
+            logger.warning("per-item price search failed, using cached category prices", exc_info=True)
             # Fall back to cached category prices with item-specific URLs
             cached = category_price_cache.get(category)
             if cached:

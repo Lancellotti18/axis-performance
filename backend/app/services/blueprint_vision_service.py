@@ -5,11 +5,14 @@ electrical fixtures, and plumbing fixtures with real-world coordinates in feet.
 """
 import base64
 import json
+import logging
 import re
 import asyncio
 from app.core.config import settings
 from app.core.supabase import get_supabase
 from app.services.llm import llm_vision
+
+logger = logging.getLogger(__name__)
 
 VISION_PROMPT = """You are a professional architectural blueprint interpreter. Analyze this floor plan image with extreme precision.
 
@@ -107,6 +110,7 @@ async def parse_blueprint_3d(blueprint_id: str) -> dict:
             image_data = pix.tobytes("jpeg")
             media_type = "image/jpeg"
         except Exception:
+            logger.debug("PDF to JPEG conversion failed, passing PDF through to LLM", exc_info=True)
             pass  # fall through and let the LLM handle it
 
     text = await llm_vision(image_data, media_type, VISION_PROMPT, max_tokens=4096)

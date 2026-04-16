@@ -35,6 +35,7 @@ def _verify_url(url: str) -> bool:
         resp.close()
         return resp.status_code in (200, 206, 301, 302, 303, 307, 308)
     except Exception:
+        logger.debug("URL verify request failed", exc_info=True)
         return False
 
 

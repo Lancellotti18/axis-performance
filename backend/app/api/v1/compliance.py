@@ -1,9 +1,13 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from app.core.auth import get_current_user
 from app.core.supabase import get_supabase
 from app.services.compliance_engine import run_compliance_check, get_state_from_region_code
 from app.services.materials_compliance_service import check_materials_compliance
 import asyncio
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -207,6 +211,7 @@ async def check_project_materials(project_id: str = Query(...)):
         if manual.data:
             materials.extend(manual.data)
     except Exception:
+        logger.debug("project_materials fetch failed", exc_info=True)
         pass
 
     if not materials:

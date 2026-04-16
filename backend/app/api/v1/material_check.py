@@ -186,6 +186,7 @@ def _dispatch_parser(filename: str, content: bytes) -> list[dict]:
         if mats:
             return mats
     except Exception:
+        log.debug("CSV parse attempt failed, falling back to plain text parser", exc_info=True)
         pass
     return _parse_text(content)
 

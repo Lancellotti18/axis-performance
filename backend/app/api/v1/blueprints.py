@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException, Query, Request, BackgroundTasks
 from app.core.supabase import get_supabase
 from app.core.config import settings
+import logging
 import uuid
 import os
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -132,14 +135,15 @@ def _set_status(db, blueprint_id: str, status: str, error: str = None):
     """
     try:
         db.table("blueprints").update({"status": status}).eq("id", blueprint_id).execute()
-    except Exception as e:
-        print(f"[analysis] CRITICAL: could not set status={status} for {blueprint_id}: {e}")
+    except Exception:
+        logger.exception(f"CRITICAL: could not set status={status} for {blueprint_id}")
 
     # Attempt to store error text separately — non-fatal if column doesn't exist
     if error:
         try:
             db.table("blueprints").update({"error_message": error[-2000:]}).eq("id", blueprint_id).execute()
         except Exception:
+            logger.debug("error_message column update failed (column may not exist)", exc_info=True)
             pass  # column doesn't exist — status was already set above, that's enough
 
 
@@ -156,6 +160,7 @@ def _run_analysis_bg(blueprint_id: str):
             run_analysis_pipeline(blueprint_id)
             result["done"] = True
         except Exception:
+            logger.debug("analysis thread target failed", exc_info=True)
             result["error"] = traceback.format_exc()
 
     thread = threading.Thread(target=_target, daemon=True)
@@ -163,12 +168,12 @@ def _run_analysis_bg(blueprint_id: str):
     thread.join(timeout=300)  # 5-minute hard cap
 
     if thread.is_alive():
-        print(f"[analysis] blueprint {blueprint_id} TIMED OUT after 5 minutes")
+        logger.error(f"blueprint {blueprint_id} TIMED OUT after 5 minutes")
         _set_status(db, blueprint_id, "failed", "Analysis timed out after 5 minutes. Please retry.")
         return
 
     if result["error"]:
-        print(f"[analysis] blueprint {blueprint_id} FAILED:\n{result['error']}")
+        logger.error(f"blueprint {blueprint_id} FAILED:\n{result['error']}")
         _set_status(db, blueprint_id, "failed", result["error"])
         return
 

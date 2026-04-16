@@ -311,6 +311,7 @@ async def _generate_via_hf(prompt: str) -> str:
                 try:
                     wait = r.json().get("estimated_time", 20)
                 except Exception:
+                    logger.debug("HF 503 estimated_time parse failed", exc_info=True)
                     pass
                 await asyncio.sleep(min(wait, 30))
                 continue

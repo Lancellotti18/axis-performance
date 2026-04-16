@@ -4,7 +4,11 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { createLogger, describeError } from '@/lib/logger'
+import toast from 'react-hot-toast'
 import type { ComplianceCheck, ComplianceItem, ComplianceSeverity } from '@/types'
+
+const log = createLogger('ProjectPage')
 import dynamic from 'next/dynamic'
 const RenderViewer      = dynamic(() => import('./RenderViewer'),      { ssr: false })
 const ExteriorCarousel  = dynamic(() => import('./ExteriorCarousel'),  { ssr: false })
@@ -914,8 +918,13 @@ export default function ProjectPage() {
       try {
         const photoData = await api.photos.list(projectId)
         setPhotos(photoData || [])
-      } catch {}
-    } catch (err) { console.error(err) }
+      } catch (err) {
+        log.warn('photos.list failed', err)
+      }
+    } catch (err) {
+      log.error('loadData', err)
+      toast.error(`Could not load project: ${describeError(err)}`)
+    }
     setLoading(false)
   }, [projectId])
 
@@ -947,7 +956,14 @@ export default function ProjectPage() {
   }, [projectId])
 
   async function handleMarkupUpdate() {
-    try { await api.estimates.update(projectId, { markup_pct: markup }); await loadData() } catch {}
+    try {
+      await api.estimates.update(projectId, { markup_pct: markup })
+      await loadData()
+      toast.success('Markup updated')
+    } catch (err) {
+      log.error('handleMarkupUpdate', err)
+      toast.error(`Could not update markup: ${describeError(err)}`)
+    }
   }
 
   async function handleSaveMaterials() {
@@ -961,7 +977,11 @@ export default function ProjectPage() {
       )
       setMaterialChanges({})
       await loadData()
-    } catch (err) { console.error(err) }
+      toast.success('Materials saved')
+    } catch (err) {
+      log.error('handleSaveMaterials', err)
+      toast.error(`Could not save materials: ${describeError(err)}`)
+    }
     setSavingMaterials(false)
   }
 
@@ -969,7 +989,10 @@ export default function ProjectPage() {
     try {
       await api.materials.delete(projectId, id)
       await loadData()
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      log.error('handleDeleteMaterial', err)
+      toast.error(`Could not delete material: ${describeError(err)}`)
+    }
   }
 
   async function handleAddMaterial() {
@@ -982,7 +1005,11 @@ export default function ProjectPage() {
       setAddingMaterial(false)
       setNewMaterial({ item_name: '', category: 'lumber', quantity: 0, unit: 'each', unit_cost: 0 })
       await loadData()
-    } catch (err) { console.error(err) }
+      toast.success('Material added')
+    } catch (err) {
+      log.error('handleAddMaterial', err)
+      toast.error(`Could not add material: ${describeError(err)}`)
+    }
   }
 
   async function handleSearchPrices(material: any, overrides?: { item_name?: string; category?: string }) {
@@ -1009,7 +1036,10 @@ export default function ProjectPage() {
           }
         })
       }
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      log.error('handleSearchPrices', err)
+      toast.error(`Price search failed: ${describeError(err)}`)
+    }
     setSearchingPrices(null)
   }
 
@@ -1169,7 +1199,11 @@ Thank you for your time.`
       // Reload photos
       const updated = await api.photos.list(projectId)
       setPhotos(updated || [])
-    } catch (err) { console.error(err) }
+      toast.success('Photos uploaded')
+    } catch (err) {
+      log.error('handleUploadPhoto', err)
+      toast.error(`Upload failed: ${describeError(err)}`)
+    }
     setUploadingPhoto(false)
   }
 
@@ -1243,8 +1277,10 @@ Thank you for your time.`
             const results = await api.axis.results(projectId)
             setAxisResults(results)
             // Populate editable line items from live pricing materials
-            const mats = results?.live_pricing?.materials || results?.quantities?._raw_items || []
-            if (mats.length > 0) setAxisLineItems(mats)
+            const lp = results?.live_pricing as { materials?: unknown[] } | undefined
+            const qr = results?.quantities as { _raw_items?: unknown[] } | undefined
+            const mats = lp?.materials || qr?._raw_items || []
+            if (mats.length > 0) setAxisLineItems(mats as any[])
           } else if (statusResp.status === 'error') {
             clearInterval(axisPollerRef.current!)
             setAxisStatus('error')
@@ -1269,8 +1305,10 @@ Thank you for your time.`
       .then(r => {
         if (r?.summary) {
           setAxisResults(r)
-          const mats = r?.live_pricing?.materials || r?.quantities?._raw_items || []
-          if (mats.length > 0 && axisLineItems.length === 0) setAxisLineItems(mats)
+          const lp = r?.live_pricing as { materials?: unknown[] } | undefined
+          const qr = r?.quantities as { _raw_items?: unknown[] } | undefined
+          const mats = lp?.materials || qr?._raw_items || []
+          if (mats.length > 0 && axisLineItems.length === 0) setAxisLineItems(mats as any[])
         }
       })
       .catch(() => {}) // not run yet — that's fine

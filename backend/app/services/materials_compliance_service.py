@@ -5,11 +5,14 @@ to evaluate EVERY material against those rules and return a per-item checklist
 with pass/fail, exact rule quote, and fix suggestion for each failure.
 """
 import json
+import logging
 import re
 import asyncio
 from app.core.config import settings
 from app.services.llm import llm_text
 from app.services.search import web_search
+
+logger = logging.getLogger(__name__)
 
 
 async def fetch_local_codes(city: str, state: str, project_type: str, county: str = "") -> str:
@@ -50,6 +53,7 @@ def _parse_json_from_claude(text: str) -> dict:
     try:
         return json.loads(candidate)
     except Exception:
+        logger.debug("clean JSON parse failed, trying truncation recovery", exc_info=True)
         pass
 
     # 2. Truncated response — walk backwards through every } and try to close it
@@ -59,6 +63,7 @@ def _parse_json_from_claude(text: str) -> dict:
         try:
             return json.loads(candidate[:i + 1])
         except Exception:
+            logger.debug("truncated JSON parse attempt failed, trying next offset", exc_info=True)
             continue
 
     raise ValueError(f"Could not parse JSON from Claude response. First 200 chars: {text[:200]}")
@@ -168,6 +173,7 @@ RULES:
     try:
         result = _parse_json_from_claude(text)
     except Exception:
+        logger.warning("compliance JSON parse failed, returning structured fallback", exc_info=True)
         # Last resort — return a structured fallback so the UI never shows a raw error
         result = {
             "overall_status": "warning",

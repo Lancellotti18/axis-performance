@@ -1,6 +1,10 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 from app.core.supabase import get_supabase
 import json
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -33,6 +37,7 @@ async def parse_blueprint_3d(project_id: str):
         if analysis.data:
             db.table("analyses").update({"scene_3d": json.dumps(scene_data)}).eq("id", analysis.data[0]["id"]).execute()
     except Exception:
+        logger.debug("scene_3d cache update failed (non-critical)", exc_info=True)
         pass  # Caching failure is non-critical
 
     return scene_data

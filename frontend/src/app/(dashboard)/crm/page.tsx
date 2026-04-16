@@ -10,16 +10,18 @@ type ViewMode = 'kanban' | 'list'
 interface Lead {
   id: string
   name: string
-  phone: string
-  email: string
-  address: string
-  city: string
-  state: string
-  job_type: string
+  phone?: string
+  email?: string
+  address?: string
+  city?: string
+  state?: string
+  job_type?: string
   stage: Stage
-  notes: string
-  estimated_value: number
+  notes?: string
+  estimated_value?: number
   created_at: string
+  updated_at?: string
+  user_id?: string
 }
 
 interface Note {
@@ -76,7 +78,7 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
     >
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="text-slate-800 font-semibold text-sm leading-tight">{lead.name}</div>
-        {lead.estimated_value > 0 && <span className="text-emerald-600 font-black text-xs flex-shrink-0">{fmt(lead.estimated_value)}</span>}
+        {(lead.estimated_value ?? 0) > 0 && <span className="text-emerald-600 font-black text-xs flex-shrink-0">{fmt(lead.estimated_value!)}</span>}
       </div>
       {(lead.city || lead.state) && <div className="text-slate-400 text-xs mb-1">📍 {[lead.city, lead.state].filter(Boolean).join(', ')}</div>}
       {lead.job_type && <div className="inline-block text-[10px] font-semibold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full mb-2 capitalize">{lead.job_type}</div>}
@@ -115,7 +117,7 @@ function ListRow({ lead, onStageChange, onOpen, onDelete }: { lead: Lead; onStag
         <span className={`w-1.5 h-1.5 rounded-full ${stage.dot}`} />
         {stage.label}
       </span>
-      {lead.estimated_value > 0 && <span className="text-emerald-600 font-bold text-sm flex-shrink-0">{fmt(lead.estimated_value)}</span>}
+      {(lead.estimated_value ?? 0) > 0 && <span className="text-emerald-600 font-bold text-sm flex-shrink-0">{fmt(lead.estimated_value!)}</span>}
       <select
         value={lead.stage}
         onChange={e => { e.stopPropagation(); onStageChange(lead.id, e.target.value as Stage) }}
@@ -245,10 +247,10 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
                 {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </div>
-            {lead.estimated_value > 0 && (
+            {(lead.estimated_value ?? 0) > 0 && (
               <div className="text-right">
                 <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Est. Value</div>
-                <div className="text-emerald-600 font-black text-xl">{fmt(lead.estimated_value)}</div>
+                <div className="text-emerald-600 font-black text-xl">{fmt(lead.estimated_value!)}</div>
               </div>
             )}
           </div>

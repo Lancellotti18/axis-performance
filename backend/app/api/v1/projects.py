@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional
 from app.core.supabase import get_supabase
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -25,6 +29,7 @@ async def list_projects(user_id: str = Query(...), include_archived: bool = Quer
         result = query.order("created_at", desc=True).execute()
         rows = result.data or []
     except Exception:
+        logger.debug("projects archived filter failed, falling back to unfiltered", exc_info=True)
         # archived column may not exist yet — fall back to unfiltered query
         result = db.table("projects").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
         rows = result.data or []

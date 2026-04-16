@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from app.core.supabase import get_supabase
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -21,6 +25,7 @@ async def get_estimate(project_id: str):
             return None
         estimate = result.data
     except Exception:
+        logger.debug("cost_estimates lookup failed, returning None", exc_info=True)
         return None
 
     # Fetch material estimates via blueprint -> analysis chain

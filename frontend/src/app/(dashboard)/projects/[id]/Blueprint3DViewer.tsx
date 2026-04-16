@@ -8,6 +8,8 @@ import { OrbitControls, Html, ContactShadows, Environment, Grid, Line } from "@r
 import { EffectComposer, Bloom, Vignette, ChromaticAberration, DepthOfField, ToneMapping } from "@react-three/postprocessing";
 import { BlendFunction, ToneMappingMode } from "postprocessing";
 import * as THREE from "three";
+import toast from "react-hot-toast";
+import { describeError } from "@/lib/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -837,8 +839,8 @@ function GLBExportTrigger({ triggerRef }:{ triggerRef:React.MutableRefObject<(()
           const url=URL.createObjectURL(blob);
           const a=document.createElement("a"); a.href=url; a.download="floorplan.glb"; a.click();
           URL.revokeObjectURL(url);
-        },(e:any)=>console.error("GLB export",e),{binary:true});
-      }catch(e){console.error("GLB",e);}
+        },(e:unknown)=>toast.error(`GLB export failed: ${describeError(e)}`),{binary:true});
+      }catch(e){ toast.error(`GLB export failed: ${describeError(e)}`); }
     };
   },[scene,triggerRef]);
   return null;

@@ -13,7 +13,10 @@ Outputs: insights dict + /output/data/insights.json
 
 import hashlib
 import json
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def _cache_key(data: dict) -> str:
@@ -27,6 +30,7 @@ def _load_cache(cache_file: str) -> dict:
             with open(cache_file) as f:
                 return json.load(f)
         except Exception:
+            logger.debug("insights cache read failed, starting with empty cache", exc_info=True)
             pass
     return {}
 
@@ -51,8 +55,8 @@ def _generate(
         return cache[cache_key]
     try:
         result = _call_claude(prompt)
-    except Exception as e:
-        print(f"[AXIS AI] Claude API error: {e} — using fallback text")
+    except Exception:
+        logger.exception("Claude API error — using fallback text")
         result = fallback
     cache[cache_key] = result
     return result
@@ -223,15 +227,15 @@ Be specific to the project scale and roof type."""
     ])
 
     # ── run all prompts ───────────────────────────────────────────────────────
-    print("[AXIS AI] Generating project summary...")
+    logger.info("Generating project summary...")
     ins_summary = _generate(prompt1, key1, cache, fallback1)
-    print("[AXIS AI] Generating cost analysis...")
+    logger.info("Generating cost analysis...")
     ins_cost    = _generate(prompt2, key2, cache, fallback2)
-    print("[AXIS AI] Generating material recommendations...")
+    logger.info("Generating material recommendations...")
     ins_mats    = _generate(prompt3, key3, cache, fallback3)
-    print("[AXIS AI] Generating schedule risks...")
+    logger.info("Generating schedule risks...")
     ins_sched   = _generate(prompt4, key4, cache, fallback4)
-    print("[AXIS AI] Generating quality checklist...")
+    logger.info("Generating quality checklist...")
     ins_check   = _generate(prompt5, key5, cache, fallback5)
 
     _save_cache(cache, cache_file)
@@ -272,7 +276,7 @@ def run_ai_insights(
     with open(out_path, "w") as f:
         json.dump(insights, f, indent=2)
 
-    print(f"[AXIS AI] Insights saved → {out_path}")
+    logger.info(f"Insights saved → {out_path}")
     return insights
 
 

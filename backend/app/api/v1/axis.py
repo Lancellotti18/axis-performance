@@ -194,6 +194,7 @@ def _run_5d_only(job_id: str, project_id: str, request: RunRequest) -> None:
                 project_city  = proj.data[0].get("city", "") or ""
                 project_state = (proj.data[0].get("region", "") or "").replace("US-", "")
         except Exception:
+            log.debug("project location lookup failed, using empty defaults", exc_info=True)
             pass
 
         live_pricing_summary = None

@@ -109,6 +109,7 @@ def _get_redis():
         r.ping()
         return r
     except Exception:
+        log.debug("redis connection failed, continuing without cache", exc_info=True)
         return None
 
 
@@ -223,6 +224,7 @@ def get_live_price(
                 data["from_cache"] = True
                 return data
             except Exception:
+                log.debug("cached pricing payload decode failed, fetching live", exc_info=True)
                 pass
 
     mult, mult_note = _regional_multiplier(zip_code)
@@ -254,6 +256,7 @@ def get_live_price(
         try:
             redis.setex(cache_key, 86400, json.dumps(data))
         except Exception:
+            log.debug("redis cache write failed", exc_info=True)
             pass
 
     return data

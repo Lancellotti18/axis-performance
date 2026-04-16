@@ -9,8 +9,11 @@ Outputs: quantities dict + /output/data/quantities.json
 """
 
 import json
+import logging
 import math
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_quantities(scene_data: dict, pitch_angle: float = 35.0) -> dict:
@@ -201,7 +204,7 @@ def run_quantity_takeoff(scene_data: dict, output_dir: str, pitch_angle: float =
     with open(out_path, "w") as f:
         json.dump(quantities, f, indent=2)
 
-    print(f"[AXIS 5D] Quantities saved → {out_path}")
+    logger.info(f"Quantities saved → {out_path}")
     return quantities
 
 

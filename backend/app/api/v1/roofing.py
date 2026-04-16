@@ -6,12 +6,15 @@ GET  /roofing/{blueprint_id}/measurements — Get stored measurements
 GET  /roofing/{project_id}/shingle-estimate — Calculate shingle material list
 """
 import asyncio
+import logging
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from app.core.supabase import get_supabase
 from app.services.roofing_service import analyze_roof_image, calculate_shingle_materials
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -135,6 +138,7 @@ async def get_measurements(blueprint_id: str):
         result = db.table("roof_measurements").select("*").eq("blueprint_id", blueprint_id).single().execute()
         return result.data or {}
     except Exception:
+        logger.debug("roof_measurements lookup failed for blueprint %s", blueprint_id, exc_info=True)
         return {}
 
 
@@ -150,6 +154,7 @@ async def get_shingle_estimate(project_id: str):
         result = db.table("roof_measurements").select("*").eq("project_id", project_id).execute()
         measurements = result.data[0] if result.data else None
     except Exception:
+        logger.debug("roof_measurements lookup failed for project %s", project_id, exc_info=True)
         measurements = None
 
     if not measurements:
@@ -376,6 +381,7 @@ If no damage is visible, return zones as []. condition_score: 0 = destroyed, 100
         try:
             research = await web_search_multi(queries, max_results=4)
         except Exception:
+            logger.warning("weather history web search failed for %s", payload.address, exc_info=True)
             research = ""
 
         if not research or len(research.strip()) < 50:

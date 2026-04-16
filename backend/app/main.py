@@ -1,8 +1,14 @@
-from fastapi import FastAPI, Request
+import logging
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.core.config import settings
+
 from app.api.v1 import router as api_router
+from app.core.auth import require_user
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="BuildAI API",
@@ -12,31 +18,27 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
-# Catch all unhandled exceptions so they pass through CORSMiddleware
-# (unhandled exceptions bypass CORSMiddleware and return 500 with no CORS headers,
-# causing browsers to throw TypeError: Failed to fetch instead of seeing the error)
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     # @app.exception_handler(Exception) runs inside ServerErrorMiddleware, which is
-    # OUTSIDE CORSMiddleware in the Starlette stack — so CORS headers are never added
-    # automatically. We must set them explicitly here.
-    origin = request.headers.get("origin", "*")
-    return JSONResponse(
-        status_code=500,
-        content={"detail": str(exc)},
-        headers={
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Credentials": "false",
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*",
-        },
-    )
+    # OUTSIDE CORSMiddleware — so CORS headers are never added automatically here.
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    origin = request.headers.get("origin", "")
+    allowed = origin if origin in settings.allowed_origins_list else ""
+    detail = str(exc) if settings.ENVIRONMENT != "production" else "Internal server error"
+    headers = {}
+    if allowed:
+        headers["Access-Control-Allow-Origin"] = allowed
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return JSONResponse(status_code=500, content={"detail": detail}, headers=headers)
+
 
 app.include_router(api_router, prefix="/api/v1")
 
@@ -45,51 +47,23 @@ app.include_router(api_router, prefix="/api/v1")
 async def health():
     return {"status": "ok", "version": "0.1.0"}
 
-@app.get("/debug/keys")
-async def debug_keys():
-    import os
-    return {
-        "HUGGINGFACE_API_KEY": "set" if os.environ.get("HUGGINGFACE_API_KEY") else "NOT SET",
-        "HUGGINGFACE_API_KEY_starts_with": os.environ.get("HUGGINGFACE_API_KEY","")[:6] or "empty",
-        "GEMINI_API_KEY": "set" if os.environ.get("GEMINI_API_KEY") else "NOT SET",
-        "settings_hf": "set" if settings.HUGGINGFACE_API_KEY else "NOT SET",
-        "settings_hf_starts_with": settings.HUGGINGFACE_API_KEY[:6] if settings.HUGGINGFACE_API_KEY else "empty",
-    }
 
-@app.post("/debug/test-hf")
-async def debug_test_hf():
-    import os, httpx
-    key = os.environ.get("HUGGINGFACE_API_KEY") or settings.HUGGINGFACE_API_KEY or ""
-    if not key:
-        return {"error": "no key found"}
-    # Ping HF API with a tiny payload
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post(
-                "https://router.huggingface.co/hf-inference/models/runwayml/stable-diffusion-v1-5",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"inputs": "a house", "parameters": {"num_inference_steps": 1}},
-            )
-            return {"status": r.status_code, "body": r.text[:300], "key_prefix": key[:8]}
-    except Exception as e:
-        return {"error": str(e), "key_prefix": key[:8]}
+if settings.ENVIRONMENT != "production":
+    # Debug routes — only mounted outside production. Still require auth so a dev
+    # environment shared on the public internet can't leak key prefixes to anyone.
+    @app.get("/debug/keys")
+    async def debug_keys(user: dict = Depends(require_user)):
+        import os
 
+        def _state(value: str) -> str:
+            return "set" if value else "NOT SET"
 
-@app.get("/debug/test-pollinations")
-async def debug_test_pollinations():
-    """Test if the backend can reach Pollinations.ai"""
-    import urllib.parse, httpx
-    prompt = "a simple house exterior"
-    params = "width=256&height=256&model=flux&seed=42&nologo=true"
-    url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?{params}"
-    try:
-        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-            r = await client.get(url)
-            return {
-                "status":        r.status_code,
-                "content_type":  r.headers.get("content-type", ""),
-                "content_length": len(r.content),
-                "final_url":     str(r.url)[:100],
-            }
-    except Exception as e:
-        return {"error": str(e)}
+        hf_env = os.environ.get("HUGGINGFACE_API_KEY", "")
+        gem_env = os.environ.get("GEMINI_API_KEY", "")
+        return {
+            "environment": settings.ENVIRONMENT,
+            "huggingface_env": _state(hf_env),
+            "gemini_env": _state(gem_env),
+            "settings_huggingface": _state(settings.HUGGINGFACE_API_KEY),
+            "settings_gemini": _state(settings.GEMINI_API_KEY),
+        }

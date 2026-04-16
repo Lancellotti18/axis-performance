@@ -259,6 +259,7 @@ def wait_for_completion(
             try:
                 on_progress(status)
             except Exception:
+                log.debug("on_progress callback failed", exc_info=True)
                 pass
 
         if status["status"] in terminal:

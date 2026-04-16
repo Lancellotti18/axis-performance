@@ -2,11 +2,14 @@
 Project photo documentation endpoints.
 Provides presigned upload URLs for Supabase storage + photo metadata CRUD.
 """
+import logging
 import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from app.core.auth import get_current_user
 from app.core.supabase import get_supabase
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -54,6 +57,7 @@ async def register_photo(
         raw_pub = db.storage.from_(BUCKET).get_public_url(body.storage_key)
         pub = raw_pub if isinstance(raw_pub, str) else (raw_pub.get("publicUrl") or raw_pub.get("data", {}).get("publicUrl", ""))
     except Exception:
+        logger.debug("get_public_url failed", exc_info=True)
         pub = ""
     result = db.table("project_photos").insert({
         "project_id": project_id,
@@ -132,6 +136,7 @@ async def delete_photo(
         try:
             db.storage.from_(BUCKET).remove([row.data[0]["storage_key"]])
         except Exception:
+            logger.debug("storage remove failed", exc_info=True)
             pass
     db.table("project_photos").delete().eq("id", photo_id).execute()
     return {"ok": True}

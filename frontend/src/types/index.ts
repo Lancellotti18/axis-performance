@@ -19,6 +19,12 @@ export interface Project {
   description?: string
   status: ProjectStatus
   archived?: boolean
+  region?: string
+  city?: string
+  zip_code?: string
+  blueprint_type?: BlueprintType | string
+  address?: string
+  blueprints?: Blueprint[]
   created_at: string
   updated_at: string
 }
@@ -31,6 +37,7 @@ export interface Blueprint {
   page_count: number
   file_size_kb: number
   status: ProjectStatus
+  error_message?: string
   created_at: string
 }
 
@@ -139,4 +146,88 @@ export interface RoofMeasurements {
   notes: string
   confirmed: boolean
   created_at: string
+}
+
+// ── Photos ────────────────────────────────────────────────────────────────
+export type PhotoPhase = 'before' | 'during' | 'after'
+
+export interface Photo {
+  id: string
+  project_id: string
+  storage_key: string
+  filename: string
+  phase: PhotoPhase
+  url: string
+  created_at: string
+}
+
+// ── Materials pricing ─────────────────────────────────────────────────────
+export interface VendorOption {
+  vendor: string
+  price: number | null
+  url: string
+  is_local: boolean
+  note: string
+  quote_only?: boolean
+  tag?: string
+}
+
+// ── Permits ───────────────────────────────────────────────────────────────
+export type PermitFieldType = 'text' | 'date' | 'checkbox' | 'signature'
+export type PermitFieldStatus = 'auto_filled' | 'needs_input' | 'optional'
+
+export interface PermitField {
+  key: string
+  label: string
+  value: string
+  field_type: PermitFieldType
+  required: boolean
+  section: string
+  x?: number | null
+  y?: number | null
+  page?: number
+  status?: PermitFieldStatus
+}
+
+export interface Jurisdiction {
+  found: boolean
+  authority_name: string | null
+  authority_type: string | null
+  gov_url: string | null
+  submission_method: string
+  submission_email: string | null
+  error: string | null
+  fallback_search_url: string | null
+}
+
+// ── Contractor ────────────────────────────────────────────────────────────
+export interface ContractorProfile {
+  user_id?: string
+  company_name: string
+  license_number: string
+  phone: string
+  email: string
+  address: string
+  city: string
+  state: string
+  zip_code: string
+  insurance_policy?: string
+  updated_at?: string
+}
+
+// ── Estimates & reports ──────────────────────────────────────────────────
+export interface EstimateFull extends CostEstimate {
+  material_estimates: MaterialEstimate[]
+}
+
+export interface ReportFull {
+  project: Project
+  blueprint: Blueprint | null
+  analysis: Analysis | null
+  materials: MaterialEstimate[]
+  cost: CostEstimate | null
+  compliance: ComplianceCheck | null
+  compliance_items: ComplianceItem[]
+  permit_info: Record<string, unknown> | null
+  overrides: Record<string, unknown>
 }

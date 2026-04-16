@@ -3,10 +3,13 @@ Photo-to-Measurements service.
 Downloads project site photos and sends them to LLM Vision
 to estimate wall area, roof area, sqft, and structural dimensions.
 """
+import logging
 import re
 import json
 import httpx
 from app.services.llm import llm_vision
+
+logger = logging.getLogger(__name__)
 
 
 MEASUREMENT_PROMPT = """You are a senior construction estimator analyzing job-site photos to extract structural measurements.
@@ -67,6 +70,7 @@ async def measure_from_photos(photo_urls: list) -> dict:
                         media_type = "image/jpeg"
                     images.append((resp.content, media_type))
             except Exception:
+                logger.debug("photo download failed, skipping", exc_info=True)
                 continue
 
     if not images:

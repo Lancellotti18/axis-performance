@@ -1,4 +1,20 @@
 import { supabase } from './supabase'
+import type {
+  Project,
+  Blueprint,
+  Analysis,
+  MaterialEstimate,
+  CRMLead,
+  RoofMeasurements,
+  ContractorProfile,
+  ComplianceCheck,
+  EstimateFull,
+  ReportFull,
+  Photo,
+  PermitField,
+  Jurisdiction,
+  VendorOption,
+} from '@/types'
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
@@ -9,7 +25,7 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
     const res = await fetch(url, { ...options, signal: controller.signal })
     clearTimeout(timer)
     return res
-  } catch (err: any) {
+  } catch (err: unknown) {
     clearTimeout(timer)
     throw err
   }
@@ -32,23 +48,25 @@ export async function apiRequest<T>(
     },
   }
 
-  let res: Response
+  let res: Response | undefined
   // Retry up to 3 times — handles cold starts and transient failures
-  let lastErr: any
+  let lastErr: unknown = null
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       res = await fetchWithTimeout(`${API_BASE}${path}`, fetchOptions, timeoutMs)
       lastErr = null
       break
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastErr = err
-      if (err.name === 'AbortError') continue   // timed out — retry
+      const name = err instanceof Error ? err.name : ''
+      if (name === 'AbortError') continue   // timed out — retry
       // Network-level failure (CORS, connection refused, etc.) — wait briefly then retry
       if (attempt < 2) await new Promise(r => setTimeout(r, 1500))
     }
   }
   if (lastErr) {
-    if (lastErr.name === 'AbortError') throw new Error('Server is taking too long to respond. Please try again in a moment.')
+    const name = lastErr instanceof Error ? lastErr.name : ''
+    if (name === 'AbortError') throw new Error('Server is taking too long to respond. Please try again in a moment.')
     throw new Error('Network error. Please check your connection.')
   }
 
@@ -59,8 +77,8 @@ export async function apiRequest<T>(
       const json = JSON.parse(text)
       const detail = typeof json.detail === 'string' ? json.detail : JSON.stringify(json.detail)
       throw new Error(`[HTTP ${res!.status}] ${detail}`)
-    } catch (parseErr: any) {
-      if (parseErr.message?.startsWith('[HTTP')) throw parseErr
+    } catch (parseErr: unknown) {
+      if (parseErr instanceof Error && parseErr.message.startsWith('[HTTP')) throw parseErr
     }
     throw new Error(text || `HTTP ${res!.status}`)
   }
@@ -71,35 +89,35 @@ export async function apiRequest<T>(
 export const api = {
   projects: {
     list: (userId: string) =>
-      apiRequest<any[]>(`/api/v1/projects/?user_id=${userId}`),
+      apiRequest<Project[]>(`/api/v1/projects/?user_id=${userId}`),
     create: (payload: { name: string; description?: string; region?: string; blueprint_type?: string; city?: string; zip_code?: string }, userId: string) =>
-      apiRequest<any>(`/api/v1/projects/?user_id=${userId}`, {
+      apiRequest<Project>(`/api/v1/projects/?user_id=${userId}`, {
         method: 'POST',
         body: JSON.stringify(payload),
       }, 60000),
     get: (id: string) =>
-      apiRequest<any>(`/api/v1/projects/${id}`),
+      apiRequest<Project>(`/api/v1/projects/${id}`),
     rename: (id: string, name: string) =>
-      apiRequest<any>(`/api/v1/projects/${id}`, {
+      apiRequest<Project>(`/api/v1/projects/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ name }),
       }),
     delete: (id: string) =>
-      apiRequest<any>(`/api/v1/projects/${id}`, { method: 'DELETE' }),
+      apiRequest<{ ok: boolean }>(`/api/v1/projects/${id}`, { method: 'DELETE' }),
     archive: (id: string) =>
-      apiRequest<any>(`/api/v1/projects/${id}`, {
+      apiRequest<Project>(`/api/v1/projects/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ archived: true }),
       }),
     restore: (id: string) =>
-      apiRequest<any>(`/api/v1/projects/${id}`, {
+      apiRequest<Project>(`/api/v1/projects/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ archived: false }),
       }),
     listArchived: (userId: string) =>
-      apiRequest<any[]>(`/api/v1/projects/?user_id=${userId}&include_archived=true`),
+      apiRequest<Project[]>(`/api/v1/projects/?user_id=${userId}&include_archived=true`),
     getRiskScore: (projectId: string) =>
-      apiRequest<any>(`/api/v1/projects/${projectId}/risk-score`, {}, 90000),
+      apiRequest<Record<string, unknown>>(`/api/v1/projects/${projectId}/risk-score`, {}, 90000),
   },
   blueprints: {
     getUploadUrl: (projectId: string, filename: string, contentType: string) =>
@@ -107,7 +125,7 @@ export const api = {
         `/api/v1/blueprints/upload-url?project_id=${projectId}&filename=${encodeURIComponent(filename)}&content_type=${encodeURIComponent(contentType)}`
       ),
     register: (projectId: string, fileKey: string, fileType: string, fileSizeKb: number) =>
-      apiRequest<any>(`/api/v1/blueprints/?project_id=${projectId}&file_key=${encodeURIComponent(fileKey)}&file_type=${fileType}&file_size_kb=${fileSizeKb}`, {
+      apiRequest<Blueprint>(`/api/v1/blueprints/?project_id=${projectId}&file_key=${encodeURIComponent(fileKey)}&file_type=${fileType}&file_size_kb=${fileSizeKb}`, {
         method: 'POST',
       }),
     triggerAnalysis: (blueprintId: string) =>
@@ -120,26 +138,26 @@ export const api = {
   },
   analyses: {
     getByBlueprint: (blueprintId: string) =>
-      apiRequest<any>(`/api/v1/analyses/by-blueprint/${blueprintId}`),
+      apiRequest<Analysis>(`/api/v1/analyses/by-blueprint/${blueprintId}`),
   },
   estimates: {
     get: (projectId: string) =>
-      apiRequest<any>(`/api/v1/estimates/${projectId}`),
-    update: (projectId: string, payload: any) =>
-      apiRequest<any>(`/api/v1/estimates/${projectId}`, {
+      apiRequest<EstimateFull | null>(`/api/v1/estimates/${projectId}`),
+    update: (projectId: string, payload: { markup_pct?: number; labor_rate?: number; region?: string }) =>
+      apiRequest<EstimateFull>(`/api/v1/estimates/${projectId}`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
       }),
   },
   reports: {
     getFull: (projectId: string) =>
-      apiRequest<any>(`/api/v1/reports/${projectId}/full`, {}, 30000),
-    saveOverrides: (projectId: string, overrides: Record<string, any>) =>
-      apiRequest<any>(`/api/v1/reports/${projectId}/overrides`, {
+      apiRequest<ReportFull>(`/api/v1/reports/${projectId}/full`, {}, 30000),
+    saveOverrides: (projectId: string, overrides: Record<string, unknown>) =>
+      apiRequest<{ saved: boolean }>(`/api/v1/reports/${projectId}/overrides`, {
         method: 'PATCH',
         body: JSON.stringify({ overrides }),
       }),
-    downloadPdf: (projectId: string) =>
+    downloadPdf: (projectId: string): Promise<Blob> =>
       fetch(`${API_BASE}/api/v1/reports/${projectId}/pdf`, { method: 'POST' })
         .then(async res => {
           if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
@@ -148,19 +166,19 @@ export const api = {
   },
   materials: {
     add: (projectId: string, item: { item_name: string; category: string; quantity: number; unit: string; unit_cost: number; total_cost: number }) =>
-      apiRequest<any>(`/api/v1/materials/${projectId}/add`, {
+      apiRequest<MaterialEstimate>(`/api/v1/materials/${projectId}/add`, {
         method: 'POST',
         body: JSON.stringify(item),
       }),
-    update: (projectId: string, itemId: string, item: any) =>
-      apiRequest<any>(`/api/v1/materials/${projectId}/items/${itemId}`, {
+    update: (projectId: string, itemId: string, item: Partial<MaterialEstimate>) =>
+      apiRequest<MaterialEstimate>(`/api/v1/materials/${projectId}/items/${itemId}`, {
         method: 'PATCH',
         body: JSON.stringify(item),
       }),
     delete: (projectId: string, itemId: string) =>
-      apiRequest<any>(`/api/v1/materials/${projectId}/items/${itemId}`, { method: 'DELETE' }),
+      apiRequest<{ success: boolean }>(`/api/v1/materials/${projectId}/items/${itemId}`, { method: 'DELETE' }),
     searchPrices: (payload: { item_name: string; category: string; unit_cost: number; region: string; city?: string }) =>
-      apiRequest<{ options: any[] }>(`/api/v1/materials/search-prices`, {
+      apiRequest<{ options: VendorOption[] }>(`/api/v1/materials/search-prices`, {
         method: 'POST',
         body: JSON.stringify(payload),
       }, 30000),
@@ -195,22 +213,26 @@ export const api = {
       })
     },
     fetchForm: (projectId: string, requirementsFields: Record<string, string> = {}) =>
-      apiRequest<{ form_url: string | null; city: string; state: string; project_type: string; fields: any[]; jurisdiction: any }>(
+      apiRequest<{ form_url: string | null; city: string; state: string; project_type: string; fields: PermitField[]; jurisdiction: Jurisdiction }>(
         `/api/v1/permits/fetch-form/${projectId}`,
         { method: 'POST', body: JSON.stringify({ requirements_context: JSON.stringify(requirementsFields) }) },
         60000
       ),
-    generatePdf: (projectId: string, fields: any[], formUrl: string | null, useWebForm: boolean) =>
-      apiRequest<Blob>(`/api/v1/permits/generate-pdf/${projectId}`, {
+    generatePdf: (projectId: string, fields: PermitField[], formUrl: string | null, useWebForm: boolean): Promise<Blob> =>
+      fetch(`${API_BASE}/api/v1/permits/generate-pdf/${projectId}`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields, form_url: formUrl, use_web_form: useWebForm }),
-      }, 60000),
+      }).then(async res => {
+        if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
+        return res.blob()
+      }),
   },
   contractorProfile: {
     get: (userId: string) =>
-      apiRequest<any>(`/api/v1/contractor-profile/${userId}`),
-    save: (userId: string, profile: any) =>
-      apiRequest<any>(`/api/v1/contractor-profile/${userId}`, {
+      apiRequest<ContractorProfile | Record<string, never>>(`/api/v1/contractor-profile/${userId}`),
+    save: (userId: string, profile: Partial<ContractorProfile>) =>
+      apiRequest<ContractorProfile>(`/api/v1/contractor-profile/${userId}`, {
         method: 'POST',
         body: JSON.stringify(profile),
       }),
@@ -219,7 +241,7 @@ export const api = {
     getForRegion: (regionCode: string, projectType: string, city?: string) => {
       const params = new URLSearchParams({ project_type: projectType })
       if (city) params.set('city', city)
-      return apiRequest<any>(`/api/v1/compliance/region/${regionCode}?${params}`)
+      return apiRequest<ComplianceCheck>(`/api/v1/compliance/region/${regionCode}?${params}`)
     },
     triggerForProject: (projectId: string, city?: string) => {
       const params = city ? `?city=${encodeURIComponent(city)}` : ''
@@ -229,43 +251,43 @@ export const api = {
       )
     },
     getForProject: (projectId: string) =>
-      apiRequest<any>(`/api/v1/compliance/project/${projectId}`),
+      apiRequest<ComplianceCheck>(`/api/v1/compliance/project/${projectId}`),
     checkMaterials: (projectId: string) =>
-      apiRequest<any>(`/api/v1/compliance/materials-check?project_id=${projectId}`, { method: 'POST' }, 240000),
+      apiRequest<Record<string, unknown>>(`/api/v1/compliance/materials-check?project_id=${projectId}`, { method: 'POST' }, 240000),
   },
   roofing: {
     analyzeMeasurements: (blueprintId: string) =>
-      apiRequest<any>(`/api/v1/roofing/${blueprintId}/measure`, { method: 'POST' }, 90000),
-    confirmMeasurements: (blueprintId: string, measurements: any) =>
-      apiRequest<any>(`/api/v1/roofing/${blueprintId}/confirm`, {
+      apiRequest<RoofMeasurements>(`/api/v1/roofing/${blueprintId}/measure`, { method: 'POST' }, 90000),
+    confirmMeasurements: (blueprintId: string, measurements: Partial<RoofMeasurements>) =>
+      apiRequest<RoofMeasurements>(`/api/v1/roofing/${blueprintId}/confirm`, {
         method: 'POST',
         body: JSON.stringify(measurements),
       }),
     getMeasurements: (blueprintId: string) =>
-      apiRequest<any>(`/api/v1/roofing/${blueprintId}/measurements`),
+      apiRequest<RoofMeasurements>(`/api/v1/roofing/${blueprintId}/measurements`),
     getShingleEstimate: (projectId: string) =>
-      apiRequest<any>(`/api/v1/roofing/project/${projectId}/shingle-estimate`),
+      apiRequest<Record<string, unknown>>(`/api/v1/roofing/project/${projectId}/shingle-estimate`),
     aerialReport: (projectId: string, address: string) =>
-      apiRequest<any>(`/api/v1/roofing/aerial-report`, {
+      apiRequest<Record<string, unknown>>(`/api/v1/roofing/aerial-report`, {
         method: 'POST',
         body: JSON.stringify({ project_id: projectId, address }),
       }, 60000),
     aerialReportStandalone: (address: string) =>
-      apiRequest<any>(`/api/v1/roofing/aerial-report/standalone`, {
+      apiRequest<Record<string, unknown>>(`/api/v1/roofing/aerial-report/standalone`, {
         method: 'POST',
         body: JSON.stringify({ address }),
       }, 60000),
     stormRisk: (city: string, state: string, zipCode?: string) =>
-      apiRequest<any>(`/api/v1/roofing/storm-risk`, {
+      apiRequest<Record<string, unknown>>(`/api/v1/roofing/storm-risk`, {
         method: 'POST',
         body: JSON.stringify({ city, state, zip_code: zipCode || '' }),
       }, 60000),
     analyzeAerialDamage: (satelliteImageUrl: string, address: string, lat?: number | null, lng?: number | null) =>
-      apiRequest<any>(`/api/v1/roofing/aerial-damage`, {
+      apiRequest<Record<string, unknown>>(`/api/v1/roofing/aerial-damage`, {
         method: 'POST',
         body: JSON.stringify({ satellite_image_url: satelliteImageUrl, address, lat, lng }),
       }, 90000),
-    analyzePhotos: async (photos: File[], address: string): Promise<any> => {
+    analyzePhotos: async (photos: File[], address: string): Promise<Record<string, unknown>> => {
       const { data: { session } } = await (await import('./supabase')).supabase.auth.getSession()
       const token = session?.access_token
       const form = new FormData()
@@ -288,22 +310,22 @@ export const api = {
   },
   crm: {
     listLeads: (userId: string) =>
-      apiRequest<any[]>(`/api/v1/crm/leads?user_id=${userId}`),
-    createLead: (lead: any, userId: string) =>
-      apiRequest<any>(`/api/v1/crm/leads?user_id=${userId}`, { method: 'POST', body: JSON.stringify(lead) }),
-    updateLead: (leadId: string, patch: any) =>
-      apiRequest<any>(`/api/v1/crm/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+      apiRequest<CRMLead[]>(`/api/v1/crm/leads?user_id=${userId}`),
+    createLead: (lead: Partial<CRMLead>, userId: string) =>
+      apiRequest<CRMLead>(`/api/v1/crm/leads?user_id=${userId}`, { method: 'POST', body: JSON.stringify(lead) }),
+    updateLead: (leadId: string, patch: Partial<CRMLead>) =>
+      apiRequest<CRMLead>(`/api/v1/crm/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
     deleteLead: (leadId: string) =>
-      apiRequest<any>(`/api/v1/crm/leads/${leadId}`, { method: 'DELETE' }),
+      apiRequest<{ ok: boolean }>(`/api/v1/crm/leads/${leadId}`, { method: 'DELETE' }),
     getNotes: (leadId: string) =>
-      apiRequest<any[]>(`/api/v1/crm/leads/${leadId}/notes`),
+      apiRequest<Array<{ id: string; lead_id: string; text: string; user_id: string; created_at: string }>>(`/api/v1/crm/leads/${leadId}/notes`),
     addNote: (leadId: string, text: string, userId: string) =>
-      apiRequest<any>(`/api/v1/crm/leads/${leadId}/notes`, {
+      apiRequest<{ id: string; lead_id: string; text: string; user_id: string; created_at: string }>(`/api/v1/crm/leads/${leadId}/notes`, {
         method: 'POST',
         body: JSON.stringify({ text, user_id: userId }),
       }),
     deleteNote: (leadId: string, noteId: string) =>
-      apiRequest<any>(`/api/v1/crm/leads/${leadId}/notes/${noteId}`, { method: 'DELETE' }),
+      apiRequest<{ ok: boolean }>(`/api/v1/crm/leads/${leadId}/notes/${noteId}`, { method: 'DELETE' }),
   },
   photos: {
     getUploadUrl: (projectId: string, filename: string, contentType: string) =>
@@ -311,22 +333,22 @@ export const api = {
         `/api/v1/photos/upload-url/${projectId}?filename=${encodeURIComponent(filename)}&content_type=${encodeURIComponent(contentType)}`
       ),
     register: (projectId: string, payload: { storage_key: string; filename: string; phase: string }) =>
-      apiRequest<any>(`/api/v1/photos/register/${projectId}`, {
+      apiRequest<Photo>(`/api/v1/photos/register/${projectId}`, {
         method: 'POST',
         body: JSON.stringify(payload),
       }),
     list: (projectId: string) =>
-      apiRequest<any[]>(`/api/v1/photos/${projectId}`),
+      apiRequest<Photo[]>(`/api/v1/photos/${projectId}`),
     delete: (projectId: string, photoId: string) =>
-      apiRequest<any>(`/api/v1/photos/${projectId}/${photoId}`, { method: 'DELETE' }),
+      apiRequest<{ ok: boolean }>(`/api/v1/photos/${projectId}/${photoId}`, { method: 'DELETE' }),
     measure: (projectId: string) =>
-      apiRequest<any>(`/api/v1/photos/measure/${projectId}`, { method: 'POST' }, 120000),
+      apiRequest<Record<string, unknown>>(`/api/v1/photos/measure/${projectId}`, { method: 'POST' }, 120000),
   },
   model3d: {
     parse: (projectId: string) =>
-      apiRequest<any>(`/api/v1/model3d/${projectId}/parse3d`, { method: 'POST' }, 120000),
+      apiRequest<Record<string, unknown>>(`/api/v1/model3d/${projectId}/parse3d`, { method: 'POST' }, 120000),
     get: (projectId: string) =>
-      apiRequest<any>(`/api/v1/model3d/${projectId}/model3d`),
+      apiRequest<Record<string, unknown>>(`/api/v1/model3d/${projectId}/model3d`),
   },
   visualizer: {
     generate: (file: File, description: string, city: string, state: string) => {
@@ -341,7 +363,7 @@ export const api = {
         180000,  // 3-minute timeout — image generation can be slow on first run
       ).then(async res => {
         if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
-        return res.json()
+        return res.json() as Promise<Record<string, unknown>>
       })
     },
   },
@@ -359,11 +381,11 @@ export const api = {
         // No Content-Type header — browser sets multipart boundary automatically
       }).then(async res => {
         if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
-        return res.json()
+        return res.json() as Promise<Record<string, unknown>>
       })
     },
     checkText: (rawText: string, city: string, state: string, county: string, projectType: string) =>
-      apiRequest<any>('/api/v1/material-check/text', {
+      apiRequest<Record<string, unknown>>('/api/v1/material-check/text', {
         method: 'POST',
         body: JSON.stringify({ raw_text: rawText, city, state, county, project_type: projectType }),
       }, 240000),
@@ -393,12 +415,12 @@ export const api = {
       ),
     results: (projectId: string) =>
       apiRequest<{
-        live_pricing: any
-        summary: any
-        quantities: any
-        cost_report: any
-        schedule: any
-        insights: any
+        live_pricing: Record<string, unknown> | null
+        summary: Record<string, unknown> | null
+        quantities: Record<string, unknown> | null
+        cost_report: Record<string, unknown> | null
+        schedule: Record<string, unknown> | null
+        insights: Record<string, unknown> | null
         render_urls: Record<string, string>
         pdf_url: string | null
       }>(`/api/v1/axis/${projectId}/results`),
@@ -414,7 +436,7 @@ export const api = {
         room_renders:       { name: string; url: string | null }[]
         style:              string
         time_of_day:        string
-        blueprint_context?: Record<string, any>
+        blueprint_context?: Record<string, unknown>
       }>(
         `/api/v1/renders/${projectId}/generate`,
         { method: 'POST', body: JSON.stringify({ style, time_of_day: timeOfDay, user_context: userContext }) },
@@ -422,8 +444,3 @@ export const api = {
       ),
   },
 }
-// cache-bust 1774803796
-// cache-bust 1774804395
-// cache-bust 1776031200
-// cache-bust 1776184903
-// cache-bust 1776271200

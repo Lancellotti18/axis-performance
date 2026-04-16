@@ -134,6 +134,7 @@ async def refresh_all_prices(project_id: str):
             from tavily import TavilyClient
             tavily = TavilyClient(api_key=settings.TAVILY_API_KEY)
         except Exception:
+            logger.debug("Tavily client init failed, using fallback prices", exc_info=True)
             pass
 
     updated = 0
@@ -148,6 +149,7 @@ async def refresh_all_prices(project_id: str):
             else:
                 options = _fallback_retail(item_name, base_price) + _trade_distributor_entries(item_name)
         except Exception:
+            logger.debug("per-item price refresh failed, using fallback retail prices", exc_info=True)
             options = _fallback_retail(item_name, base_price) + _trade_distributor_entries(item_name)
 
         retail = [o for o in options if not o.get("quote_only")]

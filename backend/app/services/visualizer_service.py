@@ -149,7 +149,9 @@ async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") ->
             if r.status_code == 503:
                 wait_time = 20
                 try: wait_time = r.json().get("estimated_time", 20)
-                except: pass
+                except Exception:
+                    log.debug("failed to parse HF estimated_time from 503 response", exc_info=True)
+                    pass
                 log.info(f"[visualizer] HF model loading, waiting {wait_time}s...")
                 await asyncio.sleep(min(wait_time, 30))
                 continue

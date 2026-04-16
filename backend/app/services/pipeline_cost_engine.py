@@ -11,8 +11,11 @@ Outputs: cost_report dict + /output/data/cost_report.json
 """
 
 import json
+import logging
 import math
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def _load_db(db_path: str | None = None) -> dict:
@@ -203,11 +206,11 @@ def run_cost_engine(quantities: dict, output_dir: str, db_path: str | None = Non
     with open(out_path, "w") as f:
         json.dump(cost_report, f, indent=2)
 
-    print(f"[AXIS 5D] Cost report saved → {out_path}")
+    logger.info(f"Cost report saved → {out_path}")
     s = cost_report["summary"]
-    print(f"[AXIS 5D]   Economy:  ${s['economy_total']:,.0f}  (${s['economy_per_sqft']:.0f}/sqft)")
-    print(f"[AXIS 5D]   Standard: ${s['standard_total']:,.0f}  (${s['standard_per_sqft']:.0f}/sqft)")
-    print(f"[AXIS 5D]   Premium:  ${s['premium_total']:,.0f}  (${s['premium_per_sqft']:.0f}/sqft)")
+    logger.info(f"  Economy:  ${s['economy_total']:,.0f}  (${s['economy_per_sqft']:.0f}/sqft)")
+    logger.info(f"  Standard: ${s['standard_total']:,.0f}  (${s['standard_per_sqft']:.0f}/sqft)")
+    logger.info(f"  Premium:  ${s['premium_total']:,.0f}  (${s['premium_per_sqft']:.0f}/sqft)")
     return cost_report
 
 

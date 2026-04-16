@@ -4,6 +4,7 @@ LLM Vision (Gemini Flash / Groq / Claude fallback) is the primary engine.
 OCR/scale/object-detection results are passed as hints if available.
 """
 import cv2
+import logging
 import numpy as np
 import os
 from app.core.config import settings
@@ -12,28 +13,30 @@ from app.services.llm import llm_vision_sync
 import json
 import uuid
 
+logger = logging.getLogger(__name__)
+
 
 def run_analysis_pipeline(blueprint_id: str) -> dict:
-    print(f"[pipeline] START blueprint_id={blueprint_id}", flush=True)
+    logger.info(f"START blueprint_id={blueprint_id}")
     db = get_supabase()
 
     # 1. Fetch blueprint metadata
-    print(f"[pipeline] fetching metadata", flush=True)
+    logger.info("fetching metadata")
     blueprint = db.table("blueprints").select("*").eq("id", blueprint_id).single().execute().data
     project_id = blueprint["project_id"]
     file_key = blueprint["file_url"]
-    print(f"[pipeline] file_key={file_key[:80]}", flush=True)
+    logger.info(f"file_key={file_key[:80]}")
 
     # 2. Download original file bytes
-    print(f"[pipeline] downloading file", flush=True)
+    logger.info("downloading file")
     image_bytes = download_file(file_key)
     filename = file_key.split("/")[-1].split("?")[0]
-    print(f"[pipeline] downloaded {len(image_bytes)} bytes, filename={filename}", flush=True)
+    logger.debug(f"downloaded {len(image_bytes)} bytes, filename={filename}")
 
     # 3. Convert to JPEG
-    print(f"[pipeline] converting to jpeg", flush=True)
+    logger.info("converting to jpeg")
     jpeg_bytes = to_jpeg(image_bytes, filename)
-    print(f"[pipeline] jpeg ready {len(jpeg_bytes)} bytes", flush=True)
+    logger.debug(f"jpeg ready {len(jpeg_bytes)} bytes")
 
     # 4. Optional preprocessing hints — non-fatal if any step fails
     ocr_results = {}
@@ -44,6 +47,7 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
         gray = preprocess_to_gray(jpeg_bytes)
         ocr_results = extract_text_and_dimensions(gray)
     except Exception:
+        logger.debug("OCR hint extraction failed (non-fatal)", exc_info=True)
         pass
     try:
         from app.services.scale_detector import detect_scale
@@ -54,12 +58,13 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
         detections = detect_objects(gray)
         rooms_hint = reconstruct_rooms(gray, scale, detections)
     except Exception:
+        logger.debug("scale/object/room hint detection failed (non-fatal)", exc_info=True)
         pass
 
     # 5. LLM Vision — primary analysis + full materials list
-    print(f"[pipeline] calling llm_vision_sync", flush=True)
+    logger.info("calling llm_vision_sync")
     structured_data = claude_analyze(jpeg_bytes, rooms_hint, detections, ocr_results)
-    print(f"[pipeline] llm done, confidence={structured_data.get('confidence')}", flush=True)
+    logger.info(f"llm done, confidence={structured_data.get('confidence')}")
 
     # 6. Save analysis
     analysis_id = save_analysis(db, blueprint_id, structured_data)
@@ -77,6 +82,7 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
             estimator = MaterialEstimator()
             materials = estimator.estimate_all(structured_data)
         except Exception:
+            logger.debug("MaterialEstimator fallback failed, using empty list", exc_info=True)
             materials = []
 
     # 9. Enrich with real-time pricing — non-fatal
@@ -84,6 +90,7 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
         from app.services.pricing_service import enrich_materials_with_pricing
         materials = enrich_materials_with_pricing(materials, region)
     except Exception:
+        logger.debug("pricing enrichment failed (non-fatal)", exc_info=True)
         pass
 
     # 10. Cost estimation
@@ -92,6 +99,7 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
         cost_engine = CostEngine()
         costs = cost_engine.calculate(materials, region)
     except Exception:
+        logger.warning("CostEngine failed, using simple total-based fallback", exc_info=True)
         total = sum(m.get("total_cost", 0) for m in materials)
         costs = {
             "materials_total": total,
@@ -127,7 +135,7 @@ def _resize_if_needed(jpeg_bytes: bytes, max_bytes: int = 3_500_000) -> bytes:
         _, buf = cv2.imencode(".jpg", resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
         data = buf.tobytes()
         if len(data) <= max_bytes or scale < 0.2:
-            print(f"[pipeline] resized image {w}x{h} → {new_w}x{new_h} ({len(data)} bytes)", flush=True)
+            logger.debug(f"resized image {w}x{h} → {new_w}x{new_h} ({len(data)} bytes)")
             return data
         scale *= 0.75
 
@@ -273,12 +281,11 @@ Return ONLY the JSON object, no markdown, no explanation."""
 
     # Resize image if too large — Gemini has a 4MB inline limit
     jpeg_bytes = _resize_if_needed(jpeg_bytes)
-    print(f"[pipeline] sending {len(jpeg_bytes)} bytes to llm_vision_sync", flush=True)
+    logger.debug(f"sending {len(jpeg_bytes)} bytes to llm_vision_sync")
     try:
         text = llm_vision_sync(jpeg_bytes, "image/jpeg", prompt, max_tokens=8192)
-    except Exception as e:
-        import traceback
-        print(f"[pipeline] llm_vision_sync FULL ERROR:\n{traceback.format_exc()}", flush=True)
+    except Exception:
+        logger.exception("llm_vision_sync FAILED")
         raise
     # Strip markdown fences if present
     if "```" in text:
@@ -337,6 +344,7 @@ def save_estimates(db, analysis_id: str, project_id: str, materials: list, costs
     try:
         db.table("cost_estimates").delete().eq("project_id", project_id).execute()
     except Exception:
+        logger.debug("cost_estimates delete-before-insert failed (row may not exist)", exc_info=True)
         pass
     db.table("cost_estimates").insert({
         "project_id": project_id,
