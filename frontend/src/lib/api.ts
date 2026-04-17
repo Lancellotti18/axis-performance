@@ -388,6 +388,22 @@ export const api = {
         { method: 'POST' },
         60000,
       ),
+    transcribe: async (audio: Blob, filename = 'note.webm') => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const form = new FormData()
+      form.append('audio', audio, filename)
+      const res = await fetch(`${API_BASE}/api/v1/photos/transcribe`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      })
+      if (!res.ok) {
+        const t = await res.text().catch(() => '')
+        throw new Error(t || `HTTP ${res.status}`)
+      }
+      return res.json() as Promise<{ text: string; language: string | null; provider: string }>
+    },
     downloadDamageReport: async (projectId: string, opts?: { includeAll?: boolean }) => {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token

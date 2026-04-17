@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -261,6 +261,41 @@ async def measure_from_photos_endpoint(
     measurements["photo_count"] = len(urls)
     measurements["project_id"] = project_id
     return measurements
+
+
+@router.post("/transcribe")
+async def transcribe_voice_note(
+    audio: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """Convert a short voice note into text. Client-side MediaRecorder → text.
+
+    Expects a small (<10 MB) audio blob; enforces that limit before handing
+    off to the provider chain so a pathological upload can't stall us.
+    """
+    from app.services.audio_transcription_service import (
+        TranscriptionError, transcribe_audio,
+    )
+    MAX_BYTES = 10 * 1024 * 1024
+
+    data = await audio.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty audio upload")
+    if len(data) > MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Audio file too large (max 10 MB)")
+
+    mime = audio.content_type or "audio/webm"
+    filename = audio.filename or "note.webm"
+
+    try:
+        result = transcribe_audio(data, filename=filename, mime_type=mime)
+    except TranscriptionError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("transcribe: unexpected failure")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+
+    return result
 
 
 @router.get("/damage-report/{project_id}/pdf")

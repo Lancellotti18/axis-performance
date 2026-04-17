@@ -9,7 +9,7 @@
  * bubble the updated Photo back through onUpdate so the parent list stays
  * in sync without a full refetch.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { Photo, PhotoAutoTags } from '@/types'
 
@@ -46,6 +46,11 @@ export default function PhotoLightbox({
   const [tagging, setTagging] = useState(false)
   const [autoTags, setAutoTags] = useState<PhotoAutoTags | null>(photo.auto_tags || null)
   const [error, setError] = useState<string | null>(null)
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const streamRef = useRef<MediaStream | null>(null)
 
   useEffect(() => {
     setNotes(photo.notes || '')
@@ -95,6 +100,60 @@ export default function PhotoLightbox({
   function removeTag(t: string) {
     setTags(tags.filter(x => x !== t))
   }
+
+  async function startRecording() {
+    setError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      audioChunksRef.current = []
+      // Pick the first supported mime — Safari prefers mp4, Chrome/FF webm/opus.
+      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg']
+      const mime = candidates.find(c => (window.MediaRecorder?.isTypeSupported?.(c))) || ''
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+      recorder.onstop = async () => {
+        const type = recorder.mimeType || 'audio/webm'
+        const blob = new Blob(audioChunksRef.current, { type })
+        streamRef.current?.getTracks().forEach(t => t.stop())
+        streamRef.current = null
+        if (blob.size < 500) {
+          setError('Recording was too short — try again.')
+          return
+        }
+        setTranscribing(true)
+        try {
+          const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm'
+          const { text } = await api.photos.transcribe(blob, `note.${ext}`)
+          setNotes(prev => (prev ? prev.trimEnd() + ' ' : '') + text)
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Transcription failed')
+        }
+        setTranscribing(false)
+      }
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      setRecording(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Microphone access was denied')
+      setRecording(false)
+    }
+  }
+
+  function stopRecording() {
+    try {
+      mediaRecorderRef.current?.stop()
+    } catch {}
+    setRecording(false)
+  }
+
+  useEffect(() => {
+    return () => {
+      // Clean up mic stream if unmounted mid-recording.
+      try { mediaRecorderRef.current?.stop() } catch {}
+      streamRef.current?.getTracks().forEach(t => t.stop())
+    }
+  }, [])
 
   const phaseColors: Record<string, string> = {
     before: 'bg-blue-500', during: 'bg-amber-500', after: 'bg-emerald-500',
@@ -154,14 +213,33 @@ export default function PhotoLightbox({
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Notes</label>
-                {savedAt && !dirty && (
-                  <span className="text-[10px] text-emerald-600 font-semibold">✓ Saved</span>
-                )}
+                <div className="flex items-center gap-2">
+                  {transcribing && <span className="text-[10px] text-blue-600 font-semibold">Transcribing…</span>}
+                  {savedAt && !dirty && !transcribing && (
+                    <span className="text-[10px] text-emerald-600 font-semibold">✓ Saved</span>
+                  )}
+                  <button
+                    onClick={recording ? stopRecording : startRecording}
+                    disabled={transcribing}
+                    className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full transition-all disabled:opacity-50 ${
+                      recording
+                        ? 'bg-red-500 text-white animate-pulse'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                    title={recording ? 'Stop recording' : 'Record a voice note'}
+                  >
+                    {recording ? (
+                      <><span className="w-1.5 h-1.5 bg-white rounded-full" /> Stop</>
+                    ) : (
+                      <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2a3 3 0 00-3 3v7a3 3 0 006 0V5a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg> Record</>
+                    )}
+                  </button>
+                </div>
               </div>
               <textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                placeholder="Add a note about this photo…"
+                placeholder="Add a note or tap the mic to dictate…"
                 rows={4}
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-400 resize-none"
               />
