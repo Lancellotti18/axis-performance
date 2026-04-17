@@ -119,6 +119,8 @@ export default function ProjectPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [selectedPhoto, setSelectedPhoto] = useState<any>(null)
   const [showCaptureWizard, setShowCaptureWizard] = useState(false)
+  const [damageReportLoading, setDamageReportLoading] = useState(false)
+  const [damageReportError, setDamageReportError] = useState<string | null>(null)
   // Job costing (actual spend per category, stored in localStorage)
   const [actualCosts, setActualCosts] = useState<Record<string, number>>({})
   // Blueprint signed URL for display
@@ -1935,6 +1937,28 @@ Thank you for your time.`
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
                       Guided Capture
                     </button>
+                    <button
+                      onClick={async () => {
+                        setDamageReportError(null)
+                        setDamageReportLoading(true)
+                        try {
+                          await api.photos.downloadDamageReport(projectId, { includeAll: false })
+                        } catch (err) {
+                          setDamageReportError(err instanceof Error ? err.message : 'Download failed')
+                        }
+                        setDamageReportLoading(false)
+                      }}
+                      disabled={damageReportLoading || photos.length === 0}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ background: damageReportLoading ? '#94a3b8' : 'linear-gradient(135deg, #dc2626, #991b1b)', boxShadow: '0 4px 14px rgba(220,38,38,0.25)' }}
+                      title="One page per AI-tagged damaged photo"
+                    >
+                      {damageReportLoading ? (
+                        <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Building PDF…</>
+                      ) : (
+                        <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Damage PDF</>
+                      )}
+                    </button>
                     {(['before', 'during', 'after'] as const).map(phase => (
                       <label key={phase} className="relative cursor-pointer">
                         <input
@@ -1955,6 +1979,12 @@ Thank you for your time.`
                     ))}
                   </div>
                 </div>
+
+                {damageReportError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-2 mb-3">
+                    Damage PDF: {damageReportError}
+                  </div>
+                )}
 
                 {/* Phase filter */}
                 <div className="flex gap-2 mb-5">

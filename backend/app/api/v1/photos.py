@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_user
@@ -260,6 +261,50 @@ async def measure_from_photos_endpoint(
     measurements["photo_count"] = len(urls)
     measurements["project_id"] = project_id
     return measurements
+
+
+@router.get("/damage-report/{project_id}/pdf")
+async def damage_report_pdf(
+    project_id: str,
+    include_all: bool = False,
+    user: dict = Depends(get_current_user),
+):
+    """Render a multi-page damage report PDF for this project."""
+    from app.services.damage_report_pdf import generate_damage_report_pdf
+    db = get_supabase()
+
+    proj_row = (
+        db.table("projects")
+        .select("id, name, address, city, state")
+        .eq("id", project_id)
+        .limit(1)
+        .execute()
+    )
+    if not proj_row.data:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project = proj_row.data[0]
+
+    photos_row = (
+        db.table("project_photos")
+        .select("*")
+        .eq("project_id", project_id)
+        .order("created_at")
+        .execute()
+    )
+    photos = photos_row.data or []
+
+    try:
+        pdf_bytes = generate_damage_report_pdf(project, photos, include_all=include_all)
+    except Exception as e:
+        logger.exception("damage_report: generation failed")
+        raise HTTPException(status_code=500, detail=f"Damage report generation failed: {e}")
+
+    filename = f"damage-report-{project.get('name', 'project')}-{project_id[:8]}.pdf".replace(" ", "_")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.delete("/{project_id}/{photo_id}")

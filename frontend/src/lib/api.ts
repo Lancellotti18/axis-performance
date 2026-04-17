@@ -388,6 +388,29 @@ export const api = {
         { method: 'POST' },
         60000,
       ),
+    downloadDamageReport: async (projectId: string, opts?: { includeAll?: boolean }) => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const qs = opts?.includeAll ? '?include_all=true' : ''
+      const res = await fetch(`${API_BASE}/api/v1/photos/damage-report/${projectId}/pdf${qs}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        const t = await res.text().catch(() => '')
+        throw new Error(t || `HTTP ${res.status}`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const cd = res.headers.get('Content-Disposition') || ''
+      const match = cd.match(/filename="?([^";]+)"?/)
+      a.download = match?.[1] || `damage-report-${projectId.slice(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 2000)
+    },
     delete: (projectId: string, photoId: string) =>
       apiRequest<{ ok: boolean }>(`/api/v1/photos/${projectId}/${photoId}`, { method: 'DELETE' }),
     measure: (projectId: string) =>
