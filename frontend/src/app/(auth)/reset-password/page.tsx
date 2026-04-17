@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { Button, Input, Label } from '@/components/ui'
+import { AuthShell, AuthAlert } from '@/components/auth/AuthShell'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
@@ -14,8 +16,14 @@ export default function ResetPasswordPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (password !== confirm) { setError('Passwords do not match.'); return }
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return }
+    if (password !== confirm) {
+      setError('Passwords do not match.')
+      return
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
     setLoading(true)
     const { error } = await supabase.auth.updateUser({ password })
     if (error) {
@@ -28,92 +36,66 @@ export default function ResetPasswordPage() {
   }
 
   const strength = password.length === 0 ? 0 : password.length >= 12 ? 4 : password.length >= 8 ? 3 : password.length >= 6 ? 2 : 1
-  const strengthColor = ['', 'bg-red-400', 'bg-yellow-400', 'bg-blue-400', 'bg-green-400'][strength]
+  const strengthColor = ['', 'bg-red-400', 'bg-amber-400', 'bg-blue-400', 'bg-emerald-500'][strength]
+  const strengthText = ['', 'text-red-500', 'text-amber-600', 'text-blue-600', 'text-emerald-600'][strength]
   const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong'][strength]
 
+  const mismatch = confirm.length > 0 && confirm !== password
+
   return (
-    <div
-      className="min-h-screen flex items-center justify-center px-4 bg-cover bg-center bg-no-repeat"
-      style={{ backgroundImage: "url('/blueprint-hero.png')" }}
-    >
-      <div className="absolute inset-0 bg-[#1a3a6b]/70 backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-sm">
-
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2.5 mb-4">
-            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-              <rect x="2" y="2" width="24" height="24" rx="4" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5"/>
-              <line x1="7" y1="8" x2="21" y2="8" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" strokeLinecap="round"/>
-              <line x1="7" y1="12" x2="17" y2="12" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round"/>
-              <line x1="7" y1="16" x2="19" y2="16" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round"/>
-              <line x1="7" y1="20" x2="14" y2="20" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-            <span className="text-lg font-bold text-white tracking-tight">Axis Performance</span>
-          </Link>
-          <h1 className="text-2xl font-black text-white">Set new password</h1>
-          <p className="text-white/50 text-sm mt-1">Choose a strong password for your account</p>
-        </div>
-
-        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-8 shadow-2xl">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-white/80 mb-1.5">New Password</label>
-              <input
-                type="password" required minLength={6} value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all"
-                placeholder="Min. 6 characters"
-                autoFocus
-              />
-              {password.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  <div className="flex gap-1">
-                    {[1,2,3,4].map(i => (
-                      <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-300 ${i <= strength ? strengthColor : 'bg-white/10'}`} />
-                    ))}
-                  </div>
-                  <p className={`text-xs ${strengthColor.replace('bg-', 'text-')}`}>{strengthLabel}</p>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-white/80 mb-1.5">Confirm Password</label>
-              <input
-                type="password" required minLength={6} value={confirm}
-                onChange={e => setConfirm(e.target.value)}
-                className={`w-full bg-white/10 border rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 transition-all ${
-                  confirm.length > 0 && confirm !== password ? 'border-red-400/50' : 'border-white/20 focus:border-white/40'
-                }`}
-                placeholder="Repeat password"
-              />
-              {confirm.length > 0 && confirm !== password && (
-                <p className="text-red-300 text-xs mt-1">Passwords don&apos;t match</p>
-              )}
-            </div>
-
-            {error && (
-              <div className="bg-red-500/20 border border-red-400/30 rounded-xl px-4 py-3 text-red-200 text-sm">
-                {error}
+    <AuthShell title="Set new password" subtitle="Choose a strong password for your account">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <Label htmlFor="pw">New password</Label>
+          <Input
+            id="pw"
+            type="password"
+            required
+            minLength={6}
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Min. 6 characters"
+            autoFocus
+          />
+          {password.length > 0 && (
+            <div className="mt-2 space-y-1">
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-300 ${i <= strength ? strengthColor : 'bg-slate-200'}`} />
+                ))}
               </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading || (confirm.length > 0 && confirm !== password)}
-              className="w-full bg-white text-blue-700 font-bold py-3 rounded-xl hover:bg-blue-50 disabled:opacity-50 transition-all duration-200 shadow-lg mt-2"
-            >
-              {loading ? 'Updating password…' : 'Update Password'}
-            </button>
-          </form>
-
-          <p className="text-center text-white/40 text-sm mt-6">
-            <Link href="/login" className="text-white/60 hover:text-white transition-colors">
-              ← Back to Sign In
-            </Link>
-          </p>
+              <p className={`text-xs font-medium ${strengthText}`}>{strengthLabel}</p>
+            </div>
+          )}
         </div>
-      </div>
-    </div>
+
+        <div>
+          <Label htmlFor="confirm">Confirm password</Label>
+          <Input
+            id="confirm"
+            type="password"
+            required
+            minLength={6}
+            value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+            placeholder="Repeat password"
+            invalid={mismatch}
+          />
+          {mismatch && <p className="text-red-500 text-xs mt-1">Passwords don&apos;t match</p>}
+        </div>
+
+        {error && <AuthAlert tone="error">{error}</AuthAlert>}
+
+        <Button type="submit" size="lg" loading={loading} disabled={mismatch} className="w-full">
+          {loading ? 'Updating password…' : 'Update Password'}
+        </Button>
+      </form>
+
+      <p className="text-center text-slate-500 text-sm mt-6">
+        <Link href="/login" className="text-slate-500 hover:text-brand-700 transition-colors">
+          ← Back to Sign In
+        </Link>
+      </p>
+    </AuthShell>
   )
 }
