@@ -309,6 +309,32 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ satellite_image_url: satelliteImageUrl, address, lat, lng }),
       }, 90000),
+    detectOutline: (
+      satelliteImageUrl: string,
+      lat?: number | null,
+      opts?: { imageWidthPx?: number; imageHeightPx?: number; zoom?: number },
+    ) =>
+      apiRequest<{
+        polygon: [number, number][]
+        confidence: number
+        structure: string
+        notes: string
+        warnings: string[]
+        estimated_sqft: number | null
+        estimated_perimeter_ft: number | null
+        image_width_px: number
+        image_height_px: number
+        zoom: number
+      }>(`/api/v1/roofing/outline`, {
+        method: 'POST',
+        body: JSON.stringify({
+          satellite_image_url: satelliteImageUrl,
+          lat,
+          image_width_px: opts?.imageWidthPx ?? 1280,
+          image_height_px: opts?.imageHeightPx ?? 840,
+          zoom: opts?.zoom ?? 18,
+        }),
+      }, 60000),
     analyzePhotos: async (photos: File[], address: string): Promise<Record<string, unknown>> => {
       const { data: { session } } = await (await import('./supabase')).supabase.auth.getSession()
       const token = session?.access_token

@@ -375,6 +375,41 @@ async def aerial_roof_report_standalone(payload: StandaloneAerialRequest):
     return result
 
 
+class RoofOutlineRequest(BaseModel):
+    satellite_image_url: str
+    lat: Optional[float] = None
+    image_width_px: Optional[int] = 1280
+    image_height_px: Optional[int] = 840
+    zoom: Optional[int] = 18
+
+
+@router.post("/outline")
+async def detect_roof_outline_endpoint(payload: RoofOutlineRequest):
+    """
+    EagleView-style: trace the primary building's roof outline on a satellite
+    image. Returns a closed polygon in image-fraction coords plus an estimated
+    area/perimeter in feet (when lat is provided so we can resolve scale).
+
+    The client displays the polygon over the aerial tile and lets the user
+    drag vertices to correct it. Area/perimeter then recalc live on the client.
+    """
+    from app.services.roof_outline_service import detect_roof_outline
+    try:
+        result = await detect_roof_outline(
+            payload.satellite_image_url,
+            lat=payload.lat,
+            image_width_px=payload.image_width_px or 1280,
+            image_height_px=payload.image_height_px or 840,
+            zoom=payload.zoom or 18,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.exception("roof outline detection failed")
+        raise HTTPException(status_code=500, detail=f"Outline detection failed: {e}")
+    return result
+
+
 class AerialDamageRequest(BaseModel):
     satellite_image_url: str
     address: str

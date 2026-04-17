@@ -19,6 +19,7 @@ import { computeMaterialConfidence, loadReviewedIds, saveReviewedIds } from './m
 const ExteriorCaptureWizard = dynamic(() => import('./ExteriorCaptureWizard'), { ssr: false })
 const PhotoLightbox = dynamic(() => import('./PhotoLightbox'), { ssr: false })
 const PhotoMapView = dynamic(() => import('./PhotoMapView'), { ssr: false })
+const RoofOutlineEditor = dynamic(() => import('./RoofOutlineEditor'), { ssr: false })
 
 // Images are base64 data URIs from backend — no staggering needed
 function StaggeredRender({ src, label, totalSqft }: { src: string; label: string; totalSqft?: number }) {
@@ -143,6 +144,9 @@ export default function ProjectPage() {
   const [aerialLoading, setAerialLoading] = useState(false)
   const [aerialResult, setAerialResult] = useState<any>(null)
   const [aerialError, setAerialError] = useState<string | null>(null)
+  // EagleView-style roof outline editor
+  const [outlineOpen, setOutlineOpen] = useState(false)
+  const [outlineOverride, setOutlineOverride] = useState<{ sqft: number; perimeter_ft: number; polygon: [number, number][] } | null>(null)
   // Quote Request modal
   const [quoteModal, setQuoteModal] = useState<{ vendor: string; url: string; items: any[] } | null>(null)
   const [quoteForm, setQuoteForm] = useState({ name: '', company: '', phone: '', email: '', branch: '', notes: '' })
@@ -1061,6 +1065,22 @@ Thank you for your time.`
                                 lat={aerialResult.lat ?? null}
                                 address={aerialResult.address}
                               />
+                              <div className="mt-2 flex items-center justify-between gap-2 flex-wrap">
+                                <button
+                                  onClick={() => setOutlineOpen(true)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm"
+                                  style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
+                                >
+                                  🔲 Edit roof outline
+                                </button>
+                                {outlineOverride && (
+                                  <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
+                                    Corrected: <span className="font-bold">{outlineOverride.sqft.toLocaleString()} sqft</span>
+                                    <span className="mx-1 text-amber-400">·</span>
+                                    <span className="font-semibold">{outlineOverride.perimeter_ft.toLocaleString()} ft perim</span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
 
@@ -2623,6 +2643,22 @@ Thank you for your time.`
             </div>
           </div>
         </div>
+      )}
+
+      {/* EagleView-style roof outline editor — opened from the aerial-report viewer */}
+      {aerialResult?.satellite_image_url && (
+        <RoofOutlineEditor
+          open={outlineOpen}
+          onClose={() => setOutlineOpen(false)}
+          imageUrl={aerialResult.satellite_image_url}
+          lat={aerialResult.lat ?? null}
+          initialPolygon={outlineOverride?.polygon}
+          onApply={({ polygon, sqft, perimeterFt }) => {
+            setOutlineOverride({ polygon, sqft, perimeter_ft: perimeterFt })
+            setAerialResult((prev: any) => prev ? { ...prev, total_sqft: sqft, squares: Math.round(sqft / 100 * 10) / 10 } : prev)
+            toast.success(`Updated roof area: ${sqft.toLocaleString()} sqft`)
+          }}
+        />
       )}
     </div>
   )
