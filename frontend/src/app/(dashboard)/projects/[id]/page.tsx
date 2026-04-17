@@ -18,6 +18,7 @@ import PermitPortalSection from './PermitPortalSection'
 import { computeMaterialConfidence, loadReviewedIds, saveReviewedIds } from './materialConfidence'
 const ExteriorCaptureWizard = dynamic(() => import('./ExteriorCaptureWizard'), { ssr: false })
 const PhotoLightbox = dynamic(() => import('./PhotoLightbox'), { ssr: false })
+const PhotoMapView = dynamic(() => import('./PhotoMapView'), { ssr: false })
 
 // Images are base64 data URIs from backend — no staggering needed
 function StaggeredRender({ src, label, totalSqft }: { src: string; label: string; totalSqft?: number }) {
@@ -121,6 +122,7 @@ export default function ProjectPage() {
   const [showCaptureWizard, setShowCaptureWizard] = useState(false)
   const [damageReportLoading, setDamageReportLoading] = useState(false)
   const [damageReportError, setDamageReportError] = useState<string | null>(null)
+  const [photoViewMode, setPhotoViewMode] = useState<'grid' | 'map'>('grid')
   // Job costing (actual spend per category, stored in localStorage)
   const [actualCosts, setActualCosts] = useState<Record<string, number>>({})
   // Blueprint signed URL for display
@@ -1986,22 +1988,43 @@ Thank you for your time.`
                   </div>
                 )}
 
-                {/* Phase filter */}
-                <div className="flex gap-2 mb-5">
-                  {(['all', 'before', 'during', 'after'] as const).map(p => {
-                    const count = p === 'all' ? photos.length : photos.filter(ph => ph.phase === p).length
-                    const colors: Record<string, string> = { all: 'bg-blue-600 text-white border-blue-600', before: 'bg-blue-600 text-white border-blue-600', during: 'bg-amber-500 text-white border-amber-500', after: 'bg-emerald-600 text-white border-emerald-600' }
-                    return (
-                      <button key={p} onClick={() => setPhotoPhase(p)}
-                        className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all capitalize ${photoPhase === p ? colors[p] : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300'}`}>
-                        {p === 'all' ? 'All' : p.charAt(0).toUpperCase() + p.slice(1)} ({count})
-                      </button>
-                    )
-                  })}
+                {/* Phase filter + view mode toggle */}
+                <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+                  <div className="flex gap-2">
+                    {(['all', 'before', 'during', 'after'] as const).map(p => {
+                      const count = p === 'all' ? photos.length : photos.filter(ph => ph.phase === p).length
+                      const colors: Record<string, string> = { all: 'bg-blue-600 text-white border-blue-600', before: 'bg-blue-600 text-white border-blue-600', during: 'bg-amber-500 text-white border-amber-500', after: 'bg-emerald-600 text-white border-emerald-600' }
+                      return (
+                        <button key={p} onClick={() => setPhotoPhase(p)}
+                          className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all capitalize ${photoPhase === p ? colors[p] : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300'}`}>
+                          {p === 'all' ? 'All' : p.charAt(0).toUpperCase() + p.slice(1)} ({count})
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="inline-flex items-center bg-slate-100 rounded-full p-1">
+                    <button
+                      onClick={() => setPhotoViewMode('grid')}
+                      className={`text-xs font-semibold px-3 py-1 rounded-full transition-all ${photoViewMode === 'grid' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      ▦ Grid
+                    </button>
+                    <button
+                      onClick={() => setPhotoViewMode('map')}
+                      className={`text-xs font-semibold px-3 py-1 rounded-full transition-all ${photoViewMode === 'map' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      🗺 Map
+                    </button>
+                  </div>
                 </div>
 
-                {/* Photo grid */}
-                {(() => {
+                {/* Photo grid or map */}
+                {photoViewMode === 'map' ? (
+                  <PhotoMapView
+                    photos={(photoPhase === 'all' ? photos : photos.filter(p => p.phase === photoPhase)) as any}
+                    onSelect={p => setSelectedPhoto(p)}
+                  />
+                ) : (() => {
                   const displayed = photoPhase === 'all' ? photos : photos.filter(p => p.phase === photoPhase)
                   if (displayed.length === 0) return (
                     <div className="bg-white rounded-2xl p-16 text-center" style={cardStyle}>
