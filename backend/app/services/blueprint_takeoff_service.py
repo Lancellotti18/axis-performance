@@ -271,10 +271,10 @@ def takeoff_to_material_rows(takeoff: dict) -> list[dict]:
         })
     if framing.get("insulation_batts"):
         rows.append({
-            "item_name": "R-13 Batt Insulation",
+            "item_name": "R-13 Batt Insulation (16\" × 93\")",
             "category": "insulation",
             "quantity": framing["insulation_batts"],
-            "unit": "bag",
+            "unit": "batt",
             "unit_cost": 0,
             "total_cost": 0,
             "source": "blueprint_takeoff",
