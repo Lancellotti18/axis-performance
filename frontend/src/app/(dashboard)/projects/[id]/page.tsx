@@ -1872,18 +1872,21 @@ Thank you for your time.`
                       <div className="flex gap-3 items-end">
                         <div className="flex-1">
                           <label className="text-slate-500 text-xs font-semibold block mb-1.5">
-                            Additional context <span className="font-normal text-slate-400">(optional — describe materials, colors, features)</span>
+                            Tell the AI what this should look like <span className="font-normal text-slate-400">(this drives every render — materials, colors, setting, landscaping)</span>
                           </label>
                           <input
                             type="text"
                             value={renderUserContext}
                             onChange={e => setRenderUserContext(e.target.value)}
-                            placeholder='e.g. "red brick exterior, white trim, wraparound porch, coastal setting"'
+                            placeholder='e.g. "red brick exterior, black windows, cedar shake roof, mature oaks, coastal New England"'
                             disabled={renderLoading}
                             className="w-full text-xs rounded-xl px-3.5 py-2.5 border text-slate-700 placeholder-slate-300 focus:outline-none focus:border-indigo-400 disabled:opacity-50"
                             style={{ borderColor: 'rgba(219,234,254,0.9)', background: '#f8faff' }}
                             onKeyDown={e => { if (e.key === 'Enter' && !renderLoading && hasBlueprint) (e.target as HTMLInputElement).blur() }}
                           />
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            The more specific you are, the more accurate every exterior and room render will be.
+                          </p>
                         </div>
                         <button
                           onClick={async () => {

@@ -176,17 +176,19 @@ def _build_exterior_prompt(
     vision_str   = ", ".join(vision_parts)
     sqft_str     = f"{int(sqft):,} sq ft, " if sqft else ""
 
+    # user_context is the most specific, user-authored guidance — lead with it.
+    lead = f"{user_context.strip().rstrip('.')}. " if user_context else ""
+
     prompt = (
         f"Ultra-photorealistic architectural exterior render, 8K quality. "
+        f"{lead}"
         f"{stories} {bp_type}, {style_desc}"
         f"{', ' + vision_str if vision_str else ''}, "
         f"{sqft_str}located in {location}. "
         f"{angle_desc.capitalize()}. {time_desc.capitalize()}. "
         f"Professional landscaping, concrete driveway. "
-        f"Shot on Phase One XF IQ4, architectural photography, no people, tack sharp."
+        f"Shot on Phase One XF IQ4, architectural photography, no people, tack sharp, correct architectural proportions."
     )
-    if user_context:
-        prompt += f" {user_context}."
     return prompt
 
 
@@ -207,15 +209,17 @@ def _build_room_prompt(
     vision_str = bp_vision.get("style_cues", "")
     sqft_str   = f"approximately {room_sqft} sq ft, " if room_sqft else ""
 
+    # user_context is the most specific, user-authored guidance — lead with it.
+    lead = f"{user_context.strip().rstrip('.')}. " if user_context else ""
+
     prompt = (
         f"Ultra-photorealistic interior render, 8K quality. "
+        f"{lead}"
         f"{bp_type} {room_name}, {style_desc}"
         f"{', ' + vision_str if vision_str else ''}, "
         f"{sqft_str}natural light from large windows, hardwood floors, high ceilings, tasteful furniture. "
-        f"Shot on Hasselblad H6D, wide-angle interior photography, no people, tack sharp."
+        f"Shot on Hasselblad H6D, wide-angle interior photography, no people, tack sharp, correct proportions."
     )
-    if user_context:
-        prompt += f" {user_context}."
     return prompt
 
 
@@ -236,7 +240,7 @@ async def _generate_via_fal(prompt: str) -> str:
             "fal-ai/flux-pro/v1.1",
             arguments={
                 "prompt":               prompt,
-                "image_size":           "landscape_16_9",
+                "image_size":           "landscape_4_3",
                 "num_inference_steps":  28,
                 "guidance_scale":       3.5,
                 "num_images":           1,
@@ -334,7 +338,7 @@ async def _generate_via_replicate(prompt: str) -> str:
             json={"version": version, "input": {
                 "prompt": prompt, "negative_prompt": NEGATIVE_PROMPT,
                 "num_inference_steps": 40, "guidance_scale": 7.5,
-                "width": 1024, "height": 576,
+                "width": 1024, "height": 768,
                 "refine": "expert_ensemble_refiner", "high_noise_frac": 0.8,
             }},
         )
@@ -358,7 +362,7 @@ async def _generate_via_replicate(prompt: str) -> str:
 
 def _pollinations_url(prompt: str, seed: int) -> str:
     encoded = urllib.parse.quote(prompt[:500], safe='')
-    return f"{POLLINATIONS_API}/{encoded}?width=1280&height=720&model=flux&seed={seed}&nologo=true"
+    return f"{POLLINATIONS_API}/{encoded}?width=1280&height=960&model=flux&seed={seed}&nologo=true"
 
 
 async def _generate_image(prompt: str, seed: int = 0) -> str:

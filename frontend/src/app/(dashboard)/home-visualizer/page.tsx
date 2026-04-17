@@ -10,10 +10,10 @@ const cardStyle = {
 }
 
 const EXAMPLE_PROMPTS = [
-  'Replace brick with stone veneer, add black shutters and a covered front porch',
-  'Paint the exterior white, add a metal roof and new garage door',
-  'Add faux wood siding, replace windows with black-frame windows',
-  'Install a large front deck, add exterior lighting and landscaping',
+  'Change the siding to white board-and-batten, keep the roof and windows',
+  'Repaint the trim black, add black shutters to every window',
+  'Swap the front door for a natural wood double door, same opening',
+  'Replace the roof with a dark gray standing-seam metal roof',
 ]
 
 const BACKEND = 'https://build-backend-jcp9.onrender.com'
@@ -135,9 +135,12 @@ export default function HomeVisualizerPage() {
               rows={3}
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Describe the changes you want to see — e.g. 'replace brick with stone veneer, add black shutters and a covered porch'"
+              placeholder="Describe ONLY what to change — the original house, roofline, windows and angle will be preserved. e.g. 'repaint siding charcoal gray, add black shutters'"
               className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none leading-relaxed"
             />
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              Tip: the AI edits your photo — don't redescribe the whole house, just the change.
+            </p>
             {/* Example prompts */}
             <div className="flex flex-wrap gap-2 mt-2">
               {EXAMPLE_PROMPTS.map((p, i) => (

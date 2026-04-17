@@ -13,7 +13,6 @@ import base64
 import json
 import re
 import logging
-import urllib.parse
 
 import os
 
@@ -38,55 +37,34 @@ HF_IMG2IMG_MODEL  = "runwayml/stable-diffusion-v1-5"
 REPLICATE_API     = "https://api.replicate.com/v1"
 SDXL_MODEL        = "stability-ai/sdxl"
 
-POLLINATIONS_API  = "https://image.pollinations.ai/prompt"
 
-
-# ── Pollinations fallback (always available, no key required) ─────────────────
-
-async def _pollinations_t2i(description: str) -> str:
-    """
-    Generate a visualization via Pollinations.ai text-to-image.
-    Used as the final fallback when img2img is unavailable.
-    Returns the direct image URL.
-    """
-    prompt = (
-        f"photorealistic exterior home renovation, professional architectural photography, "
-        f"high resolution, sharp focus, natural daylight, {description}, "
-        f"real estate photography style, beautiful curb appeal, no people, no text"
-    )
-    import random
-    seed = random.randint(100, 9999)
-    params = {
-        "width":  1280,
-        "height": 720,
-        "model":  "flux",
-        "seed":   seed,
-        "nologo": "true",
-    }
-    query = "&".join(f"{k}={v}" for k, v in params.items())
-    url   = f"{POLLINATIONS_API}/{urllib.parse.quote(prompt)}?{query}"
-
-    # HEAD check only — return URL for browser to load directly
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        r = await client.head(url)
-        if r.status_code >= 400:
-            raise ValueError(f"Pollinations returned {r.status_code}")
-    return url
+def _gemini_key() -> str:
+    return os.environ.get("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", "") or ""
 
 
 # ── Image generation ──────────────────────────────────────────────────────────
 
 async def _generate_image(image_bytes: bytes, content_type: str, description: str) -> str:
     """
-    Generate a visualization image.
-    Provider chain:
-      1. HuggingFace SD v1.5 img2img  — preserves house structure
-      2. Replicate SDXL img2img       — paid fallback
-      3. Pollinations.ai text-to-image — free, always available
+    Generate a visualization image by EDITING the uploaded photo.
+    Provider chain (all img2img — the uploaded photo is always the anchor):
+      1. Gemini 2.5 Flash Image — multimodal photo editing, preserves composition
+      2. HuggingFace SD v1.5 img2img — preserves house structure
+      3. Replicate SDXL img2img — paid fallback
+
+    No text-to-image fallback: if every img2img provider fails we raise,
+    because a text-only render would produce an unrelated house.
     """
+    gem_key = _gemini_key()
     hf_key  = _hf_key()
     rep_key = _rep_key()
-    log.info(f"[visualizer] HF key present: {bool(hf_key)}, Replicate key: {bool(rep_key)}")
+    log.info(f"[visualizer] providers — gemini:{bool(gem_key)} hf:{bool(hf_key)} replicate:{bool(rep_key)}")
+
+    if gem_key:
+        try:
+            return await _gemini_img2img(image_bytes, content_type, description)
+        except Exception as e:
+            log.warning(f"[visualizer] Gemini img2img failed: {e}. Trying next provider...")
 
     if hf_key:
         try:
@@ -98,17 +76,67 @@ async def _generate_image(image_bytes: bytes, content_type: str, description: st
         try:
             return await _replicate_img2img(image_bytes, content_type, description)
         except Exception as e:
-            log.warning(f"[visualizer] Replicate failed: {e}. Falling back to Pollinations...")
-
-    # Always-available free fallback
-    try:
-        log.info("[visualizer] Using Pollinations.ai text-to-image fallback")
-        return await _pollinations_t2i(description)
-    except Exception as e:
-        log.error(f"[visualizer] Pollinations fallback also failed: {e}")
+            log.warning(f"[visualizer] Replicate failed: {e}.")
 
     raise ValueError(
-        "All image generation providers failed. Please try again in a moment."
+        "Image editing is temporarily unavailable. Please try again in a moment. "
+        "We won't fall back to text-only generation because it would produce a different-looking house."
+    )
+
+
+# ── Gemini 2.5 Flash Image (multimodal photo editing) ─────────────────────────
+
+def _gemini_img2img_sync(image_bytes: bytes, mime: str, description: str) -> str:
+    """
+    Use Gemini 2.5 Flash Image for true photo editing.
+    The uploaded image is passed as a multimodal input — the model preserves
+    the original composition and applies ONLY the requested changes.
+    """
+    from google import genai
+    from google.genai import types
+
+    prompt = (
+        "You are editing this real exterior photo of a house. "
+        "Keep the house EXACTLY the same: same roofline, same window layout, same door placement, "
+        "same foundation, same yard, same trees, same camera angle, same time of day, same lighting. "
+        f"Apply ONLY this change: {description}. "
+        "Output a photorealistic real-estate photograph of the SAME house with just that change applied. "
+        "Do not invent a new house. Do not move the camera. Do not change the composition."
+    )
+
+    MODELS = [
+        "gemini-2.5-flash-image",
+        "gemini-2.0-flash-preview-image-generation",
+        "gemini-2.0-flash-exp-image-generation",
+    ]
+
+    client     = genai.Client(api_key=_gemini_key())
+    image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime or "image/jpeg")
+
+    last_err: Exception = ValueError("No models tried")
+    for model in MODELS:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=[prompt, image_part],
+                config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
+            )
+            for part in response.candidates[0].content.parts:
+                if part.inline_data is not None:
+                    out_mime = part.inline_data.mime_type or "image/jpeg"
+                    encoded  = base64.b64encode(part.inline_data.data).decode("ascii")
+                    return f"data:{out_mime};base64,{encoded}"
+            last_err = ValueError(f"{model}: no image parts in response")
+        except Exception as e:
+            last_err = e
+            log.warning(f"[visualizer] Gemini {model!r}: {e}")
+    raise last_err
+
+
+async def _gemini_img2img(image_bytes: bytes, content_type: str, description: str) -> str:
+    return await asyncio.wait_for(
+        asyncio.to_thread(_gemini_img2img_sync, image_bytes, content_type, description),
+        timeout=60,
     )
 
 
@@ -119,21 +147,24 @@ async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") ->
     Returns a data URI (base64 PNG).
     """
     prompt = (
-        f"exterior photo of the same house with {description}, "
-        f"same roofline, same windows, same structure, same angle, "
-        f"photorealistic, professional real estate photography, sharp focus"
+        f"the exact same house photographed from the exact same angle, "
+        f"only modification: {description}. "
+        f"Identical roofline, identical window placement, identical door placement, "
+        f"identical foundation, identical trees and yard. "
+        f"Photorealistic, professional real estate photography, sharp focus, natural daylight."
     )
 
     payload = {
         "inputs": base64.b64encode(image_bytes).decode(),
         "parameters": {
             "prompt": prompt,
-            "strength": 0.55,           # 0=identical to original, 1=ignore original; 0.55 changes materials but keeps structure
+            "strength": 0.42,           # 0=identical to original, 1=ignore original; low enough to keep structure
             "guidance_scale":       8.0,
             "num_inference_steps":  30,
             "negative_prompt": (
-                "different house shape, different roofline, blurry, low quality, "
-                "distorted, cartoon, painting, watermark, people, text"
+                "different house, different house shape, different roofline, "
+                "different windows, different door, rearranged facade, new building, "
+                "blurry, low quality, distorted, cartoon, painting, watermark, people, text"
             ),
         },
     }
@@ -190,13 +221,15 @@ async def _replicate_img2img(image_bytes: bytes, content_type: str, description:
         image_url = r.json()["urls"]["get"]
 
     positive = (
-        f"photorealistic exterior home renovation, professional architectural photography, "
-        f"high resolution 8k, sharp focus, natural daylight, {description}, "
-        f"real estate photography style, beautiful curb appeal"
+        f"the exact same house photographed from the same angle, "
+        f"only modification: {description}. "
+        f"Identical roofline, identical window layout, identical door, identical foundation, identical yard. "
+        f"Photorealistic, professional architectural photography, high resolution 8k, sharp focus, natural daylight."
     )
     negative = (
-        "blurry, low quality, distorted, warped, cartoon, anime, painting, "
-        "sketch, watermark, text overlay, people, vehicles, interior, abstract"
+        "different house, different house shape, different roofline, different windows, "
+        "rearranged facade, new building, blurry, low quality, distorted, warped, "
+        "cartoon, anime, painting, sketch, watermark, text overlay, people, vehicles, interior, abstract"
     )
 
     # Submit prediction
