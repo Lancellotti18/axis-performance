@@ -42,46 +42,128 @@ def _gemini_key() -> str:
     return os.environ.get("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", "") or ""
 
 
+def _fal_key() -> str:
+    return os.environ.get("FAL_KEY") or os.environ.get("FAL_API_KEY") or getattr(settings, "FAL_API_KEY", "") or ""
+
+
 # ── Image generation ──────────────────────────────────────────────────────────
 
 async def _generate_image(image_bytes: bytes, content_type: str, description: str) -> str:
     """
     Generate a visualization image by EDITING the uploaded photo.
     Provider chain (all img2img — the uploaded photo is always the anchor):
-      1. Gemini 2.5 Flash Image — multimodal photo editing, preserves composition
-      2. HuggingFace SD v1.5 img2img — preserves house structure
-      3. Replicate SDXL img2img — paid fallback
+      1. fal.ai FLUX Kontext — photo-editing model, accepts image + instruction
+      2. Gemini 2.5 Flash Image — multimodal photo editing, preserves composition
+      3. HuggingFace SD v1.5 img2img — preserves house structure
+      4. Replicate SDXL img2img — paid fallback
 
     No text-to-image fallback: if every img2img provider fails we raise,
     because a text-only render would produce an unrelated house.
     """
+    fal_key = _fal_key()
     gem_key = _gemini_key()
     hf_key  = _hf_key()
     rep_key = _rep_key()
-    log.info(f"[visualizer] providers — gemini:{bool(gem_key)} hf:{bool(hf_key)} replicate:{bool(rep_key)}")
+    log.info(
+        f"[visualizer] providers — fal:{bool(fal_key)} gemini:{bool(gem_key)} "
+        f"hf:{bool(hf_key)} replicate:{bool(rep_key)}"
+    )
+
+    attempts: list[str] = []
+
+    if fal_key:
+        try:
+            return await _fal_img2img(image_bytes, content_type, description)
+        except Exception as e:
+            attempts.append(f"fal.ai Kontext: {e}")
+            log.warning(f"[visualizer] fal.ai Kontext failed: {e}. Trying next provider...")
+    else:
+        attempts.append("fal.ai Kontext: no FAL_API_KEY configured")
 
     if gem_key:
         try:
             return await _gemini_img2img(image_bytes, content_type, description)
         except Exception as e:
+            attempts.append(f"Gemini: {e}")
             log.warning(f"[visualizer] Gemini img2img failed: {e}. Trying next provider...")
+    else:
+        attempts.append("Gemini: no GEMINI_API_KEY configured")
 
     if hf_key:
         try:
             return await _hf_img2img(image_bytes, description, hf_key)
         except Exception as e:
+            attempts.append(f"HuggingFace: {e}")
             log.warning(f"[visualizer] HuggingFace img2img failed: {e}. Trying next provider...")
+    else:
+        attempts.append("HuggingFace: no HUGGINGFACE_API_KEY configured")
 
     if rep_key:
         try:
             return await _replicate_img2img(image_bytes, content_type, description)
         except Exception as e:
+            attempts.append(f"Replicate: {e}")
             log.warning(f"[visualizer] Replicate failed: {e}.")
+    else:
+        attempts.append("Replicate: no REPLICATE_API_KEY configured")
 
+    detail = " | ".join(attempts)
+    log.error(f"[visualizer] all providers failed — {detail}")
     raise ValueError(
         "Image editing is temporarily unavailable. Please try again in a moment. "
-        "We won't fall back to text-only generation because it would produce a different-looking house."
+        f"(providers attempted — {detail})"
     )
+
+
+# ── fal.ai FLUX Kontext (dedicated photo editing) ─────────────────────────────
+
+async def _fal_img2img(image_bytes: bytes, content_type: str, description: str) -> str:
+    """
+    Use fal.ai FLUX Pro Kontext for photo editing.
+    Kontext takes an input image + edit instruction and preserves composition
+    while applying the requested change.
+    """
+    import fal_client
+
+    os.environ.setdefault("FAL_KEY", _fal_key())
+
+    mime = content_type or "image/jpeg"
+
+    def _run():
+        # Upload the source photo to fal's storage and get a URL
+        image_url = fal_client.upload(image_bytes, mime)
+
+        edit_instruction = (
+            f"{description}. "
+            "Keep the rest of the house identical: same roofline, same windows, "
+            "same door placement, same camera angle, same lighting. "
+            "Photorealistic real-estate photograph."
+        )
+
+        result = fal_client.run(
+            "fal-ai/flux-pro/kontext",
+            arguments={
+                "prompt":               edit_instruction,
+                "image_url":            image_url,
+                "guidance_scale":       3.5,
+                "num_inference_steps":  28,
+                "num_images":           1,
+                "safety_tolerance":     "2",
+                "output_format":        "jpeg",
+            },
+        )
+        images = result.get("images") or []
+        if not images:
+            raise ValueError("fal Kontext returned no images")
+        return images[0]["url"]
+
+    image_url = await asyncio.wait_for(asyncio.to_thread(_run), timeout=90)
+
+    # Download and return as base64 so the browser doesn't depend on fal's CDN
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(image_url)
+        r.raise_for_status()
+        return "data:image/jpeg;base64," + base64.b64encode(r.content).decode()
 
 
 # ── Gemini 2.5 Flash Image (multimodal photo editing) ─────────────────────────
