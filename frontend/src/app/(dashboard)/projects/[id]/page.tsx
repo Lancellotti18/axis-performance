@@ -16,6 +16,7 @@ const AerialViewer      = dynamic(() => import('../../aerial-report/AerialViewer
 import RoofingSection from './RoofingSection'
 import PermitPortalSection from './PermitPortalSection'
 const ExteriorCaptureWizard = dynamic(() => import('./ExteriorCaptureWizard'), { ssr: false })
+const PhotoLightbox = dynamic(() => import('./PhotoLightbox'), { ssr: false })
 
 // Images are base64 data URIs from backend — no staggering needed
 function StaggeredRender({ src, label, totalSqft }: { src: string; label: string; totalSqft?: number }) {
@@ -1876,12 +1877,26 @@ Thank you for your time.`
                     <div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">
                       {displayed.map((photo: any) => {
                         const phaseColors: Record<string, string> = { before: 'bg-blue-500', during: 'bg-amber-500', after: 'bg-emerald-500' }
+                        const hasGeo = typeof photo.latitude === 'number' && typeof photo.longitude === 'number'
+                        const hasNotes = !!(photo.notes && photo.notes.trim())
+                        const hasAutoTags = photo.auto_tags && (photo.auto_tags.area || (photo.auto_tags.materials || []).length > 0)
                         return (
                           <div key={photo.id} className="relative group break-inside-avoid bg-white rounded-2xl overflow-hidden cursor-pointer" style={cardStyle} onClick={() => setSelectedPhoto(photo)}>
                             <img src={photo.url} alt={photo.filename} className="w-full object-cover" />
+                            <div className="absolute top-2 left-2 flex items-center gap-1">
+                              <span className={`text-[10px] font-bold text-white px-2 py-0.5 rounded-full capitalize ${phaseColors[photo.phase] || 'bg-slate-500'}`}>{photo.phase}</span>
+                              {hasGeo && (
+                                <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title={`${photo.latitude.toFixed(4)}, ${photo.longitude.toFixed(4)}`}>📍</span>
+                              )}
+                              {hasNotes && (
+                                <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title="Has notes">📝</span>
+                              )}
+                              {hasAutoTags && (
+                                <span className="text-[10px] font-bold text-white bg-indigo-500/90 px-1.5 py-0.5 rounded-full" title="AI-tagged">✨</span>
+                              )}
+                            </div>
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-end p-2">
-                              <div className="flex items-center justify-between w-full opacity-0 group-hover:opacity-100 transition-all">
-                                <span className={`text-[10px] font-bold text-white px-2 py-0.5 rounded-full capitalize ${phaseColors[photo.phase] || 'bg-slate-500'}`}>{photo.phase}</span>
+                              <div className="flex items-center justify-end w-full opacity-0 group-hover:opacity-100 transition-all">
                                 <button
                                   onClick={e => { e.stopPropagation(); handleDeletePhoto(photo) }}
                                   className="p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all"
@@ -1892,6 +1907,16 @@ Thank you for your time.`
                             </div>
                             <div className="px-3 py-2">
                               <div className="text-slate-500 text-[10px] truncate">{photo.filename}</div>
+                              {(photo.auto_tags?.area || (photo.tags || []).length > 0) && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {photo.auto_tags?.area && (
+                                    <span className="text-[9px] bg-slate-100 text-slate-600 font-semibold px-1.5 py-0.5 rounded-full capitalize">{photo.auto_tags.area}</span>
+                                  )}
+                                  {(photo.tags || []).slice(0, 2).map((t: string) => (
+                                    <span key={t} className="text-[9px] bg-indigo-50 text-indigo-700 font-semibold px-1.5 py-0.5 rounded-full">{t}</span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         )
@@ -1969,17 +1994,17 @@ Thank you for your time.`
                   )}
                 </div>
 
-                {/* Lightbox */}
+                {/* Lightbox with CompanyCam-style metadata side panel */}
                 {selectedPhoto && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setSelectedPhoto(null)}>
-                    <div className="max-w-4xl max-h-full relative" onClick={e => e.stopPropagation()}>
-                      <img src={selectedPhoto.url} alt={selectedPhoto.filename} className="max-w-full max-h-[85vh] object-contain rounded-2xl" />
-                      <div className="flex items-center justify-between mt-3">
-                        <span className="text-white/60 text-sm">{selectedPhoto.filename}</span>
-                        <button onClick={() => setSelectedPhoto(null)} className="text-white/70 hover:text-white text-sm font-semibold">Close ✕</button>
-                      </div>
-                    </div>
-                  </div>
+                  <PhotoLightbox
+                    photo={selectedPhoto}
+                    projectId={projectId}
+                    onClose={() => setSelectedPhoto(null)}
+                    onUpdate={updated => {
+                      setSelectedPhoto(updated)
+                      setPhotos(prev => prev.map(p => (p.id === updated.id ? { ...p, ...updated } : p)))
+                    }}
+                  />
                 )}
               </div>
             )}

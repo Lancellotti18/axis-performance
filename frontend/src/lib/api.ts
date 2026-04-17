@@ -354,13 +354,40 @@ export const api = {
       apiRequest<{ upload_url: string; key: string; public_url: string }>(
         `/api/v1/photos/upload-url/${projectId}?filename=${encodeURIComponent(filename)}&content_type=${encodeURIComponent(contentType)}`
       ),
-    register: (projectId: string, payload: { storage_key: string; filename: string; phase: string }) =>
+    register: (
+      projectId: string,
+      payload: {
+        storage_key: string
+        filename: string
+        phase: string
+        captured_at?: string
+        latitude?: number
+        longitude?: number
+        notes?: string
+        tags?: string[]
+      },
+    ) =>
       apiRequest<Photo>(`/api/v1/photos/register/${projectId}`, {
         method: 'POST',
         body: JSON.stringify(payload),
       }),
     list: (projectId: string) =>
       apiRequest<Photo[]>(`/api/v1/photos/${projectId}`),
+    update: (
+      projectId: string,
+      photoId: string,
+      patch: { notes?: string; tags?: string[]; phase?: string },
+    ) =>
+      apiRequest<Photo>(`/api/v1/photos/${projectId}/${photoId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+    autoTag: (projectId: string, photoId: string) =>
+      apiRequest<{ photo_id: string; auto_tags: Record<string, unknown> }>(
+        `/api/v1/photos/autotag/${projectId}/${photoId}`,
+        { method: 'POST' },
+        60000,
+      ),
     delete: (projectId: string, photoId: string) =>
       apiRequest<{ ok: boolean }>(`/api/v1/photos/${projectId}/${photoId}`, { method: 'DELETE' }),
     measure: (projectId: string) =>

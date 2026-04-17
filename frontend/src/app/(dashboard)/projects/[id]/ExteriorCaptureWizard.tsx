@@ -89,6 +89,31 @@ type CapturedShot = {
   previewUrl: string
   uploaded: boolean
   uploadError?: string | null
+  capturedAt: string            // ISO-8601, from Date at pick time
+  latitude?: number
+  longitude?: number
+}
+
+/** Ask the browser for a single GPS fix. Resolves to null if denied or unavailable. */
+function getLocationOnce(): Promise<{ latitude: number; longitude: number } | null> {
+  return new Promise(resolve => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      resolve(null)
+      return
+    }
+    const timer = setTimeout(() => resolve(null), 8000)
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        clearTimeout(timer)
+        resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude })
+      },
+      () => {
+        clearTimeout(timer)
+        resolve(null)
+      },
+      { enableHighAccuracy: true, maximumAge: 30_000, timeout: 7000 },
+    )
+  })
 }
 
 export default function ExteriorCaptureWizard({
@@ -121,11 +146,14 @@ export default function ExteriorCaptureWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setError(null)
-    // Replace any previous shot for this step (revoke old preview).
+    e.target.value = ''
+    const capturedAt = new Date().toISOString()
+    // Fire-and-await a single GPS fix so the backend can geotag. Silent if denied.
+    const geo = await getLocationOnce()
     setShots(prev => {
       const old = prev[step.key]
       if (old) URL.revokeObjectURL(old.previewUrl)
@@ -136,10 +164,12 @@ export default function ExteriorCaptureWizard({
           file,
           previewUrl: URL.createObjectURL(file),
           uploaded: false,
+          capturedAt,
+          latitude: geo?.latitude,
+          longitude: geo?.longitude,
         },
       }
     })
-    e.target.value = ''
   }
 
   async function uploadAll() {
@@ -165,6 +195,10 @@ export default function ExteriorCaptureWizard({
           storage_key: key,
           filename,
           phase: 'during',
+          captured_at: captured.capturedAt,
+          latitude: captured.latitude,
+          longitude: captured.longitude,
+          tags: ['exterior', `angle:${s.key}`],
         })
         setShots(prev => ({
           ...prev,
