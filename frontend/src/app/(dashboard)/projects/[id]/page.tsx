@@ -15,6 +15,7 @@ const ExteriorCarousel  = dynamic(() => import('./ExteriorCarousel'),  { ssr: fa
 const AerialViewer      = dynamic(() => import('../../aerial-report/AerialViewer'), { ssr: false })
 import RoofingSection from './RoofingSection'
 import PermitPortalSection from './PermitPortalSection'
+const ExteriorCaptureWizard = dynamic(() => import('./ExteriorCaptureWizard'), { ssr: false })
 
 // Images are base64 data URIs from backend — no staggering needed
 function StaggeredRender({ src, label, totalSqft }: { src: string; label: string; totalSqft?: number }) {
@@ -111,6 +112,7 @@ export default function ProjectPage() {
   const [photoPhase, setPhotoPhase] = useState<'all' | 'before' | 'during' | 'after'>('all')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [selectedPhoto, setSelectedPhoto] = useState<any>(null)
+  const [showCaptureWizard, setShowCaptureWizard] = useState(false)
   // Job costing (actual spend per category, stored in localStorage)
   const [actualCosts, setActualCosts] = useState<Record<string, number>>({})
   // Blueprint signed URL for display
@@ -1798,12 +1800,33 @@ Thank you for your time.`
             {/* ── PHOTOS ──────────────────────────────────────────────── */}
             {tab === 'photos' && (
               <div className="max-w-5xl">
-                <div className="flex items-center justify-between mb-5">
+                {showCaptureWizard && (
+                  <ExteriorCaptureWizard
+                    projectId={projectId}
+                    onComplete={async () => {
+                      try {
+                        const photoData = await api.photos.list(projectId)
+                        setPhotos(photoData || [])
+                      } catch {}
+                    }}
+                    onClose={() => setShowCaptureWizard(false)}
+                  />
+                )}
+                <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
                   <div>
                     <h2 className="text-slate-800 font-bold text-lg">Job Photos</h2>
                     <p className="text-slate-400 text-xs mt-0.5">{photos.length} photo{photos.length !== 1 ? 's' : ''} — before, during, and after documentation</p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => setShowCaptureWizard(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02]"
+                      style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
+                      title="Guided 8-angle exterior capture"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+                      Guided Capture
+                    </button>
                     {(['before', 'during', 'after'] as const).map(phase => (
                       <label key={phase} className="relative cursor-pointer">
                         <input
