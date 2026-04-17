@@ -15,6 +15,7 @@ const ExteriorCarousel  = dynamic(() => import('./ExteriorCarousel'),  { ssr: fa
 const AerialViewer      = dynamic(() => import('../../aerial-report/AerialViewer'), { ssr: false })
 import RoofingSection from './RoofingSection'
 import PermitPortalSection from './PermitPortalSection'
+import { computeMaterialConfidence, loadReviewedIds, saveReviewedIds } from './materialConfidence'
 const ExteriorCaptureWizard = dynamic(() => import('./ExteriorCaptureWizard'), { ssr: false })
 const PhotoLightbox = dynamic(() => import('./PhotoLightbox'), { ssr: false })
 
@@ -106,6 +107,10 @@ export default function ProjectPage() {
   const [matCheckError, setMatCheckError] = useState<string | null>(null)
   const [refreshingPrices, setRefreshingPrices] = useState(false)
   const [refreshPricesResult, setRefreshPricesResult] = useState<string | null>(null)
+  // Material-confidence review state. Tracks which low-confidence rows the
+  // user has explicitly confirmed, so their amber chips go away.
+  const [reviewedMaterials, setReviewedMaterials] = useState<Set<string>>(new Set())
+  const [reviewFilterOnly, setReviewFilterOnly] = useState(false)
 
   // Photos tab
   const [photos, setPhotos] = useState<any[]>([])
@@ -242,7 +247,19 @@ export default function ProjectPage() {
     if (!projectId) return
     const saved = localStorage.getItem(`job_costs_${projectId}`)
     if (saved) { try { setActualCosts(JSON.parse(saved)) } catch {} }
+    setReviewedMaterials(loadReviewedIds(projectId))
   }, [projectId])
+
+  function toggleReviewed(materialId: string) {
+    if (!materialId) return
+    setReviewedMaterials(prev => {
+      const next = new Set(prev)
+      if (next.has(materialId)) next.delete(materialId)
+      else next.add(materialId)
+      saveReviewedIds(projectId, next)
+      return next
+    })
+  }
 
   async function handleMarkupUpdate() {
     try {
@@ -624,9 +641,33 @@ Thank you for your time.`
   const materials: any[] = estimate?.material_estimates || []
   const categoriesInData = Array.from(new Set(materials.map(m => m.category)))
 
-  const filteredMaterials = categoryFilter === 'all'
-    ? materials
-    : materials.filter(m => m.category === categoryFilter)
+  // Per-row confidence — memoized by material id so we don't recompute on
+  // every keystroke in the markup input.
+  const materialConfidence = useMemo(() => {
+    const map: Record<string, ReturnType<typeof computeMaterialConfidence>> = {}
+    for (const m of materials) {
+      if (m.id) map[m.id] = computeMaterialConfidence(m)
+    }
+    return map
+  }, [materials])
+
+  const unreviewedLowConfCount = useMemo(() => {
+    let n = 0
+    for (const m of materials) {
+      if (!m.id) continue
+      if (materialConfidence[m.id]?.level === 'low' && !reviewedMaterials.has(m.id)) n += 1
+    }
+    return n
+  }, [materials, materialConfidence, reviewedMaterials])
+
+  const matchesReviewFilter = (m: any) => {
+    if (!reviewFilterOnly) return true
+    if (!m.id) return false
+    return materialConfidence[m.id]?.level === 'low' && !reviewedMaterials.has(m.id)
+  }
+
+  const filteredMaterials = (categoryFilter === 'all' ? materials : materials.filter(m => m.category === categoryFilter))
+    .filter(matchesReviewFilter)
 
   const byCategory: Record<string, any[]> = {}
   for (const m of filteredMaterials) {
@@ -1158,11 +1199,20 @@ Thank you for your time.`
                 {/* Category filter pills */}
                 <div className="flex gap-2 flex-wrap mb-5">
                   <button
-                    onClick={() => setCategoryFilter('all')}
-                    className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${categoryFilter === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300'}`}
+                    onClick={() => { setCategoryFilter('all'); setReviewFilterOnly(false) }}
+                    className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${categoryFilter === 'all' && !reviewFilterOnly ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300'}`}
                   >
                     All ({materials.length})
                   </button>
+                  {unreviewedLowConfCount > 0 && (
+                    <button
+                      onClick={() => setReviewFilterOnly(v => !v)}
+                      className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all inline-flex items-center gap-1.5 ${reviewFilterOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400'}`}
+                      title="Items with placeholder prices or missing vendor data"
+                    >
+                      <span>⚠</span> Review needed ({unreviewedLowConfCount})
+                    </button>
+                  )}
                   {categoriesInData.map(cat => {
                     const meta = CATEGORY_META[cat] || { label: cat, icon: '📦', color: '' }
                     const count = materials.filter(m => m.category === cat).length
@@ -1279,12 +1329,46 @@ Thank you for your time.`
                                         </>
                                       )}
                                     </div>
-                                    {!isEditing && (
-                                      <div className="text-right flex-shrink-0">
-                                        <div className="text-slate-800 font-bold text-sm">{formatMoneyExact(materialChanges[m.id]?.unit_cost ?? m.unit_cost)} / {m.unit}</div>
-                                        <div className="text-blue-600 font-black text-sm">{formatMoney(m.total_cost)}</div>
-                                      </div>
-                                    )}
+                                    {!isEditing && (() => {
+                                      const conf = m.id ? materialConfidence[m.id] : null
+                                      const isReviewed = m.id && reviewedMaterials.has(m.id)
+                                      const needsReview = conf?.level === 'low' && !isReviewed
+                                      return (
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                          {needsReview && (
+                                            <div
+                                              className="flex items-center gap-1"
+                                              onClick={e => e.stopPropagation()}
+                                              title={conf?.reasons.join(' · ')}
+                                            >
+                                              <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full">
+                                                ⚠ Review
+                                              </span>
+                                              <button
+                                                onClick={() => toggleReviewed(m.id)}
+                                                className="text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-2 py-0.5 rounded-full transition-colors"
+                                                title="Mark this price as verified"
+                                              >
+                                                ✓
+                                              </button>
+                                            </div>
+                                          )}
+                                          {isReviewed && conf?.level === 'low' && (
+                                            <button
+                                              onClick={e => { e.stopPropagation(); toggleReviewed(m.id) }}
+                                              className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full hover:bg-emerald-100"
+                                              title="Click to un-mark as reviewed"
+                                            >
+                                              ✓ Reviewed
+                                            </button>
+                                          )}
+                                          <div className="text-right">
+                                            <div className="text-slate-800 font-bold text-sm">{formatMoneyExact(materialChanges[m.id]?.unit_cost ?? m.unit_cost)} / {m.unit}</div>
+                                            <div className="text-blue-600 font-black text-sm">{formatMoney(m.total_cost)}</div>
+                                          </div>
+                                        </div>
+                                      )
+                                    })()}
                                     {vendors.length > 0 && !isEditing && (
                                       <div className="text-xs text-blue-500 font-semibold flex-shrink-0 flex items-center gap-1">
                                         {vendors.length} sources
@@ -1427,6 +1511,29 @@ Thank you for your time.`
 
                   return (
                     <div className="space-y-5">
+                      {/* Confidence banner — warns when the estimate leans on un-reviewed placeholder prices */}
+                      {unreviewedLowConfCount > 0 && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl">⚠</span>
+                            <div>
+                              <div className="text-amber-800 font-bold text-sm">
+                                {unreviewedLowConfCount} item{unreviewedLowConfCount === 1 ? '' : 's'} still need{unreviewedLowConfCount === 1 ? 's' : ''} price review
+                              </div>
+                              <div className="text-amber-700 text-xs mt-0.5">
+                                This total includes placeholder or vendor-less prices — verify before sending an estimate.
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => { setTab('materials'); setReviewFilterOnly(true) }}
+                            className="text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-xl transition-colors whitespace-nowrap"
+                          >
+                            Review now →
+                          </button>
+                        </div>
+                      )}
+
                       {/* Grand total hero */}
                       <div className="bg-blue-600 rounded-2xl p-8 text-center text-white" style={{ boxShadow: '0 8px 32px rgba(37,99,235,0.3)' }}>
                         <div className="text-blue-100 text-sm mb-1">Total Estimated Project Cost</div>
