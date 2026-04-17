@@ -239,6 +239,19 @@ export interface EstimateFull extends CostEstimate {
   material_estimates: MaterialEstimate[]
 }
 
+export interface DailyLogEntry {
+  date: string
+  photo_count: number
+  phases: Record<string, number>
+  areas: string[]
+  summary: string
+  manual_tags: string[]
+  auto_tags: string[]
+  damage: string[]
+  safety: string[]
+  photos: Array<{ id: string; url: string; phase?: string; notes?: string }>
+}
+
 export interface ReportFull {
   project: Project
   blueprint: Blueprint | null
@@ -249,4 +262,5 @@ export interface ReportFull {
   compliance_items: ComplianceItem[]
   permit_info: Record<string, unknown> | null
   overrides: Record<string, unknown>
+  daily_logs?: DailyLogEntry[]
 }

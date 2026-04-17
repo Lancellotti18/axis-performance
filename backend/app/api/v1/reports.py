@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.core.supabase import get_supabase
+from app.services.daily_log_service import build_daily_logs_for_project
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -125,6 +126,16 @@ async def get_full_report_data(project_id: str):
         log.debug("project_reports overrides fetch failed", exc_info=True)
         pass
 
+    # Daily logs (Procore-style) — derived on demand from project_photos.
+    # The aggregator is expected to keep working even when the daily-log
+    # pipeline fails (LLM unavailable, no photos, etc.).
+    daily_logs: list = []
+    try:
+        daily_logs = await build_daily_logs_for_project(project_id)
+    except Exception:
+        log.debug("daily_logs build failed", exc_info=True)
+        daily_logs = []
+
     return {
         "project":          project,
         "blueprint":        blueprint,
@@ -135,7 +146,17 @@ async def get_full_report_data(project_id: str):
         "compliance_items": compliance_items,
         "permit_info":      permit_info,
         "overrides":        overrides,
+        "daily_logs":       daily_logs,
     }
+
+
+@router.get("/{project_id}/daily-logs")
+async def get_daily_logs(project_id: str):
+    """Procore-style daily log: per-day summary of photos + notes + tags."""
+    try:
+        return await build_daily_logs_for_project(project_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Daily log build failed: {e}")
 
 
 # ── Save overrides ─────────────────────────────────────────────────────────────
@@ -175,6 +196,7 @@ async def export_report_pdf(project_id: str):
     compliance_items = data["compliance_items"] or []
     permit_info     = data["permit_info"] or {}
     overrides       = data["overrides"] or {}
+    daily_logs      = data.get("daily_logs") or []
 
     def ov(key: str, default):
         return overrides.get(key, default)
@@ -425,6 +447,41 @@ async def export_report_pdf(project_id: str):
                 "Visit your local building department website or use the Permits tab to look up requirements.",
                 small
             ))
+
+        # ── Daily Log (Procore-style site diary) ───────────────────────────────
+        if daily_logs:
+            elems.append(Paragraph("Daily Log", h2))
+            elems.append(Paragraph(
+                f"{len(daily_logs)} active day{'s' if len(daily_logs) != 1 else ''} on this project, "
+                "compiled from uploaded photos, site notes, and AI tags.",
+                small,
+            ))
+            elems.append(Spacer(1, 4))
+            for entry in daily_logs:
+                date_str = str(entry.get("date") or "—")
+                count = int(entry.get("photo_count") or 0)
+                phases = entry.get("phases") or {}
+                phase_bits = [f"{v} {k}" for k, v in phases.items() if v]
+                phase_line = ", ".join(phase_bits) if phase_bits else ""
+                summary_text = str(entry.get("summary") or "")
+                damage = entry.get("damage") or []
+                safety = entry.get("safety") or []
+
+                elems.append(Paragraph(
+                    f"<b>{date_str}</b> &nbsp;·&nbsp; {count} photo{'s' if count != 1 else ''}"
+                    + (f" &nbsp;·&nbsp; {phase_line}" if phase_line else ""),
+                    h3,
+                ))
+                if summary_text:
+                    elems.append(Paragraph(summary_text, body))
+                flag_lines = []
+                if damage:
+                    flag_lines.append(f"<b>Damage flagged:</b> {', '.join(damage[:5])}")
+                if safety:
+                    flag_lines.append(f"<b>Safety flagged:</b> {', '.join(safety[:5])}")
+                for line in flag_lines:
+                    elems.append(Paragraph(line, small))
+                elems.append(Spacer(1, 4))
 
         # ── Notes ──────────────────────────────────────────────────────────────
         custom_notes = ov("report_notes", "")

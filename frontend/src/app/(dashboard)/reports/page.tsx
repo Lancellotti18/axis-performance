@@ -172,6 +172,7 @@ export default function ReportsPage() {
   const complianceItems = reportData?.compliance_items || []
   const compliance      = reportData?.compliance
   const permitInfo      = reportData?.permit_info
+  const dailyLogs       = reportData?.daily_logs || []
 
   const totalMaterialCost = materials.reduce((s: number, m: any) =>
     s + parseFloat(m.total_cost || m.total || 0), 0)
@@ -320,6 +321,78 @@ export default function ReportsPage() {
                   </div>
                 )}
               </Section>
+
+              {/* ── Daily Log (Procore-style) ────────────────────────────── */}
+              {dailyLogs.length > 0 && (
+                <Section title={`Daily Log (${dailyLogs.length} day${dailyLogs.length !== 1 ? 's' : ''})`} icon="📅">
+                  <div className="text-xs text-slate-500 mb-3">
+                    Auto-generated from uploaded photos, site notes, and AI auto-tags. Newest first.
+                  </div>
+                  <div className="space-y-3">
+                    {dailyLogs.map((entry: any) => {
+                      const phaseBits: string[] = []
+                      for (const p of ['before', 'during', 'after', 'unspecified']) {
+                        if (entry.phases?.[p]) phaseBits.push(`${entry.phases[p]} ${p}`)
+                      }
+                      const dateLabel = (() => {
+                        try {
+                          return new Date(entry.date + 'T00:00:00').toLocaleDateString('en-US', {
+                            weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                          })
+                        } catch { return entry.date }
+                      })()
+                      return (
+                        <div
+                          key={entry.date}
+                          className="rounded-xl border bg-slate-50/60 p-3"
+                          style={{ borderColor: 'rgba(219,234,254,0.8)' }}
+                        >
+                          <div className="flex items-center justify-between gap-3 flex-wrap mb-1.5">
+                            <div className="text-sm font-bold text-slate-800">{dateLabel}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {entry.photo_count} photo{entry.photo_count !== 1 ? 's' : ''}
+                              {phaseBits.length > 0 && <> &nbsp;·&nbsp; {phaseBits.join(', ')}</>}
+                            </div>
+                          </div>
+                          <p className="text-slate-700 text-sm leading-relaxed">{entry.summary}</p>
+                          {(entry.damage?.length > 0 || entry.safety?.length > 0) && (
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {(entry.damage || []).slice(0, 5).map((d: string, i: number) => (
+                                <span key={`d${i}`} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                                  ⚠ {d}
+                                </span>
+                              ))}
+                              {(entry.safety || []).slice(0, 5).map((s: string, i: number) => (
+                                <span key={`s${i}`} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                  ⛑ {s}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {entry.photos?.length > 0 && (
+                            <div className="flex gap-1.5 mt-2 overflow-x-auto">
+                              {entry.photos.slice(0, 8).map((p: any) => (
+                                <img
+                                  key={p.id}
+                                  src={p.url}
+                                  alt={p.phase || ''}
+                                  className="w-14 h-14 object-cover rounded-lg flex-shrink-0 border border-white"
+                                  style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.08)' }}
+                                />
+                              ))}
+                              {entry.photos.length > 8 && (
+                                <div className="w-14 h-14 flex-shrink-0 rounded-lg border border-slate-200 bg-white text-slate-500 text-[10px] font-semibold flex items-center justify-center">
+                                  +{entry.photos.length - 8}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </Section>
+              )}
 
               {/* ── Materials List ───────────────────────────────────────── */}
               <Section title={`Materials List (${materials.length} items)`} icon="🏗️">

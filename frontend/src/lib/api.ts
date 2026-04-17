@@ -152,6 +152,19 @@ export const api = {
   reports: {
     getFull: (projectId: string) =>
       apiRequest<ReportFull>(`/api/v1/reports/${projectId}/full`, {}, 30000),
+    getDailyLogs: (projectId: string) =>
+      apiRequest<Array<{
+        date: string
+        photo_count: number
+        phases: Record<string, number>
+        areas: string[]
+        summary: string
+        manual_tags: string[]
+        auto_tags: string[]
+        damage: string[]
+        safety: string[]
+        photos: Array<{ id: string; url: string; phase?: string; notes?: string }>
+      }>>(`/api/v1/reports/${projectId}/daily-logs`, {}, 60000),
     saveOverrides: (projectId: string, overrides: Record<string, unknown>) =>
       apiRequest<{ saved: boolean }>(`/api/v1/reports/${projectId}/overrides`, {
         method: 'PATCH',
