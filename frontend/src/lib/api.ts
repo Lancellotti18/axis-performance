@@ -135,6 +135,36 @@ export const api = {
     getStatus: (blueprintId: string) =>
       apiRequest<{ status: string; error_message?: string }>(`/api/v1/blueprints/${blueprintId}/status`),
     viewUrl: (blueprintId: string) => `${API_BASE}/api/v1/blueprints/${blueprintId}/view`,
+    takeoff: (blueprintId: string) =>
+      apiRequest<{
+        blueprint_id: string
+        project_id: string
+        takeoff: {
+          rooms: Array<{
+            name: string
+            sqft: number
+            width_ft: number | null
+            depth_ft: number | null
+            perimeter_ft: number | null
+            drywall_sqft: number | null
+            flooring_type: string
+          }>
+          walls: { exterior_lf: number; interior_lf: number; total_lf: number; by_type: Record<string, number> }
+          openings: { doors: number; windows: number; opening_sqft_total: number }
+          framing: { studs_count: number; plates_lf: number; osb_panels_wall: number; insulation_batts: number }
+          drywall: { raw_sqft: number; ordered_sqft: number; sheets_4x8: number; waste_factor: number }
+          flooring: Array<{ room: string; type: string; raw_sqft: number; ordered_sqft: number }>
+          totals: { total_sqft: number; exterior_perimeter_ft: number; wall_height_ft: number; wall_area_net_sqft: number; room_count: number }
+          scale: { detected: unknown; unverified: boolean; confidence: number; warning?: string }
+        }
+        material_rows: Array<{ item_name: string; category: string; quantity: number; unit: string; unit_cost: number; total_cost: number; source: string }>
+      }>(`/api/v1/blueprints/${blueprintId}/takeoff`, {}, 90000),
+    applyTakeoff: (blueprintId: string) =>
+      apiRequest<{ project_id: string; rows_added: number; rows_total: number; takeoff: Record<string, unknown> }>(
+        `/api/v1/blueprints/${blueprintId}/takeoff/apply`,
+        { method: 'POST' },
+        90000,
+      ),
   },
   analyses: {
     getByBlueprint: (blueprintId: string) =>

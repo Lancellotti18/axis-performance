@@ -109,6 +109,11 @@ export default function ProjectPage() {
   const [matCheckError, setMatCheckError] = useState<string | null>(null)
   const [refreshingPrices, setRefreshingPrices] = useState(false)
   const [refreshPricesResult, setRefreshPricesResult] = useState<string | null>(null)
+  // Blueprint takeoff (Togal-style quantity extraction)
+  const [takeoffLoading, setTakeoffLoading] = useState(false)
+  const [takeoffApplying, setTakeoffApplying] = useState(false)
+  const [takeoffData, setTakeoffData] = useState<Awaited<ReturnType<typeof api.blueprints.takeoff>> | null>(null)
+  const [takeoffOpen, setTakeoffOpen] = useState(false)
   // Material-confidence review state. Tracks which low-confidence rows the
   // user has explicitly confirmed, so their amber chips go away.
   const [reviewedMaterials, setReviewedMaterials] = useState<Set<string>>(new Set())
@@ -297,6 +302,39 @@ export default function ProjectPage() {
       toast.error(`Could not save materials: ${describeError(err)}`)
     }
     setSavingMaterials(false)
+  }
+
+  async function handleLoadTakeoff() {
+    if (!blueprintId) {
+      toast.error('Upload a blueprint first')
+      return
+    }
+    setTakeoffLoading(true)
+    setTakeoffOpen(true)
+    try {
+      const data = await api.blueprints.takeoff(blueprintId)
+      setTakeoffData(data)
+    } catch (err) {
+      log.error('handleLoadTakeoff', err)
+      toast.error(`Takeoff failed: ${describeError(err)}`)
+      setTakeoffOpen(false)
+    }
+    setTakeoffLoading(false)
+  }
+
+  async function handleApplyTakeoff() {
+    if (!blueprintId) return
+    setTakeoffApplying(true)
+    try {
+      const res = await api.blueprints.applyTakeoff(blueprintId)
+      toast.success(`Added ${res.rows_added} takeoff rows to materials`)
+      setTakeoffOpen(false)
+      await loadData()
+    } catch (err) {
+      log.error('handleApplyTakeoff', err)
+      toast.error(`Could not apply takeoff: ${describeError(err)}`)
+    }
+    setTakeoffApplying(false)
   }
 
   async function handleDeleteMaterial(id: string) {
@@ -1203,6 +1241,17 @@ Thank you for your time.`
                         {savingMaterials ? 'Saving…' : `Save Changes (${Object.keys(materialChanges).length})`}
                       </button>
                     )}
+                    <button
+                      onClick={handleLoadTakeoff}
+                      disabled={!blueprintId || takeoffLoading}
+                      title={!blueprintId ? 'Upload a blueprint first' : 'Extract per-room quantities from the blueprint (Togal-style)'}
+                      className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
+                      style={{ background: takeoffLoading ? '#94a3b8' : 'linear-gradient(135deg, #f59e0b, #b45309)', boxShadow: '0 4px 14px rgba(245,158,11,0.25)' }}
+                    >
+                      {takeoffLoading ? (
+                        <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Reading blueprint…</>
+                      ) : '📐 Blueprint Takeoff'}
+                    </button>
                     <button
                       onClick={() => setAddingMaterial(v => !v)}
                       className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all"
@@ -2659,6 +2708,138 @@ Thank you for your time.`
             toast.success(`Updated roof area: ${sqft.toLocaleString()} sqft`)
           }}
         />
+      )}
+
+      {/* ── Blueprint Takeoff modal (Togal-style quantity extraction) ── */}
+      {takeoffOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(15,23,42,0.72)', backdropFilter: 'blur(6px)' }}
+          onClick={() => !takeoffApplying && setTakeoffOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[88vh] overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(226,232,240,0.8)' }}>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">📐 Blueprint Takeoff</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Per-room quantities extracted from the blueprint — review before applying to materials.</p>
+              </div>
+              <button
+                onClick={() => !takeoffApplying && setTakeoffOpen(false)}
+                className="text-slate-400 hover:text-slate-700 text-2xl leading-none"
+                aria-label="Close"
+              >×</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {takeoffLoading && (
+                <div className="flex items-center justify-center py-16 text-slate-500 text-sm">
+                  <svg className="animate-spin w-5 h-5 mr-3 text-amber-500" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  Reading blueprint and computing quantities…
+                </div>
+              )}
+
+              {!takeoffLoading && takeoffData && (
+                <div className="space-y-5">
+                  {/* Scale warning */}
+                  {takeoffData.takeoff.scale?.unverified && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                      ⚠ {takeoffData.takeoff.scale.warning || 'Blueprint scale was not verified — confirm one dimension before ordering.'}
+                    </div>
+                  )}
+
+                  {/* Top stats */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      { label: 'Total sqft', value: takeoffData.takeoff.totals.total_sqft.toLocaleString() },
+                      { label: 'Rooms', value: takeoffData.takeoff.totals.room_count },
+                      { label: 'Wall LF (total)', value: takeoffData.takeoff.walls.total_lf.toLocaleString() },
+                      { label: 'Openings', value: `${takeoffData.takeoff.openings.doors}D / ${takeoffData.takeoff.openings.windows}W` },
+                    ].map(s => (
+                      <div key={s.label} className="rounded-xl border bg-slate-50 px-4 py-3" style={{ borderColor: 'rgba(226,232,240,0.9)' }}>
+                        <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{s.label}</div>
+                        <div className="text-lg font-bold text-slate-800 mt-1">{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Rooms */}
+                  {takeoffData.takeoff.rooms.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800 mb-2">Rooms ({takeoffData.takeoff.rooms.length})</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead className="text-left text-slate-500">
+                            <tr className="border-b" style={{ borderColor: 'rgba(226,232,240,0.8)' }}>
+                              <th className="py-2 pr-3 font-semibold">Room</th>
+                              <th className="py-2 pr-3 font-semibold text-right">Sqft</th>
+                              <th className="py-2 pr-3 font-semibold text-right">Dimensions</th>
+                              <th className="py-2 pr-3 font-semibold text-right">Perimeter</th>
+                              <th className="py-2 pr-3 font-semibold text-right">Drywall</th>
+                              <th className="py-2 pr-3 font-semibold">Flooring</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {takeoffData.takeoff.rooms.map((r, i) => (
+                              <tr key={i} className="border-b" style={{ borderColor: 'rgba(241,245,249,0.9)' }}>
+                                <td className="py-1.5 pr-3 text-slate-700 font-medium">{r.name}</td>
+                                <td className="py-1.5 pr-3 text-right tabular-nums">{r.sqft.toLocaleString()}</td>
+                                <td className="py-1.5 pr-3 text-right tabular-nums text-slate-500">{r.width_ft && r.depth_ft ? `${r.width_ft}×${r.depth_ft} ft` : '—'}</td>
+                                <td className="py-1.5 pr-3 text-right tabular-nums text-slate-500">{r.perimeter_ft ?? '—'}</td>
+                                <td className="py-1.5 pr-3 text-right tabular-nums text-slate-500">{r.drywall_sqft ?? '—'}</td>
+                                <td className="py-1.5 pr-3 text-slate-500 capitalize">{r.flooring_type.replace(/_/g, ' ')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Material rows preview */}
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 mb-2">Materials to be added ({takeoffData.material_rows.length})</h3>
+                    <div className="rounded-xl border divide-y" style={{ borderColor: 'rgba(226,232,240,0.9)' }}>
+                      {takeoffData.material_rows.map((row, i) => (
+                        <div key={i} className="flex items-center justify-between px-4 py-2.5 text-xs">
+                          <div>
+                            <div className="font-semibold text-slate-700">{row.item_name}</div>
+                            <div className="text-slate-400 capitalize">{row.category}</div>
+                          </div>
+                          <div className="tabular-nums text-slate-600 font-medium">
+                            {row.quantity.toLocaleString()} {row.unit}
+                          </div>
+                        </div>
+                      ))}
+                      {takeoffData.material_rows.length === 0 && (
+                        <div className="px-4 py-6 text-center text-xs text-slate-400">No quantities extracted. Try re-running blueprint analysis.</div>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-2">Unit costs start at $0 — use “Refresh All Prices” after applying to pull live vendor pricing.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t flex items-center justify-end gap-2" style={{ borderColor: 'rgba(226,232,240,0.8)' }}>
+              <button
+                onClick={() => setTakeoffOpen(false)}
+                disabled={takeoffApplying}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+              >Cancel</button>
+              <button
+                onClick={handleApplyTakeoff}
+                disabled={takeoffApplying || takeoffLoading || !takeoffData || takeoffData.material_rows.length === 0}
+                className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+                style={{ background: 'linear-gradient(135deg, #f59e0b, #b45309)', boxShadow: '0 4px 14px rgba(245,158,11,0.25)' }}
+              >
+                {takeoffApplying ? 'Applying…' : 'Apply to materials list'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

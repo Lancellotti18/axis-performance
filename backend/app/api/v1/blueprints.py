@@ -268,3 +268,143 @@ async def get_status(blueprint_id: str):
     return result.data or {"status": "unknown"}
 
 
+@router.get("/{blueprint_id}/takeoff")
+async def blueprint_takeoff(blueprint_id: str):
+    """
+    Togal-style takeoff: read the cached scene_3d and return contractor-ready
+    quantities (per-room flooring, wall LF by type, drywall sheets, framing,
+    door/window counts) plus a list of material rows that can be added
+    straight into the Materials tab with one click.
+
+    If scene_3d is missing, we kick off the vision pass inline so the
+    contractor doesn't have to bounce back to another tab first.
+    """
+    import json as _json
+    from app.services.blueprint_takeoff_service import compute_takeoff, takeoff_to_material_rows
+
+    db = get_supabase()
+    bp = db.table("blueprints").select("id, project_id").eq("id", blueprint_id).single().execute()
+    if not bp.data:
+        raise HTTPException(status_code=404, detail="Blueprint not found")
+
+    analysis = db.table("analyses").select("id, scene_3d").eq("blueprint_id", blueprint_id).limit(1).execute()
+    scene: dict | None = None
+    analysis_id = None
+    if analysis.data:
+        analysis_id = analysis.data[0]["id"]
+        scene_raw = analysis.data[0].get("scene_3d")
+        if isinstance(scene_raw, str) and scene_raw:
+            try:
+                scene = _json.loads(scene_raw)
+            except Exception:
+                logger.debug("scene_3d JSON decode failed", exc_info=True)
+                scene = None
+        elif isinstance(scene_raw, dict):
+            scene = scene_raw
+
+    if not scene:
+        # Vision pass wasn't run yet — do it now.
+        from app.services.blueprint_vision_service import parse_blueprint_3d as _parse
+        try:
+            scene = await _parse(blueprint_id)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Blueprint vision pass failed: {e}")
+        # Cache back for next time (best-effort)
+        try:
+            if analysis_id:
+                db.table("analyses").update({"scene_3d": _json.dumps(scene)}).eq("id", analysis_id).execute()
+        except Exception:
+            logger.debug("scene_3d cache write failed", exc_info=True)
+
+    try:
+        takeoff = compute_takeoff(scene)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.exception("takeoff computation failed")
+        raise HTTPException(status_code=500, detail=f"Takeoff failed: {e}")
+
+    material_rows = takeoff_to_material_rows(takeoff)
+    return {
+        "blueprint_id": blueprint_id,
+        "project_id": bp.data.get("project_id"),
+        "takeoff": takeoff,
+        "material_rows": material_rows,
+    }
+
+
+@router.post("/{blueprint_id}/takeoff/apply")
+async def apply_takeoff_to_materials(blueprint_id: str):
+    """
+    One-click: run the takeoff, then upsert each derived row into
+    project_materials so the Materials tab picks them up. Existing manually-
+    added rows are preserved; we only add rows tagged `source='blueprint_takeoff'`
+    that aren't already present.
+    """
+    db = get_supabase()
+    bp = db.table("blueprints").select("project_id").eq("id", blueprint_id).single().execute()
+    if not bp.data:
+        raise HTTPException(status_code=404, detail="Blueprint not found")
+    project_id = bp.data.get("project_id")
+    if not project_id:
+        raise HTTPException(status_code=422, detail="Blueprint has no project")
+
+    # Reuse the GET endpoint logic by calling the helper directly
+    result = await blueprint_takeoff(blueprint_id)
+    rows: list[dict] = result.get("material_rows") or []
+
+    # Find existing takeoff rows so we don't duplicate on repeat clicks
+    try:
+        existing = (
+            db.table("project_materials")
+            .select("id, item_name, source")
+            .eq("project_id", project_id)
+            .execute()
+        )
+        existing_names = {
+            (r.get("item_name") or "").lower()
+            for r in (existing.data or [])
+            if (r.get("source") == "blueprint_takeoff")
+        }
+    except Exception:
+        existing_names = set()
+
+    inserted = 0
+    for row in rows:
+        if (row["item_name"] or "").lower() in existing_names:
+            continue
+        payload = {
+            "project_id": project_id,
+            "item_name": row["item_name"],
+            "category": row["category"],
+            "quantity": row["quantity"],
+            "unit": row["unit"],
+            "unit_cost": row.get("unit_cost") or 0,
+            "total_cost": row.get("total_cost") or 0,
+            "source": "blueprint_takeoff",
+        }
+        try:
+            db.table("project_materials").insert(payload).execute()
+            inserted += 1
+        except Exception as e:
+            msg = str(e).lower()
+            if "source" in msg or "column" in msg:
+                payload.pop("source", None)
+                try:
+                    db.table("project_materials").insert(payload).execute()
+                    inserted += 1
+                except Exception:
+                    logger.debug("takeoff apply insert failed (no-source retry)", exc_info=True)
+            else:
+                logger.debug("takeoff apply insert failed", exc_info=True)
+
+    return {
+        "project_id": project_id,
+        "rows_added": inserted,
+        "rows_total": len(rows),
+        "takeoff": result.get("takeoff"),
+    }
+
+
