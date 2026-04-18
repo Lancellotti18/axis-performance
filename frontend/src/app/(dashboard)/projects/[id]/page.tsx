@@ -1467,15 +1467,25 @@ Thank you for your time.`
                                   </div>
 
                                   {/* Vendor options expanded */}
+                                  {isExpanded && vendors.length === 0 && (
+                                    <div className="px-5 pb-4 bg-slate-50/60">
+                                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 pt-3">Where to Buy</div>
+                                      <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-5 text-center">
+                                        <div className="text-slate-500 text-sm font-semibold mb-1">No live listings yet</div>
+                                        <div className="text-slate-400 text-xs">Click "Search for Live Prices" below to pull real product pages from Home Depot, Lowe's, Ferguson, Grainger, and more.</div>
+                                      </div>
+                                    </div>
+                                  )}
                                   {isExpanded && vendors.length > 0 && (
                                     <div className="px-5 pb-4 bg-slate-50/60">
                                       <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 pt-3">Where to Buy</div>
                                       <div className="grid gap-2">
                                         {sortedVendors.map((v: any, vi: number) => {
                                           const isQuoteOnly = v.quote_only === true || v.price === null || v.price === undefined
-                                          const buyUrl = v.url && v.url.startsWith('http')
-                                            ? v.url
-                                            : `https://www.google.com/search?q=${encodeURIComponent(`${m.item_name} ${v.vendor} buy`)}`
+                                          // Backend now guarantees every retail row has a real product URL.
+                                          // Skip the row entirely if it somehow still lacks one.
+                                          if (!v.url || !v.url.startsWith('http')) return null
+                                          const buyUrl = v.url
                                           // Retail entries: show price tag on first; trade distributors: show "Trade" badge
                                           const isFirstRetail = !isQuoteOnly && vi === 0
                                           return (
