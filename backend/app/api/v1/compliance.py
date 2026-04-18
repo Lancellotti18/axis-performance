@@ -17,22 +17,28 @@ async def get_compliance_for_region(
     region_code: str,
     project_type: str = "residential",
     city: str | None = None,
+    county: str | None = None,
+    zip_code: str | None = None,
     user: dict = Depends(get_current_user),
 ):
     """
     Run a compliance check for a given region code (e.g. US-TX) and project type.
-    Results are generated fresh via Claude — cache on the frontend or in DB as needed.
+    Engine handles its own 6h in-memory caching keyed on jurisdiction fingerprint.
     """
     state_info = get_state_from_region_code(region_code)
+    location = f"{city}, {state_info['name']}" if city else state_info["name"]
     try:
         data = await run_compliance_check(
-            location=state_info["name"],
+            location=location,
             state_code=state_info["code"],
             project_type=project_type,
             city=city,
+            county=county,
+            zip_code=zip_code,
         )
         return data
     except Exception as e:
+        logger.exception("compliance/region failed")
         raise HTTPException(status_code=500, detail=f"Compliance check failed: {str(e)}")
 
 
@@ -62,15 +68,20 @@ async def trigger_project_compliance(
         "project_id": project_id,
         "status": "processing",
         "region": region,
-        "city": city,
+        "city": city or project.get("city"),
         "project_type": blueprint_type,
     }).execute()
 
     check_id = check.data[0]["id"] if check.data else None
 
-    # Run compliance check in background
+    # Pass full jurisdiction to the background task so the engine can resolve
+    # county / climate zone / wind posture properly.
     background_tasks.add_task(
-        _run_and_save_compliance, check_id, project_id, region, blueprint_type, city
+        _run_and_save_compliance,
+        check_id, project_id, region, blueprint_type,
+        city or project.get("city"),
+        project.get("county"),
+        project.get("zip_code"),
     )
 
     return {"status": "processing", "check_id": check_id}
@@ -82,22 +93,34 @@ async def _run_and_save_compliance(
     region: str,
     project_type: str,
     city: str | None,
+    county: str | None = None,
+    zip_code: str | None = None,
 ):
     supabase = get_supabase()
     state_info = get_state_from_region_code(region)
+    location = f"{city}, {state_info['name']}" if city else state_info["name"]
     try:
         data = await run_compliance_check(
-            location=state_info["name"],
+            location=location,
             state_code=state_info["code"],
             project_type=project_type,
             city=city,
+            county=county,
+            zip_code=zip_code,
         )
 
-        # Save items
+        # Save items. `source` carries the citation text; the URL is also
+        # embedded into the displayed text when available so older clients
+        # (without source_url support) still see the link.
         items = data.get("items", [])
         if items and check_id:
-            rows = [
-                {
+            rows = []
+            for item in items:
+                source_text = item.get("source") or ""
+                url = item.get("source_url") or ""
+                if url and url not in source_text:
+                    source_text = f"{source_text} — {url}".strip(" —")
+                rows.append({
                     "check_id": check_id,
                     "category": item.get("category"),
                     "title": item.get("title"),
@@ -106,10 +129,8 @@ async def _run_and_save_compliance(
                     "action": item.get("action"),
                     "deadline": item.get("deadline"),
                     "penalty": item.get("penalty"),
-                    "source": item.get("source"),
-                }
-                for item in items
-            ]
+                    "source": source_text or None,
+                })
             supabase.table("compliance_items").insert(rows).execute()
 
         # Update check record
@@ -189,6 +210,7 @@ async def check_project_materials(project_id: str = Query(...)):
 
     city = project.get("city", "")
     county = project.get("county", "")
+    zip_code = project.get("zip_code", "")
     region = project.get("region", "US-TX")
     state = region.replace("US-", "") if region else "TX"
     project_type = project.get("blueprint_type", "residential")
@@ -225,8 +247,10 @@ async def check_project_materials(project_id: str = Query(...)):
             state=state,
             project_type=project_type,
             county=county,
+            zip_code=zip_code,
         )
     except Exception as e:
+        logger.exception("materials compliance failed")
         raise HTTPException(status_code=500, detail=f"Compliance check failed: {str(e)}")
 
     return result

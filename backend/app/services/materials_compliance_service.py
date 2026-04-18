@@ -1,72 +1,230 @@
 """
-Materials compliance cross-check service.
-Fetches local building codes (state + city + county) via Tavily, then uses Claude
-to evaluate EVERY material against those rules and return a per-item checklist
-with pass/fail, exact rule quote, and fix suggestion for each failure.
+Materials compliance cross-check.
+
+Given a project's material list, check every item against the locally adopted
+building / electrical / energy / mechanical / fire codes for the project's
+jurisdiction, and flag:
+  - items that violate an applicable code section
+  - materials or details that are REQUIRED but missing from the list
+  - items that need jurisdiction-specific attention (climate zone, wind zone)
+
+Differences from the old service:
+  - Parallel category-specific searches (roofing, insulation, electrical,
+    plumbing, fenestration, structural, fire, egress), each domain-restricted
+    to authoritative sources.
+  - Jurisdiction profile feeds the LLM climate zone, wind posture, and the
+    exact code cycles adopted (via app.services.jurisdiction).
+  - Citation verification: every emitted rule_text / code_reference URL must
+    appear in the research snippets. Unverifiable items keep their guidance
+    but are flagged so the UI can show a "confirm with AHJ" chip.
+  - 6-hour in-memory cache keyed by (jurisdiction, project_type, materials
+    signature) so repeated clicks are free.
 """
+from __future__ import annotations
+
+import asyncio
+import hashlib
 import json
 import logging
 import re
-import asyncio
-from app.core.config import settings
+import time
+from typing import Optional
+
+from app.services.jurisdiction import AUTHORITATIVE_DOMAINS, resolve_jurisdiction
 from app.services.llm import llm_text
-from app.services.search import web_search
 
 logger = logging.getLogger(__name__)
 
 
-async def fetch_local_codes(city: str, state: str, project_type: str, county: str = "") -> str:
-    """Search for building code requirements at state, county, and city level."""
-    location_parts = [p for p in [city, county, state] if p]
-    location_str = ", ".join(location_parts)
-
-    queries = [
-        f"{location_str} residential building code material requirements {project_type} 2025",
-        f"{state} state building code {project_type} approved materials IRC amendments",
-    ]
-    if county:
-        queries.append(f"{county} county {state} building ordinance {project_type} materials")
-
-    results = await asyncio.gather(*[web_search(q, max_results=3) for q in queries[:2]])
-    combined = "\n---\n".join(r for r in results if r)
-    combined = combined or "(No local code data found — using expert knowledge)"
-    # Truncate to keep total prompt within Groq's 12k TPM free-tier limit
-    return combined[:4000] if len(combined) > 4000 else combined
+CACHE_TTL_SECONDS = 6 * 60 * 60
+_cache: dict[str, tuple[float, dict]] = {}
 
 
-def _parse_json_from_claude(text: str) -> dict:
-    """Robustly extract JSON from Claude's response regardless of formatting."""
+# Category → query template. The jurisdiction profile is interpolated at
+# call time so results are tight to the user's city/state, not generic.
+CATEGORY_QUERIES: list[tuple[str, str]] = [
+    ("roofing",      "{loc} {cc_building} {project_type} roofing asphalt shingle underlayment ice water shield section"),
+    ("fenestration", "{loc} {cc_energy} windows doors U-factor SHGC climate zone {climate_zone} section"),
+    ("insulation",   "{loc} {cc_energy} insulation R-value attic wall climate zone {climate_zone} requirement"),
+    ("framing",      "{loc} {cc_residential} wood framing stud spacing header sizing Table R602"),
+    ("electrical",   "{loc} {cc_electrical} NEC AFCI GFCI receptacle bathroom kitchen section"),
+    ("plumbing",     "{loc} plumbing code IPC UPC pipe type venting trap arm section"),
+    ("mechanical",   "{loc} mechanical code IMC HVAC ventilation rate whole house section"),
+    ("fire",         "{loc} fire code smoke alarm carbon monoxide detector hardwired interconnected section"),
+    ("egress",       "{loc} {cc_residential} emergency egress window bedroom opening size section R310"),
+    ("wind_flood",   "{loc} wind-borne debris hurricane impact glazing nailing schedule {cc_building} section"),
+]
+
+
+async def _tavily_category(cat: str, query: str) -> dict:
+    try:
+        from app.core.config import settings
+        if not settings.TAVILY_API_KEY:
+            return {"category": cat, "results": [], "errored": True, "error": "no_tavily_key"}
+        from tavily import TavilyClient
+        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+
+        def _run():
+            return client.search(
+                query=query,
+                search_depth="advanced",
+                max_results=4,
+                include_domains=AUTHORITATIVE_DOMAINS,
+                include_answer=False,
+            )
+        resp = await asyncio.to_thread(_run)
+        rows = [
+            {
+                "title":   r.get("title") or "",
+                "url":     r.get("url") or "",
+                "content": (r.get("content") or "")[:700],
+            }
+            for r in (resp.get("results") or [])[:4]
+        ]
+        return {"category": cat, "results": rows, "errored": False}
+    except Exception as e:
+        logger.warning("tavily category '%s' failed: %s", cat, e)
+        return {"category": cat, "results": [], "errored": True, "error": str(e)}
+
+
+def _format_research(results: list[dict]) -> tuple[str, set[str]]:
+    parts: list[str] = []
+    urls: set[str] = set()
+    for c in results:
+        if not c.get("results"):
+            continue
+        parts.append(f"### Category: {c['category']}")
+        for r in c["results"]:
+            if r.get("url"):
+                urls.add(r["url"])
+            parts.append(f"- **{r.get('title','')}**\n  URL: {r.get('url','')}\n  {r.get('content','')}")
+        parts.append("")
+    return "\n".join(parts), urls
+
+
+def _materials_signature(materials: list[dict]) -> str:
+    key = "|".join(
+        f"{(m.get('item_name') or '').lower()}:{m.get('quantity',0)}:{(m.get('unit') or '').lower()}"
+        for m in sorted(materials, key=lambda m: (m.get("item_name") or "").lower())
+    )
+    return hashlib.sha1(key.encode()).hexdigest()[:16]
+
+
+def _strip_json(text: str) -> str:
     text = text.strip()
-
-    # Strip markdown fences
     text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
     text = re.sub(r'\s*```\s*$', '', text)
-    text = text.strip()
-
     start = text.find("{")
     if start == -1:
         raise ValueError(f"No JSON object found. First 200 chars: {text[:200]}")
-
     candidate = text[start:]
+    try:
+        return candidate
+    except Exception:
+        pass
+    return candidate
 
-    # 1. Try clean parse
+
+def _parse_json(text: str) -> dict:
+    candidate = _strip_json(text).strip()
     try:
         return json.loads(candidate)
     except Exception:
-        logger.debug("clean JSON parse failed, trying truncation recovery", exc_info=True)
-        pass
+        # Walk back through `}` boundaries and try to close truncated output.
+        for i in range(len(candidate) - 1, -1, -1):
+            if candidate[i] != "}":
+                continue
+            try:
+                return json.loads(candidate[:i + 1])
+            except Exception:
+                continue
+        raise
 
-    # 2. Truncated response — walk backwards through every } and try to close it
-    for i in range(len(candidate) - 1, -1, -1):
-        if candidate[i] != '}':
-            continue
-        try:
-            return json.loads(candidate[:i + 1])
-        except Exception:
-            logger.debug("truncated JSON parse attempt failed, trying next offset", exc_info=True)
-            continue
 
-    raise ValueError(f"Could not parse JSON from Claude response. First 200 chars: {text[:200]}")
+def _verify(items: list[dict], allowed_urls: set[str]) -> list[dict]:
+    """
+    For each checklist item, verify its `code_reference_url` (if present) was
+    in the research. Items whose URL was fabricated keep their content but
+    get verified=false and the URL cleared so the UI doesn't link to a
+    non-existent statute page.
+    """
+    out = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        url = (it.get("code_reference_url") or "").strip()
+        verified = bool(url and url in allowed_urls)
+        if not verified:
+            if url:
+                it["code_reference_url"] = None
+            it["verified"] = False
+        else:
+            it["verified"] = True
+        out.append(it)
+    return out
+
+
+PROMPT = """You are a certified building-code compliance expert for the United States.
+
+JURISDICTION PROFILE:
+{jurisdiction_json}
+
+CODE CYCLES:
+{code_cycles}
+
+MATERIALS LIST:
+{materials_text}
+
+RESEARCH (domain-restricted to .gov / municode.com / ecode360.com / iccsafe.org etc. — the ONLY citation source you may use):
+{research}
+
+TASK
+Evaluate EVERY material against the adopted code for this jurisdiction, using the climate zone and wind posture above.
+Also identify materials or details that are REQUIRED for this project type/jurisdiction but MISSING from the list.
+
+GROUNDING RULES (strict):
+ - Every `code_reference` MUST be a real, specific section (e.g. "IRC 2021 §R806.4", "IECC 2021 Table R402.1.2").
+ - Every `code_reference_url` MUST be a URL that appears verbatim in the RESEARCH above. Never invent.
+ - Include a short `rule_quote` (<25 words) of the actual statute text when the research contains it.
+ - If climate zone affects this item (insulation R-value, window U-factor, ice shield), the note MUST mention the zone.
+ - If the jurisdiction is wind-borne debris / hurricane-prone, fenestration and roof attachment items MUST reflect ASCE 7 / IBC 1609 requirements.
+ - If no research supports a strict rule for a material, mark status="warning" with a note explaining why and set verified=false.
+ - Do NOT fabricate code section numbers. When uncertain, prefer status="warning" + verified=false over a confident-sounding wrong citation.
+
+Return ONLY this JSON (no markdown fences, no prose):
+
+{{
+  "overall_status": "pass | warning | fail",
+  "summary": "2–4 sentences naming the most critical issues for this jurisdiction. Cite climate zone if relevant.",
+  "checklist": [
+    {{
+      "item_name": "exact name from the materials list",
+      "category": "category",
+      "status": "pass | fail | warning",
+      "note": "1 short sentence",
+      "code_reference": "IRC 2021 §R905.1.1 or similar",
+      "code_reference_url": "https://... from research, or null",
+      "rule_quote": "short exact excerpt, or null",
+      "fix_suggestion": "for fail/warning — specific fix, ≤20 words"
+    }}
+  ],
+  "missing_required_items": [
+    {{
+      "item_name": "required item not in list",
+      "category": "category",
+      "code_reference": "real section",
+      "code_reference_url": "URL from research or null",
+      "reason_required": "1 sentence tying it to jurisdiction or climate zone"
+    }}
+  ]
+}}
+
+RULES:
+ - overall_status: "pass" = no failures, "warning" = minor or unverifiable issues, "fail" = one or more clear code violations.
+ - Every material in the list MUST appear in the checklist (no skipping).
+ - Limit `missing_required_items` to at most 8.
+ - Keep `note` under 18 words, `rule_quote` under 25 words, `fix_suggestion` under 20 words.
+"""
 
 
 async def check_materials_compliance(
@@ -75,119 +233,112 @@ async def check_materials_compliance(
     state: str,
     project_type: str,
     county: str = "",
+    zip_code: str = "",
 ) -> dict:
     """
-    Cross-reference every material against local building codes.
-
-    Returns a per-item checklist:
-    {
-      overall_status: 'pass' | 'fail' | 'warning',
-      summary: str,
-      location: { city, state, county },
-      project_type: str,
-      checklist: [
-        {
-          item_name, category, status: 'pass'|'fail'|'warning',
-          note, code_reference,               # on pass
-          rule_text, violation_reason, fix_suggestion  # on fail/warning
-        }
-      ],
-      missing_required_items: [
-        { item_name, rule_text, reason_required }
-      ]
-    }
+    Public entry. Returns the per-material checklist with verified citations.
     """
-    code_context = await fetch_local_codes(city, state, project_type, county)
+    j = resolve_jurisdiction(city=city, state=state, county=county, zip_code=zip_code)
+    cache_key = f"{j['fingerprint']}|{project_type}|{_materials_signature(materials or [])}"
+    now = time.time()
+    hit = _cache.get(cache_key)
+    if hit and (now - hit[0]) < CACHE_TTL_SECONDS:
+        return hit[1]
 
-    location_parts = [p for p in [city, county, state] if p]
-    location_str = ", ".join(location_parts)
+    loc = ", ".join(p for p in [j["city"], j["county"], j["state_name"]] if p).strip() or j["state_name"]
+    fmt = {
+        "loc": loc,
+        "project_type": project_type,
+        "climate_zone": j.get("climate_zone") or "",
+        "cc_building":   j["code_cycles"].get("building", "building code"),
+        "cc_residential": j["code_cycles"].get("residential", "residential code"),
+        "cc_energy":     j["code_cycles"].get("energy", "energy code"),
+        "cc_electrical": j["code_cycles"].get("electrical", "NEC"),
+    }
+    queries = [(cat, tmpl.format(**fmt)) for cat, tmpl in CATEGORY_QUERIES]
+
+    # Skip the wind/flood category for non-wind-prone jurisdictions — it's noise.
+    if not (j["high_wind"] or j["hurricane_prone"]):
+        queries = [(c, q) for c, q in queries if c != "wind_flood"]
+
+    results = await asyncio.gather(*[_tavily_category(c, q) for c, q in queries])
+    research, allowed_urls = _format_research(results)
 
     materials_text = "\n".join([
-        f"  {i+1}. {m.get('item_name', 'Unknown')} "
-        f"[{m.get('category', 'general')}] "
-        f"qty: {m.get('quantity', 0)} {m.get('unit', 'each')}"
-        for i, m in enumerate(materials)
-    ]) if materials else "  (no materials provided)"
+        f"  {i+1}. {m.get('item_name','Unknown')} "
+        f"[{m.get('category','general')}] "
+        f"qty: {m.get('quantity',0)} {m.get('unit','each')}"
+        for i, m in enumerate(materials or [])
+    ]) or "  (no materials provided)"
 
-    prompt = f"""You are a certified building code compliance expert reviewing a {project_type} project in {location_str}.
+    prompt = PROMPT.format(
+        jurisdiction_json=json.dumps({k: j[k] for k in ("state","state_name","city","county","zip","climate_zone","high_wind","hurricane_prone")}, indent=2),
+        code_cycles="\n".join(f"  - {k}: {v}" for k, v in j["code_cycles"].items()),
+        materials_text=materials_text,
+        research=(research[:14000] if research else "(No research retrieved — evaluate using IRC/IBC/IECC base code for the state and FLAG verified=false on every item.)"),
+    )
 
-MATERIALS LIST:
-{materials_text}
-
-LOCAL BUILDING CODE RESEARCH:
-{code_context if code_context else f"No specific local code data found. Apply IRC 2021 / IBC standards and known {state} state amendments."}
-
-YOUR TASK:
-Review EVERY material in the list against:
-- IRC 2021 / IBC (base code)
-- {state} state building code amendments
-- {f"{county} county ordinances" if county else ""}
-- {city} local ordinances
-
-For EACH material, determine if it passes or fails code requirements.
-Also identify any required materials that are MISSING from the list entirely.
-
-Return ONLY this JSON (no markdown, no text outside the JSON):
-
-{{
-  "overall_status": "pass",
-  "summary": "2-4 sentence overview of compliance status for {location_str}. Highlight the most critical issues.",
-  "checklist": [
-    {{
-      "item_name": "exact name from list",
-      "category": "category",
-      "status": "pass",
-      "note": "brief reason (10 words max)",
-      "code_reference": "IRC R802.4.1"
-    }},
-    {{
-      "item_name": "exact name from list",
-      "category": "category",
-      "status": "fail",
-      "rule_text": "IRC Section R905.2.4.1: [exact quote, keep under 30 words]",
-      "violation_reason": "Why it fails (20 words max)",
-      "fix_suggestion": "Specific fix (15 words max)"
-    }}
-  ],
-  "missing_required_items": [
-    {{
-      "item_name": "required item not in the list",
-      "rule_text": "exact code section requiring it",
-      "reason_required": "why it is required for {project_type} in {location_str}"
-    }}
-  ]
-}}
-
-RULES:
-- overall_status: "pass" = no failures, "warning" = minor issues only, "fail" = one or more serious violations
-- Every material in the list MUST appear in the checklist — no skipping
-- status must be exactly "pass", "fail", or "warning"
-- Keep ALL text fields SHORT — notes under 15 words, rule_text under 30 words, fix under 15 words
-- For missing items: only flag genuinely required items (max 5)
-- Be strict but concise — inspector style, no paragraphs
-- Consider {state} climate zone for insulation R-values, ice/water shield, wind ratings"""
-
-    text = await llm_text(prompt, max_tokens=8192)
-    text = text.strip()
-
+    raw = await llm_text(prompt, max_tokens=8192)
     try:
-        result = _parse_json_from_claude(text)
+        result = _parse_json(raw)
     except Exception:
-        logger.warning("compliance JSON parse failed, returning structured fallback", exc_info=True)
-        # Last resort — return a structured fallback so the UI never shows a raw error
+        logger.warning("materials compliance JSON parse failed", exc_info=True)
         result = {
             "overall_status": "warning",
-            "summary": f"Compliance data was retrieved for {city}, {state} but could not be fully parsed. Re-run the check to try again.",
+            "summary": f"Compliance data for {loc} retrieved but could not be parsed. Re-run to try again.",
             "checklist": [],
             "missing_required_items": [],
         }
 
-    # Ensure required keys always exist
+    result["checklist"] = _verify(result.get("checklist") or [], allowed_urls)
+    # Missing-items list gets the same URL verification treatment.
+    verified_missing = []
+    for m in result.get("missing_required_items") or []:
+        if not isinstance(m, dict):
+            continue
+        url = (m.get("code_reference_url") or "").strip()
+        if url and url not in allowed_urls:
+            m["code_reference_url"] = None
+            m["verified"] = False
+        else:
+            m["verified"] = bool(url)
+        verified_missing.append(m)
+    result["missing_required_items"] = verified_missing
+
     result.setdefault("overall_status", "warning")
     result.setdefault("summary", "")
-    result.setdefault("checklist", result.pop("compliant_items", []) + result.pop("violations", []))
-    result.setdefault("missing_required_items", [])
-
-    result["location"] = {"city": city, "state": state, "county": county}
+    result["location"] = {"city": city, "state": state, "county": county, "zip": zip_code}
     result["project_type"] = project_type
+    result["jurisdiction"] = {
+        "climate_zone": j.get("climate_zone"),
+        "high_wind": j.get("high_wind"),
+        "hurricane_prone": j.get("hurricane_prone"),
+        "code_cycles": j.get("code_cycles"),
+        "code_cycles_pinned": j.get("code_cycles_pinned"),
+    }
+    result["verified_count"] = sum(1 for i in result["checklist"] if i.get("verified"))
+    result["total_count"] = len(result["checklist"])
+
+    _cache[cache_key] = (now, result)
     return result
+
+
+# ── Back-compat shim: keep old signature so materials_compliance.fetch_local_codes
+#    callers in tests/migrations still work.
+async def fetch_local_codes(city: str, state: str, project_type: str, county: str = "") -> str:
+    """Legacy helper — returns a flat research string. New callers use
+    check_materials_compliance which handles research internally."""
+    j = resolve_jurisdiction(city=city, state=state, county=county)
+    loc = ", ".join(p for p in [city, county, j["state_name"]] if p)
+    fmt = {
+        "loc": loc, "project_type": project_type,
+        "climate_zone": j.get("climate_zone") or "",
+        "cc_building":   j["code_cycles"].get("building", "building code"),
+        "cc_residential": j["code_cycles"].get("residential", "residential code"),
+        "cc_energy":     j["code_cycles"].get("energy", "energy code"),
+        "cc_electrical": j["code_cycles"].get("electrical", "NEC"),
+    }
+    queries = [(c, t.format(**fmt)) for c, t in CATEGORY_QUERIES[:4]]
+    results = await asyncio.gather(*[_tavily_category(c, q) for c, q in queries])
+    research, _ = _format_research(results)
+    return research[:4000]
