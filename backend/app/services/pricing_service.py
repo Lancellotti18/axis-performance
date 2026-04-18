@@ -150,6 +150,31 @@ def _trade_distributor_entries(item_name: str) -> List[dict]:
     ]
 
 
+# Vendors where we hard-verify the product page by actually fetching it.
+# These two are where users click most often, and broken links erode trust fastest.
+STRICT_VERIFY_VENDORS = {"Home Depot", "Lowe's"}
+
+
+def _validation_rejects(validation: dict) -> bool:
+    """
+    True when validation actively disproves the link (drop the row).
+
+    Retailer bot-blocking (403/429) and transient timeouts are inconclusive,
+    not failures — if the URL structure is a known product page, we trust it.
+    Hard rejections: 404/410, confirmed wrong product, or extreme price mismatch.
+    """
+    err = (validation.get("error") or "").lower()
+    if "404" in err or "410" in err:
+        return True
+    if err:
+        return False
+    if validation.get("price_mismatch"):
+        return True
+    if validation.get("actual_price") is not None and not validation.get("product_found"):
+        return True
+    return False
+
+
 def _search_retail_products(
     client: TavilyClient,
     item_name: str,
@@ -157,11 +182,15 @@ def _search_retail_products(
 ) -> List[dict]:
     """
     Return at most one retail row per vendor, each guaranteed to be a real
-    product page with a scraped price. Empty list if nothing clean found —
-    we'd rather show fewer accurate rows than misleading ones.
+    product page with a scraped price. Home Depot and Lowe's rows are
+    hard-verified (real HTTP fetch + product-name + price match) so the
+    "Buy" button never lands on a 404 or wrong product. Empty list if
+    nothing clean survives — we'd rather show fewer accurate rows.
     """
+    from app.services.link_validator import validate_product_url
+
     location_hint = f" {city}" if city else ""
-    results: List[dict] = []
+    candidates: List[dict] = []
     seen_vendors: set[str] = set()
 
     try:
@@ -186,7 +215,7 @@ def _search_retail_products(
         price = _extract_price(content)
         if price is None:
             continue
-        results.append({
+        candidates.append({
             "vendor":   vendor,
             "price":    price,
             "url":      url,
@@ -194,6 +223,42 @@ def _search_retail_products(
             "note":     "",
         })
         seen_vendors.add(vendor)
+
+    if not candidates:
+        return []
+
+    # Hard-verify Home Depot + Lowe's in parallel. Cache in link_validator
+    # keeps repeat hits instant across items and sessions.
+    to_verify = [c for c in candidates if c["vendor"] in STRICT_VERIFY_VENDORS]
+    verified_map: Dict[str, dict] = {}
+    if to_verify:
+        def _verify(row):
+            return row["url"], validate_product_url(row["url"], item_name, row["price"])
+
+        with ThreadPoolExecutor(max_workers=min(4, len(to_verify))) as pool:
+            futs = [pool.submit(_verify, c) for c in to_verify]
+            for fut in as_completed(futs):
+                try:
+                    u, v = fut.result(timeout=12)
+                    verified_map[u] = v
+                except Exception:
+                    logger.debug("link validator crashed for a candidate", exc_info=True)
+
+    results: List[dict] = []
+    for row in candidates:
+        if row["vendor"] in STRICT_VERIFY_VENDORS:
+            v = verified_map.get(row["url"])
+            if v is None:
+                # Validator never reported back — unsafe to claim this link works
+                continue
+            if _validation_rejects(v):
+                continue
+            # When the live page had a confidently extracted price close to the
+            # snippet price, prefer it — it's what the user will actually see.
+            actual = v.get("actual_price")
+            if actual and 0.7 * row["price"] <= actual <= 1.3 * row["price"]:
+                row["price"] = round(actual, 2)
+        results.append(row)
 
     results.sort(key=lambda x: x["price"])
     if results:
