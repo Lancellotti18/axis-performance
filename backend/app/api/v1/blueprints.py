@@ -283,16 +283,44 @@ async def blueprint_takeoff(blueprint_id: str):
     from app.services.blueprint_takeoff_service import compute_takeoff, takeoff_to_material_rows
 
     db = get_supabase()
-    bp = db.table("blueprints").select("id, project_id").eq("id", blueprint_id).single().execute()
-    if not bp.data:
-        raise HTTPException(status_code=404, detail="Blueprint not found")
 
-    analysis = db.table("analyses").select("id, scene_3d").eq("blueprint_id", blueprint_id).limit(1).execute()
+    # Blueprint lookup — avoid .single() because it raises an APIError for 0
+    # rows that bubbles up as a generic 500.
+    try:
+        bp = db.table("blueprints").select("id, project_id").eq("id", blueprint_id).limit(1).execute()
+    except Exception as e:
+        logger.exception("blueprint lookup failed")
+        raise HTTPException(status_code=500, detail=f"Could not load blueprint: {e}")
+    if not bp.data:
+        raise HTTPException(status_code=404, detail="Blueprint not found — upload a blueprint for this project first.")
+    bp_row = bp.data[0]
+
+    # Analysis row lookup. Older databases don't have the `scene_3d` column;
+    # fall back to selecting just `id` so we can still run the vision pass
+    # inline without the whole endpoint 500-ing on schema drift.
     scene: dict | None = None
     analysis_id = None
+    scene_3d_column_exists = True
+    try:
+        analysis = db.table("analyses").select("id, scene_3d").eq("blueprint_id", blueprint_id).limit(1).execute()
+    except Exception as e:
+        msg = str(e).lower()
+        if "scene_3d" in msg or "column" in msg and "does not exist" in msg:
+            logger.warning("analyses.scene_3d column missing — running vision pass without cache. "
+                           "Apply supabase/migrations/20260418_scene_3d_column.sql to enable caching.")
+            scene_3d_column_exists = False
+            try:
+                analysis = db.table("analyses").select("id").eq("blueprint_id", blueprint_id).limit(1).execute()
+            except Exception as e2:
+                logger.exception("analyses fallback lookup failed")
+                raise HTTPException(status_code=500, detail=f"Could not load analysis row: {e2}")
+        else:
+            logger.exception("analyses lookup failed")
+            raise HTTPException(status_code=500, detail=f"Could not load analysis row: {e}")
+
     if analysis.data:
         analysis_id = analysis.data[0]["id"]
-        scene_raw = analysis.data[0].get("scene_3d")
+        scene_raw = analysis.data[0].get("scene_3d") if scene_3d_column_exists else None
         if isinstance(scene_raw, str) and scene_raw:
             try:
                 scene = _json.loads(scene_raw)
@@ -303,20 +331,20 @@ async def blueprint_takeoff(blueprint_id: str):
             scene = scene_raw
 
     if not scene:
-        # Vision pass wasn't run yet — do it now.
         from app.services.blueprint_vision_service import parse_blueprint_3d as _parse
         try:
             scene = await _parse(blueprint_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         except Exception as e:
+            logger.exception("blueprint vision pass failed")
             raise HTTPException(status_code=500, detail=f"Blueprint vision pass failed: {e}")
-        # Cache back for next time (best-effort)
-        try:
-            if analysis_id:
+        # Best-effort cache write; swallow everything so the response still flows.
+        if analysis_id and scene_3d_column_exists:
+            try:
                 db.table("analyses").update({"scene_3d": _json.dumps(scene)}).eq("id", analysis_id).execute()
-        except Exception:
-            logger.debug("scene_3d cache write failed", exc_info=True)
+            except Exception:
+                logger.debug("scene_3d cache write failed", exc_info=True)
 
     try:
         takeoff = compute_takeoff(scene)
@@ -329,7 +357,7 @@ async def blueprint_takeoff(blueprint_id: str):
     material_rows = takeoff_to_material_rows(takeoff)
     return {
         "blueprint_id": blueprint_id,
-        "project_id": bp.data.get("project_id"),
+        "project_id": bp_row.get("project_id"),
         "takeoff": takeoff,
         "material_rows": material_rows,
     }
@@ -344,30 +372,45 @@ async def apply_takeoff_to_materials(blueprint_id: str):
     that aren't already present.
     """
     db = get_supabase()
-    bp = db.table("blueprints").select("project_id").eq("id", blueprint_id).single().execute()
+    try:
+        bp = db.table("blueprints").select("project_id").eq("id", blueprint_id).limit(1).execute()
+    except Exception as e:
+        logger.exception("blueprint lookup failed in takeoff/apply")
+        raise HTTPException(status_code=500, detail=f"Could not load blueprint: {e}")
     if not bp.data:
-        raise HTTPException(status_code=404, detail="Blueprint not found")
-    project_id = bp.data.get("project_id")
+        raise HTTPException(status_code=404, detail="Blueprint not found — upload a blueprint for this project first.")
+    project_id = bp.data[0].get("project_id")
     if not project_id:
         raise HTTPException(status_code=422, detail="Blueprint has no project")
 
-    # Reuse the GET endpoint logic by calling the helper directly
+    # Reuse the GET endpoint logic by calling the helper directly.
+    # That runs the vision pass inline if needed, so by the time we insert
+    # we know an analysis row exists for this blueprint.
     result = await blueprint_takeoff(blueprint_id)
     rows: list[dict] = result.get("material_rows") or []
 
-    # Find existing takeoff rows so we don't duplicate on repeat clicks
+    # Rows live on material_estimates (keyed by analysis_id), matching the
+    # Materials tab read path in app/api/v1/materials.py.
+    try:
+        analysis = db.table("analyses").select("id").eq("blueprint_id", blueprint_id).limit(1).execute()
+    except Exception as e:
+        logger.exception("analysis lookup failed in takeoff/apply")
+        raise HTTPException(status_code=500, detail=f"Could not load analysis row: {e}")
+    if not analysis.data:
+        raise HTTPException(status_code=422, detail="No analysis row for this blueprint — run the blueprint analysis first.")
+    analysis_id = analysis.data[0]["id"]
+
+    # De-dupe against existing rows for this analysis so repeat clicks don't
+    # duplicate. We compare by (lowered) item_name since material_estimates
+    # has no source column in the base schema.
     try:
         existing = (
-            db.table("project_materials")
-            .select("id, item_name, source")
-            .eq("project_id", project_id)
+            db.table("material_estimates")
+            .select("item_name")
+            .eq("analysis_id", analysis_id)
             .execute()
         )
-        existing_names = {
-            (r.get("item_name") or "").lower()
-            for r in (existing.data or [])
-            if (r.get("source") == "blueprint_takeoff")
-        }
+        existing_names = {(r.get("item_name") or "").lower() for r in (existing.data or [])}
     except Exception:
         existing_names = set()
 
@@ -376,29 +419,19 @@ async def apply_takeoff_to_materials(blueprint_id: str):
         if (row["item_name"] or "").lower() in existing_names:
             continue
         payload = {
-            "project_id": project_id,
+            "analysis_id": analysis_id,
             "item_name": row["item_name"],
             "category": row["category"],
             "quantity": row["quantity"],
             "unit": row["unit"],
             "unit_cost": row.get("unit_cost") or 0,
             "total_cost": row.get("total_cost") or 0,
-            "source": "blueprint_takeoff",
         }
         try:
-            db.table("project_materials").insert(payload).execute()
+            db.table("material_estimates").insert(payload).execute()
             inserted += 1
-        except Exception as e:
-            msg = str(e).lower()
-            if "source" in msg or "column" in msg:
-                payload.pop("source", None)
-                try:
-                    db.table("project_materials").insert(payload).execute()
-                    inserted += 1
-                except Exception:
-                    logger.debug("takeoff apply insert failed (no-source retry)", exc_info=True)
-            else:
-                logger.debug("takeoff apply insert failed", exc_info=True)
+        except Exception:
+            logger.debug("takeoff apply insert failed", exc_info=True)
 
     return {
         "project_id": project_id,
