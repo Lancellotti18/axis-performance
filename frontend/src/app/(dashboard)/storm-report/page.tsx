@@ -15,16 +15,65 @@ const RISK_COLORS: Record<string, { bg: string; text: string; bar: string; badge
   red:     { bg: 'bg-red-50',     text: 'text-red-700',     bar: 'bg-red-500',     badge: 'bg-red-100 text-red-700 border-red-200'         },
 }
 
-function RiskBar({ label, score, color }: { label: string; score: number; color: string }) {
-  const c = RISK_COLORS[color] || RISK_COLORS.amber
+const PRIORITY_STYLE: Record<string, { label: string; chip: string }> = {
+  high:   { label: 'High priority',   chip: 'bg-red-100 text-red-700 border-red-200' },
+  medium: { label: 'Medium priority', chip: 'bg-amber-100 text-amber-700 border-amber-200' },
+  low:    { label: 'Best practice',   chip: 'bg-blue-100 text-blue-700 border-blue-200' },
+}
+
+const HAZARD_ICON: Record<string, string> = {
+  hail: '🧊',
+  wind: '💨',
+  tornado: '🌪',
+  hurricane: '🌀',
+  flood: '🌊',
+  wildfire: '🔥',
+  earthquake: '🌋',
+  winter: '❄️',
+}
+
+// Choose per-bar color based on the hazard's own score, not the overall color
+function barColorFor(score: number): string {
+  if (score >= 8) return 'red'
+  if (score >= 4) return 'amber'
+  return 'emerald'
+}
+
+type Hazard = { key: string; label: string; score: number; rationale?: string }
+type Recommendation = { hazard?: string; action: string; why?: string; priority?: string }
+type RecentEvent = { year?: number | string; type?: string; severity?: string; impact?: string; source?: string }
+
+type RiskResult = {
+  overall_risk?: number
+  risk_label?: string
+  risk_color?: string
+  summary?: string
+  scoring_rationale?: string
+  significance?: string
+  hazards?: Hazard[]
+  recent_events?: RecentEvent[]
+  reinforcement_recommendations?: Recommendation[]
+  insurance_note?: string
+  data_source?: string
+  // legacy
+  hail_risk?: number
+  wind_risk?: number
+  flood_risk?: number
+}
+
+function RiskBar({ label, score, icon }: { label: string; score: number; icon?: string }) {
+  const c = RISK_COLORS[barColorFor(score)]
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-slate-600 text-xs font-semibold">{label}</span>
+        <span className="text-slate-600 text-xs font-semibold flex items-center gap-1.5">
+          {icon && <span>{icon}</span>}
+          {label}
+        </span>
         <span className={`text-xs font-bold ${c.text}`}>{score}/10</span>
       </div>
       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${c.bar}`} style={{ width: `${score * 10}%` }} />
+        <div className={`h-full rounded-full ${c.bar}`} style={{ width: `${Math.max(0, Math.min(10, score)) * 10}%` }} />
       </div>
     </div>
   )
@@ -36,7 +85,7 @@ export default function StormReportPage() {
   const [zip, setZip] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<any>(null)
+  const [result, setResult] = useState<RiskResult | null>(null)
 
   const canSubmit = city.trim().length > 0 && state.length > 0
 
@@ -47,13 +96,32 @@ export default function StormReportPage() {
     setResult(null)
     try {
       const res = await api.roofing.stormRisk(city.trim(), state, zip.trim())
-      setResult(res)
-    } catch (err: any) {
-      setError(err.message || 'Storm risk report failed. Please try again.')
+      setResult(res as RiskResult)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Risk report failed. Please try again.')
     } finally {
       setLoading(false)
     }
   }
+
+  // Build hazards list — prefer new structured `hazards`, fall back to legacy top-level fields.
+  const hazards: Hazard[] = (() => {
+    if (result?.hazards && Array.isArray(result.hazards)) {
+      return result.hazards.filter(h => typeof h?.score === 'number')
+    }
+    const legacy: Hazard[] = []
+    if (typeof result?.hail_risk  === 'number') legacy.push({ key: 'hail',  label: 'Hail',  score: result.hail_risk })
+    if (typeof result?.wind_risk  === 'number') legacy.push({ key: 'wind',  label: 'Wind',  score: result.wind_risk })
+    if (typeof result?.flood_risk === 'number') legacy.push({ key: 'flood', label: 'Flood', score: result.flood_risk })
+    return legacy
+  })()
+
+  // Sort hazards by score descending, drop zero-score items
+  const visibleHazards = hazards
+    .filter(h => (h.score || 0) > 0)
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+
+  const recs = (result?.reinforcement_recommendations ?? []).filter(r => r?.action)
 
   const riskColor = result?.risk_color || 'amber'
   const c = RISK_COLORS[riskColor] || RISK_COLORS.amber
@@ -64,10 +132,10 @@ export default function StormReportPage() {
 
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Storm Risk Report</h1>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Natural Disaster Risk Report</h1>
           <p className="text-slate-400 text-sm mt-1">
-            Get a hail, wind, and flood risk score for any city. Sourced from Tavily weather research,
-            NOAA historical data, and insurance industry patterns — nothing fabricated.
+            Hurricane, tornado, hail, wind, flood, wildfire, earthquake and winter-storm exposure for any US city — grounded in recent
+            NOAA, USGS, FEMA and news-report data with actionable reinforcement recommendations.
           </p>
         </div>
 
@@ -126,9 +194,9 @@ export default function StormReportPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
                 </svg>
-                Analyzing weather data…
+                Pulling recent disaster data…
               </span>
-            ) : '🌩 Get Storm Risk Score'}
+            ) : '⚠ Run Risk Report'}
           </button>
         </div>
 
@@ -139,8 +207,8 @@ export default function StormReportPage() {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
             </svg>
-            <div className="text-slate-700 font-semibold text-sm mb-1">Researching storm history…</div>
-            <div className="text-slate-400 text-xs">Pulling hail data · Wind events · Insurance claim patterns · NOAA history</div>
+            <div className="text-slate-700 font-semibold text-sm mb-1">Researching recent disaster history…</div>
+            <div className="text-slate-400 text-xs">Hurricanes · Tornadoes · Hail · Wildfire · Earthquakes · Floods · Code updates</div>
           </div>
         )}
 
@@ -154,15 +222,21 @@ export default function StormReportPage() {
           <div className="space-y-4">
 
             {/* Overall score card */}
-            <div className={`rounded-2xl px-5 py-5 ${c.bg}`} style={{ border: `1px solid`, borderColor: riskColor === 'emerald' ? 'rgba(167,243,208,0.8)' : riskColor === 'red' ? 'rgba(254,202,202,0.8)' : 'rgba(253,230,138,0.8)' }}>
+            <div
+              className={`rounded-2xl px-5 py-5 ${c.bg}`}
+              style={{
+                border: `1px solid`,
+                borderColor: riskColor === 'emerald' ? 'rgba(167,243,208,0.8)' : riskColor === 'red' ? 'rgba(254,202,202,0.8)' : 'rgba(253,230,138,0.8)',
+              }}
+            >
               <div className="flex items-center gap-4">
                 <div className="text-center flex-shrink-0">
-                  <div className={`text-5xl font-black leading-none ${c.text}`}>{result.overall_risk}</div>
+                  <div className={`text-5xl font-black leading-none ${c.text}`}>{result.overall_risk ?? '—'}</div>
                   <div className={`text-xs font-semibold mt-0.5 ${c.text} opacity-70`}>/10</div>
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`font-bold text-lg ${c.text}`}>{result.risk_label}</span>
+                    <span className={`font-bold text-lg ${c.text}`}>{result.risk_label || '—'}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${c.badge}`}>
                       {city}, {state}
                     </span>
@@ -172,13 +246,20 @@ export default function StormReportPage() {
               </div>
             </div>
 
-            {/* Sub-scores */}
-            <div className="bg-white rounded-2xl px-5 py-4 space-y-3" style={cardStyle}>
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Risk Breakdown</div>
-              <RiskBar label="Hail Risk"  score={result.hail_risk  || 0} color={riskColor} />
-              <RiskBar label="Wind Risk"  score={result.wind_risk  || 0} color={riskColor} />
-              <RiskBar label="Flood Risk" score={result.flood_risk || 0} color={riskColor} />
-            </div>
+            {/* Per-hazard risk bars */}
+            {visibleHazards.length > 0 && (
+              <div className="bg-white rounded-2xl px-5 py-4 space-y-3" style={cardStyle}>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Hazard Breakdown</div>
+                {visibleHazards.map(h => (
+                  <div key={h.key}>
+                    <RiskBar label={h.label} score={h.score || 0} icon={HAZARD_ICON[h.key]} />
+                    {h.rationale && (
+                      <p className="text-slate-500 text-xs mt-1 leading-relaxed">{h.rationale}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Scoring rationale + significance */}
             {(result.scoring_rationale || result.significance) && (
@@ -191,26 +272,62 @@ export default function StormReportPage() {
                 )}
                 {result.significance && (
                   <div className="border-t pt-3" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
-                    <div className="text-xs font-bold text-blue-500 uppercase tracking-wider mb-1">What This Means for Contractors</div>
+                    <div className="text-xs font-bold text-blue-500 uppercase tracking-wider mb-1">What This Means For You</div>
                     <p className="text-blue-700 text-sm leading-relaxed">{result.significance}</p>
                   </div>
                 )}
               </div>
             )}
 
+            {/* Reinforcement recommendations */}
+            {recs.length > 0 && (
+              <div className="bg-white rounded-2xl px-5 py-4" style={cardStyle}>
+                <div className="flex items-baseline justify-between mb-3">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Reinforcement Recommendations</div>
+                  <div className="text-[10px] text-slate-400">Based on recent events + code updates</div>
+                </div>
+                <div className="space-y-3">
+                  {recs.map((r, i) => {
+                    const priorityKey = (r.priority || 'medium').toLowerCase()
+                    const p = PRIORITY_STYLE[priorityKey] || PRIORITY_STYLE.medium
+                    const hazardIcon = r.hazard ? HAZARD_ICON[r.hazard] : ''
+                    return (
+                      <div key={i} className="border rounded-xl p-3" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+                        <div className="flex items-start justify-between gap-3 mb-1.5">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            {hazardIcon && <span className="text-base flex-shrink-0">{hazardIcon}</span>}
+                            <div className="text-slate-800 text-sm font-semibold">{r.action}</div>
+                          </div>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border flex-shrink-0 ${p.chip}`}>
+                            {p.label}
+                          </span>
+                        </div>
+                        {r.why && (
+                          <p className="text-slate-500 text-xs leading-relaxed ml-6">{r.why}</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Recent events */}
             {result.recent_events && result.recent_events.length > 0 && (
               <div className="bg-white rounded-2xl px-5 py-4" style={cardStyle}>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Recent Storm Events</div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Recent Events</div>
                 <div className="space-y-3">
-                  {result.recent_events.map((ev: any, i: number) => (
+                  {result.recent_events.map((ev, i) => (
                     <div key={i} className="flex items-start gap-3">
                       <div className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 mt-0.5 border ${c.badge}`}>
                         {ev.year || '—'}
                       </div>
-                      <div>
-                        <div className="text-slate-700 text-sm font-semibold">{ev.type} — {ev.severity}</div>
+                      <div className="flex-1">
+                        <div className="text-slate-700 text-sm font-semibold">
+                          {ev.type ? `${ev.type}${ev.severity ? ` — ${ev.severity}` : ''}` : ev.severity || 'Event'}
+                        </div>
                         {ev.impact && <div className="text-slate-500 text-xs mt-0.5">{ev.impact}</div>}
+                        {ev.source && <div className="text-slate-400 text-[11px] mt-1 italic">Source: {ev.source}</div>}
                       </div>
                     </div>
                   ))}
@@ -218,21 +335,11 @@ export default function StormReportPage() {
               </div>
             )}
 
-            {/* Recommendation + insurance note */}
-            {(result.recommendation || result.insurance_note) && (
-              <div className="bg-white rounded-2xl px-5 py-4 space-y-3" style={cardStyle}>
-                {result.recommendation && (
-                  <div>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Contractor Recommendation</div>
-                    <p className="text-slate-700 text-sm font-semibold leading-relaxed">{result.recommendation}</p>
-                  </div>
-                )}
-                {result.insurance_note && (
-                  <div className="border-t pt-3" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Insurance Note</div>
-                    <p className="text-slate-600 text-sm leading-relaxed">{result.insurance_note}</p>
-                  </div>
-                )}
+            {/* Insurance note */}
+            {result.insurance_note && (
+              <div className="bg-white rounded-2xl px-5 py-4" style={cardStyle}>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Insurance Note</div>
+                <p className="text-slate-600 text-sm leading-relaxed">{result.insurance_note}</p>
               </div>
             )}
 
