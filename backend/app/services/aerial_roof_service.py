@@ -23,6 +23,85 @@ from app.services.search import web_search
 logger = logging.getLogger(__name__)
 
 
+def _extract_roof_json(text: str, full_address: str) -> dict:
+    """
+    Robust JSON extractor for LLM roof-estimate output.
+    Handles markdown fences, prose preambles/epilogues, trailing commas,
+    Python-isms (None/True/False), and unquoted 'unknown' literals. Returns
+    a conservative "measurements_unverified" shape if parsing truly fails.
+    """
+    if not text:
+        return _unverified(full_address, "empty LLM response")
+
+    cleaned = text.strip()
+    cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned, count=1)
+    cleaned = re.sub(r'\s*```\s*$', '', cleaned)
+
+    # Extract the largest balanced {...} block to tolerate prose before/after
+    start = cleaned.find("{")
+    if start < 0:
+        return _unverified(full_address, "no JSON object in LLM response")
+    depth = 0
+    end = -1
+    in_str = False
+    escape = False
+    for i in range(start, len(cleaned)):
+        ch = cleaned[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end < 0:
+        return _unverified(full_address, "unterminated JSON object")
+    candidate = cleaned[start:end + 1]
+
+    # Light cleanups that commonly break json.loads on LLM output
+    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)           # trailing commas
+    candidate = re.sub(r"\bNone\b", "null", candidate)             # Python None
+    candidate = re.sub(r"\bTrue\b", "true", candidate)             # Python True
+    candidate = re.sub(r"\bFalse\b", "false", candidate)           # Python False
+    candidate = re.sub(r":\s*unknown\b", ": null", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r":\s*N/?A\b", ": null", candidate, flags=re.IGNORECASE)
+
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError as e:
+        logger.warning("aerial: JSON parse failed (%s) — raw=%r", e, text[:400])
+        return _unverified(full_address, f"LLM returned unparseable JSON ({e.msg})")
+
+
+def _unverified(full_address: str, note: str) -> dict:
+    return {
+        "address": full_address,
+        "total_sqft": None,
+        "squares": None,
+        "pitch": None,
+        "pitch_degrees": None,
+        "roof_segments": None,
+        "stories": None,
+        "house_sqft": None,
+        "building_type": None,
+        "confidence": 0.0,
+        "measurements_unverified": True,
+        "note": f"Unable to estimate from available records — {note}. Physical inspection required.",
+        "max_sunshine_hours_yr": None,
+    }
+
+
 async def get_aerial_roof_report(address: str, city: str, state: str, zip_code: str = "") -> dict:
     """
     Get roof measurements for a property address.
@@ -289,12 +368,7 @@ Critical rules:
 - Contractors order materials from this — accuracy matters more than coverage."""
 
     text = await llm_text(prompt, max_tokens=600)
-    text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
-    text = re.sub(r'\s*```\s*$', '', text)
-    start = text.find("{")
-    if start > 0:
-        text = text[start:]
-    result = json.loads(text)
+    result = _extract_roof_json(text, full_address)
     result.setdefault("measurements_unverified", result.get("total_sqft") is None)
 
     if coords:
