@@ -255,8 +255,8 @@ Even if the image is a photo rather than a formal blueprint, make your best prof
   "notes": "Brief description of the structure",
   "materials": [
     {{
-      "category": "lumber",
-      "item_name": "2x4x8 Stud",
+      "category": "framing_lumber",
+      "item_name": "2x4x8 SPF Stud",
       "quantity": 120,
       "unit": "each",
       "unit_cost": 8.50,
@@ -265,18 +265,132 @@ Even if the image is a photo rather than a formal blueprint, make your best prof
   ]
 }}
 
-Material categories to include (cover all that apply):
-lumber, sheathing, drywall, insulation, roofing, concrete, flooring,
-doors_windows, electrical, plumbing, finishing
+MATERIAL TAXONOMY — use the most specific category from this list. Generic
+categories ("lumber", "finishing") are LAST-RESORT only. Every allowed category
+string (snake_case) is:
 
-For the materials list:
-- Be thorough and realistic — include every major material category needed
-- Base quantities on the detected square footage and room count
-- Use current US market unit costs
-- Include framing lumber, sheathing, drywall, insulation, roofing, flooring,
-  doors, windows, electrical rough-in, plumbing rough-in, and finishing materials
-- If you cannot determine exact quantities from the image, use reasonable estimates
-  for a structure of the detected size
+Structural:
+  framing_lumber        (studs, plates, headers, blocking — by dimension e.g. 2x4x8, 2x6x10)
+  engineered_lumber     (LVL beams, I-joists, glulam, PSL — by depth/span)
+  sheathing             (OSB, CDX plywood — by thickness e.g. 7/16" OSB, 1/2" CDX)
+  fasteners             (framing nails 16d/10d/8d, screws #8/#10, lag bolts, anchor bolts — by type + size)
+  structural_connectors (Simpson hangers, straps, hold-downs, post bases — by part number where possible)
+  subfloor_adhesive     (PL Premium, Liquid Nails Subfloor — tubes)
+
+Envelope:
+  roofing_shingles      (asphalt 3-tab / architectural — bundles or squares)
+  roofing_underlayment  (synthetic felt, 15#/30# felt — rolls)
+  ice_water_shield      (self-adhering bituminous — rolls)
+  drip_edge             (aluminum drip edge — linear ft)
+  starter_strip         (starter shingles — linear ft)
+  ridge_cap             (hip/ridge shingles — linear ft)
+  roof_ventilation      (ridge vent, box vents, soffit vents — each / linear ft)
+  flashing              (step, counter, kickout, valley — pieces / linear ft)
+  siding                (panels, trim, J-channel, corner posts, starter strip — by product line)
+  housewrap             (Tyvek, ZIP — rolls)
+  tapes_sealants        (housewrap tape, flashing tape, acoustic sealant — rolls / tubes)
+  caulk                 (exterior polyurethane, interior latex, kitchen/bath silicone — tubes)
+
+Interior:
+  drywall_board         (1/2" standard, 5/8" Type X, moisture-resistant — sheets)
+  drywall_tape          (paper / mesh — rolls)
+  drywall_mud           (all-purpose / lightweight — buckets)
+  drywall_corner_bead   (metal / paper-faced — linear ft)
+  insulation_batts      (fiberglass R-13/R-19/R-30 — bags)
+  insulation_blown      (cellulose / fiberglass blown — bags)
+  insulation_rigid      (XPS / EPS / polyiso — sheets by R-value)
+  insulation_spray      (open-cell / closed-cell — board-ft)
+  vapor_barrier         (6-mil poly, smart vapor retarder — rolls)
+  trim_baseboard        (by linear ft + profile)
+  trim_casing           (door/window casing — linear ft)
+  trim_crown            (crown molding — linear ft)
+  interior_doors        (slabs / pre-hung units — each)
+  exterior_doors        (entry, patio — each)
+  door_hardware         (hinges, locksets, deadbolts — sets)
+  windows               (by unit size + type — each)
+  window_flashing       (sill pan flashing, tape — each / rolls)
+  window_shims           (cedar shims — bundles)
+  paint_primer          (by gallons, interior vs exterior)
+  paint_finish          (by gallons, sheen + area)
+  stain                 (by gallons)
+
+Finishes:
+  flooring_hardwood     (by sqft + species)
+  flooring_lvp_lvt      (luxury vinyl plank/tile — sqft)
+  flooring_laminate     (by sqft)
+  flooring_carpet       (by sqyd + pad)
+  flooring_underlayment (foam / cork / rosin paper — sqft)
+  flooring_transitions  (T-moldings, reducers, thresholds — each)
+  tile                  (floor/wall tile — sqft)
+  thinset               (modified / unmodified — bags)
+  grout                 (sanded / unsanded — bags)
+  backer_board          (cement board, Wedi — sheets)
+  countertops           (quartz / granite / laminate — linear ft or sqft)
+  cabinets              (by linear ft — base/wall/tall)
+  cabinet_hardware      (pulls, knobs, hinges, drawer slides — each)
+
+MEP — Electrical:
+  electrical_wire       (Romex by gauge: 14/2, 12/2, 12/3, 10/3 — ft)
+  electrical_boxes      (single-gang, double-gang, ceiling, old-work — each)
+  electrical_breakers   (15A, 20A, GFCI, AFCI — each)
+  electrical_receptacles (standard, GFCI, TR, USB — each)
+  electrical_switches   (single-pole, 3-way, dimmer — each)
+  electrical_panels     (main panel, sub-panel — each)
+  electrical_conduit    (EMT / PVC by diameter — ft)
+  electrical_fixtures   (recessed, pendant, surface — each)
+
+MEP — Plumbing:
+  plumbing_pipe         (PEX / copper / PVC / ABS by diameter — ft)
+  plumbing_fittings     (elbows, tees, couplings — each by type + size)
+  plumbing_valves       (ball / gate / shut-off — each)
+  plumbing_fixtures     (sinks, toilets, tubs, showers — each)
+  water_heater          (tank / tankless — each)
+  plumbing_shutoffs     (angle stops — each)
+
+MEP — HVAC:
+  hvac_ductwork         (sheet metal / flex duct — ft)
+  hvac_registers        (supply / return — each)
+  hvac_thermostats      (each)
+  hvac_equipment        (furnace, condenser, air handler, mini-split — each)
+
+Site / Concrete:
+  concrete              (by cu yd — specify PSI)
+  rebar                 (#3/#4/#5 — linear ft)
+  gravel_aggregate      (#57 stone, sand — tons / cu yd)
+  drainage              (perforated pipe, catch basins — ft / each)
+  waterproofing         (below-grade membrane — sqft)
+  vapor_barrier_slab    (6-mil under-slab poly — sqft)
+
+Finishing / Consumables:
+  hardware              (generic fasteners not covered above)
+  adhesives             (construction / flooring — tubes / gallons)
+  abrasives             (sandpaper, sanding disks — packs)
+
+For the materials list — MAXIMUM ACCURACY RULES:
+- Produce EXHAUSTIVE line items — do NOT lump together. "Lumber" alone is
+  forbidden: split into 2x4 studs, 2x6 plates, 2x10 headers, LVL beams, etc.
+  "Drywall" alone is forbidden: split into board, tape, mud, corner bead.
+  "Roofing" alone is forbidden: split into shingles, underlayment, ice & water
+  shield, drip edge, starter strip, ridge cap, ventilation, flashing.
+  "Electrical" alone is forbidden: split into wire (by gauge), boxes, breakers,
+  receptacles, switches, panel, conduit, fixtures.
+  "Plumbing" alone is forbidden: split into pipe (by type + diameter),
+  fittings, valves, fixtures, water heater, shut-offs.
+- Include fasteners and consumables explicitly: nails by penny size, screws by
+  type, adhesives by tube count, caulk tubes, tape rolls.
+- Include structural connectors (Simpson hangers/straps/hold-downs) whenever
+  the framing implies they're needed.
+- Include trim (baseboard, casing, crown) with linear-ft quantities.
+- Include flooring underlayment and transition strips separately from the
+  flooring surface itself.
+- Include paint primer AND finish, separately, in gallons, per area.
+- For site work: concrete by cu yd, rebar, gravel, drainage, waterproofing,
+  vapor barrier — each as its own line.
+- Base quantities on the detected square footage and room count. Use current
+  US market unit costs. If you cannot determine exact quantities from the
+  image, use reasonable professional estimates for a structure of this size.
+- Aim for 40+ line items for a typical house. Fewer than 20 is a sign you
+  lumped categories — split them.
 
 Return ONLY the JSON object, no markdown, no explanation."""
 
