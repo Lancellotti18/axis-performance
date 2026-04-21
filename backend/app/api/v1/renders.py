@@ -273,10 +273,12 @@ def _gemini_call(prompt: str) -> str:
     from google import genai
     from google.genai import types
 
+    # Gemini image-gen models, current as of 2026-04. "Nano Banana" (2.5-flash-image)
+    # is the stable production endpoint; the preview alias is the fallback when
+    # the stable one is rate-limited.
     MODELS = [
-        "gemini-2.0-flash-preview-image-generation",
-        "gemini-2.0-flash-exp-image-generation",
-        "gemini-2.0-flash-exp",
+        "gemini-2.5-flash-image",
+        "gemini-2.5-flash-image-preview",
     ]
     client   = genai.Client(api_key=settings.GEMINI_API_KEY)
     last_err: Exception = ValueError("No models tried")

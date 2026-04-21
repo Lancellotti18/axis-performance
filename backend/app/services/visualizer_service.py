@@ -186,10 +186,11 @@ def _gemini_img2img_sync(image_bytes: bytes, mime: str, description: str) -> str
         "Do not invent a new house. Do not move the camera. Do not change the composition."
     )
 
+    # Gemini image-gen models, current as of 2026-04. Deprecated 2.0 preview/exp
+    # aliases were removed — they 404 now. 2.5-flash-image is "Nano Banana".
     MODELS = [
         "gemini-2.5-flash-image",
-        "gemini-2.0-flash-preview-image-generation",
-        "gemini-2.0-flash-exp-image-generation",
+        "gemini-2.5-flash-image-preview",
     ]
 
     client     = genai.Client(api_key=_gemini_key())

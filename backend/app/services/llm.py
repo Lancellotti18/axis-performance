@@ -197,10 +197,10 @@ async def _gemini_vision(
 
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
 
-    def _run():
+    def _run(model: str):
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
         response = client.models.generate_content(
-            model=GEMINI_MODEL,
+            model=model,
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=media_type),
                 full_prompt,
@@ -209,7 +209,20 @@ async def _gemini_vision(
         )
         return response.text
 
-    return await asyncio.wait_for(asyncio.to_thread(_run), timeout=130)
+    last_err: Exception = RuntimeError("no Gemini vision models tried")
+    for model in [GEMINI_MODEL, *GEMINI_FALLBACKS]:
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(_run, model), timeout=130)
+        except Exception as e:
+            last_err = e
+            msg = str(e)
+            if ("RESOURCE_EXHAUSTED" in msg
+                or "quota" in msg.lower()
+                or "404" in msg
+                or "NOT_FOUND" in msg):
+                continue
+            raise
+    raise last_err
 
 
 # ---------------------------------------------------------------------------
@@ -412,15 +425,28 @@ def llm_vision_sync(
             from google.genai import types
             full_prompt = f"{system}\n\n{prompt}" if system else prompt
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=[
-                    types.Part.from_bytes(data=image_bytes, mime_type=media_type),
-                    full_prompt,
-                ],
-                config=types.GenerateContentConfig(max_output_tokens=max_tokens),
-            )
-            return response.text
+            last_me: Exception = RuntimeError("no Gemini vision models tried")
+            for model in [GEMINI_MODEL, *GEMINI_FALLBACKS]:
+                try:
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=[
+                            types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                            full_prompt,
+                        ],
+                        config=types.GenerateContentConfig(max_output_tokens=max_tokens),
+                    )
+                    return response.text
+                except Exception as me:
+                    last_me = me
+                    msg = str(me)
+                    if ("RESOURCE_EXHAUSTED" in msg
+                        or "quota" in msg.lower()
+                        or "404" in msg
+                        or "NOT_FOUND" in msg):
+                        continue
+                    raise
+            raise last_me
         except Exception as e:
             errors.append(f"Gemini: {e}")
 

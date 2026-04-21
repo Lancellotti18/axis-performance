@@ -63,28 +63,39 @@ def _gemini_transcribe(audio_bytes: bytes, mime_type: str) -> Optional[dict]:
         logger.warning("transcribe: gemini import failed: %s", e)
         return None
 
-    try:
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        prompt = (
-            "Transcribe this audio note exactly. Return only the transcript — "
-            "no commentary, no headers, no markdown. If the audio is silent or "
-            "unintelligible, return an empty string."
-        )
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[
-                types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
-                prompt,
-            ],
-            config=types.GenerateContentConfig(max_output_tokens=2048),
-        )
-        text = (response.text or "").strip()
-        if not text:
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    prompt = (
+        "Transcribe this audio note exactly. Return only the transcript — "
+        "no commentary, no headers, no markdown. If the audio is silent or "
+        "unintelligible, return an empty string."
+    )
+    # Cycle through the same chain used by llm.py so a single retired model
+    # alias or one-bucket quota exhaustion doesn't take transcription down.
+    for model in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash-lite"]:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=[
+                    types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                    prompt,
+                ],
+                config=types.GenerateContentConfig(max_output_tokens=2048),
+            )
+            text = (response.text or "").strip()
+            if not text:
+                return None
+            return {"text": text, "language": None, "provider": model}
+        except Exception as e:
+            msg = str(e)
+            if ("RESOURCE_EXHAUSTED" in msg
+                or "quota" in msg.lower()
+                or "404" in msg
+                or "NOT_FOUND" in msg):
+                continue
+            logger.warning("transcribe: gemini %s failed: %s", model, e)
             return None
-        return {"text": text, "language": None, "provider": "gemini-2.0-flash"}
-    except Exception as e:
-        logger.warning("transcribe: gemini failed: %s", e)
-        return None
+    logger.warning("transcribe: all gemini models exhausted or retired")
+    return None
 
 
 def transcribe_audio(audio_bytes: bytes, *, filename: str = "note.webm", mime_type: str = "audio/webm") -> dict:
