@@ -326,9 +326,14 @@ async def damage_report_pdf(
     try:
         db = get_supabase()
 
+        # SELECT * because the projects table schema varies by deployment —
+        # address/city/state columns are optional (added by migration) and
+        # naming them explicitly 42703's on any DB where they haven't been
+        # added yet. The PDF cover page already handles missing fields via
+        # dict.get(), so sending extra columns is harmless.
         proj_row = (
             db.table("projects")
-            .select("id, name, address, city, state")
+            .select("*")
             .eq("id", project_id)
             .limit(1)
             .execute()

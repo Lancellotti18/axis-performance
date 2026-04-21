@@ -1,13 +1,31 @@
 """
 Photo-to-Measurements service.
-Downloads project site photos and sends them to LLM Vision
+Downloads project site photos and sends them to Gemini vision
 to estimate wall area, roof area, sqft, and structural dimensions.
+
+Reliability strategy:
+  1. Send up to 6 photos in a SINGLE multimodal request so the model
+     reasons across elevations instead of guessing from one angle.
+  2. Force application/json response so Gemini cannot emit prose that
+     blows up json.loads(). This is the root-cause fix for the
+     "Couldn't parse measurement response — retry" message.
+  3. Cycle Gemini keys × models on transient errors (503/quota).
+  4. On hard parse fail, retry once with an even stricter prompt
+     before giving up with the low-confidence default.
 """
+import asyncio
+import json
 import logging
 import re
-import json
+
 import httpx
-from app.services.llm import llm_vision
+
+from app.services.llm import (
+    GEMINI_FALLBACKS,
+    GEMINI_MODEL,
+    _gemini_keys,
+    _is_gemini_retryable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +40,7 @@ Examine every photo carefully. Use these visual calibration references:
 - Standard ceiling height: 8–9 ft (9 ft for newer construction)
 - Garage door: 8–9 ft wide × 7–8 ft tall (single), 16 ft wide (double)
 
-Return ONLY valid JSON — no text before or after:
+Return a JSON object with this exact shape (no prose, no markdown):
 {
   "total_sqft": 1800,
   "wall_area_sqft": 2640,
@@ -50,18 +68,45 @@ Important rules:
 - Do NOT make up measurements — if you cannot determine a value from the photos, say so in warnings"""
 
 
+# JSON schema Gemini will conform to when response_mime_type="application/json".
+# Using a schema (vs. just json mime type) eliminates the remaining failure
+# mode where the model emits a JSON string that doesn't match our shape.
+MEASUREMENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "total_sqft": {"type": "number", "nullable": True},
+        "wall_area_sqft": {"type": "number", "nullable": True},
+        "roof_area_sqft": {"type": "number", "nullable": True},
+        "perimeter_ft": {"type": "number", "nullable": True},
+        "stories": {"type": "number", "nullable": True},
+        "wall_height_ft": {"type": "number", "nullable": True},
+        "structure_type": {"type": "string", "nullable": True},
+        "dimensions": {
+            "type": "object",
+            "properties": {
+                "estimated_width_ft": {"type": "number", "nullable": True},
+                "estimated_depth_ft": {"type": "number", "nullable": True},
+            },
+        },
+        "confidence": {"type": "number"},
+        "notes": {"type": "string"},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["confidence"],
+}
+
+
 async def measure_from_photos(photo_urls: list) -> dict:
     """
-    Send up to 8 project photos to LLM Vision and extract measurements.
+    Send up to 6 project photos to Gemini vision and extract measurements.
     Uses standard visual references (doors, windows, brick courses) to calibrate.
     """
     if not photo_urls:
         raise ValueError("No photos provided")
 
-    # Download all photos
     images: list[tuple[bytes, str]] = []
     async with httpx.AsyncClient(timeout=30.0) as http:
-        for url in photo_urls[:8]:
+        for url in photo_urls[:6]:
             try:
                 resp = await http.get(url, follow_redirects=True)
                 if resp.status_code == 200:
@@ -76,28 +121,112 @@ async def measure_from_photos(photo_urls: list) -> dict:
     if not images:
         raise ValueError("Could not download any of the provided photos")
 
-    # Use the first (or largest) image as primary — LLM vision handles one image at a time
-    # For multi-photo, we concatenate images into a single call using the first photo
-    # and mention count in the prompt
-    primary_bytes, primary_media_type = images[0]
+    # First attempt — strict JSON mode + schema.
+    raw = await _gemini_measure(images, MEASUREMENT_PROMPT)
+    parsed = _parse_measurement_json(raw)
+    if not parsed.get("measurements_unverified"):
+        return parsed
 
-    prompt = MEASUREMENT_PROMPT
-    if len(images) > 1:
-        prompt = f"You are analyzing {len(images)} job-site photos (showing the primary view). " + MEASUREMENT_PROMPT
+    # One retry with a firmer instruction — schema mode sometimes returns
+    # `{"confidence": 0}` with nothing else if the first try short-circuited.
+    retry_prompt = (
+        "Your previous response was missing fields. Return the full measurement object "
+        "for every field you can reasonably estimate from these photos. "
+        "It is acceptable to mark low confidence — it is NOT acceptable to return "
+        "only the confidence field.\n\n" + MEASUREMENT_PROMPT
+    )
+    raw2 = await _gemini_measure(images, retry_prompt)
+    parsed2 = _parse_measurement_json(raw2)
+    return parsed2
 
-    # 2048 tokens — the old 1024 ceiling truncated mid-string when the model
-    # filled in warnings/notes, which then blew up json.loads.
-    text = await llm_vision(primary_bytes, primary_media_type, prompt, max_tokens=2048)
-    return _parse_measurement_json(text)
+
+async def _gemini_measure(images: list[tuple[bytes, str]], prompt: str) -> str:
+    """
+    Send all provided images in one Gemini call with JSON response mode.
+    Cycles keys and models on transient errors. Returns raw text
+    (which will be a JSON string thanks to response_mime_type).
+    """
+    from google import genai
+    from google.genai import types
+
+    keys = _gemini_keys()
+    if not keys:
+        raise RuntimeError(
+            "GEMINI_API_KEY not configured. Add it to the Render environment to enable photo measurements."
+        )
+
+    parts: list = []
+    for img_bytes, mime in images:
+        parts.append(types.Part.from_bytes(data=img_bytes, mime_type=mime))
+    parts.append(f"You are analyzing {len(images)} job-site photos. {prompt}")
+
+    def _run(api_key: str, model: str) -> str:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=model,
+            contents=parts,
+            config=types.GenerateContentConfig(
+                max_output_tokens=2048,
+                response_mime_type="application/json",
+                response_schema=MEASUREMENT_SCHEMA,
+                temperature=0.2,  # measurements should be stable, not creative
+            ),
+        )
+        return response.text or ""
+
+    models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
+    last_err: Exception = RuntimeError("no Gemini attempt made")
+    for pass_idx in range(2):
+        for key in keys:
+            for model in models:
+                try:
+                    return await asyncio.wait_for(asyncio.to_thread(_run, key, model), timeout=120)
+                except Exception as e:
+                    last_err = e
+                    if _is_gemini_retryable(str(e)):
+                        await asyncio.sleep(0.6 if pass_idx == 0 else 2.0)
+                        continue
+                    # Non-retryable error on schema mode — try once without
+                    # schema since some fallback models don't support it.
+                    msg = str(e).lower()
+                    if "schema" in msg or "response_schema" in msg or "mime" in msg:
+                        try:
+                            return await asyncio.wait_for(
+                                asyncio.to_thread(_run_no_schema, key, model, parts),
+                                timeout=120,
+                            )
+                        except Exception as e2:
+                            last_err = e2
+                            continue
+                    raise
+        if pass_idx == 0 and keys:
+            await asyncio.sleep(1.5)
+    raise last_err
+
+
+def _run_no_schema(api_key: str, model: str, parts: list) -> str:
+    """Fallback for models that reject response_schema — JSON mime only."""
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=model,
+        contents=parts,
+        config=types.GenerateContentConfig(
+            max_output_tokens=2048,
+            response_mime_type="application/json",
+            temperature=0.2,
+        ),
+    )
+    return response.text or ""
 
 
 def _parse_measurement_json(text: str) -> dict:
     """
-    Robust JSON extractor for the measurement prompt. Handles markdown
-    fences, prose preambles, trailing commas, Python-isms, and truncated
-    responses. Falls back to a low-confidence default if nothing parses,
-    rather than raising — contractors should never see a 422 just because
-    the vision model added a stray apology before the JSON.
+    Robust JSON extractor. With response_mime_type="application/json" this
+    usually gets clean JSON, but keep the tolerant parser as a safety net
+    for fallback models that don't honor the mime type.
     """
     if not text:
         return _unverified_measurements("Empty response from vision model.")
@@ -110,7 +239,6 @@ def _parse_measurement_json(text: str) -> dict:
     if start < 0:
         return _unverified_measurements("Vision model returned no JSON object.")
 
-    # Largest balanced {...} block, tolerant of prose on either side.
     depth, end, in_str, escape = 0, -1, False, False
     for i in range(start, len(cleaned)):
         ch = cleaned[i]
@@ -140,20 +268,29 @@ def _parse_measurement_json(text: str) -> dict:
     candidate = re.sub(r"\bFalse\b", "false", candidate)
 
     try:
-        return json.loads(candidate)
+        obj = json.loads(candidate)
     except json.JSONDecodeError:
-        # Walk back through `}` boundaries to salvage truncated output.
         for i in range(len(candidate) - 1, -1, -1):
             if candidate[i] != "}":
                 continue
             try:
-                return json.loads(candidate[:i + 1])
+                obj = json.loads(candidate[:i + 1])
+                break
             except Exception:
                 continue
-    # Last resort — don't 422 the wizard. Return unverified shape so the UI
-    # can say "couldn't get measurements, retry" instead of erroring out.
-    logger.warning("photo_measurement: JSON parse failed. raw[:500]=%r", text[:500])
-    return _unverified_measurements("Couldn't parse measurement response — retry.")
+        else:
+            logger.warning("photo_measurement: JSON parse failed. raw[:500]=%r", text[:500])
+            return _unverified_measurements("Couldn't parse measurement response — retry.")
+
+    # Sanity check: if the model returned an almost-empty object (schema mode
+    # sometimes emits just `{"confidence": 0}`), treat as unverified so the
+    # retry path triggers.
+    has_any_measurement = any(
+        obj.get(k) for k in ("total_sqft", "wall_area_sqft", "roof_area_sqft", "perimeter_ft")
+    )
+    if not has_any_measurement:
+        return _unverified_measurements("Model returned no measurements — retry.")
+    return obj
 
 
 def _unverified_measurements(reason: str) -> dict:
