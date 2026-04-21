@@ -257,9 +257,57 @@ export const api = {
   permits: {
     searchPortal: (city: string, state: string, projectType: string) => {
       const params = new URLSearchParams({ city, state, project_type: projectType })
-      return apiRequest<{ portal_url: string | null; portal_name: string | null; instructions: string | null; source: string }>(
+      return apiRequest<{ portal_url: string | null; portal_name: string | null; instructions: string | null; source: string; submission_method?: string; submission_email?: string | null; found?: boolean }>(
         `/api/v1/permits/portal-search?${params}`
       )
+    },
+    listAttachments: (projectId: string) =>
+      apiRequest<{
+        attachments: Array<{
+          index: number
+          kind: 'file' | 'text'
+          filename?: string
+          size?: number
+          url?: string
+          text?: string
+        }>
+      }>(`/api/v1/permits/${projectId}/attachments`).catch(() => ({ attachments: [] })),
+    uploadRequirement: async (projectId: string, index: number, file: File) => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const form = new FormData()
+      form.append('index', String(index))
+      form.append('file', file)
+      const res = await fetch(`${API_BASE}/api/v1/permits/${projectId}/requirements/upload`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      })
+      if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
+      return res.json() as Promise<{ index: number; filename: string; size: number; url?: string }>
+    },
+    saveRequirementText: (projectId: string, index: number, text: string) =>
+      apiRequest<{ index: number; text: string }>(`/api/v1/permits/${projectId}/requirements/text`, {
+        method: 'POST',
+        body: JSON.stringify({ index, text }),
+      }, 30000),
+    deleteRequirementAttachment: (projectId: string, index: number) =>
+      apiRequest<{ ok: boolean }>(`/api/v1/permits/${projectId}/requirements/${index}/attachment`, {
+        method: 'DELETE',
+      }),
+    previewDraftPdf: async (projectId: string): Promise<Blob> => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const res = await fetch(`${API_BASE}/api/v1/permits/generate-pdf/${projectId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ fields: [], form_url: null, use_web_form: true }),
+      })
+      if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
+      return res.blob()
     },
     analyzeRequirements: (projectId: string, notes: string, files: File[]) => {
       const form = new FormData()

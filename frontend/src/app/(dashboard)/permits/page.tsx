@@ -53,16 +53,12 @@ const PERMIT_OFFICES: Record<string, { name: string; address: string; phone: str
   'LA_Orleans': { name: 'New Orleans Dept. of Safety & Permits', address: '1300 Perdido St, New Orleans, LA 70112', phone: '(504) 658-7100', portal: 'https://nola.gov/permits' },
 }
 
-function getPermitOffice(stateCode: string, countyName: string) {
-  return (
-    PERMIT_OFFICES[`${stateCode}_${countyName}`] ||
-    PERMIT_OFFICES[stateCode] || {
-      name: `${countyName} County Building Department`,
-      address: `Contact your local ${countyName} County government office`,
-      phone: 'See county website',
-      portal: `https://www.${countyName.toLowerCase().replace(/\s+/g, '')}.gov`,
-    }
-  )
+type PermitOffice = { name: string; address: string; phone: string; portal: string; portalVerified?: boolean }
+
+function getPermitOffice(stateCode: string, countyName: string): PermitOffice | null {
+  const match = PERMIT_OFFICES[`${stateCode}_${countyName}`] || PERMIT_OFFICES[stateCode]
+  if (match) return { ...match, portalVerified: true }
+  return null
 }
 
 const REQUIRED_DOCS: Record<string, string[]> = {
@@ -94,6 +90,18 @@ export default function PermitsPage() {
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle')
   const [officeConfirmed, setOfficeConfirmed] = useState<boolean | null>(null)
   const [customOffice, setCustomOffice] = useState('')
+  // Cache of looked-up offices keyed by "STATE_County"
+  const [officeCache, setOfficeCache] = useState<Record<string, PermitOffice | null>>({})
+  const [officeLoadingKey, setOfficeLoadingKey] = useState<string | null>(null)
+  // Requirement attachments: per-index file metadata and text values
+  type ReqAttachment = { filename: string; size: number; url?: string }
+  const [reqFiles, setReqFiles] = useState<Record<number, ReqAttachment>>({})
+  const [reqTexts, setReqTexts] = useState<Record<number, string>>({})
+  const [reqUploading, setReqUploading] = useState<Record<number, boolean>>({})
+  const [reqError, setReqError] = useState<Record<number, string | null>>({})
+  // Preview PDF state
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -118,14 +126,84 @@ export default function PermitsPage() {
   }, [router])
 
   useEffect(() => {
-    // init checklist when we reach step 2
+    // init checklist when we reach step 2 — merge with any existing attachments/text
     if (step === 2) {
       const items = REQUIRED_DOCS.default
       const initial: Record<string, boolean> = {}
-      items.forEach(item => { initial[item] = false })
+      items.forEach((item, idx) => {
+        const hasFile = !!reqFiles[idx]
+        const hasText = (reqTexts[idx] || '').trim().length >= 3
+        initial[item] = hasFile || hasText
+      })
       setChecklist(initial)
     }
+    // We intentionally only re-run when step changes; per-item auto-check
+    // happens in the upload/text handlers below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
+
+  // Look up verified portal URL from backend when county isn't in PERMIT_OFFICES
+  useEffect(() => {
+    if (!state || !county) return
+    const key = `${state}_${county}`
+    if (PERMIT_OFFICES[key] || PERMIT_OFFICES[state]) return
+    if (key in officeCache) return // already looked up (success or null)
+    if (officeLoadingKey === key) return
+
+    let cancelled = false
+    setOfficeLoadingKey(key)
+    ;(async () => {
+      try {
+        const result = await api.permits.searchPortal(city || county, state, 'residential')
+        if (cancelled) return
+        if (result.found && result.portal_url) {
+          setOfficeCache(prev => ({
+            ...prev,
+            [key]: {
+              name: result.portal_name || `${county} County Building Department`,
+              address: `Contact your local ${county} County government office`,
+              phone: result.submission_email || 'See county website',
+              portal: result.portal_url!,
+              portalVerified: true,
+            },
+          }))
+        } else {
+          setOfficeCache(prev => ({ ...prev, [key]: null }))
+        }
+      } catch {
+        if (!cancelled) setOfficeCache(prev => ({ ...prev, [key]: null }))
+      } finally {
+        if (!cancelled) setOfficeLoadingKey(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [state, county, city, officeCache, officeLoadingKey])
+
+  // Load existing requirement attachments/text on mount or project change
+  useEffect(() => {
+    if (!selectedProject) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await api.permits.listAttachments(selectedProject)
+        if (cancelled) return
+        const files: Record<number, ReqAttachment> = {}
+        const texts: Record<number, string> = {}
+        for (const a of data.attachments || []) {
+          if (a.kind === 'file' && a.filename) {
+            files[a.index] = { filename: a.filename, size: a.size || 0, url: a.url }
+          } else if (a.kind === 'text' && a.text) {
+            texts[a.index] = a.text
+          }
+        }
+        setReqFiles(files)
+        setReqTexts(texts)
+      } catch {
+        // silently ignore — backend endpoint may not exist yet
+      }
+    })()
+    return () => { cancelled = true }
+  }, [selectedProject])
 
   const counties = state ? (COUNTIES[state] || []) : []
   const cities = (state && county) ? (CITIES[state]?.[county] || []) : []
@@ -143,6 +221,103 @@ export default function PermitsPage() {
     setSubmitStatus('submitting')
     await new Promise(r => setTimeout(r, 2200))
     setSubmitStatus('submitted')
+  }
+
+  // Resolve the current office: hardcoded → looked-up cache → null (unverified)
+  function resolveOffice(): { office: PermitOffice | null; loading: boolean } {
+    if (!state || !county) return { office: null, loading: false }
+    const key = `${state}_${county}`
+    const hardcoded = getPermitOffice(state, county)
+    if (hardcoded) return { office: hardcoded, loading: false }
+    if (key in officeCache) return { office: officeCache[key], loading: false }
+    return { office: null, loading: officeLoadingKey === key }
+  }
+
+  // ── Requirement upload/text handlers ─────────────────────────────────────
+  const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+  const ACCEPT_TYPES = '.pdf,.jpg,.jpeg,.png,.doc,.docx,application/pdf,image/jpeg,image/png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+  async function handleRequirementUpload(index: number, docLabel: string, file: File) {
+    setReqError(prev => ({ ...prev, [index]: null }))
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setReqError(prev => ({ ...prev, [index]: 'File exceeds 20 MB limit' }))
+      return
+    }
+    if (!selectedProject) {
+      setReqError(prev => ({ ...prev, [index]: 'No project selected' }))
+      return
+    }
+    setReqUploading(prev => ({ ...prev, [index]: true }))
+    try {
+      const result = await api.permits.uploadRequirement(selectedProject, index, file)
+      setReqFiles(prev => ({
+        ...prev,
+        [index]: { filename: result.filename || file.name, size: result.size || file.size, url: result.url },
+      }))
+      // Auto-check the corresponding requirement
+      setChecklist(prev => ({ ...prev, [docLabel]: true }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Upload failed'
+      setReqError(prev => ({ ...prev, [index]: msg }))
+    } finally {
+      setReqUploading(prev => ({ ...prev, [index]: false }))
+    }
+  }
+
+  async function handleRemoveRequirementFile(index: number, docLabel: string) {
+    if (!selectedProject) return
+    try {
+      await api.permits.deleteRequirementAttachment(selectedProject, index)
+    } catch {
+      // Ignore — still clear locally so the user isn't stuck
+    }
+    setReqFiles(prev => {
+      const next = { ...prev }
+      delete next[index]
+      return next
+    })
+    // Uncheck unless text satisfies the requirement
+    const textOk = (reqTexts[index] || '').trim().length >= 3
+    if (!textOk) setChecklist(prev => ({ ...prev, [docLabel]: false }))
+  }
+
+  // Debounced text save — one timer per index
+  const [textSaveTimers, setTextSaveTimers] = useState<Record<number, ReturnType<typeof setTimeout>>>({})
+  function handleRequirementTextChange(index: number, docLabel: string, value: string) {
+    setReqTexts(prev => ({ ...prev, [index]: value }))
+    // Auto-check when text is ≥ 3 chars OR a file exists; otherwise uncheck unless file
+    const hasFile = !!reqFiles[index]
+    const meets = value.trim().length >= 3
+    setChecklist(prev => ({ ...prev, [docLabel]: meets || hasFile }))
+
+    // Debounce save
+    if (textSaveTimers[index]) clearTimeout(textSaveTimers[index])
+    if (!selectedProject) return
+    const t = setTimeout(async () => {
+      try {
+        await api.permits.saveRequirementText(selectedProject, index, value)
+      } catch {
+        // Silent fail — backend may not be built yet
+      }
+    }, 600)
+    setTextSaveTimers(prev => ({ ...prev, [index]: t }))
+  }
+
+  async function handlePreviewPdf() {
+    if (!selectedProject) return
+    setPreviewLoading(true)
+    setPreviewError(null)
+    try {
+      const blob = await api.permits.previewDraftPdf(selectedProject)
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Preview failed'
+      setPreviewError(msg)
+    } finally {
+      setPreviewLoading(false)
+    }
   }
 
   const project = projects.find(p => p.id === selectedProject)
@@ -259,7 +434,7 @@ export default function PermitsPage() {
               </div>
 
               {state && county && (() => {
-                const office = getPermitOffice(state, county)
+                const { office, loading } = resolveOffice()
                 return (
                   <div className="mt-2 rounded-xl p-4 space-y-3" style={{ background: '#f0f7ff', border: '1px solid rgba(219,234,254,0.9)' }}>
                     <div className="flex items-center gap-2">
@@ -267,42 +442,58 @@ export default function PermitsPage() {
                       <span className="text-blue-600 text-xs font-semibold uppercase tracking-wider">Permit Filing Office</span>
                       <span className="ml-auto text-slate-400 text-xs">Auto-detected for {city || county}, {state}</span>
                     </div>
-                    <div>
-                      <div className="text-slate-800 font-semibold text-sm">{office.name}</div>
-                      <div className="text-slate-500 text-xs mt-0.5">{office.address}</div>
-                      <div className="flex items-center gap-4 mt-2">
-                        <span className="text-slate-500 text-xs">{office.phone}</span>
-                        <a href={office.portal} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs hover:text-blue-700 underline underline-offset-2">{office.portal}</a>
+                    {loading ? (
+                      <div className="flex items-center gap-2 py-2">
+                        <svg className="animate-spin text-blue-500" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                        <span className="text-slate-500 text-xs">Looking up permit office…</span>
                       </div>
-                    </div>
+                    ) : office ? (
+                      <div>
+                        <div className="text-slate-800 font-semibold text-sm">{office.name}</div>
+                        <div className="text-slate-500 text-xs mt-0.5">{office.address}</div>
+                        <div className="flex items-center gap-4 mt-2">
+                          <span className="text-slate-500 text-xs">{office.phone}</span>
+                          <a href={office.portal} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs hover:text-blue-700 underline underline-offset-2">{office.portal}</a>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                        <div className="text-amber-700 text-xs font-semibold">Permit office URL unverified for {county} County</div>
+                        <div className="text-amber-600 text-xs mt-0.5">Search manually at your county&apos;s website, or enter the correct office below.</div>
+                      </div>
+                    )}
                     <div className="border-t border-blue-100 pt-3 space-y-2">
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <div
-                          onClick={() => { setOfficeConfirmed(true); setCustomOffice('') }}
-                          className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
-                            officeConfirmed === true ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 bg-white'
-                          }`}
-                        >
-                          {officeConfirmed === true && (
-                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                          )}
-                        </div>
-                        <span className="text-slate-700 text-sm">Yes, this is the correct filing office</span>
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <div
-                          onClick={() => setOfficeConfirmed(false)}
-                          className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
-                            officeConfirmed === false ? 'bg-amber-400 border-amber-400' : 'border-slate-300 bg-white'
-                          }`}
-                        >
-                          {officeConfirmed === false && (
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                          )}
-                        </div>
-                        <span className="text-slate-700 text-sm">No, I need to use a different office</span>
-                      </label>
-                      {officeConfirmed === false && (
+                      {office && (
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <div
+                            onClick={() => { setOfficeConfirmed(true); setCustomOffice('') }}
+                            className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
+                              officeConfirmed === true ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 bg-white'
+                            }`}
+                          >
+                            {officeConfirmed === true && (
+                              <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                            )}
+                          </div>
+                          <span className="text-slate-700 text-sm">Yes, this is the correct filing office</span>
+                        </label>
+                      )}
+                      {office && (
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <div
+                            onClick={() => setOfficeConfirmed(false)}
+                            className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
+                              officeConfirmed === false ? 'bg-amber-400 border-amber-400' : 'border-slate-300 bg-white'
+                            }`}
+                          >
+                            {officeConfirmed === false && (
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            )}
+                          </div>
+                          <span className="text-slate-700 text-sm">No, I need to use a different office</span>
+                        </label>
+                      )}
+                      {(officeConfirmed === false || !office) && (
                         <div className="pt-1 space-y-2">
                           <label className={labelCls}>Correct Filing Office</label>
                           <input
@@ -324,7 +515,15 @@ export default function PermitsPage() {
               <div className="flex justify-end pt-1">
                 <button
                   onClick={() => setStep(2)}
-                  disabled={!state || !county || officeConfirmed === null || (officeConfirmed === false && !customOffice.trim())}
+                  disabled={
+                    !state || !county ||
+                    // If we have an office, user must explicitly confirm or provide a custom one
+                    (resolveOffice().office
+                      ? (officeConfirmed === null || (officeConfirmed === false && !customOffice.trim()))
+                      // No verified office — user must type a custom office
+                      : !customOffice.trim()) ||
+                    resolveOffice().loading
+                  }
                   className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-all hover:scale-[1.02]"
                 >
                   Continue →
@@ -347,26 +546,96 @@ export default function PermitsPage() {
                 />
               </div>
               <div className="space-y-2">
-                {docs.map(doc => (
-                  <label
-                    key={doc}
-                    className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
-                      checklist[doc]
-                        ? 'bg-emerald-50 border-emerald-200'
-                        : 'bg-slate-50 border-slate-200 hover:border-blue-200 hover:bg-blue-50/40'
-                    }`}
-                  >
-                    <div className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
-                      checklist[doc] ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 bg-white'
-                    }`}>
-                      {checklist[doc] && (
-                        <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                      )}
+                {docs.map((doc, idx) => {
+                  const file = reqFiles[idx]
+                  const text = reqTexts[idx] || ''
+                  const uploading = !!reqUploading[idx]
+                  const error = reqError[idx]
+                  const checked = !!checklist[doc]
+                  const status: 'file' | 'text' | 'none' = file ? 'file' : (text.trim().length >= 3 ? 'text' : 'none')
+                  const inputId = `req-file-${idx}`
+                  return (
+                    <div
+                      key={doc}
+                      className={`p-3.5 rounded-xl border transition-all ${
+                        checked
+                          ? 'bg-emerald-50 border-emerald-200'
+                          : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
+                          checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 bg-white'
+                        }`}>
+                          {checked && (
+                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-sm ${checked ? 'text-emerald-700' : 'text-slate-700'}`}>{doc}</div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <input
+                              id={inputId}
+                              type="file"
+                              accept={ACCEPT_TYPES}
+                              className="sr-only"
+                              onChange={e => {
+                                const f = e.target.files?.[0]
+                                if (f) handleRequirementUpload(idx, doc, f)
+                                e.target.value = ''
+                              }}
+                            />
+                            <label
+                              htmlFor={inputId}
+                              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border cursor-pointer transition-all ${
+                                uploading
+                                  ? 'bg-slate-200 border-slate-200 text-slate-400 cursor-wait'
+                                  : 'bg-white border-slate-300 text-slate-600 hover:border-blue-300 hover:text-blue-600'
+                              }`}
+                            >
+                              {uploading ? 'Uploading…' : 'Choose file'}
+                            </label>
+                            <span className="text-slate-400 text-xs">or</span>
+                            <input
+                              type="text"
+                              value={text}
+                              onChange={e => handleRequirementTextChange(idx, doc, e.target.value)}
+                              placeholder="Type info (e.g. policy #, license #)"
+                              className="flex-1 min-w-[180px] bg-white border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 rounded-lg px-3 py-1.5 text-slate-700 text-xs placeholder-slate-300 focus:outline-none transition-all"
+                            />
+                            <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                              status === 'file'
+                                ? 'bg-blue-100 text-blue-600'
+                                : status === 'text'
+                                ? 'bg-violet-100 text-violet-600'
+                                : 'bg-slate-100 text-slate-400'
+                            }`}>
+                              {status === 'file' ? 'Uploaded' : status === 'text' ? 'Typed' : 'Empty'}
+                            </span>
+                          </div>
+                          {file && (
+                            <div className="mt-2 flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                              <span className="text-slate-700 font-medium truncate flex-1">{file.filename}</span>
+                              <span className="text-slate-400">{file.size ? `${(file.size / 1024).toFixed(0)} KB` : ''}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRequirementFile(idx, doc)}
+                                className="text-slate-400 hover:text-rose-500 transition-colors"
+                                aria-label="Remove file"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              </button>
+                            </div>
+                          )}
+                          {error && (
+                            <div className="mt-1 text-xs text-rose-500">{error}</div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <input type="checkbox" className="sr-only" checked={!!checklist[doc]} onChange={e => setChecklist(prev => ({ ...prev, [doc]: e.target.checked }))} />
-                    <span className={`text-sm transition-colors ${checklist[doc] ? 'text-emerald-600 line-through opacity-60' : 'text-slate-700'}`}>{doc}</span>
-                  </label>
-                ))}
+                  )
+                })}
               </div>
               <div className="flex justify-between pt-1">
                 <button onClick={() => setStep(1)} className="text-slate-400 hover:text-slate-700 text-sm font-medium transition-colors">← Back</button>
@@ -390,7 +659,7 @@ export default function PermitsPage() {
                 {[
                   { label: 'Project', value: project?.name || '—' },
                   { label: 'Jurisdiction', value: `${city || county}, ${state}` },
-                  { label: 'Filing Office', value: customOffice || getPermitOffice(state, county).name },
+                  { label: 'Filing Office', value: customOffice || resolveOffice().office?.name || `${county} County Building Department` },
                   { label: 'Documents', value: `${docs.length} items confirmed` },
                 ].map(row => (
                   <div key={row.label} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
@@ -427,9 +696,28 @@ export default function PermitsPage() {
                 </div>
               ) : null}
 
+              {previewError && (
+                <div className="text-xs text-rose-500 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{previewError}</div>
+              )}
+
               <div className="flex justify-between pt-1">
                 <button onClick={() => setStep(2)} className="text-slate-400 hover:text-slate-700 text-sm font-medium transition-colors">← Back</button>
                 <div className="flex gap-3">
+                  <button
+                    onClick={handlePreviewPdf}
+                    disabled={previewLoading || !selectedProject}
+                    className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold px-5 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40 flex items-center gap-2"
+                    title="Open the draft permit PDF in a new tab for review"
+                  >
+                    {previewLoading ? (
+                      <>
+                        <svg className="animate-spin text-slate-500" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                        Preparing…
+                      </>
+                    ) : (
+                      <>📄 Preview Draft PDF</>
+                    )}
+                  </button>
                   {submitStatus === 'idle' && (
                     <button
                       onClick={handleGenerate}
