@@ -131,7 +131,8 @@ export default function ExteriorCaptureWizard({
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [analysisResult, setAnalysisResult] = useState<any>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const uploadInputRef = useRef<HTMLInputElement>(null)
 
   const step = STEPS[stepIdx]
   const shot = shots[step.key]
@@ -323,24 +324,42 @@ export default function ExteriorCaptureWizard({
             )}
           </div>
 
-          {/* Capture button */}
+          {/* Capture + upload inputs */}
           <input
-            ref={fileInputRef}
+            ref={cameraInputRef}
             type="file"
             accept="image/*"
             capture="environment"
             onChange={onFilePicked}
             className="hidden"
           />
-          <div className="flex items-center gap-2 mt-4">
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept="image/*"
+            onChange={onFilePicked}
+            className="hidden"
+          />
+          <div className="grid grid-cols-2 gap-2 mt-4">
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex-1 inline-flex items-center justify-center gap-2 text-white font-bold px-4 py-3 rounded-xl text-sm transition-all hover:scale-[1.01]"
+              onClick={() => cameraInputRef.current?.click()}
+              className="inline-flex items-center justify-center gap-2 text-white font-bold px-4 py-3 rounded-xl text-sm transition-all hover:scale-[1.01]"
               style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
               {shot ? 'Retake photo' : 'Take photo'}
             </button>
+            <button
+              onClick={() => uploadInputRef.current?.click()}
+              className="inline-flex items-center justify-center gap-2 font-bold px-4 py-3 rounded-xl text-sm transition-all hover:scale-[1.01] border"
+              style={{ background: '#fff', color: '#1d4ed8', borderColor: '#bfdbfe', boxShadow: '0 2px 8px rgba(59,130,246,0.08)' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload photo
+            </button>
+          </div>
+          <div className="mt-2 text-[11px] text-slate-400 text-center">
+            Use your camera on phone, or upload an existing photo from your device.
           </div>
 
           {error && (
