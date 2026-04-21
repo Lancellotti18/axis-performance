@@ -284,7 +284,13 @@ async def check_materials_compliance(
     now = time.time()
     hit = _cache.get(cache_key)
     if hit and (now - hit[0]) < CACHE_TTL_SECONDS:
-        return hit[1]
+        cached = hit[1]
+        # Defensive: if a prior deploy cached a parse-failure placeholder, evict
+        # it so the retry actually hits the LLM again instead of parroting the
+        # "could not be parsed" message for 6h.
+        if cached.get("checklist") or cached.get("missing_required_items"):
+            return cached
+        _cache.pop(cache_key, None)
 
     loc = ", ".join(p for p in [j["city"], j["county"], j["state_name"]] if p).strip() or j["state_name"]
     fmt = {
@@ -320,10 +326,12 @@ async def check_materials_compliance(
     )
 
     raw = await llm_text(prompt, max_tokens=8192)
+    parse_failed = False
     try:
         result = _parse_json(raw)
     except Exception:
         logger.warning("materials compliance JSON parse failed — raw[:500]=%r", raw[:500] if raw else None, exc_info=True)
+        parse_failed = True
         result = {
             "overall_status": "warning",
             "summary": f"Compliance data for {loc} retrieved but could not be parsed. Re-run to try again.",
@@ -360,7 +368,10 @@ async def check_materials_compliance(
     result["verified_count"] = sum(1 for i in result["checklist"] if i.get("verified"))
     result["total_count"] = len(result["checklist"])
 
-    _cache[cache_key] = (now, result)
+    # Only cache successful parses. Caching the "could not be parsed" placeholder
+    # would pin that failure for 6h and make the Re-run button useless.
+    if not parse_failed:
+        _cache[cache_key] = (now, result)
     return result
 
 
