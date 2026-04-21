@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import type { DamageZone } from './AerialViewer'
 
 const AerialViewer = dynamic(() => import('./AerialViewer'), { ssr: false })
+const RoofOutlineEditor = dynamic(() => import('../projects/[id]/RoofOutlineEditor'), { ssr: false })
 
 // ── US States + Census FIPS codes ─────────────────────────────────────────────
 
@@ -553,6 +554,10 @@ export default function AerialReportPage() {
   const [reportType,    setReportType]    = useState<'contractor' | 'customer'>('contractor')
   const [reportVisible, setReportVisible] = useState(false)
 
+  // Roof outline editor
+  const [outlineOpen,     setOutlineOpen]     = useState(false)
+  const [outlineOverride, setOutlineOverride] = useState<{ polygon: [number, number][]; sqft: number; perimeter_ft: number } | null>(null)
+
   // Mobile tab
   const [mobileTab, setMobileTab] = useState<MobileTab>('view')
 
@@ -846,7 +851,7 @@ export default function AerialReportPage() {
       )}
 
       {result && result.satellite_image_url && (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden relative">
           <AerialViewer
             imageUrl={result.satellite_image_url}
             lat={result.lat ?? null}
@@ -854,6 +859,20 @@ export default function AerialReportPage() {
             damageZones={damageZones}
             fillHeight
           />
+          <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
+            {outlineOverride && (
+              <span className="text-[10px] px-2 py-1 rounded-full bg-amber-500/95 text-white font-bold shadow-lg">
+                ✎ {outlineOverride.sqft.toLocaleString()} sqft
+              </span>
+            )}
+            <button
+              onClick={() => setOutlineOpen(true)}
+              className="px-3 py-1.5 rounded-lg text-white text-xs font-bold shadow-lg hover:opacity-90 transition-opacity"
+              style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
+            >
+              🔲 Edit roof outline
+            </button>
+          </div>
         </div>
       )}
 
@@ -926,6 +945,20 @@ export default function AerialReportPage() {
       {reportVisible && result && (
         <ReportModal result={result} damageResult={damageResult} photoResult={photoResult}
           type={reportType} onClose={() => setReportVisible(false)} />
+      )}
+
+      {result?.satellite_image_url && (
+        <RoofOutlineEditor
+          open={outlineOpen}
+          onClose={() => setOutlineOpen(false)}
+          imageUrl={result.satellite_image_url}
+          lat={result.lat ?? null}
+          initialPolygon={outlineOverride?.polygon}
+          onApply={({ polygon, sqft, perimeterFt }) => {
+            setOutlineOverride({ polygon, sqft, perimeter_ft: perimeterFt })
+            setResult((prev: any) => prev ? { ...prev, total_sqft: sqft, squares: Math.round(sqft / 100) } : prev)
+          }}
+        />
       )}
 
       {/* Desktop 3-panel */}
