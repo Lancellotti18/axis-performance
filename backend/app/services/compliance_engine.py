@@ -56,8 +56,33 @@ def _topic_queries(j: dict, project_type: str) -> list[dict]:
     cc = j["code_cycles"]
     loc = " ".join(p for p in [city, county, state] if p).strip() or state
 
-    # NOTE: each entry is (topic_key, query, extra_domain_hints)
-    topics = [
+    # NOTE: each entry is (topic_key, query, extra_domain_hints).
+    # City/county queries come FIRST so the most-local results surface at the
+    # top of the research block. The prompt tells the LLM to prefer municipal
+    # > county > state > IRC when the same topic is covered at multiple tiers.
+    topics = []
+    if city:
+        topics += [
+            ("municipal_code",
+             f"City of {city} {state} municipal code ordinance construction building chapter title",
+             []),
+            ("local_permit_ordinance",
+             f"City of {city} {state} building permit application fee submittal requirements ordinance",
+             []),
+            ("local_amendments",
+             f"City of {city} {state} local amendments to {cc.get('building','state building code')} {project_type}",
+             []),
+            ("local_zoning",
+             f"City of {city} {state} zoning ordinance {project_type} setback height use permit",
+             []),
+        ]
+    if county:
+        topics += [
+            ("county_code",
+             f"{county} County {state} building code construction ordinance {project_type} amendments",
+             []),
+        ]
+    topics += [
         ("licensing",
          f"{state} contractor licensing requirements {project_type} license board statute",
          []),
@@ -74,7 +99,7 @@ def _topic_queries(j: dict, project_type: str) -> list[dict]:
          f"{state} contractor general liability insurance bond minimum requirements {project_type}",
          []),
         ("building_code",
-         f"{loc} {cc.get('building','building code')} {project_type} amendments chapter",
+         f"{loc} {cc.get('building','building code')} {project_type} local amendments chapter",
          []),
         ("residential_code",
          f"{loc} {cc.get('residential','residential code')} adoption amendments section",
@@ -99,6 +124,9 @@ def _topic_queries(j: dict, project_type: str) -> list[dict]:
          []),
         ("labor",
          f"{state} prevailing wage contractor worker classification subcontractor labor law",
+         []),
+        ("stormwater_environmental",
+         f"{city or ''} {state} stormwater erosion sediment control construction permit environmental",
          []),
     ]
     if j["high_wind"] or j["hurricane_prone"]:
@@ -199,7 +227,16 @@ GROUNDING RULES (non-negotiable):
  - Quote a short excerpt (≤25 words) of the actual statute text in `source_quote` when the research contains it.
  - If a category has NO supporting research, OMIT that category. Do not pad with generic advice.
  - Set `verified: true` ONLY when both the citation and the URL are present in the research. Otherwise `verified: false`.
- - Prefer the MOST SPECIFIC jurisdictional source — municipal ordinance > state statute > IRC/IBC base code. When citing base code, add "(base code — confirm with local AHJ)" to the title.
+
+CITATION PRECEDENCE — when the SAME topic appears at multiple tiers in the research, cite the MOST LOCAL tier and mention the base it amends:
+  1. Municipal ordinance (city code / municode.com entry for this city)
+  2. County code / amendments
+  3. State statute / state-adopted code cycle
+  4. IRC/IBC/NEC/IECC base code
+When citing base code (tier 4), add " (base code — confirm with local AHJ)" to the title.
+When citing a local amendment, mention which state/base code section it amends (e.g. "Wilmington Code §18-262 (amends NCBC §1609.1.2 for wind-borne debris)").
+
+TIER LABEL — every item MUST include a `tier` field with exactly one of: "municipal" | "county" | "state" | "base_code". This lets the UI show the contractor *at a glance* which items come from their own city vs the national model.
 
 Return ONLY this JSON (no markdown fences, no prose):
 
@@ -213,7 +250,8 @@ Return ONLY this JSON (no markdown fences, no prose):
   "items": [
     {{
       "id": "unique-slug",
-      "category": "Licensing | Permits | Contract | Liens | Insurance | Building Code | Electrical | Plumbing | Energy | Fire | Accessibility | Labor | Wind/Flood",
+      "category": "Licensing | Permits | Contract | Liens | Insurance | Building Code | Electrical | Plumbing | Energy | Fire | Accessibility | Labor | Wind/Flood | Zoning | Stormwater",
+      "tier": "municipal | county | state | base_code",
       "title": "Short requirement title",
       "description": "2–4 sentences explaining the requirement, who it applies to, and what specifically it demands",
       "status": "pass | review | fail",
