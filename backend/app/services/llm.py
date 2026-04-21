@@ -82,9 +82,11 @@ async def llm_text(
         except Exception as e:
             errors.append(f"Anthropic: {e}")
 
+    # Public-facing error — don't name Anthropic or hint at billing; this
+    # surface is shown to the contractor, not the operator.
     raise RuntimeError(
-        f"All LLM providers failed. Set GEMINI_API_KEY (free at aistudio.google.com). "
-        f"Errors: {'; '.join(errors)}"
+        f"AI providers are temporarily unavailable. Please retry in a moment. "
+        f"(internal: {'; '.join(errors)[:500]})"
     )
 
 
@@ -126,8 +128,8 @@ async def llm_vision(
             errors.append(f"Anthropic: {e}")
 
     raise RuntimeError(
-        f"All LLM providers failed. Set GEMINI_API_KEY (free at aistudio.google.com). "
-        f"Errors: {'; '.join(errors)}"
+        f"AI providers are temporarily unavailable. Please retry in a moment. "
+        f"(internal: {'; '.join(errors)[:500]})"
     )
 
 
@@ -191,20 +193,26 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
         )
         return response.text
 
-    # Try primary, then each fallback. Cycle on quota exhaustion, model
-    # retirement (404), OR transient overload (503 UNAVAILABLE / "high demand").
-    # Short sleep between attempts so a momentary load spike clears.
+    # Two passes through the Gemini model chain. Pass 1 cycles through
+    # models on retryable errors (quota / 404 / 503). Pass 2 repeats with
+    # exponential backoff so a true overload window (typically 3–10s on
+    # free tier) is survived end-to-end, not just by one attempt.
+    models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
+    backoffs = [0.8, 2.5]  # pass 1 inter-model, pass 2 inter-model
     last_err: Exception = RuntimeError("no Gemini models tried")
-    for i, model in enumerate([GEMINI_MODEL, *GEMINI_FALLBACKS]):
-        try:
-            return await asyncio.wait_for(asyncio.to_thread(_run, model), timeout=130)
-        except Exception as e:
-            last_err = e
-            if _is_gemini_retryable(str(e)):
-                if i < len([GEMINI_MODEL, *GEMINI_FALLBACKS]) - 1:
-                    await asyncio.sleep(0.8)
-                continue
-            raise
+    for pass_idx, pass_sleep in enumerate(backoffs):
+        for i, model in enumerate(models):
+            try:
+                return await asyncio.wait_for(asyncio.to_thread(_run, model), timeout=130)
+            except Exception as e:
+                last_err = e
+                if _is_gemini_retryable(str(e)):
+                    await asyncio.sleep(pass_sleep)
+                    continue
+                raise
+        # End of pass — brief extra sleep before the second sweep.
+        if pass_idx == 0:
+            await asyncio.sleep(1.5)
     raise last_err
 
 
@@ -467,7 +475,10 @@ def llm_text_sync(
         except Exception as e:
             errors.append(f"Anthropic: {e}")
 
-    raise RuntimeError(f"All LLM providers failed: {'; '.join(errors)}")
+    raise RuntimeError(
+        f"AI providers are temporarily unavailable. Please retry in a moment. "
+        f"(internal: {'; '.join(errors)[:500]})"
+    )
 
 
 def llm_vision_sync(
@@ -551,4 +562,7 @@ def llm_vision_sync(
         except Exception as e:
             errors.append(f"Anthropic: {e}")
 
-    raise RuntimeError(f"All LLM vision providers failed: {'; '.join(errors)}")
+    raise RuntimeError(
+        f"AI vision providers are temporarily unavailable. Please retry in a moment. "
+        f"(internal: {'; '.join(errors)[:500]})"
+    )

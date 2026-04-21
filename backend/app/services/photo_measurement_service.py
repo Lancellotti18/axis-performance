@@ -85,10 +85,89 @@ async def measure_from_photos(photo_urls: list) -> dict:
     if len(images) > 1:
         prompt = f"You are analyzing {len(images)} job-site photos (showing the primary view). " + MEASUREMENT_PROMPT
 
-    text = await llm_vision(primary_bytes, primary_media_type, prompt, max_tokens=1024)
-    text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
-    text = re.sub(r'\s*```\s*$', '', text)
-    start = text.find("{")
-    if start > 0:
-        text = text[start:]
-    return json.loads(text)
+    # 2048 tokens — the old 1024 ceiling truncated mid-string when the model
+    # filled in warnings/notes, which then blew up json.loads.
+    text = await llm_vision(primary_bytes, primary_media_type, prompt, max_tokens=2048)
+    return _parse_measurement_json(text)
+
+
+def _parse_measurement_json(text: str) -> dict:
+    """
+    Robust JSON extractor for the measurement prompt. Handles markdown
+    fences, prose preambles, trailing commas, Python-isms, and truncated
+    responses. Falls back to a low-confidence default if nothing parses,
+    rather than raising — contractors should never see a 422 just because
+    the vision model added a stray apology before the JSON.
+    """
+    if not text:
+        return _unverified_measurements("Empty response from vision model.")
+
+    cleaned = text.strip()
+    cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned, count=1)
+    cleaned = re.sub(r'\s*```\s*$', '', cleaned)
+
+    start = cleaned.find("{")
+    if start < 0:
+        return _unverified_measurements("Vision model returned no JSON object.")
+
+    # Largest balanced {...} block, tolerant of prose on either side.
+    depth, end, in_str, escape = 0, -1, False, False
+    for i in range(start, len(cleaned)):
+        ch = cleaned[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+
+    candidate = cleaned[start:end + 1] if end > 0 else cleaned[start:]
+    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+    candidate = re.sub(r"\bNone\b", "null", candidate)
+    candidate = re.sub(r"\bTrue\b", "true", candidate)
+    candidate = re.sub(r"\bFalse\b", "false", candidate)
+
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        # Walk back through `}` boundaries to salvage truncated output.
+        for i in range(len(candidate) - 1, -1, -1):
+            if candidate[i] != "}":
+                continue
+            try:
+                return json.loads(candidate[:i + 1])
+            except Exception:
+                continue
+    # Last resort — don't 422 the wizard. Return unverified shape so the UI
+    # can say "couldn't get measurements, retry" instead of erroring out.
+    logger.warning("photo_measurement: JSON parse failed. raw[:500]=%r", text[:500])
+    return _unverified_measurements("Couldn't parse measurement response — retry.")
+
+
+def _unverified_measurements(reason: str) -> dict:
+    return {
+        "total_sqft": None,
+        "wall_area_sqft": None,
+        "roof_area_sqft": None,
+        "perimeter_ft": None,
+        "stories": None,
+        "wall_height_ft": None,
+        "structure_type": None,
+        "dimensions": {"estimated_width_ft": None, "estimated_depth_ft": None},
+        "confidence": 0.0,
+        "measurements_unverified": True,
+        "notes": reason,
+        "warnings": [reason],
+    }
