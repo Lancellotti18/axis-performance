@@ -45,7 +45,28 @@ app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "0.1.0"}
+    # Include key counts (no secrets) so ops can verify Render picked up the
+    # env vars without shelling into the container. Only counts, never values.
+    def _suffix(v: str) -> str:
+        return v[-4:] if v and len(v) >= 4 else ("(empty)" if not v else "****")
+
+    gemini_keys = [
+        ("GEMINI_API_KEY",   settings.GEMINI_API_KEY),
+        ("GEMINI_API_KEY_2", settings.GEMINI_API_KEY_2),
+        ("GEMINI_API_KEY_3", settings.GEMINI_API_KEY_3),
+    ]
+    loaded = [
+        {"name": name, "loaded": bool(val), "suffix": _suffix(val)}
+        for name, val in gemini_keys
+    ]
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "gemini_keys_loaded": sum(1 for k in loaded if k["loaded"]),
+        "gemini_keys": loaded,
+        "groq_configured": bool(settings.GROQ_API_KEY),
+        "anthropic_configured": bool(settings.ANTHROPIC_API_KEY),
+    }
 
 
 if settings.ENVIRONMENT != "production":
