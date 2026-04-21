@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from app.core.config import settings
 from app.core.supabase import get_supabase
-import logging, json, io, requests as _requests
+import logging, json, io, re, httpx, requests as _requests
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -58,27 +58,55 @@ async def search_permit_portal(
         portal_url  = jurisdiction.get("gov_url") or jurisdiction.get("fallback_search_url")
         portal_name = jurisdiction.get("authority_name") or f"{city}, {state} Building Department"
 
+        # Re-verify the portal URL at response time. A URL may have worked
+        # during jurisdiction detection but be stale by the time the frontend
+        # tries to open it. If it fails, signal the UI to show a "search
+        # manually" fallback instead of a broken link.
+        url_verified = False
+        if portal_url and portal_url != jurisdiction.get("fallback_search_url"):
+            try:
+                async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+                    # HEAD first (cheap); some servers refuse HEAD — fall back to GET.
+                    try:
+                        resp = await client.head(portal_url)
+                        if resp.status_code >= 400:
+                            resp = await client.get(portal_url)
+                    except httpx.HTTPError:
+                        resp = await client.get(portal_url)
+                    url_verified = 200 <= resp.status_code < 400
+            except Exception as verify_err:
+                logger.warning(f"Portal URL verification failed for {portal_url}: {verify_err}")
+                url_verified = False
+
+        if not url_verified:
+            # Drop the broken URL — frontend will show "unverified — search manually"
+            portal_url = None
+
         return {
             "portal_url":   portal_url,
             "portal_name":  portal_name,
+            "url_verified": url_verified,
             "instructions": (
                 f"Visit the official {portal_name} website to submit your permit application."
-                if jurisdiction.get("found")
-                else f"No verified portal found — use the search link to locate the {city}, {state} building department."
+                if jurisdiction.get("found") and url_verified
+                else f"No verified portal found — search manually for the {city}, {state} building department."
             ),
             "source":            "jurisdiction_service",
             "submission_method": jurisdiction.get("submission_method"),
             "submission_email":  jurisdiction.get("submission_email"),
-            "found":             jurisdiction.get("found", False),
+            "found":             jurisdiction.get("found", False) and url_verified,
+            "fallback_search_url": jurisdiction.get("fallback_search_url") or google_fallback,
         }
     except Exception as e:
         logger.warning(f"Permit portal search failed: {e}")
         return {
-            "portal_url":  google_fallback,
+            "portal_url":  None,
             "portal_name": f"{city}, {state} Building Department",
+            "url_verified": False,
             "instructions": f"Search Google for the {city}, {state} building department.",
             "source": "fallback",
             "found": False,
+            "fallback_search_url": google_fallback,
         }
 
 
@@ -541,6 +569,238 @@ def _prefill_fields(raw_fields: list, data: dict) -> list:
     return result
 
 
+# ── Requirement Attachments ────────────────────────────────────────────────
+#
+# Supabase Storage bucket `permit-attachments` must exist (create it in the
+# Supabase dashboard if not yet provisioned). RLS on the bucket:
+#   (bucket_id = 'permit-attachments' AND
+#    (storage.foldername(name))[1]::uuid IN
+#       (SELECT id::text::uuid FROM projects WHERE user_id = auth.uid()))
+# Storage layout: permit-attachments/{project_id}/{index}-{filename}
+
+ATTACHMENT_BUCKET = "permit-attachments"
+ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024  # 20 MB
+ALLOWED_ATTACHMENT_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+class RequirementTextBody(BaseModel):
+    index: int
+    text: str
+
+
+def _sniff_attachment_kind(content: bytes, declared_ct: str) -> Optional[str]:
+    """Return a canonical content-type iff the magic bytes match an allowed
+    format. None means the file is rejected. Never trust the client header —
+    CLAUDE.md: validate file type by magic bytes."""
+    if len(content) < 4:
+        return None
+    # PDF
+    if content[:4] == b"%PDF":
+        return "application/pdf"
+    # JPEG
+    if content[:2] == b"\xff\xd8":
+        return "image/jpeg"
+    # PNG
+    if content[:4] == b"\x89PNG":
+        return "image/png"
+    # DOCX / DOC — both are allowed. DOCX is a ZIP (PK\x03\x04); legacy DOC
+    # uses the OLE2 compound-document header D0 CF 11 E0.
+    if content[:4] == b"PK\x03\x04" and \
+       declared_ct == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    if content[:4] == b"\xd0\xcf\x11\xe0" and declared_ct == "application/msword":
+        return "application/msword"
+    return None
+
+
+def _safe_attachment_filename(name: str) -> str:
+    # Strip path separators and anything weird so the storage key stays clean.
+    name = (name or "file").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    return re.sub(r"[^\w.\-]", "_", name)[:180] or "file"
+
+
+def _delete_storage_blob_safe(db, storage_path: str) -> None:
+    try:
+        db.storage.from_(ATTACHMENT_BUCKET).remove([storage_path])
+    except Exception:
+        logger.debug("permit-attachments: storage remove failed for %s", storage_path, exc_info=True)
+
+
+@router.post("/{project_id}/requirements/upload")
+async def upload_requirement_attachment(
+    project_id: str,
+    index: int = Form(...),
+    file: UploadFile = File(...),
+):
+    """Upload a document for a specific permit-requirement slot. Replaces any
+    prior file or text attachment at the same (project_id, index)."""
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > ATTACHMENT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 20 MB limit")
+
+    declared_ct = (file.content_type or "").lower()
+    if declared_ct not in ALLOWED_ATTACHMENT_TYPES:
+        raise HTTPException(status_code=415, detail=f"Unsupported content type: {declared_ct}")
+
+    sniffed = _sniff_attachment_kind(content, declared_ct)
+    if not sniffed:
+        raise HTTPException(status_code=415, detail="File contents do not match an allowed format")
+
+    safe_name = _safe_attachment_filename(file.filename or "attachment")
+    storage_path = f"{project_id}/{index}-{safe_name}"
+
+    db = get_supabase()
+
+    # Wipe any existing attachment at this slot so the unique constraint
+    # and Storage don't end up with stale rows/blobs.
+    try:
+        existing = (
+            db.table("permit_attachments")
+            .select("id, kind, storage_path")
+            .eq("project_id", project_id)
+            .eq("requirement_index", index)
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            prior = existing.data[0]
+            if prior.get("kind") == "file" and prior.get("storage_path"):
+                _delete_storage_blob_safe(db, prior["storage_path"])
+            db.table("permit_attachments").delete().eq("id", prior["id"]).execute()
+    except Exception:
+        logger.debug("permit-attachments: prior-row cleanup failed", exc_info=True)
+
+    # Upload to Supabase Storage
+    try:
+        db.storage.from_(ATTACHMENT_BUCKET).upload(
+            storage_path,
+            content,
+            {"content-type": sniffed, "upsert": "true"},
+        )
+    except Exception as e:
+        logger.warning("permit-attachments: storage upload failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Storage upload failed: {e}")
+
+    row = {
+        "project_id":        project_id,
+        "requirement_index": index,
+        "kind":              "file",
+        "filename":          safe_name,
+        "content_type":      sniffed,
+        "size_bytes":        len(content),
+        "storage_path":      storage_path,
+        "text_value":        None,
+    }
+    try:
+        result = db.table("permit_attachments").insert(row).execute()
+        return result.data[0] if result.data else row
+    except Exception as e:
+        # Roll back the storage write so we don't orphan the blob.
+        _delete_storage_blob_safe(db, storage_path)
+        logger.warning("permit-attachments: DB insert failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to record attachment: {e}")
+
+
+@router.post("/{project_id}/requirements/text")
+async def save_requirement_text(project_id: str, body: RequirementTextBody):
+    """Save typed-in documentation for a requirement slot (e.g. contractor
+    fills in a narrative rather than uploading a doc)."""
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is empty")
+    if len(text) > 20000:
+        raise HTTPException(status_code=413, detail="Text exceeds 20,000 character limit")
+
+    db = get_supabase()
+
+    # If a file exists at this slot, drop the blob before upsert replaces the row.
+    try:
+        existing = (
+            db.table("permit_attachments")
+            .select("id, kind, storage_path")
+            .eq("project_id", project_id)
+            .eq("requirement_index", body.index)
+            .limit(1)
+            .execute()
+        )
+        if existing.data and existing.data[0].get("kind") == "file":
+            sp = existing.data[0].get("storage_path")
+            if sp:
+                _delete_storage_blob_safe(db, sp)
+    except Exception:
+        logger.debug("permit-attachments: text upsert cleanup failed", exc_info=True)
+
+    row = {
+        "project_id":        project_id,
+        "requirement_index": body.index,
+        "kind":              "text",
+        "filename":          None,
+        "content_type":      None,
+        "size_bytes":        None,
+        "storage_path":      None,
+        "text_value":        text,
+    }
+    try:
+        result = db.table("permit_attachments").upsert(
+            row, on_conflict="project_id,requirement_index",
+        ).execute()
+        return result.data[0] if result.data else row
+    except Exception as e:
+        logger.warning("permit-attachments: text upsert failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to save text: {e}")
+
+
+@router.get("/{project_id}/attachments")
+async def list_requirement_attachments(project_id: str):
+    """Return every attachment row for a project, ordered by requirement_index."""
+    db = get_supabase()
+    try:
+        result = (
+            db.table("permit_attachments")
+            .select("*")
+            .eq("project_id", project_id)
+            .order("requirement_index")
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        logger.warning("permit-attachments: list failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to list attachments: {e}")
+
+
+@router.delete("/{project_id}/requirements/{index}/attachment")
+async def delete_requirement_attachment(project_id: str, index: int):
+    """Delete the attachment (file or text) for a requirement slot."""
+    db = get_supabase()
+    try:
+        existing = (
+            db.table("permit_attachments")
+            .select("id, kind, storage_path")
+            .eq("project_id", project_id)
+            .eq("requirement_index", index)
+            .limit(1)
+            .execute()
+        )
+        if not existing.data:
+            return {"ok": True, "deleted": 0}
+        row = existing.data[0]
+        if row.get("kind") == "file" and row.get("storage_path"):
+            _delete_storage_blob_safe(db, row["storage_path"])
+        db.table("permit_attachments").delete().eq("id", row["id"]).execute()
+        return {"ok": True, "deleted": 1}
+    except Exception as e:
+        logger.warning("permit-attachments: delete failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to delete attachment: {e}")
+
+
 # ── Generate PDF ────────────────────────────────────────────────────────────
 
 @router.post("/generate-pdf/{project_id}")
@@ -553,6 +813,23 @@ async def generate_permit_pdf(project_id: str, payload: GeneratePDFRequest):
     fields = payload.fields
     form_url = payload.form_url
     use_web_form = payload.use_web_form
+
+    # Load requirement attachments so we can render a reference section in the
+    # generated PDF. Overlay path doesn't get the attachments list — the real
+    # form has its own layout and we shouldn't paint over it.
+    attachments: list = []
+    try:
+        db = get_supabase()
+        att_r = (
+            db.table("permit_attachments")
+            .select("*")
+            .eq("project_id", project_id)
+            .order("requirement_index")
+            .execute()
+        )
+        attachments = att_r.data or []
+    except Exception as e:
+        logger.debug("permit-attachments: load for PDF failed: %s", e, exc_info=True)
 
     # Try to overlay on the real form first
     if form_url and not use_web_form:
@@ -567,7 +844,7 @@ async def generate_permit_pdf(project_id: str, payload: GeneratePDFRequest):
             logger.warning(f"PDF overlay failed, falling back to generated form: {e}")
 
     # Generate clean PDF with reportlab
-    pdf_bytes = _generate_clean_pdf(fields, project_id)
+    pdf_bytes = _generate_clean_pdf(fields, project_id, attachments=attachments)
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
@@ -618,7 +895,7 @@ def _overlay_on_original(form_url: str, fields: list) -> bytes:
     return buf.getvalue()
 
 
-def _generate_clean_pdf(fields: list, project_id: str) -> bytes:
+def _generate_clean_pdf(fields: list, project_id: str, attachments: Optional[list] = None) -> bytes:
     """Generate a professional permit application PDF using reportlab."""
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -705,6 +982,42 @@ def _generate_clean_pdf(fields: list, project_id: str) -> bytes:
             story.append(Paragraph(f.label + (" *" if f.required else ""), label_style))
             story.append(HRFlowable(width="60%", thickness=1, color=colors.HexColor("#1e293b"), spaceAfter=4))
             story.append(Paragraph("Signature", empty_style))
+
+    # ── Attached Documentation section ──────────────────────────────────────
+    # Listed as references only — we don't merge PDFs/images into this doc.
+    # Reviewers pull the actual files via /permits/{project_id}/attachments.
+    if attachments:
+        story.append(Spacer(1, 20))
+        story.append(Paragraph("Attached Documentation", section_style))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#dbeafe"), spaceAfter=8))
+
+        att_rows = []
+        for att in attachments:
+            idx = att.get("requirement_index")
+            req_label = f"Requirement #{idx}" if idx is not None else "Requirement"
+            if att.get("kind") == "file":
+                fname = att.get("filename") or "attachment"
+                size_kb = int((att.get("size_bytes") or 0) / 1024)
+                detail = f"{fname} ({size_kb} KB)" if size_kb else fname
+            else:
+                text_preview = (att.get("text_value") or "").strip().replace("\n", " ")
+                if len(text_preview) > 200:
+                    text_preview = text_preview[:200] + "…"
+                detail = f"(typed) {text_preview}" if text_preview else "(typed)"
+            att_rows.append([
+                Paragraph(req_label, label_style),
+                Paragraph(detail, value_style),
+            ])
+
+        if att_rows:
+            att_tbl = Table(att_rows, colWidths=[1.5*inch, 5.5*inch])
+            att_tbl.setStyle(TableStyle([
+                ("VALIGN", (0,0), (-1,-1), "TOP"),
+                ("LEFTPADDING", (0,0), (-1,-1), 0),
+                ("RIGHTPADDING", (0,0), (-1,-1), 6),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ]))
+            story.append(att_tbl)
 
     doc.build(story)
     return buf.getvalue()
