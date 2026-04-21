@@ -215,9 +215,10 @@ Return ONLY this JSON (no markdown fences, no prose):
       "id": "unique-slug",
       "category": "Licensing | Permits | Contract | Liens | Insurance | Building Code | Electrical | Plumbing | Energy | Fire | Accessibility | Labor | Wind/Flood",
       "title": "Short requirement title",
-      "description": "1–2 sentences explaining the requirement and who it applies to",
+      "description": "2–4 sentences explaining the requirement, who it applies to, and what specifically it demands",
+      "status": "pass | review | fail",
       "severity": "required | recommended | info",
-      "action": "Specific action the contractor must take",
+      "action": "Specific action the contractor must take (imperative voice)",
       "deadline": "Deadline if applicable, else null",
       "penalty": "Consequence of non-compliance if known, else null",
       "source": "Exact statute or ordinance citation (e.g. 'IRC 2021 §R905.2.8.5')",
@@ -228,7 +229,13 @@ Return ONLY this JSON (no markdown fences, no prose):
   ]
 }}
 
-Aim for 12–25 items when research supports them. Fewer is fine — quality over quantity."""
+STATUS SEMANTICS (important — this is what the contractor sees first):
+ - "pass"   — the research confirms this requirement is satisfied by default for this jurisdiction/project type (e.g. a NC residential build AUTOMATICALLY triggers the statewide NC Residential Code 2018 — so "Adopt NC Residential Code 2018" = pass).
+ - "review" — research confirms the requirement APPLIES and the contractor must actively demonstrate compliance (e.g. pulling a permit, submitting a license copy, meeting wind-borne debris glazing). Default for most items.
+ - "fail"   — research shows a compliance gap the contractor is most likely to overlook or that commonly results in citations (e.g. missing lien agent filing in NC, no 3-day notice, unlicensed subcontractor). Use sparingly and ground in specific penalties or recent enforcement action.
+
+ORGANIZATION: Order items by category, then severity=required first within each category.
+Aim for 18–30 items when research supports them. Fewer is fine — quality over quantity."""
 
 
 def _strip_json(text: str) -> str:
@@ -381,13 +388,13 @@ async def run_compliance_check(
         jurisdiction_json=json.dumps({k: j[k] for k in ("state","state_name","city","county","zip","climate_zone","high_wind","hurricane_prone")}, indent=2),
         code_cycles="\n".join(f"  - {k}: {v}" for k, v in j["code_cycles"].items()),
         code_cycles_json=json.dumps(j["code_cycles"]),
-        research=research[:9000],      # ~2.3k tokens — leaves room for Groq 8b-instant's 6k TPM cap to serve as a real fallback
+        research=research[:20000],     # Gemini 2.5-flash handles 1M tokens; generous context → more detailed, organized checklist
         project_type=project_type,
         location=location,
         state_code=state_code,
     )
 
-    raw = await llm_text(prompt, max_tokens=4096)
+    raw = await llm_text(prompt, max_tokens=8192)
     try:
         data = _parse_llm_json(raw)
     except Exception:
