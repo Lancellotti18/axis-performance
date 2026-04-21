@@ -346,7 +346,18 @@ export default function ExteriorCaptureWizard({
     setError(null)
     setAnalysisResult(null)
     try {
-      const result = await api.photos.measure(projectId)
+      // Run measurement + bulk damage tagging in parallel — tagging populates
+      // auto_tags.damage so the damage report PDF has something to show without
+      // the contractor having to hit "Auto-tag" on each photo.
+      const [result] = await Promise.all([
+        api.photos.measure(projectId),
+        api.photos.autoTagBulk(projectId).catch(() => {
+          // Non-blocking — tagging is advisory. The measurement is what the
+          // wizard promises. If tagging 503s the user can retry it from the
+          // damage-report button later.
+          return null
+        }),
+      ])
       setAnalysisResult(result)
       onComplete()
     } catch (err: any) {

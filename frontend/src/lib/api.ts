@@ -477,6 +477,18 @@ export const api = {
         { method: 'POST' },
         60000,
       ),
+    autoTagBulk: (projectId: string, opts?: { force?: boolean }) => {
+      const qs = opts?.force ? '?force=true' : ''
+      return apiRequest<{
+        tagged: number
+        skipped: number
+        results: { photo_id: string; auto_tags: Record<string, unknown> }[]
+      }>(
+        `/api/v1/photos/autotag/${projectId}/bulk${qs}`,
+        { method: 'POST' },
+        180000,
+      )
+    },
     transcribe: async (audio: Blob, filename = 'note.webm') => {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token

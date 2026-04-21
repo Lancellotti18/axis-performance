@@ -225,6 +225,63 @@ async def autotag_photo_endpoint(
     return {"photo_id": photo_id, "auto_tags": tags}
 
 
+@router.post("/autotag/{project_id}/bulk")
+async def autotag_bulk_endpoint(
+    project_id: str,
+    force: bool = False,
+    user: dict = Depends(get_current_user),
+):
+    """Tag every project photo that hasn't been tagged yet (or all of them
+    if force=true). Returns per-photo results. This is what the wizard and
+    the damage-report button call so the report actually has damage data."""
+    from app.services.photo_autotag_service import autotag_many
+    db = get_supabase()
+
+    row = (
+        db.table("project_photos")
+        .select("id, url, auto_tags")
+        .eq("project_id", project_id)
+        .execute()
+    )
+    photos = row.data or []
+    if not photos:
+        return {"tagged": 0, "skipped": 0, "results": []}
+
+    targets = []
+    for p in photos:
+        has_tags = bool(p.get("auto_tags"))
+        if (force or not has_tags) and p.get("url"):
+            targets.append(p)
+
+    if not targets:
+        return {"tagged": 0, "skipped": len(photos), "results": []}
+
+    urls = [p["url"] for p in targets]
+    tag_results = await autotag_many(urls, concurrency=3)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    results: list[dict] = []
+    for p, tags in zip(targets, tag_results):
+        try:
+            db.table("project_photos").update({
+                "auto_tags": tags,
+                "ai_tagged_at": now_iso,
+            }).eq("id", p["id"]).execute()
+        except Exception as e:
+            msg = str(e).lower()
+            if "auto_tags" in msg or "ai_tagged_at" in msg or "column" in msg:
+                logger.warning("autotag/bulk: DB missing columns — %s", e)
+            else:
+                logger.warning("autotag/bulk: persist failed for %s: %s", p["id"], e)
+        results.append({"photo_id": p["id"], "auto_tags": tags})
+
+    return {
+        "tagged": len(targets),
+        "skipped": len(photos) - len(targets),
+        "results": results,
+    }
+
+
 @router.post("/measure/{project_id}")
 async def measure_from_photos_endpoint(
     project_id: str,
@@ -350,6 +407,31 @@ async def damage_report_pdf(
             .execute()
         )
         photos = photos_row.data or []
+
+        # Auto-tag any untagged photos so the report actually has damage data
+        # without the contractor having to hit "Auto-tag" on each one. Silent
+        # if tagging fails — we still build the PDF with whatever we have.
+        untagged = [p for p in photos if p.get("url") and not p.get("auto_tags")]
+        if untagged:
+            try:
+                from app.services.photo_autotag_service import autotag_many
+                tag_results = await autotag_many(
+                    [p["url"] for p in untagged], concurrency=3,
+                )
+                now_iso = datetime.now(timezone.utc).isoformat()
+                tag_by_id = {p["id"]: t for p, t in zip(untagged, tag_results)}
+                for p in photos:
+                    if p["id"] in tag_by_id:
+                        p["auto_tags"] = tag_by_id[p["id"]]
+                        try:
+                            db.table("project_photos").update({
+                                "auto_tags": tag_by_id[p["id"]],
+                                "ai_tagged_at": now_iso,
+                            }).eq("id", p["id"]).execute()
+                        except Exception:
+                            logger.debug("damage_report: persist autotag failed", exc_info=True)
+            except Exception:
+                logger.warning("damage_report: bulk autotag failed — building with partial tags", exc_info=True)
 
         # Blocking PDF generation (reportlab + sync httpx image fetches) would
         # stall the event loop for every other request. Push it to a thread so
