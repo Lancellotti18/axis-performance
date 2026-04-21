@@ -244,6 +244,75 @@ def _strip_json(text: str) -> str:
     return text
 
 
+def _parse_llm_json(text: str) -> dict:
+    """
+    Robust JSON extractor for LLM output. Handles markdown fences, prose
+    preambles/epilogues, trailing commas, Python-isms (None/True/False),
+    unquoted unknown/N/A, and truncated responses. Raises json.JSONDecodeError
+    if nothing parseable can be recovered.
+    """
+    if not text:
+        raise json.JSONDecodeError("empty LLM response", "", 0)
+
+    cleaned = text.strip()
+    cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned, count=1)
+    cleaned = re.sub(r'\s*```\s*$', '', cleaned)
+
+    start = cleaned.find("{")
+    if start < 0:
+        raise json.JSONDecodeError("no JSON object in LLM response", cleaned, 0)
+
+    # Extract the largest balanced {...} block (tolerates prose before/after)
+    depth = 0
+    end = -1
+    in_str = False
+    escape = False
+    for i in range(start, len(cleaned)):
+        ch = cleaned[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+
+    candidate = cleaned[start:end + 1] if end > 0 else cleaned[start:]
+
+    # Normalize common LLM mistakes
+    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)            # trailing commas
+    candidate = re.sub(r"\bNone\b", "null", candidate)              # Python None
+    candidate = re.sub(r"\bTrue\b", "true", candidate)              # Python True
+    candidate = re.sub(r"\bFalse\b", "false", candidate)            # Python False
+    candidate = re.sub(r":\s*unknown\b", ": null", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r":\s*N/?A\b", ": null", candidate, flags=re.IGNORECASE)
+
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        # Response was truncated — walk back through `}` to find the longest
+        # prefix that parses successfully.
+        for i in range(len(candidate) - 1, -1, -1):
+            if candidate[i] != "}":
+                continue
+            try:
+                return json.loads(candidate[:i + 1])
+            except Exception:
+                continue
+        raise
+
+
 def _verify_items(items: list[dict], allowed_urls: set[str]) -> list[dict]:
     """
     Check each item's source_url against the URLs we actually retrieved.
@@ -320,9 +389,9 @@ async def run_compliance_check(
 
     raw = await llm_text(prompt, max_tokens=4096)
     try:
-        data = json.loads(_strip_json(raw))
+        data = _parse_llm_json(raw)
     except Exception:
-        logger.warning("compliance: LLM JSON parse failed — returning fallback", exc_info=True)
+        logger.warning("compliance: LLM JSON parse failed — returning fallback. raw[:500]=%r", raw[:500] if raw else None, exc_info=True)
         return {
             "state": j["state"],
             "location": location,

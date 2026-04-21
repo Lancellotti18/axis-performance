@@ -117,20 +117,61 @@ def _strip_json(text: str) -> str:
     start = text.find("{")
     if start == -1:
         raise ValueError(f"No JSON object found. First 200 chars: {text[:200]}")
-    candidate = text[start:]
-    try:
-        return candidate
-    except Exception:
-        pass
-    return candidate
+    return text[start:]
 
 
 def _parse_json(text: str) -> dict:
-    candidate = _strip_json(text).strip()
+    """
+    Robust parser that tolerates markdown fences, prose preambles/epilogues,
+    trailing commas, Python-isms, and truncated responses.
+    """
+    if not text:
+        raise ValueError("empty LLM response")
+
+    cleaned = text.strip()
+    cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned, count=1)
+    cleaned = re.sub(r'\s*```\s*$', '', cleaned)
+
+    start = cleaned.find("{")
+    if start < 0:
+        raise ValueError(f"No JSON object found. First 200 chars: {cleaned[:200]}")
+
+    # Find the largest balanced {...} block
+    depth, end, in_str, escape = 0, -1, False, False
+    for i in range(start, len(cleaned)):
+        ch = cleaned[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+
+    candidate = cleaned[start:end + 1] if end > 0 else cleaned[start:]
+
+    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+    candidate = re.sub(r"\bNone\b", "null", candidate)
+    candidate = re.sub(r"\bTrue\b", "true", candidate)
+    candidate = re.sub(r"\bFalse\b", "false", candidate)
+    candidate = re.sub(r":\s*unknown\b", ": null", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r":\s*N/?A\b", ": null", candidate, flags=re.IGNORECASE)
+
     try:
         return json.loads(candidate)
-    except Exception:
-        # Walk back through `}` boundaries and try to close truncated output.
+    except json.JSONDecodeError:
+        # Walk back through `}` boundaries to salvage truncated output.
         for i in range(len(candidate) - 1, -1, -1):
             if candidate[i] != "}":
                 continue
@@ -282,7 +323,7 @@ async def check_materials_compliance(
     try:
         result = _parse_json(raw)
     except Exception:
-        logger.warning("materials compliance JSON parse failed", exc_info=True)
+        logger.warning("materials compliance JSON parse failed — raw[:500]=%r", raw[:500] if raw else None, exc_info=True)
         result = {
             "overall_status": "warning",
             "summary": f"Compliance data for {loc} retrieved but could not be parsed. Re-run to try again.",
