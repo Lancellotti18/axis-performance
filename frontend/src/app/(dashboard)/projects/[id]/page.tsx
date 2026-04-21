@@ -197,7 +197,6 @@ export default function ProjectPage() {
     try {
       const proj = await api.projects.get(projectId)
       setProject(proj)
-      if (proj.city) setAerialAddress(`${proj.city}, ${proj.region?.replace('US-', '') || ''}`)
       const blueprints = proj.blueprints || []
       if (blueprints.length > 0) {
         const bp = blueprints[0]
