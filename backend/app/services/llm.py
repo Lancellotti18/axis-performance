@@ -149,6 +149,16 @@ GEMINI_FALLBACKS = [
 GEMINI_FALLBACK_MODEL = GEMINI_FALLBACKS[0]
 
 
+def _gemini_keys() -> list[str]:
+    """Return every non-empty Gemini key in priority order. Multi-key lets us
+    rotate across accounts when free-tier load-shedding 503s one of them —
+    each account routes through different shards so key B usually serves
+    when key A is throttled."""
+    return [k for k in (settings.GEMINI_API_KEY,
+                        settings.GEMINI_API_KEY_2,
+                        settings.GEMINI_API_KEY_3) if k]
+
+
 def _is_gemini_retryable(err_msg: str) -> bool:
     """Return True if the Gemini error is transient — quota exhaustion, model
     retirement, or load shedding (503 UNAVAILABLE / overload). We cycle the
@@ -184,8 +194,8 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
 
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
 
-    def _run(model: str):
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    def _run(api_key: str, model: str):
+        client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model=model,
             contents=full_prompt,
@@ -193,25 +203,25 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
         )
         return response.text
 
-    # Two passes through the Gemini model chain. Pass 1 cycles through
-    # models on retryable errors (quota / 404 / 503). Pass 2 repeats with
-    # exponential backoff so a true overload window (typically 3–10s on
-    # free tier) is survived end-to-end, not just by one attempt.
+    # (key × model) matrix. For each key, walk the model chain; on
+    # retryable errors (quota / 404 / 503) rotate to the next model,
+    # then the next key. Two passes total so a transient Google
+    # overload window is survived end-to-end.
+    keys = _gemini_keys()
     models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
-    backoffs = [0.8, 2.5]  # pass 1 inter-model, pass 2 inter-model
-    last_err: Exception = RuntimeError("no Gemini models tried")
-    for pass_idx, pass_sleep in enumerate(backoffs):
-        for i, model in enumerate(models):
-            try:
-                return await asyncio.wait_for(asyncio.to_thread(_run, model), timeout=130)
-            except Exception as e:
-                last_err = e
-                if _is_gemini_retryable(str(e)):
-                    await asyncio.sleep(pass_sleep)
-                    continue
-                raise
-        # End of pass — brief extra sleep before the second sweep.
-        if pass_idx == 0:
+    last_err: Exception = RuntimeError("no Gemini keys configured")
+    for pass_idx in range(2):
+        for key in keys:
+            for model in models:
+                try:
+                    return await asyncio.wait_for(asyncio.to_thread(_run, key, model), timeout=130)
+                except Exception as e:
+                    last_err = e
+                    if _is_gemini_retryable(str(e)):
+                        await asyncio.sleep(0.6 if pass_idx == 0 else 2.0)
+                        continue
+                    raise
+        if pass_idx == 0 and keys:
             await asyncio.sleep(1.5)
     raise last_err
 
@@ -228,8 +238,8 @@ async def _gemini_vision(
 
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
 
-    def _run(model: str):
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    def _run(api_key: str, model: str):
+        client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model=model,
             contents=[
@@ -240,17 +250,22 @@ async def _gemini_vision(
         )
         return response.text
 
-    last_err: Exception = RuntimeError("no Gemini vision models tried")
-    for i, model in enumerate([GEMINI_MODEL, *GEMINI_FALLBACKS]):
-        try:
-            return await asyncio.wait_for(asyncio.to_thread(_run, model), timeout=130)
-        except Exception as e:
-            last_err = e
-            if _is_gemini_retryable(str(e)):
-                if i < len([GEMINI_MODEL, *GEMINI_FALLBACKS]) - 1:
-                    await asyncio.sleep(0.8)
-                continue
-            raise
+    keys = _gemini_keys()
+    models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
+    last_err: Exception = RuntimeError("no Gemini keys configured")
+    for pass_idx in range(2):
+        for key in keys:
+            for model in models:
+                try:
+                    return await asyncio.wait_for(asyncio.to_thread(_run, key, model), timeout=130)
+                except Exception as e:
+                    last_err = e
+                    if _is_gemini_retryable(str(e)):
+                        await asyncio.sleep(0.6 if pass_idx == 0 else 2.0)
+                        continue
+                    raise
+        if pass_idx == 0 and keys:
+            await asyncio.sleep(1.5)
     raise last_err
 
 
@@ -403,29 +418,35 @@ def llm_text_sync(
     """Synchronous LLM text call. Safe from any thread — no event loop needed."""
     errors = []
 
-    if settings.GEMINI_API_KEY:
+    if _gemini_keys():
         try:
             from google import genai
             from google.genai import types
-            full_prompt = f"{system}\n\n{prompt}" if system else prompt
-            client = genai.Client(api_key=settings.GEMINI_API_KEY)
             import time as _time
+            full_prompt = f"{system}\n\n{prompt}" if system else prompt
+            keys = _gemini_keys()
             models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
-            for i, model in enumerate(models):
-                try:
-                    response = client.models.generate_content(
-                        model=model,
-                        contents=full_prompt,
-                        config=types.GenerateContentConfig(max_output_tokens=max_tokens),
-                    )
-                    return response.text
-                except Exception as me:
-                    if _is_gemini_retryable(str(me)):
-                        if i < len(models) - 1:
-                            _time.sleep(0.8)
-                        continue
-                    raise
-            raise RuntimeError("All Gemini models exhausted quota or unavailable")
+            last_me: Exception = RuntimeError("no Gemini attempt made")
+            for pass_idx in range(2):
+                for key in keys:
+                    client = genai.Client(api_key=key)
+                    for model in models:
+                        try:
+                            response = client.models.generate_content(
+                                model=model,
+                                contents=full_prompt,
+                                config=types.GenerateContentConfig(max_output_tokens=max_tokens),
+                            )
+                            return response.text
+                        except Exception as me:
+                            last_me = me
+                            if _is_gemini_retryable(str(me)):
+                                _time.sleep(0.6 if pass_idx == 0 else 2.0)
+                                continue
+                            raise
+                if pass_idx == 0:
+                    _time.sleep(1.5)
+            raise last_me
         except Exception as e:
             errors.append(f"Gemini: {e}")
 
@@ -492,33 +513,37 @@ def llm_vision_sync(
     import io
     errors = []
 
-    if settings.GEMINI_API_KEY:
+    if _gemini_keys():
         try:
             from google import genai
             from google.genai import types
-            full_prompt = f"{system}\n\n{prompt}" if system else prompt
-            client = genai.Client(api_key=settings.GEMINI_API_KEY)
             import time as _time
-            last_me: Exception = RuntimeError("no Gemini vision models tried")
+            full_prompt = f"{system}\n\n{prompt}" if system else prompt
+            keys = _gemini_keys()
             models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
-            for i, model in enumerate(models):
-                try:
-                    response = client.models.generate_content(
-                        model=model,
-                        contents=[
-                            types.Part.from_bytes(data=image_bytes, mime_type=media_type),
-                            full_prompt,
-                        ],
-                        config=types.GenerateContentConfig(max_output_tokens=max_tokens),
-                    )
-                    return response.text
-                except Exception as me:
-                    last_me = me
-                    if _is_gemini_retryable(str(me)):
-                        if i < len(models) - 1:
-                            _time.sleep(0.8)
-                        continue
-                    raise
+            last_me: Exception = RuntimeError("no Gemini vision attempt made")
+            for pass_idx in range(2):
+                for key in keys:
+                    client = genai.Client(api_key=key)
+                    for model in models:
+                        try:
+                            response = client.models.generate_content(
+                                model=model,
+                                contents=[
+                                    types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                                    full_prompt,
+                                ],
+                                config=types.GenerateContentConfig(max_output_tokens=max_tokens),
+                            )
+                            return response.text
+                        except Exception as me:
+                            last_me = me
+                            if _is_gemini_retryable(str(me)):
+                                _time.sleep(0.6 if pass_idx == 0 else 2.0)
+                                continue
+                            raise
+                if pass_idx == 0:
+                    _time.sleep(1.5)
             raise last_me
         except Exception as e:
             errors.append(f"Gemini: {e}")

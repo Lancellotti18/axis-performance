@@ -26,7 +26,13 @@ class Settings(BaseSettings):
     FAL_API_KEY: str = ""  # get at fal.ai — set as FAL_KEY env var too
 
     # Free tier (primary) — get keys at aistudio.google.com and console.groq.com
+    # Multi-key Gemini: add up to 3 free keys from DIFFERENT Google accounts.
+    # When one key hits a 503 / quota wall, we rotate to the next. Each free
+    # account has its own bucket + routes through different load-balancer
+    # shards, so this is the cheapest-possible reliability boost with 1 user.
     GEMINI_API_KEY: str = ""
+    GEMINI_API_KEY_2: str = ""
+    GEMINI_API_KEY_3: str = ""
     GROQ_API_KEY: str = ""
     HUGGINGFACE_API_KEY: str = ""  # huggingface.co/settings/tokens (free)
 
