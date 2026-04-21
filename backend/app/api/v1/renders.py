@@ -60,6 +60,125 @@ EXTERIOR_ANGLES = [
 
 MAX_ROOM_RENDERS = 3  # 4 + 3 = 7 images; at $0.03 each = $0.21/request with fal.ai
 
+# ── Setting-aware room type mapping ───────────────────────────────────────────
+# Each generated interior render must be a plausible room for the project type.
+# Keys are normalized `blueprint_type` values; values are ordered lists where
+# earlier entries are the "primary" rooms to prefer when nothing else hints at
+# a specific type.
+ROOM_TYPES_BY_BUILDING_TYPE: dict[str, list[str]] = {
+    "residential":  ["living room", "kitchen", "bedroom", "bathroom", "dining room", "home office", "laundry room"],
+    "commercial":   ["lobby", "office", "conference room", "break room", "reception area", "storage room"],
+    "retail":       ["sales floor", "fitting room", "stockroom", "checkout counter area", "back office"],
+    "office":       ["open office", "private office", "conference room", "break room", "reception area", "copy room"],
+    "warehouse":    ["warehouse floor", "loading dock", "storage aisle", "office", "break room"],
+}
+
+# Keyword hints we look for inside room names produced by the blueprint analyzer.
+# If the analyzer labels a room "Room 2" (the default) we have no signal, but if
+# a real name like "kitchen_02" or "Master Bedroom" comes through we honor it as
+# long as it's plausible for the building type.
+_ROOM_NAME_HINTS: list[tuple[str, str]] = [
+    ("bedroom",    "bedroom"),
+    ("bed",        "bedroom"),
+    ("master",     "bedroom"),
+    ("kitchen",    "kitchen"),
+    ("bath",       "bathroom"),
+    ("restroom",   "bathroom"),
+    ("living",     "living room"),
+    ("family",     "living room"),
+    ("dining",     "dining room"),
+    ("office",     "office"),
+    ("conference", "conference room"),
+    ("break",      "break room"),
+    ("reception",  "reception area"),
+    ("lobby",      "lobby"),
+    ("laundry",    "laundry room"),
+    ("storage",    "storage room"),
+    ("stock",      "stockroom"),
+    ("fitting",    "fitting room"),
+    ("sales",      "sales floor"),
+    ("checkout",   "checkout counter area"),
+    ("warehouse",  "warehouse floor"),
+    ("loading",    "loading dock"),
+    ("copy",       "copy room"),
+]
+
+# Subtle per-call variety nudges for providers that can't accept a seed (Gemini).
+# These vary the *scene* while keeping the *style* consistent so regenerates look
+# materially different without drifting into a totally different aesthetic.
+_VARIETY_LIGHTING = [
+    "soft morning daylight",
+    "bright midday light",
+    "warm late-afternoon light",
+    "golden hour glow",
+    "overcast diffuse daylight",
+    "cool blue-hour twilight with interior lights on",
+]
+_VARIETY_CAMERA = [
+    "wide-angle view from the doorway",
+    "corner-angle composition",
+    "eye-level centered composition",
+    "slightly low-angle wide view",
+    "three-quarter angle composition",
+]
+_VARIETY_EXTERIOR_CAMERA = [
+    "shot from across the street",
+    "shot from the edge of the driveway",
+    "shot from a slightly elevated angle",
+    "shot at eye level from the sidewalk",
+    "wide lens composition with foreground landscaping",
+]
+
+
+def _normalize_building_type(bp_type: str | None) -> str:
+    """Map the raw `blueprint_type` field to a key in ROOM_TYPES_BY_BUILDING_TYPE."""
+    if not bp_type:
+        return "residential"
+    t = bp_type.lower().strip().replace("_", " ").replace("-", " ")
+    if "retail" in t or "store" in t or "shop" in t:
+        return "retail"
+    if "warehouse" in t or "industrial" in t:
+        return "warehouse"
+    if "office" in t:
+        return "office"
+    if "commercial" in t or "mixed" in t:
+        return "commercial"
+    return "residential"
+
+
+def _infer_room_type(room_name: str, building_type_key: str, index: int, sqft: int) -> str:
+    """
+    Pick an appropriate room type for this slot.
+
+    Priority:
+      1. Explicit keyword match in the room name (if it's allowed for this building type).
+      2. Fall back to the allowed list for the building type, cycling by index.
+      3. For residential, bias larger rooms to living/kitchen and smaller to bath/bedroom.
+    """
+    allowed = ROOM_TYPES_BY_BUILDING_TYPE.get(
+        building_type_key,
+        ROOM_TYPES_BY_BUILDING_TYPE["residential"],
+    )
+    name_lc = (room_name or "").lower()
+
+    # 1. Explicit hint in the room name — honor it only if it fits the building type.
+    for needle, mapped in _ROOM_NAME_HINTS:
+        if needle in name_lc and mapped in allowed:
+            return mapped
+
+    # 3. Residential size heuristic (only kicks in if no name hint matched).
+    if building_type_key == "residential" and sqft:
+        if sqft >= 250:
+            return "living room"
+        if sqft >= 150:
+            return "kitchen"
+        if sqft <= 60:
+            return "bathroom"
+        # fall through to index-based pick
+
+    # 2. Cycle through the allowed list by index so we get variety across rooms.
+    return allowed[index % len(allowed)]
+
 # Gemini rate-limit semaphore — only used when fal.ai is not configured
 _gemini_sem: asyncio.Semaphore | None = None
 
@@ -148,6 +267,7 @@ async def _analyze_blueprint(blueprint_id: str) -> dict:
 def _build_exterior_prompt(
     project: dict, analysis: dict, bp_vision: dict,
     style: str, time_of_day: str, angle_desc: str, user_context: str,
+    variety_seed: int | None = None,
 ) -> str:
     sqft     = analysis.get("total_sqft", 0)
     bp_type  = (project.get("blueprint_type") or "residential").replace("_", " ")
@@ -157,6 +277,7 @@ def _build_exterior_prompt(
 
     stories_n = bp_vision.get("stories")
     stories   = f"{stories_n}-story" if stories_n == 1 else ("two-story" if (stories_n == 2 or (sqft and sqft > 2500)) else "single-story")
+    stories_word = "story" if (stories_n == 1 or (not stories_n and (not sqft or sqft <= 2500))) else "stories"
 
     time_desc = {
         "day":         "bright midday sunlight, clear blue sky",
@@ -179,13 +300,35 @@ def _build_exterior_prompt(
     # user_context is the most specific, user-authored guidance — lead with it.
     lead = f"{user_context.strip().rstrip('.')}. " if user_context else ""
 
+    # Rough spatial-awareness nudge. Text-to-image models won't render exact
+    # square footage but this stops the "my 1,500 sqft ranch looks like a resort"
+    # failure mode.
+    if sqft:
+        stories_label = f"{stories_n} {stories_word}" if stories_n else (stories.replace("-", " "))
+        size_nudge = (
+            f"The entire structure is approximately {int(sqft):,} sq ft on {stories_label} — "
+            f"make the building size proportional. A 1,500 sqft ranch should look modest; "
+            f"a 5,000 sqft home should look large. Do not exaggerate scale. "
+        )
+    else:
+        size_nudge = "Make the building size proportional and realistic, not exaggerated. "
+
+    # Variety nudge so repeated regenerates don't produce identical images.
+    variety = ""
+    if variety_seed is not None:
+        rng     = random.Random(variety_seed)
+        cam     = rng.choice(_VARIETY_EXTERIOR_CAMERA)
+        variety = f"{cam.capitalize()}. "
+
     prompt = (
         f"Ultra-photorealistic architectural exterior render, 8K quality. "
         f"{lead}"
         f"{stories} {bp_type}, {style_desc}"
         f"{', ' + vision_str if vision_str else ''}, "
         f"{sqft_str}located in {location}. "
+        f"{size_nudge}"
         f"{angle_desc.capitalize()}. {time_desc.capitalize()}. "
+        f"{variety}"
         f"Professional landscaping, concrete driveway. "
         f"Shot on Phase One XF IQ4, architectural photography, no people, tack sharp, correct architectural proportions."
     )
@@ -195,8 +338,11 @@ def _build_exterior_prompt(
 def _build_room_prompt(
     project: dict, analysis: dict, bp_vision: dict,
     style: str, room_name: str, room_sqft: int, user_context: str,
+    room_type: str | None = None, variety_seed: int | None = None,
 ) -> str:
-    bp_type = (project.get("blueprint_type") or "residential").replace("_", " ")
+    bp_type_raw       = project.get("blueprint_type") or "residential"
+    building_type_key = _normalize_building_type(bp_type_raw)
+    bp_type_label     = bp_type_raw.replace("_", " ")
 
     style_desc = {
         "modern":       "modern minimalist interior, neutral palette, recessed lighting, clean lines",
@@ -209,15 +355,48 @@ def _build_room_prompt(
     vision_str = bp_vision.get("style_cues", "")
     sqft_str   = f"approximately {room_sqft} sq ft, " if room_sqft else ""
 
+    # If the caller didn't pre-resolve a room type, do it here as a safety net.
+    if not room_type:
+        room_type = _infer_room_type(room_name, building_type_key, 0, room_sqft)
+
+    # Rough spatial-awareness nudge. Prevents the "bedroom bigger than a gym" bug.
+    if room_sqft:
+        size_nudge = (
+            f"Room size approximately {room_sqft} sq ft — use human-scale furniture "
+            f"proportional to this size. Do not exaggerate scale. "
+        )
+    else:
+        size_nudge = "Use human-scale furniture with realistic proportions. Do not exaggerate scale. "
+
+    # Context-appropriate furnishings cue. Retail/warehouse don't get "tasteful
+    # furniture, hardwood floors" — they get racks, fixtures, etc.
+    furnishings = {
+        "retail":    "retail fixtures and display shelving, commercial-grade flooring, recessed lighting",
+        "warehouse": "industrial shelving, concrete floors, exposed steel structure, high-bay lighting",
+        "office":    "office furniture, commercial carpet or polished concrete, acoustic ceiling, task lighting",
+        "commercial":"commercial-grade finishes, appropriate fixtures, professional lighting",
+        "residential":"natural light from large windows, hardwood floors, high ceilings, tasteful furniture",
+    }.get(building_type_key, "natural light from large windows, hardwood floors, tasteful furniture")
+
+    # Variety nudge: subtle per-call scene variation so Gemini regenerates differ.
+    variety = ""
+    if variety_seed is not None:
+        rng     = random.Random(variety_seed)
+        light   = rng.choice(_VARIETY_LIGHTING)
+        cam     = rng.choice(_VARIETY_CAMERA)
+        variety = f"{light.capitalize()}, {cam}. "
+
     # user_context is the most specific, user-authored guidance — lead with it.
     lead = f"{user_context.strip().rstrip('.')}. " if user_context else ""
 
     prompt = (
         f"Ultra-photorealistic interior render, 8K quality. "
         f"{lead}"
-        f"{bp_type} {room_name}, {style_desc}"
+        f"{bp_type_label} {room_type}, {style_desc}"
         f"{', ' + vision_str if vision_str else ''}, "
-        f"{sqft_str}natural light from large windows, hardwood floors, high ceilings, tasteful furniture. "
+        f"{sqft_str}{furnishings}. "
+        f"{size_nudge}"
+        f"{variety}"
         f"Shot on Hasselblad H6D, wide-angle interior photography, no people, tack sharp, correct proportions."
     )
     return prompt
@@ -235,10 +414,12 @@ def _fal_key() -> str:
     )
 
 
-async def _generate_via_fal(prompt: str) -> str:
+async def _generate_via_fal(prompt: str, seed: int = 0) -> str:
     """
     fal.ai FLUX.1.1-pro — best quality, no rate limits, all images run concurrently.
     ~$0.03/image. Returns base64 data URI.
+
+    A non-zero `seed` is forwarded so the caller can vary output per regenerate.
     """
     import fal_client
 
@@ -246,18 +427,18 @@ async def _generate_via_fal(prompt: str) -> str:
     os.environ.setdefault("FAL_KEY", _fal_key())
 
     def _run():
-        result = fal_client.run(
-            "fal-ai/flux-pro/v1.1",
-            arguments={
-                "prompt":               prompt,
-                "image_size":           "landscape_4_3",
-                "num_inference_steps":  28,
-                "guidance_scale":       3.5,
-                "num_images":           1,
-                "safety_tolerance":     "2",
-                "output_format":        "jpeg",
-            },
-        )
+        args = {
+            "prompt":               prompt,
+            "image_size":           "landscape_4_3",
+            "num_inference_steps":  28,
+            "guidance_scale":       3.5,
+            "num_images":           1,
+            "safety_tolerance":     "2",
+            "output_format":        "jpeg",
+        }
+        if seed:
+            args["seed"] = int(seed)
+        result = fal_client.run("fal-ai/flux-pro/v1.1", arguments=args)
         return result["images"][0]["url"]
 
     image_url = await asyncio.wait_for(asyncio.to_thread(_run), timeout=90)
@@ -336,23 +517,27 @@ async def _generate_via_hf(prompt: str) -> str:
     raise TimeoutError("HuggingFace model did not load after 3 attempts.")
 
 
-async def _generate_via_replicate(prompt: str) -> str:
+async def _generate_via_replicate(prompt: str, seed: int = 0) -> str:
     auth = {"Authorization": f"Token {settings.REPLICATE_API_KEY}", "Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(f"{REPLICATE_API}/models/{SDXL_MODEL}", headers=auth)
         r.raise_for_status()
         version = r.json()["latest_version"]["id"]
 
+    input_payload: dict = {
+        "prompt": prompt, "negative_prompt": NEGATIVE_PROMPT,
+        "num_inference_steps": 40, "guidance_scale": 7.5,
+        "width": 1024, "height": 768,
+        "refine": "expert_ensemble_refiner", "high_noise_frac": 0.8,
+    }
+    if seed:
+        input_payload["seed"] = int(seed)
+
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.post(
             f"{REPLICATE_API}/predictions",
             headers=auth,
-            json={"version": version, "input": {
-                "prompt": prompt, "negative_prompt": NEGATIVE_PROMPT,
-                "num_inference_steps": 40, "guidance_scale": 7.5,
-                "width": 1024, "height": 768,
-                "refine": "expert_ensemble_refiner", "high_noise_frac": 0.8,
-            }},
+            json={"version": version, "input": input_payload},
         )
         r.raise_for_status()
         prediction_id = r.json()["id"]
@@ -381,10 +566,15 @@ async def _generate_image(prompt: str, seed: int = 0) -> str:
     """
     Try providers in priority order. Always returns a string — never raises.
     fal.ai → Gemini → HuggingFace → Replicate → Pollinations URL
+
+    `seed` is forwarded to every provider that accepts one (fal.ai, Replicate,
+    Pollinations) so regenerates produce different images. Gemini/HF don't
+    accept a seed — variety for those providers is baked into the prompt itself
+    via `_build_*_prompt(variety_seed=...)` at the call site.
     """
     if _fal_key():
         try:
-            return await _generate_via_fal(prompt)
+            return await _generate_via_fal(prompt, seed=seed)
         except Exception as e:
             log.warning(f"[Renders] fal.ai failed: {e}")
 
@@ -402,7 +592,7 @@ async def _generate_image(prompt: str, seed: int = 0) -> str:
 
     if settings.REPLICATE_API_KEY:
         try:
-            return await _generate_via_replicate(prompt)
+            return await _generate_via_replicate(prompt, seed=seed)
         except Exception as e:
             log.warning(f"[Renders] Replicate failed: {e}")
 
@@ -453,22 +643,60 @@ async def generate_renders(project_id: str, request: RenderRequest):
 
     user_context = (request.user_context or "").strip()
     rooms        = analysis.get("rooms", [])[:MAX_ROOM_RENDERS]
+    # Fresh seed on every call — this is the primary mechanism that keeps
+    # regenerates from looking identical on seed-capable providers (fal.ai,
+    # Replicate, Pollinations). For providers that don't accept a seed
+    # (Gemini, HF), we also pass the per-image seed to the prompt builder so
+    # it can inject a subtle scene-variety nudge derived from that seed.
     base_seed    = random.randint(100, 9999)
+
+    # Resolve each room's type once up front so the prompt and the output label
+    # agree, and so we never generate a bedroom for a retail/warehouse project.
+    building_type_key = _normalize_building_type(project.get("blueprint_type"))
+    resolved_rooms: list[dict] = []
+    for j, room in enumerate(rooms):
+        raw_name = room.get("name", f"Room {j+1}")
+        sqft_i   = int(room.get("sqft", 0) or 0)
+        rtype    = _infer_room_type(raw_name, building_type_key, j, sqft_i)
+        resolved_rooms.append({
+            "raw_name":  raw_name,
+            "sqft":      sqft_i,
+            "room_type": rtype,
+            # Display label: prefer the resolved room type (title-cased) so
+            # clients see "Kitchen" instead of "Room 2". Keep "#N" when there
+            # are multiple rooms of the same type.
+            "label":     rtype.title(),
+        })
+
+    # Disambiguate duplicate labels ("Bedroom" → "Bedroom 1", "Bedroom 2", …).
+    from collections import Counter
+    counts = Counter(r["label"] for r in resolved_rooms)
+    seen:   dict[str, int] = {}
+    for r in resolved_rooms:
+        if counts[r["label"]] > 1:
+            seen[r["label"]] = seen.get(r["label"], 0) + 1
+            r["label"] = f"{r['label']} {seen[r['label']]}"
 
     exterior_pairs = [
         (
-            _build_exterior_prompt(project, analysis, bp_vision, request.style, request.time_of_day, angle_desc, user_context),
+            _build_exterior_prompt(
+                project, analysis, bp_vision, request.style, request.time_of_day,
+                angle_desc, user_context, variety_seed=base_seed + i,
+            ),
             base_seed + i,
         )
         for i, (_, angle_desc) in enumerate(EXTERIOR_ANGLES)
     ]
     room_pairs = [
         (
-            _build_room_prompt(project, analysis, bp_vision, request.style,
-                               room.get("name", f"Room {j+1}"), int(room.get("sqft", 0)), user_context),
+            _build_room_prompt(
+                project, analysis, bp_vision, request.style,
+                r["raw_name"], r["sqft"], user_context,
+                room_type=r["room_type"], variety_seed=base_seed + 4 + j,
+            ),
             base_seed + 4 + j,
         )
-        for j, room in enumerate(rooms)
+        for j, r in enumerate(resolved_rooms)
     ]
 
     all_pairs   = exterior_pairs + room_pairs
@@ -492,7 +720,11 @@ async def generate_renders(project_id: str, request: RenderRequest):
         for i, r in enumerate(ext_results)
     ]
     room_renders = [
-        {"name": rooms[j].get("name", f"Room {j+1}") if j < len(rooms) else f"Room {j+1}", "url": _url(r)}
+        {
+            "name":      resolved_rooms[j]["label"] if j < len(resolved_rooms) else f"Room {j+1}",
+            "room_type": resolved_rooms[j]["room_type"] if j < len(resolved_rooms) else None,
+            "url":       _url(r),
+        }
         for j, r in enumerate(room_results)
     ]
 
@@ -502,4 +734,5 @@ async def generate_renders(project_id: str, request: RenderRequest):
         "style":             request.style,
         "time_of_day":       request.time_of_day,
         "blueprint_context": bp_vision,
+        "building_type":     building_type_key,
     }
