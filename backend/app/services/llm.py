@@ -135,8 +135,16 @@ async def llm_vision(
 # Gemini implementation — uses new google-genai SDK (google.genai)
 # ---------------------------------------------------------------------------
 
-GEMINI_MODEL = "gemini-2.0-flash"
-GEMINI_FALLBACK_MODEL = "gemini-1.5-flash"  # separate quota, used when 2.0-flash daily limit hit
+GEMINI_MODEL = "gemini-2.5-flash"
+# Ordered fallbacks — each has its own free-tier quota bucket, so cycling through
+# them buys us several rounds of retries on a busy day.
+GEMINI_FALLBACKS = [
+    "gemini-2.0-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite",
+]
+# Back-compat alias (some code paths import this directly)
+GEMINI_FALLBACK_MODEL = GEMINI_FALLBACKS[0]
 
 
 def _gemini_client():
@@ -159,13 +167,22 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
         )
         return response.text
 
-    # Try primary model first; if daily quota exhausted (RESOURCE_EXHAUSTED), fall back
-    try:
-        return await asyncio.wait_for(asyncio.to_thread(_run, GEMINI_MODEL), timeout=130)
-    except Exception as e:
-        if "RESOURCE_EXHAUSTED" in str(e) or "quota" in str(e).lower():
-            return await asyncio.wait_for(asyncio.to_thread(_run, GEMINI_FALLBACK_MODEL), timeout=130)
-        raise
+    # Try primary, then each fallback. Cycle on quota exhaustion OR on 404
+    # (Google periodically retires model aliases — survive that without a redeploy).
+    last_err: Exception = RuntimeError("no Gemini models tried")
+    for model in [GEMINI_MODEL, *GEMINI_FALLBACKS]:
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(_run, model), timeout=130)
+        except Exception as e:
+            last_err = e
+            msg = str(e)
+            if ("RESOURCE_EXHAUSTED" in msg
+                or "quota" in msg.lower()
+                or "404" in msg
+                or "NOT_FOUND" in msg):
+                continue
+            raise
+    raise last_err
 
 
 async def _gemini_vision(
@@ -320,7 +337,7 @@ def llm_text_sync(
             from google.genai import types
             full_prompt = f"{system}\n\n{prompt}" if system else prompt
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            for model in [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]:
+            for model in [GEMINI_MODEL, *GEMINI_FALLBACKS]:
                 try:
                     response = client.models.generate_content(
                         model=model,
@@ -329,10 +346,14 @@ def llm_text_sync(
                     )
                     return response.text
                 except Exception as me:
-                    if "RESOURCE_EXHAUSTED" in str(me) or "quota" in str(me).lower():
+                    msg = str(me)
+                    if ("RESOURCE_EXHAUSTED" in msg
+                        or "quota" in msg.lower()
+                        or "404" in msg
+                        or "NOT_FOUND" in msg):
                         continue
                     raise
-            raise RuntimeError("All Gemini models exhausted quota")
+            raise RuntimeError("All Gemini models exhausted quota or unavailable")
         except Exception as e:
             errors.append(f"Gemini: {e}")
 

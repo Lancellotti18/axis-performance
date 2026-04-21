@@ -54,6 +54,13 @@ async def get_risk_score(city: str, state: str, zip_code: str = "") -> dict:
         max_results=4,
     )
 
+    # Cap research to ~12k chars (~3k tokens). Keeps the full prompt inside
+    # Groq's free-tier TPM cap so it can serve as a real fallback when Gemini
+    # is rate-limited, and avoids burning Gemini quota on duplicate snippets.
+    MAX_RESEARCH_CHARS = 12000
+    if research and len(research) > MAX_RESEARCH_CHARS:
+        research = research[:MAX_RESEARCH_CHARS] + "\n\n…[truncated — remaining results omitted for length]"
+
     prompt = f"""You are a certified property risk analyst specialising in natural-disaster
 exposure and building resilience. Today's date is {today.strftime('%Y-%m-%d')}.
 
