@@ -330,14 +330,26 @@ async def check_materials_compliance(
     try:
         result = _parse_json(raw)
     except Exception:
-        logger.warning("materials compliance JSON parse failed — raw[:500]=%r", raw[:500] if raw else None, exc_info=True)
-        parse_failed = True
-        result = {
-            "overall_status": "warning",
-            "summary": f"Compliance data for {loc} retrieved but could not be parsed. Re-run to try again.",
-            "checklist": [],
-            "missing_required_items": [],
-        }
+        # First parse failed — retry once with a tighter "JSON ONLY" reminder
+        # before giving up and falling back. Catches the common case where
+        # the model added an apologetic preamble or a trailing "let me know
+        # if you want more detail" that blew our brace balance.
+        logger.warning("materials compliance JSON parse failed — retrying with JSON-only reminder. raw[:500]=%r",
+                       raw[:500] if raw else None)
+        retry_prompt = (
+            "The previous response was not valid JSON. Re-emit ONLY the JSON object "
+            "described below — no markdown fences, no prose, no apology, nothing before "
+            "the opening '{' or after the closing '}'.\n\n" + prompt
+        )
+        try:
+            raw2 = await llm_text(retry_prompt, max_tokens=8192)
+            result = _parse_json(raw2)
+            logger.info("materials compliance: recovered on retry")
+        except Exception:
+            logger.warning("materials compliance JSON parse failed (both attempts) — building base-code fallback. raw2[:500]=%r",
+                           (raw2[:500] if 'raw2' in locals() and raw2 else None), exc_info=True)
+            parse_failed = True
+            result = _base_code_materials_fallback(materials or [], j, project_type, loc)
 
     result["checklist"] = _verify(result.get("checklist") or [], allowed_urls)
     # Missing-items list gets the same URL verification treatment.
@@ -373,6 +385,99 @@ async def check_materials_compliance(
     if not parse_failed:
         _cache[cache_key] = (now, result)
     return result
+
+
+def _base_code_materials_fallback(
+    materials: list[dict],
+    j: dict,
+    project_type: str,
+    loc: str,
+) -> dict:
+    """
+    Build a usable per-material checklist when the LLM call or parse failed.
+    Every item is status="warning" + verified=False so the UI shows the
+    amber "confirm with AHJ" treatment, and each item cites the jurisdiction's
+    adopted code cycle (not a fabricated section). Contractors get something
+    real to review instead of the "could not be parsed" brick wall.
+    """
+    cc = j.get("code_cycles") or {}
+    state = j.get("state_name") or j.get("state") or ""
+    climate = j.get("climate_zone")
+    wind = bool(j.get("high_wind") or j.get("hurricane_prone"))
+
+    def _category_of(m: dict) -> str:
+        cat = (m.get("category") or "").lower()
+        name = (m.get("item_name") or "").lower()
+        if cat:
+            return cat
+        if any(k in name for k in ["shingle", "roof", "underlayment", "felt"]):
+            return "roofing"
+        if any(k in name for k in ["insulation", "batts", "blown"]):
+            return "insulation"
+        if any(k in name for k in ["window", "door", "glazing"]):
+            return "fenestration"
+        if any(k in name for k in ["wire", "breaker", "receptacle", "panel"]):
+            return "electrical"
+        if any(k in name for k in ["pipe", "pvc", "copper", "pex"]):
+            return "plumbing"
+        return "general"
+
+    def _code_for(cat: str) -> tuple[str, str]:
+        if cat == "roofing":      return (cc.get("residential", "IRC 2021"), "Roof assemblies must meet the adopted residential code chapter on roofing.")
+        if cat == "insulation":   return (cc.get("energy", "IECC 2021"), f"R-values must meet IECC Table R402.1.2 for climate zone {climate or 'applicable to this jurisdiction'}.")
+        if cat == "fenestration": return (cc.get("energy", "IECC 2021"), f"U-factor / SHGC must meet IECC Table R402.1.2 for climate zone {climate or 'applicable to this jurisdiction'}.")
+        if cat == "electrical":   return (cc.get("electrical", "NEC"), "Electrical components must meet the adopted NEC edition and local amendments.")
+        if cat == "plumbing":     return (cc.get("plumbing", "IPC / UPC as adopted"), "Materials must meet the adopted plumbing code and local amendments.")
+        if cat == "framing":      return (cc.get("residential", "IRC 2021"), "Framing members must meet the adopted residential code span / spacing tables.")
+        return (cc.get("building", "building code"), "Verify this material against the locally adopted building code and any local amendments.")
+
+    checklist = []
+    for m in materials:
+        name = m.get("item_name") or "Material"
+        cat = _category_of(m)
+        ref, note = _code_for(cat)
+        checklist.append({
+            "item_name": name,
+            "category": cat,
+            "status": "warning",
+            "note": note,
+            "code_reference": ref,
+            "code_reference_url": None,
+            "rule_quote": None,
+            "fix_suggestion": "Confirm with the local AHJ — research retrieval hit a parse error; re-run for a fully-cited check.",
+            "verified": False,
+        })
+
+    missing = []
+    if wind:
+        missing.append({
+            "item_name": "Impact-rated fenestration or approved shutter system",
+            "category": "fenestration",
+            "code_reference": "IBC §1609.2 / ASCE 7",
+            "code_reference_url": None,
+            "reason_required": f"{loc} is designated wind-borne-debris / hurricane-prone.",
+            "verified": False,
+        })
+    if climate:
+        missing.append({
+            "item_name": f"Insulation meeting IECC Climate Zone {climate}",
+            "category": "insulation",
+            "code_reference": cc.get("energy", "IECC 2021") + " Table R402.1.2",
+            "code_reference_url": None,
+            "reason_required": f"Climate zone {climate} sets minimum R-values for this jurisdiction.",
+            "verified": False,
+        })
+
+    return {
+        "overall_status": "warning",
+        "summary": (
+            f"We retrieved live code data for {loc} but the response wasn't cleanly structured. "
+            f"Showing the adopted code cycles for {state} so you have something real to work from — "
+            f"re-run to try for the full per-material citations."
+        ),
+        "checklist": checklist,
+        "missing_required_items": missing,
+    }
 
 
 # ── Back-compat shim: keep old signature so materials_compliance.fetch_local_codes

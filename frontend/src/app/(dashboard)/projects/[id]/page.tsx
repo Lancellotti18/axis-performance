@@ -69,6 +69,17 @@ const SEVERITY: Record<ComplianceSeverity, { badge: string; dot: string; label: 
   recommended: { badge: 'bg-yellow-50 text-yellow-600 border border-yellow-200', dot: 'bg-yellow-500', label: 'Recommended' },
   info:        { badge: 'bg-blue-50 text-blue-600 border border-blue-200',    dot: 'bg-blue-500',   label: 'Info' },
 }
+const STATUS_BADGE: Record<string, { badge: string; label: string }> = {
+  pass:   { badge: 'bg-emerald-50 text-emerald-700 border border-emerald-200', label: 'Pass' },
+  review: { badge: 'bg-amber-50 text-amber-700 border border-amber-200',       label: 'Review' },
+  fail:   { badge: 'bg-red-100 text-red-700 border border-red-300',            label: 'Fail' },
+}
+const TIER_BADGE: Record<string, { badge: string; label: string }> = {
+  municipal: { badge: 'bg-violet-50 text-violet-700 border border-violet-200', label: 'Municipal' },
+  county:    { badge: 'bg-indigo-50 text-indigo-700 border border-indigo-200', label: 'County' },
+  state:     { badge: 'bg-sky-50 text-sky-700 border border-sky-200',          label: 'State' },
+  base_code: { badge: 'bg-slate-50 text-slate-600 border border-slate-200',    label: 'Base Code' },
+}
 const RISK_BANNER: Record<string, string> = {
   low:    'bg-emerald-50 border-emerald-200 text-emerald-700',
   medium: 'bg-amber-50 border-amber-200 text-amber-700',
@@ -2309,15 +2320,31 @@ Thank you for your time.`
                           <span className="text-xs text-slate-300">({items.length})</span>
                         </div>
                         <div className="space-y-2">
-                          {items.map(item => (
-                            <div key={item.id} className="bg-white rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-sm" style={cardStyle}
+                          {items.map(item => {
+                            const isFail = item.status === 'fail'
+                            const isReview = item.status === 'review'
+                            const itemCardStyle = isFail
+                              ? { ...cardStyle, border: '1px solid rgba(254,202,202,0.9)', boxShadow: '0 2px 12px rgba(239,68,68,0.08)', background: 'linear-gradient(180deg, #fff 0%, #fef2f2 100%)' }
+                              : isReview
+                              ? { ...cardStyle, border: '1px solid rgba(253,230,138,0.9)' }
+                              : cardStyle
+                            return (
+                            <div key={item.id} className="bg-white rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-sm" style={itemCardStyle}
                               onClick={() => setExpandedItem(expandedItem === item.id ? null : item.id)}>
                               <div className="px-4 py-3.5 flex items-start gap-3">
-                                <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${SEVERITY[item.severity].dot}`} />
+                                <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${isFail ? 'bg-red-500' : SEVERITY[item.severity].dot}`} />
                                 <div className="flex-1 min-w-0">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <span className="text-slate-800 text-sm font-medium leading-snug">{item.title}</span>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold flex-shrink-0 capitalize ${SEVERITY[item.severity].badge}`}>{SEVERITY[item.severity].label}</span>
+                                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                                    <span className={`text-sm font-medium leading-snug ${isFail ? 'text-red-700' : 'text-slate-800'}`}>{item.title}</span>
+                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                      {item.status && STATUS_BADGE[item.status] && (
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize ${STATUS_BADGE[item.status].badge}`}>{STATUS_BADGE[item.status].label}</span>
+                                      )}
+                                      {item.tier && TIER_BADGE[item.tier] && (
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${TIER_BADGE[item.tier].badge}`}>{TIER_BADGE[item.tier].label}</span>
+                                      )}
+                                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize ${SEVERITY[item.severity].badge}`}>{SEVERITY[item.severity].label}</span>
+                                    </div>
                                   </div>
                                 </div>
                                 <svg className={`flex-shrink-0 text-slate-400 transition-transform mt-0.5 ${expandedItem === item.id ? 'rotate-180' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -2339,7 +2366,8 @@ Thank you for your time.`
                                 </div>
                               )}
                             </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     ))}

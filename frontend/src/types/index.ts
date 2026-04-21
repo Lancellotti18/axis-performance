@@ -85,6 +85,9 @@ export type ComplianceSeverity = 'required' | 'recommended' | 'info'
 export type ComplianceRisk = 'low' | 'medium' | 'high'
 export type ComplianceStatus = 'not_run' | 'pending' | 'processing' | 'complete' | 'failed'
 
+export type ComplianceItemStatus = 'pass' | 'review' | 'fail'
+export type ComplianceItemTier = 'municipal' | 'county' | 'state' | 'base_code'
+
 export interface ComplianceItem {
   id: string
   check_id: string
@@ -96,6 +99,8 @@ export interface ComplianceItem {
   deadline: string | null
   penalty: string | null
   source: string | null
+  status?: ComplianceItemStatus
+  tier?: ComplianceItemTier
 }
 
 export interface ComplianceCheck {
