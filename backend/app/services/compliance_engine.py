@@ -312,7 +312,7 @@ async def run_compliance_check(
         jurisdiction_json=json.dumps({k: j[k] for k in ("state","state_name","city","county","zip","climate_zone","high_wind","hurricane_prone")}, indent=2),
         code_cycles="\n".join(f"  - {k}: {v}" for k, v in j["code_cycles"].items()),
         code_cycles_json=json.dumps(j["code_cycles"]),
-        research=research[:14000],     # keep within provider limits
+        research=research[:9000],      # ~2.3k tokens — leaves room for Groq 8b-instant's 6k TPM cap to serve as a real fallback
         project_type=project_type,
         location=location,
         state_code=state_code,

@@ -275,7 +275,7 @@ async def check_materials_compliance(
         jurisdiction_json=json.dumps({k: j[k] for k in ("state","state_name","city","county","zip","climate_zone","high_wind","hurricane_prone")}, indent=2),
         code_cycles="\n".join(f"  - {k}: {v}" for k, v in j["code_cycles"].items()),
         materials_text=materials_text,
-        research=(research[:14000] if research else "(No research retrieved — evaluate using IRC/IBC/IECC base code for the state and FLAG verified=false on every item.)"),
+        research=(research[:9000] if research else "(No research retrieved — evaluate using IRC/IBC/IECC base code for the state and FLAG verified=false on every item.)"),
     )
 
     raw = await llm_text(prompt, max_tokens=8192)
