@@ -225,6 +225,16 @@ def _build_room_prompt(
 
 # ── Image generation providers ────────────────────────────────────────────────
 
+def _fal_key() -> str:
+    """Accept either FAL_KEY or FAL_API_KEY — matches visualizer_service behavior."""
+    return (
+        os.environ.get("FAL_KEY")
+        or os.environ.get("FAL_API_KEY")
+        or getattr(settings, "FAL_API_KEY", "")
+        or ""
+    )
+
+
 async def _generate_via_fal(prompt: str) -> str:
     """
     fal.ai FLUX.1.1-pro — best quality, no rate limits, all images run concurrently.
@@ -232,8 +242,8 @@ async def _generate_via_fal(prompt: str) -> str:
     """
     import fal_client
 
-    # fal_client reads FAL_KEY env var — set it from our config
-    os.environ.setdefault("FAL_KEY", settings.FAL_API_KEY)
+    # fal_client reads FAL_KEY env var
+    os.environ.setdefault("FAL_KEY", _fal_key())
 
     def _run():
         result = fal_client.run(
@@ -370,7 +380,7 @@ async def _generate_image(prompt: str, seed: int = 0) -> str:
     Try providers in priority order. Always returns a string — never raises.
     fal.ai → Gemini → HuggingFace → Replicate → Pollinations URL
     """
-    if settings.FAL_API_KEY:
+    if _fal_key():
         try:
             return await _generate_via_fal(prompt)
         except Exception as e:
