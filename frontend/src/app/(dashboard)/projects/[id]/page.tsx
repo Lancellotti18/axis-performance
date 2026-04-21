@@ -2008,6 +2008,7 @@ Thank you for your time.`
                 {showCaptureWizard && (
                   <ExteriorCaptureWizard
                     projectId={projectId}
+                    initialPhotos={photos}
                     onComplete={async () => {
                       try {
                         const photoData = await api.photos.list(projectId)
@@ -2127,32 +2128,32 @@ Thank you for your time.`
                     </div>
                   )
                   return (
-                    <div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                       {displayed.map((photo: any) => {
                         const phaseColors: Record<string, string> = { before: 'bg-blue-500', during: 'bg-amber-500', after: 'bg-emerald-500' }
                         const hasGeo = typeof photo.latitude === 'number' && typeof photo.longitude === 'number'
                         const hasNotes = !!(photo.notes && photo.notes.trim())
                         const hasAutoTags = photo.auto_tags && (photo.auto_tags.area || (photo.auto_tags.materials || []).length > 0)
                         return (
-                          <div key={photo.id} className="relative group break-inside-avoid bg-white rounded-2xl overflow-hidden cursor-pointer" style={cardStyle} onClick={() => setSelectedPhoto(photo)}>
-                            <img src={photo.url} alt={photo.filename} className="w-full object-cover" />
-                            <div className="absolute top-2 left-2 flex items-center gap-1">
-                              <span className={`text-[10px] font-bold text-white px-2 py-0.5 rounded-full capitalize ${phaseColors[photo.phase] || 'bg-slate-500'}`}>{photo.phase}</span>
-                              {hasGeo && (
-                                <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title={`${photo.latitude.toFixed(4)}, ${photo.longitude.toFixed(4)}`}>📍</span>
-                              )}
-                              {hasNotes && (
-                                <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title="Has notes">📝</span>
-                              )}
-                              {hasAutoTags && (
-                                <span className="text-[10px] font-bold text-white bg-indigo-500/90 px-1.5 py-0.5 rounded-full" title="AI-tagged">✨</span>
-                              )}
-                            </div>
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-end p-2">
-                              <div className="flex items-center justify-end w-full opacity-0 group-hover:opacity-100 transition-all">
+                          <div key={photo.id} className="relative group bg-white rounded-2xl overflow-hidden cursor-pointer flex flex-col" style={cardStyle} onClick={() => setSelectedPhoto(photo)}>
+                            <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
+                              <img src={photo.url} alt={photo.filename} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+                              <div className="absolute top-2 left-2 flex items-center gap-1">
+                                <span className={`text-[10px] font-bold text-white px-2 py-0.5 rounded-full capitalize ${phaseColors[photo.phase] || 'bg-slate-500'}`}>{photo.phase}</span>
+                                {hasGeo && (
+                                  <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title={`${photo.latitude.toFixed(4)}, ${photo.longitude.toFixed(4)}`}>📍</span>
+                                )}
+                                {hasNotes && (
+                                  <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title="Has notes">📝</span>
+                                )}
+                                {hasAutoTags && (
+                                  <span className="text-[10px] font-bold text-white bg-indigo-500/90 px-1.5 py-0.5 rounded-full" title="AI-tagged">✨</span>
+                                )}
+                              </div>
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-end justify-end p-2">
                                 <button
                                   onClick={e => { e.stopPropagation(); handleDeletePhoto(photo) }}
-                                  className="p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all"
+                                  className="p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all opacity-0 group-hover:opacity-100"
                                 >
                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
                                 </button>

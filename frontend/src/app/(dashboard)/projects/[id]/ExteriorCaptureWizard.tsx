@@ -13,8 +13,11 @@
  * native camera via <input capture="environment">, and a cache of taken
  * images is shown as thumbnails so the user can retake any angle.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
+import type { Photo } from '@/types'
+
+const ANGLE_TAG_PREFIX = 'angle:'
 
 export interface CaptureStep {
   key: string
@@ -85,13 +88,28 @@ const STEPS: CaptureStep[] = [
 
 type CapturedShot = {
   key: string
-  file: File
+  /** New file from camera/upload. Undefined for shots backed by an existing project photo. */
+  file?: File
+  /** If this slot is filled by a photo already in the project, this is its id. */
+  existingPhotoId?: string
   previewUrl: string
+  /** True when the shot lives on the backend (existing photo or successful upload). */
   uploaded: boolean
   uploadError?: string | null
   capturedAt: string            // ISO-8601, from Date at pick time
   latitude?: number
   longitude?: number
+}
+
+function getAngleFromTags(tags: string[] | null | undefined): string | null {
+  if (!tags || tags.length === 0) return null
+  const hit = tags.find(t => t.startsWith(ANGLE_TAG_PREFIX))
+  return hit ? hit.slice(ANGLE_TAG_PREFIX.length) : null
+}
+
+/** Photos that should feed into the wizard: before-phase OR tagged `exterior`. */
+function selectRelevantPhotos(all: Photo[]): Photo[] {
+  return all.filter(p => p.phase === 'before' || (p.tags || []).includes('exterior'))
 }
 
 /** Ask the browser for a single GPS fix. Resolves to null if denied or unavailable. */
@@ -120,13 +138,21 @@ export default function ExteriorCaptureWizard({
   projectId,
   onComplete,
   onClose,
+  initialPhotos,
 }: {
   projectId: string
   onComplete: () => void
   onClose: () => void
+  /**
+   * Existing project photos. The wizard auto-fills angle slots from any photo
+   * tagged `angle:<key>` and shows the rest in a pool so the contractor can
+   * tap-to-assign instead of re-taking.
+   */
+  initialPhotos?: Photo[]
 }) {
   const [stepIdx, setStepIdx] = useState(0)
   const [shots, setShots] = useState<Record<string, CapturedShot>>({})
+  const [poolPhotos, setPoolPhotos] = useState<Photo[]>([])
   const [uploading, setUploading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -137,12 +163,62 @@ export default function ExteriorCaptureWizard({
   const step = STEPS[stepIdx]
   const shot = shots[step.key]
   const completed = STEPS.filter(s => shots[s.key]?.uploaded).length
+  const anyCaptured = STEPS.some(s => shots[s.key])
   const allCaptured = STEPS.every(s => shots[s.key])
+  const hasNewFiles = useMemo(
+    () => STEPS.some(s => !!shots[s.key]?.file && !shots[s.key]?.uploaded),
+    [shots],
+  )
 
-  // Clean up object URLs when unmounting to avoid leaks.
+  // Seed slots + pool from existing project photos. Photos carrying an
+  // `angle:<key>` tag fill the matching slot as already-uploaded; the rest
+  // land in the pool so the user can tap to assign them to the current angle.
+  useEffect(() => {
+    let cancelled = false
+    async function hydrate() {
+      let list: Photo[] | null = initialPhotos ?? null
+      if (!list) {
+        try {
+          list = await api.photos.list(projectId)
+        } catch {
+          list = []
+        }
+      }
+      if (cancelled || !list) return
+      const relevant = selectRelevantPhotos(list)
+      const seeded: Record<string, CapturedShot> = {}
+      const unassigned: Photo[] = []
+      const validKeys = new Set(STEPS.map(s => s.key))
+      for (const p of relevant) {
+        const angle = getAngleFromTags(p.tags)
+        if (angle && validKeys.has(angle) && !seeded[angle]) {
+          seeded[angle] = {
+            key: angle,
+            existingPhotoId: p.id,
+            previewUrl: p.url,
+            uploaded: true,
+            capturedAt: p.captured_at || p.created_at,
+            latitude: p.latitude ?? undefined,
+            longitude: p.longitude ?? undefined,
+          }
+        } else {
+          unassigned.push(p)
+        }
+      }
+      setShots(seeded)
+      setPoolPhotos(unassigned)
+    }
+    hydrate()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId])
+
+  // Only revoke blob: URLs we created; existing photos use real HTTP URLs.
   useEffect(() => {
     return () => {
-      Object.values(shots).forEach(s => URL.revokeObjectURL(s.previewUrl))
+      Object.values(shots).forEach(s => {
+        if (s.file && s.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(s.previewUrl)
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -157,7 +233,7 @@ export default function ExteriorCaptureWizard({
     const geo = await getLocationOnce()
     setShots(prev => {
       const old = prev[step.key]
-      if (old) URL.revokeObjectURL(old.previewUrl)
+      if (old?.file && old.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(old.previewUrl)
       return {
         ...prev,
         [step.key]: {
@@ -173,13 +249,52 @@ export default function ExteriorCaptureWizard({
     })
   }
 
+  /**
+   * Assign a pool photo (existing project photo) to the current angle slot.
+   * Persists the `angle:<key>` + `exterior` tags on the backend so the mapping
+   * survives across wizard sessions.
+   */
+  async function assignFromPool(photo: Photo) {
+    const targetKey = step.key
+    setPoolPhotos(prev => prev.filter(p => p.id !== photo.id))
+    setShots(prev => {
+      const old = prev[targetKey]
+      if (old?.file && old.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(old.previewUrl)
+      return {
+        ...prev,
+        [targetKey]: {
+          key: targetKey,
+          existingPhotoId: photo.id,
+          previewUrl: photo.url,
+          uploaded: true,
+          capturedAt: photo.captured_at || photo.created_at,
+          latitude: photo.latitude ?? undefined,
+          longitude: photo.longitude ?? undefined,
+        },
+      }
+    })
+    const existingTags = photo.tags || []
+    const newTags = Array.from(new Set([
+      ...existingTags.filter(t => !t.startsWith(ANGLE_TAG_PREFIX)),
+      `${ANGLE_TAG_PREFIX}${targetKey}`,
+      'exterior',
+    ]))
+    try {
+      await api.photos.update(projectId, photo.id, { tags: newTags })
+    } catch {
+      // Assignment still works locally if the tag PATCH fails; it just won't
+      // survive a full reload. Stay silent — not worth a user-facing error.
+    }
+  }
+
   async function uploadAll() {
     setUploading(true)
     setError(null)
     try {
       for (const s of STEPS) {
         const captured = shots[s.key]
-        if (!captured || captured.uploaded) continue
+        // Skip slots that are empty or already backed by a saved photo.
+        if (!captured || captured.uploaded || !captured.file) continue
         const filename = `exterior_${s.key}_${Date.now()}.jpg`
         const { upload_url, key } = await api.photos.getUploadUrl(
           projectId,
@@ -195,11 +310,11 @@ export default function ExteriorCaptureWizard({
         await api.photos.register(projectId, {
           storage_key: key,
           filename,
-          phase: 'during',
+          phase: 'before',
           captured_at: captured.capturedAt,
           latitude: captured.latitude,
           longitude: captured.longitude,
-          tags: ['exterior', `angle:${s.key}`],
+          tags: ['exterior', `${ANGLE_TAG_PREFIX}${s.key}`],
         })
         setShots(prev => ({
           ...prev,
@@ -270,6 +385,36 @@ export default function ExteriorCaptureWizard({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
+          {/* Pool of existing uploaded "Before" photos — tap to assign to current angle. */}
+          {poolPhotos.length > 0 && (
+            <div className="mb-4 bg-blue-50/70 border border-blue-100 rounded-2xl p-3">
+              <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                <div className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">
+                  Already uploaded · {poolPhotos.length} photo{poolPhotos.length === 1 ? '' : 's'}
+                </div>
+                <div className="text-[10px] text-blue-600/90 font-semibold">
+                  Tap one to use for &ldquo;{step.title}&rdquo;
+                </div>
+              </div>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                {poolPhotos.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => assignFromPool(p)}
+                    className="group relative aspect-square rounded-lg overflow-hidden border border-blue-200 hover:border-blue-500 transition-all"
+                    title={`Use for ${step.title}`}
+                  >
+                    <img src={p.url} alt={p.filename} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-blue-600/0 group-hover:bg-blue-600/60 transition-all flex items-center justify-center">
+                      <span className="text-white text-[10px] font-bold opacity-0 group-hover:opacity-100">
+                        Use
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex items-start gap-4 mb-4">
             <div className="w-14 h-14 bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-center text-3xl flex-shrink-0">
               {step.emoji}
@@ -411,11 +556,18 @@ export default function ExteriorCaptureWizard({
             ) : (
               <button
                 onClick={captureAndAnalyze}
-                disabled={!allCaptured || uploading || analyzing}
+                disabled={!anyCaptured || uploading || analyzing}
                 className="inline-flex items-center gap-1.5 text-white font-bold px-5 py-2 rounded-xl text-sm transition-all hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: 'linear-gradient(135deg, #059669, #047857)' }}
+                title={allCaptured ? '' : 'Not all 8 angles are filled — analysis will run with what you have.'}
               >
-                {uploading ? 'Uploading…' : analyzing ? 'Analyzing…' : '✓ Upload & Analyze'}
+                {uploading
+                  ? 'Uploading…'
+                  : analyzing
+                  ? 'Analyzing…'
+                  : hasNewFiles
+                  ? '✓ Upload & Analyze'
+                  : '✓ Analyze existing photos'}
               </button>
             )}
           </div>
