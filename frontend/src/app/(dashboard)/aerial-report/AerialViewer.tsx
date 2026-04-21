@@ -2,19 +2,19 @@
 /**
  * AerialViewer — satellite image with zoom, pan, house highlight, and click-to-measure.
  *
- * Scale: Esri World Imagery at zoom 18, 640×420 px image.
- * mpp = 156543.03392 × cos(lat_rad) / 2^18  → metres per native pixel
+ * Scale: Esri World Imagery at zoom 19, 1536×1024 px native image.
+ * mpp = 156543.03392 × cos(lat_rad) / 2^19  → metres per native pixel
  */
 
 import React, { useRef, useState, useEffect, useCallback } from 'react'
 
-// The backend now serves 1280×840 images (2× resolution for the same geographic area).
-// We display them at 640×420 CSS pixels → retina-quality at all zoom levels.
-const IMG_W = 640
-const IMG_H = 420
-const IMG_NATIVE_W = 1280   // actual pixel dimensions of the fetched image
-const IMG_NATIVE_H = 840
-const ZOOM_LEVEL = 18
+// Backend now serves 1536×1024 @ zoom 19 (~0.15 m/px — 2× sharper than zoom 18).
+// Display at 768×512 CSS pixels so we still have 2× retina headroom at all zoom levels.
+const IMG_W = 768
+const IMG_H = 512
+const IMG_NATIVE_W = 1536
+const IMG_NATIVE_H = 1024
+const ZOOM_LEVEL = 19
 const ESRI_MPP0 = 156543.03392   // metres/pixel at zoom 0 at equator
 const M_TO_FT   = 3.28084
 const MIN_ZOOM        = 1     // no blank space — can't zoom below natural image size
@@ -71,11 +71,21 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
   const [measuring, setMeasuring] = useState(false)
   const [ptA,     setPtA]     = useState<Pt | null>(null)
   const [ptB,     setPtB]     = useState<Pt | null>(null)
+  // When true, the image transform lerps via CSS transition for that 'map-like'
+  // fluid feel on discrete actions (button zoom, wheel, pan inertia). We turn it
+  // off during active drag so the image tracks the cursor 1:1 with no lag.
+  const [smooth, setSmooth]   = useState(true)
 
   const dragging  = useRef(false)
   const dragStart = useRef<Pt>({ x: 0, y: 0 })
   const panStart  = useRef<Pt>({ x: 0, y: 0 })
   const zoomRef   = useRef(1)   // mirror of zoom state for use inside event-handler closures
+  // Velocity tracking for pan inertia. lastMove stores the most recent mouse event
+  // so we can compute release velocity when drag ends.
+  const velocity  = useRef<Pt>({ x: 0, y: 0 })
+  const lastMoveT = useRef<number>(0)
+  const inertiaRAF = useRef<number | null>(null)
+  const smoothTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Clamp pan so the image never exposes the dark background outside its edges
   const clampPan = useCallback((p: Pt, z: number): Pt => {
@@ -90,6 +100,12 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
       x: sw >= cW ? Math.min(0, Math.max(cW - sw, p.x)) : (cW - sw) / 2,
       y: sh >= cH ? Math.min(0, Math.max(cH - sh, p.y)) : (cH - sh) / 2,
     }
+  }, [])
+
+  // Cleanup: cancel any in-flight inertia animation / smoothness debounce on unmount.
+  useEffect(() => () => {
+    if (inertiaRAF.current !== null) cancelAnimationFrame(inertiaRAF.current)
+    if (smoothTimer.current) clearTimeout(smoothTimer.current)
   }, [])
 
   // Center the image once the flex container has a real size.
@@ -144,12 +160,17 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
     setPan(clampPan({ x: (cW - IMG_W) / 2, y: (cH - IMG_H) / 2 }, 1))
   }, [clampPan])
 
-  // Scroll-to-zoom (passive:false required for Safari + Firefox)
+  // Scroll-to-zoom (passive:false required for Safari + Firefox). Wheel events
+  // fire faster than CSS transitions can settle, so we disable the transition
+  // for the active scroll burst and re-enable it ~120ms after the last event.
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      setSmooth(false)
+      if (smoothTimer.current) clearTimeout(smoothTimer.current)
+      smoothTimer.current = setTimeout(() => setSmooth(true), 140)
       const rect = el.getBoundingClientRect()
       zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - rect.left, e.clientY - rect.top)
     }
@@ -213,23 +234,63 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
     }
   }, [zoomAt, clampPan])
 
-  // Drag-to-pan
+  // Drag-to-pan. While actively dragging, disable the CSS transition so the
+  // image tracks the cursor 1:1. On release, kick off a short inertia decay
+  // so it feels like a flicked map tile rather than a hard stop.
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (measuring) return
+    if (inertiaRAF.current !== null) {
+      cancelAnimationFrame(inertiaRAF.current)
+      inertiaRAF.current = null
+    }
     dragging.current = true
     dragStart.current = { x: e.clientX, y: e.clientY }
     panStart.current  = pan
+    velocity.current  = { x: 0, y: 0 }
+    lastMoveT.current = performance.now()
+    setSmooth(false)
   }, [pan, measuring])
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragging.current) return
+    const now = performance.now()
+    const dt = Math.max(now - lastMoveT.current, 1)
+    // exponential moving average so a brief pause before release doesn't
+    // leave a stale high-velocity reading
+    velocity.current = {
+      x: velocity.current.x * 0.6 + (e.movementX / dt) * 0.4,
+      y: velocity.current.y * 0.6 + (e.movementY / dt) * 0.4,
+    }
+    lastMoveT.current = now
     setPan(clampPan({
       x: panStart.current.x + (e.clientX - dragStart.current.x),
       y: panStart.current.y + (e.clientY - dragStart.current.y),
     }, zoomRef.current))
   }, [clampPan])
 
-  const onMouseUp = useCallback(() => { dragging.current = false }, [])
+  const onMouseUp = useCallback(() => {
+    if (!dragging.current) return
+    dragging.current = false
+    setSmooth(true)
+    // Inertia: decay velocity with friction and apply to pan each frame.
+    // Stale velocity (> 100ms since last move) means the user paused → no flick.
+    if (performance.now() - lastMoveT.current > 100) return
+    const speed = Math.hypot(velocity.current.x, velocity.current.y)
+    if (speed < 0.3) return   // negligible — don't animate
+    let vx = velocity.current.x * 16   // px per frame @ 60fps
+    let vy = velocity.current.y * 16
+    const step = () => {
+      vx *= 0.92
+      vy *= 0.92
+      if (Math.hypot(vx, vy) < 0.3) {
+        inertiaRAF.current = null
+        return
+      }
+      setPan(p => clampPan({ x: p.x + vx, y: p.y + vy }, zoomRef.current))
+      inertiaRAF.current = requestAnimationFrame(step)
+    }
+    inertiaRAF.current = requestAnimationFrame(step)
+  }, [clampPan])
 
   // Click-to-measure — converts viewport click → image-pixel coords
   const onClick = useCallback((e: React.MouseEvent) => {
@@ -385,6 +446,9 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
             height:          IMG_H,
             lineHeight:      0,
             willChange:      'transform',
+            // Fluid transitions on button zoom / pan inertia / reset; disabled
+            // during active drag and rapid wheel to avoid visible lag.
+            transition:      smooth ? 'transform 160ms cubic-bezier(0.2, 0.7, 0.2, 1)' : 'none',
           }}
         >
           {/* Source is 1280×840 px; displayed at 640×420 → retina-quality downscale */}

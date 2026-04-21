@@ -17,11 +17,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 
-const DISPLAY_W = 640
-const DISPLAY_H = 420
-const NATIVE_W = 1280
-const NATIVE_H = 840
-const ZOOM = 18
+const DISPLAY_W = 768
+const DISPLAY_H = 512
+const NATIVE_W = 1536
+const NATIVE_H = 1024
+const ZOOM = 19
 const ESRI_MPP0 = 156543.03392
 const M_TO_FT = 3.28084
 

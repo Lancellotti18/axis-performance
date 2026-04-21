@@ -12,14 +12,12 @@ const log = createLogger('ProjectPage')
 import dynamic from 'next/dynamic'
 const RenderViewer      = dynamic(() => import('./RenderViewer'),      { ssr: false })
 const ExteriorCarousel  = dynamic(() => import('./ExteriorCarousel'),  { ssr: false })
-const AerialViewer      = dynamic(() => import('../../aerial-report/AerialViewer'), { ssr: false })
 import RoofingSection from './RoofingSection'
 import PermitPortalSection from './PermitPortalSection'
 import { computeMaterialConfidence, loadReviewedIds, saveReviewedIds } from './materialConfidence'
 const ExteriorCaptureWizard = dynamic(() => import('./ExteriorCaptureWizard'), { ssr: false })
 const PhotoLightbox = dynamic(() => import('./PhotoLightbox'), { ssr: false })
 const PhotoMapView = dynamic(() => import('./PhotoMapView'), { ssr: false })
-const RoofOutlineEditor = dynamic(() => import('./RoofOutlineEditor'), { ssr: false })
 
 // Images are base64 data URIs from backend — no staggering needed
 function StaggeredRender({ src, label, totalSqft }: { src: string; label: string; totalSqft?: number }) {
@@ -152,17 +150,8 @@ export default function ProjectPage() {
   const [photoMeasureResult, setPhotoMeasureResult] = useState<any>(null)
   const [photoMeasureError, setPhotoMeasureError] = useState<string | null>(null)
   // Hail/Wind Risk Score
-  const [riskScore, setRiskScore] = useState<any>(null)
-  const [riskScoreLoading, setRiskScoreLoading] = useState(false)
-  const [riskScoreError, setRiskScoreError] = useState<string | null>(null)
   // Aerial Roof Report
-  const [aerialAddress, setAerialAddress] = useState('')
-  const [aerialLoading, setAerialLoading] = useState(false)
-  const [aerialResult, setAerialResult] = useState<any>(null)
-  const [aerialError, setAerialError] = useState<string | null>(null)
   // EagleView-style roof outline editor
-  const [outlineOpen, setOutlineOpen] = useState(false)
-  const [outlineOverride, setOutlineOverride] = useState<{ sqft: number; perimeter_ft: number; polygon: [number, number][] } | null>(null)
   // Quote Request modal
   const [quoteModal, setQuoteModal] = useState<{ vendor: string; url: string; items: any[] } | null>(null)
   const [quoteForm, setQuoteForm] = useState({ name: '', company: '', phone: '', email: '', branch: '', notes: '' })
@@ -448,61 +437,6 @@ export default function ProjectPage() {
       setPhotoMeasureError(err.message || 'Measurement analysis failed.')
     }
     setPhotoMeasureLoading(false)
-  }
-
-  async function handleRiskScore() {
-    setRiskScoreLoading(true)
-    setRiskScoreError(null)
-    try {
-      const result = await api.projects.getRiskScore(projectId)
-      setRiskScore(result)
-    } catch (err: any) {
-      setRiskScoreError(err.message || 'Risk assessment failed.')
-    }
-    setRiskScoreLoading(false)
-  }
-
-  function buildEsriSatelliteUrl(lat: number, lng: number): string {
-    const zoom = 18
-    const mpp = 156543.03392 * Math.cos((lat * Math.PI) / 180) / Math.pow(2, zoom)
-    const halfW = (640 * mpp / 2) / (111320 * Math.cos((lat * Math.PI) / 180))
-    const halfH = (420 * mpp / 2) / 111320
-    const bbox = `${(lng - halfW).toFixed(6)},${(lat - halfH).toFixed(6)},${(lng + halfW).toFixed(6)},${(lat + halfH).toFixed(6)}`
-    return `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=640,420&format=png&f=image`
-  }
-
-  async function geocodeNominatim(address: string): Promise<{ lat: number; lng: number } | null> {
-    try {
-      const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`, {
-        headers: { 'User-Agent': 'BuildAI-RoofEstimator/1.0' }
-      })
-      const data = await r.json()
-      if (data?.length) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
-    } catch {}
-    return null
-  }
-
-  async function handleAerialReport() {
-    if (!aerialAddress.trim()) return
-    setAerialLoading(true)
-    setAerialError(null)
-    setAerialResult(null)
-    try {
-      const result = await api.roofing.aerialReport(projectId, aerialAddress)
-      // If backend didn't attach satellite URL, geocode client-side and build Esri URL
-      if (!result.satellite_image_url) {
-        const coords = await geocodeNominatim(aerialAddress)
-        if (coords) {
-          result.lat = coords.lat
-          result.lng = coords.lng
-          result.satellite_image_url = buildEsriSatelliteUrl(coords.lat, coords.lng)
-        }
-      }
-      setAerialResult(result)
-    } catch (err: any) {
-      setAerialError(err.message || 'Aerial report failed.')
-    }
-    setAerialLoading(false)
   }
 
   function openQuoteModal(vendor: string, url: string) {
@@ -977,215 +911,6 @@ Thank you for your time.`
                     </div>
                   </div>
 
-                  {/* Hail / Wind Risk Score */}
-                  <div className="bg-white rounded-2xl p-5" style={cardStyle}>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-slate-800 font-bold text-sm">Storm Risk Score</h3>
-                      <button
-                        onClick={handleRiskScore}
-                        disabled={riskScoreLoading || !project?.city}
-                        title={!project?.city ? 'Add a city to the project first' : ''}
-                        className="flex items-center gap-1.5 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-all disabled:opacity-40"
-                        style={{ background: riskScoreLoading ? '#94a3b8' : 'linear-gradient(135deg, #0ea5e9, #0369a1)', boxShadow: '0 3px 10px rgba(14,165,233,0.25)' }}
-                      >
-                        {riskScoreLoading ? <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Analyzing…</> : '🌩 Get Score'}
-                      </button>
-                    </div>
-                    {riskScoreError && <div className="text-red-600 text-xs bg-red-50 rounded-xl px-3 py-2">{riskScoreError}</div>}
-                    {!riskScore && !riskScoreError && !riskScoreLoading && (
-                      <div className="text-slate-400 text-xs text-center py-4">Hail, wind, and storm risk assessment for {project?.city || 'this location'}.</div>
-                    )}
-                    {riskScore && (() => {
-                      const colorMap: Record<string, string> = {
-                        emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-                        amber:   'bg-amber-50 border-amber-200 text-amber-700',
-                        red:     'bg-red-50 border-red-200 text-red-700',
-                      }
-                      const barMap: Record<string, string> = {
-                        emerald: 'bg-emerald-500',
-                        amber:   'bg-amber-500',
-                        red:     'bg-red-500',
-                      }
-                      const c = riskScore.risk_color || 'amber'
-                      return (
-                        <div>
-                          <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 mb-3 ${colorMap[c] || colorMap.amber}`}>
-                            <div className="text-2xl font-black">{riskScore.overall_risk}<span className="text-sm font-semibold">/10</span></div>
-                            <div>
-                              <div className="font-bold text-sm">{riskScore.risk_label}</div>
-                              <div className="text-xs opacity-70">{project?.city} storm exposure</div>
-                            </div>
-                          </div>
-                          <div className="space-y-2 mb-3">
-                            {[
-                              { label: 'Hail', score: riskScore.hail_risk },
-                              { label: 'Wind', score: riskScore.wind_risk },
-                              { label: 'Flood', score: riskScore.flood_risk },
-                            ].map(r => (
-                              <div key={r.label} className="flex items-center gap-2">
-                                <span className="text-slate-500 text-xs w-10">{r.label}</span>
-                                <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className={`h-full rounded-full ${barMap[c] || barMap.amber}`} style={{ width: `${(r.score / 10) * 100}%` }} />
-                                </div>
-                                <span className="text-slate-600 text-xs font-semibold w-6 text-right">{r.score}</span>
-                              </div>
-                            ))}
-                          </div>
-                          {riskScore.summary && <p className="text-slate-600 text-xs leading-relaxed mb-2">{riskScore.summary}</p>}
-                          {riskScore.scoring_rationale && (
-                            <div className="bg-slate-50 rounded-xl px-3 py-2.5 mb-2">
-                              <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Why This Score</div>
-                              <p className="text-slate-600 text-xs leading-relaxed">{riskScore.scoring_rationale}</p>
-                            </div>
-                          )}
-                          {riskScore.significance && (
-                            <div className="bg-blue-50 rounded-xl px-3 py-2.5 mb-2">
-                              <div className="text-blue-500 text-[10px] font-bold uppercase tracking-wider mb-1">What This Means For You</div>
-                              <p className="text-blue-700 text-xs leading-relaxed">{riskScore.significance}</p>
-                            </div>
-                          )}
-                          {riskScore.recommendation && <p className="text-blue-600 text-xs font-semibold mb-2">{riskScore.recommendation}</p>}
-                          {riskScore.insurance_note && <p className="text-slate-500 text-xs italic mb-2">{riskScore.insurance_note}</p>}
-                          {Array.isArray(riskScore.recent_events) && riskScore.recent_events.length > 0 && (
-                            <div className="mt-3 space-y-1.5">
-                              <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Recent Events</div>
-                              {riskScore.recent_events.slice(0, 4).map((ev: any, i: number) => (
-                                <div key={i} className="bg-slate-50 rounded-lg px-3 py-2">
-                                  <div className="text-slate-700 text-xs font-semibold">{ev.year} — {ev.type}</div>
-                                  <div className="text-slate-500 text-[10px]">{ev.severity}</div>
-                                  {ev.impact && <div className="text-slate-400 text-[10px]">{ev.impact}</div>}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-                  </div>
-
-                  {/* Aerial Roof Report */}
-                  <div className="bg-white rounded-2xl p-5" style={cardStyle}>
-                    <h3 className="text-slate-800 font-bold text-sm mb-1">Aerial Roof Report</h3>
-                    <p className="text-slate-400 text-xs mb-3">Enter a property address to pull real roof measurements from Google Solar satellite imagery.</p>
-                    <div className="flex gap-2 mb-3">
-                      <input
-                        value={aerialAddress}
-                        onChange={e => setAerialAddress(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleAerialReport()}
-                        placeholder="123 Main St, City, TX"
-                        className="flex-1 border rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-300"
-                        style={{ borderColor: 'rgba(219,234,254,0.9)' }}
-                      />
-                      <button
-                        onClick={handleAerialReport}
-                        disabled={aerialLoading || !aerialAddress.trim()}
-                        className="flex items-center gap-1.5 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all disabled:opacity-40"
-                        style={{ background: aerialLoading ? '#94a3b8' : 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 3px 10px rgba(124,58,237,0.25)' }}
-                      >
-                        {aerialLoading ? <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Analyzing…</> : '🛰 Pull Report'}
-                      </button>
-                    </div>
-                    {aerialError && <div className="text-red-600 text-xs bg-red-50 rounded-xl px-3 py-2 mb-2">{aerialError}</div>}
-                    {aerialResult && (() => {
-                      const isSatellite = aerialResult.source === 'Google Solar API'
-                      const confidence = Math.round((aerialResult.confidence || 0) * 100)
-                      return (
-                        <div>
-                          {/* Source badge */}
-                          <div className={`flex items-center gap-2 rounded-xl px-3 py-2 mb-3 ${isSatellite ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
-                            <span className="text-lg">{isSatellite ? '🛰' : '📋'}</span>
-                            <div>
-                              <div className={`text-xs font-bold ${isSatellite ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                {isSatellite ? 'Google Solar Satellite Imagery' : 'Property Records Estimate'}
-                              </div>
-                              <div className={`text-[10px] ${isSatellite ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                {isSatellite
-                                  ? `${confidence}% confidence — measured from aerial imagery`
-                                  : `${confidence}% confidence — estimated from public records. Physical inspection recommended.`}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Satellite image — interactive viewer with zoom, pan, highlight, measure */}
-                          {aerialResult.satellite_image_url && (
-                            <div className="mb-3">
-                              <AerialViewer
-                                imageUrl={aerialResult.satellite_image_url}
-                                lat={aerialResult.lat ?? null}
-                                address={aerialResult.address}
-                              />
-                              <div className="mt-2 flex items-center justify-between gap-2 flex-wrap">
-                                <button
-                                  onClick={() => setOutlineOpen(true)}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm"
-                                  style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
-                                >
-                                  🔲 Edit roof outline
-                                </button>
-                                {outlineOverride && (
-                                  <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
-                                    Corrected: <span className="font-bold">{outlineOverride.sqft.toLocaleString()} sqft</span>
-                                    <span className="mx-1 text-amber-400">·</span>
-                                    <span className="font-semibold">{outlineOverride.perimeter_ft.toLocaleString()} ft perim</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Measurement badges (shown below the viewer when satellite image present) */}
-                          {aerialResult.satellite_image_url && (
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                              <div style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', color: '#4f46e5', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
-                                <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{(aerialResult.total_sqft || 0).toLocaleString()}</div>
-                                <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.7, marginTop: 2 }}>ROOF SQFT</div>
-                              </div>
-                              <div style={{ background: 'rgba(15,23,42,0.06)', border: '1px solid rgba(15,23,42,0.12)', color: '#334155', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
-                                <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.squares || '—'}</div>
-                                <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.6, marginTop: 2 }}>SQUARES</div>
-                              </div>
-                              <div style={{ background: 'rgba(15,23,42,0.06)', border: '1px solid rgba(15,23,42,0.12)', color: '#334155', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
-                                <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.pitch || '—'}</div>
-                                <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.6, marginTop: 2 }}>PITCH</div>
-                              </div>
-                              {aerialResult.roof_segments > 0 && (
-                                <div style={{ background: 'rgba(15,23,42,0.06)', border: '1px solid rgba(15,23,42,0.12)', color: '#334155', borderRadius: 8, padding: '5px 12px', textAlign: 'center' }}>
-                                  <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1 }}>{aerialResult.roof_segments}</div>
-                                  <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.6, marginTop: 2 }}>SEGMENTS</div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Metrics grid (shown when no satellite image, or as supplement) */}
-                          {!aerialResult.satellite_image_url && (
-                            <div className="grid grid-cols-2 gap-2 mb-3">
-                              {[
-                                { label: 'Roof Sqft',  value: `${(aerialResult.total_sqft || 0).toLocaleString()}` },
-                                { label: 'Squares',    value: `${aerialResult.squares || 0}` },
-                                { label: 'Pitch',      value: aerialResult.pitch || '—' },
-                                { label: 'Segments',   value: aerialResult.roof_segments || '—' },
-                              ].map(s => (
-                                <div key={s.label} className="bg-purple-50 rounded-xl p-3">
-                                  <div className="text-purple-800 font-black text-lg">{s.value}</div>
-                                  <div className="text-purple-400 text-xs">{s.label}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {aerialResult.stories && (
-                            <div className="text-slate-500 text-xs mb-2">Stories: {aerialResult.stories} &nbsp;·&nbsp; House sqft: {aerialResult.house_sqft?.toLocaleString() || '—'}</div>
-                          )}
-                          <p className="text-slate-400 text-[10px] leading-relaxed mt-2">
-                            {isSatellite
-                              ? 'Roof measurements were derived from Google Solar satellite imagery using high-resolution aerial analysis of the building footprint and roof geometry. Data is provided for estimation purposes and should be verified prior to material procurement.'
-                              : 'Measurements are estimates based on publicly available property records. Figures may vary from actual roof area. A physical inspection is recommended before ordering materials.'}
-                          </p>
-                        </div>
-                      )
-                    })()}
-                  </div>
 
                   {Array.isArray(analysis?.rooms) && analysis.rooms.length > 0 && (
                     <div className="bg-white rounded-2xl p-5" style={cardStyle}>
@@ -1230,18 +955,6 @@ Thank you for your time.`
                       {refreshingPrices ? (
                         <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Refreshing…</>
                       ) : refreshPricesResult ? refreshPricesResult : '🔄 Refresh All Prices'}
-                    </button>
-                    {/* Check Code Compliance button */}
-                    <button
-                      onClick={handleMaterialsComplianceCheck}
-                      disabled={matCheckLoading || !project?.city}
-                      title={!project?.city ? 'Add a city to the project first' : 'Cross-reference materials against local building codes'}
-                      className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
-                      style={{ background: matCheckLoading ? '#94a3b8' : 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.25)' }}
-                    >
-                      {matCheckLoading ? (
-                        <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Checking…</>
-                      ) : '⚖ Check Code Compliance'}
                     </button>
                     {Object.keys(materialChanges).length > 0 && (
                       <button
@@ -2734,22 +2447,6 @@ Thank you for your time.`
             </div>
           </div>
         </div>
-      )}
-
-      {/* EagleView-style roof outline editor — opened from the aerial-report viewer */}
-      {aerialResult?.satellite_image_url && (
-        <RoofOutlineEditor
-          open={outlineOpen}
-          onClose={() => setOutlineOpen(false)}
-          imageUrl={aerialResult.satellite_image_url}
-          lat={aerialResult.lat ?? null}
-          initialPolygon={outlineOverride?.polygon}
-          onApply={({ polygon, sqft, perimeterFt }) => {
-            setOutlineOverride({ polygon, sqft, perimeter_ft: perimeterFt })
-            setAerialResult((prev: any) => prev ? { ...prev, total_sqft: sqft, squares: Math.round(sqft / 100 * 10) / 10 } : prev)
-            toast.success(`Updated roof area: ${sqft.toLocaleString()} sqft`)
-          }}
-        />
       )}
 
       {/* ── Blueprint Takeoff modal (Togal-style quantity extraction) ── */}

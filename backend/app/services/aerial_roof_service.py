@@ -168,13 +168,15 @@ async def _geocode_address(full_address: str) -> tuple[float, float] | None:
 def _satellite_image_url(lat: float, lng: float) -> str:
     """
     Build an Esri World Imagery satellite URL for the property.
-    Free, no API key required. Returns a PNG image at 640x420.
+    Free, no API key required. Zoom 19 (~0.15 m/px) packed into a
+    1536x1024 PNG — sharper than zoom 18 for single-property framing.
     """
-    zoom = 18
-    # Metres per pixel at this zoom level (Web Mercator / Google Mercator)
+    zoom = 19
     mpp = 156543.03392 * math.cos(math.radians(lat)) / (2 ** zoom)
-    half_w_deg = (640 * mpp / 2) / (111320 * math.cos(math.radians(lat)))
-    half_h_deg = (420 * mpp / 2) / 111320
+    # Use a bigger output canvas so the higher-resolution tile fills more pixels.
+    out_w, out_h = 1536, 1024
+    half_w_deg = (out_w * mpp / 2) / (111320 * math.cos(math.radians(lat)))
+    half_h_deg = (out_h * mpp / 2) / 111320
     west  = lng - half_w_deg
     east  = lng + half_w_deg
     south = lat - half_h_deg
@@ -182,7 +184,7 @@ def _satellite_image_url(lat: float, lng: float) -> str:
     return (
         "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export"
         f"?bbox={west:.6f},{south:.6f},{east:.6f},{north:.6f}"
-        "&bboxSR=4326&imageSR=4326&size=1280,840&format=png&f=image"
+        f"&bboxSR=4326&imageSR=4326&size={out_w},{out_h}&format=png&f=image"
     )
 
 
