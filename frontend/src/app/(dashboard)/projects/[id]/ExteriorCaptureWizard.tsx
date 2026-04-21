@@ -107,9 +107,14 @@ function getAngleFromTags(tags: string[] | null | undefined): string | null {
   return hit ? hit.slice(ANGLE_TAG_PREFIX.length) : null
 }
 
-/** Photos that should feed into the wizard: before-phase OR tagged `exterior`. */
+/**
+ * Pick photos eligible to feed into the wizard. We include every phase so the
+ * contractor can reuse anything they've already uploaded (before/during/after)
+ * as reference material for an angle — filtering too aggressively here was
+ * leaving the pool empty when users had photos tagged 'during'.
+ */
 function selectRelevantPhotos(all: Photo[]): Photo[] {
-  return all.filter(p => p.phase === 'before' || (p.tags || []).includes('exterior'))
+  return all.filter(p => !!p && !!p.url)
 }
 
 /** Ask the browser for a single GPS fix. Resolves to null if denied or unavailable. */
@@ -170,45 +175,54 @@ export default function ExteriorCaptureWizard({
     [shots],
   )
 
+  const applyPhotoList = (list: Photo[]) => {
+    const relevant = selectRelevantPhotos(list)
+    const seeded: Record<string, CapturedShot> = {}
+    const unassigned: Photo[] = []
+    const validKeys = new Set(STEPS.map(s => s.key))
+    for (const p of relevant) {
+      const angle = getAngleFromTags(p.tags)
+      if (angle && validKeys.has(angle) && !seeded[angle]) {
+        seeded[angle] = {
+          key: angle,
+          existingPhotoId: p.id,
+          previewUrl: p.url,
+          uploaded: true,
+          capturedAt: p.captured_at || p.created_at,
+          latitude: p.latitude ?? undefined,
+          longitude: p.longitude ?? undefined,
+        }
+      } else {
+        unassigned.push(p)
+      }
+    }
+    setShots(seeded)
+    setPoolPhotos(unassigned)
+  }
+
   // Seed slots + pool from existing project photos. Photos carrying an
   // `angle:<key>` tag fill the matching slot as already-uploaded; the rest
   // land in the pool so the user can tap to assign them to the current angle.
+  //
+  // We always refetch on open, even when the parent passes `initialPhotos`:
+  // the parent's `photos` state may still be empty while the initial list
+  // request is in flight, and the fresh fetch also guarantees any photos
+  // tagged/uploaded since the page mounted are included.
   useEffect(() => {
     let cancelled = false
-    async function hydrate() {
-      let list: Photo[] | null = initialPhotos ?? null
-      if (!list) {
-        try {
-          list = await api.photos.list(projectId)
-        } catch {
-          list = []
-        }
-      }
-      if (cancelled || !list) return
-      const relevant = selectRelevantPhotos(list)
-      const seeded: Record<string, CapturedShot> = {}
-      const unassigned: Photo[] = []
-      const validKeys = new Set(STEPS.map(s => s.key))
-      for (const p of relevant) {
-        const angle = getAngleFromTags(p.tags)
-        if (angle && validKeys.has(angle) && !seeded[angle]) {
-          seeded[angle] = {
-            key: angle,
-            existingPhotoId: p.id,
-            previewUrl: p.url,
-            uploaded: true,
-            capturedAt: p.captured_at || p.created_at,
-            latitude: p.latitude ?? undefined,
-            longitude: p.longitude ?? undefined,
-          }
-        } else {
-          unassigned.push(p)
-        }
-      }
-      setShots(seeded)
-      setPoolPhotos(unassigned)
+    if (initialPhotos && initialPhotos.length > 0) {
+      applyPhotoList(initialPhotos)
     }
-    hydrate()
+    async function refresh() {
+      try {
+        const list = await api.photos.list(projectId)
+        if (cancelled) return
+        applyPhotoList(list || [])
+      } catch {
+        /* keep whatever seed we have */
+      }
+    }
+    refresh()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
@@ -385,33 +399,52 @@ export default function ExteriorCaptureWizard({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {/* Pool of existing uploaded "Before" photos — tap to assign to current angle. */}
+          {/* Pool of existing uploaded project photos — tap to assign to current angle. */}
           {poolPhotos.length > 0 && (
             <div className="mb-4 bg-blue-50/70 border border-blue-100 rounded-2xl p-3">
               <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                 <div className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">
-                  Already uploaded · {poolPhotos.length} photo{poolPhotos.length === 1 ? '' : 's'}
+                  Your uploaded photos · {poolPhotos.length}
                 </div>
                 <div className="text-[10px] text-blue-600/90 font-semibold">
                   Tap one to use for &ldquo;{step.title}&rdquo;
                 </div>
               </div>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                {poolPhotos.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => assignFromPool(p)}
-                    className="group relative aspect-square rounded-lg overflow-hidden border border-blue-200 hover:border-blue-500 transition-all"
-                    title={`Use for ${step.title}`}
-                  >
-                    <img src={p.url} alt={p.filename} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-blue-600/0 group-hover:bg-blue-600/60 transition-all flex items-center justify-center">
-                      <span className="text-white text-[10px] font-bold opacity-0 group-hover:opacity-100">
-                        Use
-                      </span>
-                    </div>
-                  </button>
-                ))}
+                {poolPhotos.map(p => {
+                  const phaseColors: Record<string, string> = {
+                    before: 'bg-blue-500',
+                    during: 'bg-amber-500',
+                    after: 'bg-emerald-500',
+                  }
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => assignFromPool(p)}
+                      className="group relative aspect-square rounded-lg overflow-hidden border border-blue-200 hover:border-blue-500 bg-slate-100 transition-all"
+                      title={`Use for ${step.title}`}
+                    >
+                      <img
+                        src={p.url}
+                        alt={p.filename || 'project photo'}
+                        loading="lazy"
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                      {p.phase && (
+                        <span
+                          className={`absolute top-1 left-1 text-[8px] font-bold text-white px-1 py-0.5 rounded-full capitalize ${phaseColors[p.phase] || 'bg-slate-500'}`}
+                        >
+                          {p.phase}
+                        </span>
+                      )}
+                      <div className="absolute inset-0 bg-blue-600/0 group-hover:bg-blue-600/60 transition-all flex items-center justify-center">
+                        <span className="text-white text-[10px] font-bold opacity-0 group-hover:opacity-100">
+                          Use
+                        </span>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
