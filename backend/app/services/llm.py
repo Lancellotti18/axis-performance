@@ -161,8 +161,13 @@ def _gemini_keys() -> list[str]:
 
 def _is_gemini_retryable(err_msg: str) -> bool:
     """Return True if the Gemini error is transient — quota exhaustion, model
-    retirement, or load shedding (503 UNAVAILABLE / overload). We cycle the
-    model chain for any of these instead of hard-failing the request."""
+    retirement, load shedding (503), or per-minute rate limit (429). We cycle
+    the (key × model) matrix for any of these instead of hard-failing.
+
+    The 429 case is the one that used to escape: Gemini's free tier throws
+    429 / "Too Many Requests" for per-minute limits (distinct from daily
+    RESOURCE_EXHAUSTED), and without it here the request would raise before
+    ever rotating to the second key."""
     m = err_msg or ""
     ml = m.lower()
     return (
@@ -172,6 +177,15 @@ def _is_gemini_retryable(err_msg: str) -> bool:
         or "NOT_FOUND" in m
         or "UNAVAILABLE" in m
         or "503" in m
+        or "429" in m
+        or "rate limit" in ml
+        or "rate_limit" in ml
+        or "too many requests" in ml
+        or "500" in m
+        or "502" in m
+        or "INTERNAL" in m
+        or "DEADLINE_EXCEEDED" in m
+        or "deadline" in ml
         or "overloaded" in ml
         or "high demand" in ml
         or "try again later" in ml

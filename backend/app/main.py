@@ -43,6 +43,53 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.include_router(api_router, prefix="/api/v1")
 
 
+@app.get("/diag/gemini")
+async def diag_gemini():
+    """Tests every configured Gemini key against every fallback model and
+    reports which (key, model) pairs work. Read-only, no secrets — returns
+    only boolean success + a truncated error, plus the last 4 chars of each
+    key so you can map them to what Render has."""
+    import asyncio as _asyncio
+    from app.services.llm import GEMINI_FALLBACKS, GEMINI_MODEL, _gemini_keys
+
+    def _suffix(v: str) -> str:
+        return v[-4:] if v and len(v) >= 4 else "(empty)"
+
+    keys = _gemini_keys()
+    if not keys:
+        return {"error": "no Gemini keys loaded"}
+
+    models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
+
+    def _probe(api_key: str, model: str) -> dict:
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=api_key)
+            resp = client.models.generate_content(
+                model=model,
+                contents="Reply with the single word: ok",
+                config=types.GenerateContentConfig(max_output_tokens=10),
+            )
+            return {"ok": True, "reply": (resp.text or "")[:40]}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:300]}
+
+    results: list[dict] = []
+    for key in keys:
+        for model in models:
+            outcome = await _asyncio.to_thread(_probe, key, model)
+            results.append({
+                "key_suffix": _suffix(key),
+                "model": model,
+                **outcome,
+            })
+    return {
+        "keys_loaded": len(keys),
+        "results": results,
+    }
+
+
 @app.get("/health")
 async def health():
     # Include key counts (no secrets) so ops can verify Render picked up the
