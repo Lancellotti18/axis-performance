@@ -432,7 +432,26 @@ async def run_compliance_check(
         state_code=state_code,
     )
 
-    raw = await llm_text(prompt, max_tokens=8192)
+    try:
+        raw = await llm_text(prompt, max_tokens=8192)
+    except Exception as e:
+        logger.warning("compliance: LLM providers all failed — returning base-code fallback. err=%s",
+                       str(e)[:500])
+        return {
+            "state": j["state"],
+            "location": location,
+            "project_type": project_type,
+            "code_cycles": j["code_cycles"],
+            "summary": (
+                f"Live LLM providers are temporarily unavailable for {location}. "
+                f"Showing the base model codes this state typically enforces — "
+                f"re-run shortly for the full AI-verified checklist."
+            ),
+            "risk_level": "medium",
+            "research_unavailable": False,
+            "llm_unavailable": True,
+            "items": _base_code_fallback_items(j, project_type),
+        }
     try:
         data = _parse_llm_json(raw)
     except Exception:

@@ -147,6 +147,30 @@ GEMINI_FALLBACKS = [
 GEMINI_FALLBACK_MODEL = GEMINI_FALLBACKS[0]
 
 
+def _is_gemini_retryable(err_msg: str) -> bool:
+    """Return True if the Gemini error is transient — quota exhaustion, model
+    retirement, or load shedding (503 UNAVAILABLE / overload). We cycle the
+    model chain for any of these instead of hard-failing the request."""
+    m = err_msg or ""
+    ml = m.lower()
+    return (
+        "RESOURCE_EXHAUSTED" in m
+        or "quota" in ml
+        or "404" in m
+        or "NOT_FOUND" in m
+        or "UNAVAILABLE" in m
+        or "503" in m
+        or "overloaded" in ml
+        or "high demand" in ml
+        or "try again later" in ml
+    )
+
+
+# Hard ceiling so Groq's smallest model (8b-instant, ~6k TPM on free tier)
+# doesn't get a monster prompt and 413. Roughly 4 chars ≈ 1 token.
+_GROQ_PROMPT_CHAR_LIMIT = 15000
+
+
 def _gemini_client():
     from google import genai
     return genai.Client(api_key=settings.GEMINI_API_KEY)
@@ -167,19 +191,18 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
         )
         return response.text
 
-    # Try primary, then each fallback. Cycle on quota exhaustion OR on 404
-    # (Google periodically retires model aliases — survive that without a redeploy).
+    # Try primary, then each fallback. Cycle on quota exhaustion, model
+    # retirement (404), OR transient overload (503 UNAVAILABLE / "high demand").
+    # Short sleep between attempts so a momentary load spike clears.
     last_err: Exception = RuntimeError("no Gemini models tried")
-    for model in [GEMINI_MODEL, *GEMINI_FALLBACKS]:
+    for i, model in enumerate([GEMINI_MODEL, *GEMINI_FALLBACKS]):
         try:
             return await asyncio.wait_for(asyncio.to_thread(_run, model), timeout=130)
         except Exception as e:
             last_err = e
-            msg = str(e)
-            if ("RESOURCE_EXHAUSTED" in msg
-                or "quota" in msg.lower()
-                or "404" in msg
-                or "NOT_FOUND" in msg):
+            if _is_gemini_retryable(str(e)):
+                if i < len([GEMINI_MODEL, *GEMINI_FALLBACKS]) - 1:
+                    await asyncio.sleep(0.8)
                 continue
             raise
     raise last_err
@@ -210,16 +233,14 @@ async def _gemini_vision(
         return response.text
 
     last_err: Exception = RuntimeError("no Gemini vision models tried")
-    for model in [GEMINI_MODEL, *GEMINI_FALLBACKS]:
+    for i, model in enumerate([GEMINI_MODEL, *GEMINI_FALLBACKS]):
         try:
             return await asyncio.wait_for(asyncio.to_thread(_run, model), timeout=130)
         except Exception as e:
             last_err = e
-            msg = str(e)
-            if ("RESOURCE_EXHAUSTED" in msg
-                or "quota" in msg.lower()
-                or "404" in msg
-                or "NOT_FOUND" in msg):
+            if _is_gemini_retryable(str(e)):
+                if i < len([GEMINI_MODEL, *GEMINI_FALLBACKS]) - 1:
+                    await asyncio.sleep(0.8)
                 continue
             raise
     raise last_err
@@ -229,28 +250,58 @@ async def _gemini_vision(
 # Groq implementation
 # ---------------------------------------------------------------------------
 
+def _truncate_for_groq(prompt: str, system: Optional[str], char_limit: int) -> str:
+    """
+    Groq's free-tier 8b-instant has a hard ~6k TPM cap. Anything over ~15k
+    chars of user content will 413. When the prompt is over budget, keep the
+    first 60% and last 40% (task intro + JSON schema / tail instructions) and
+    drop the middle — typically the research dump, which we'd rather sacrifice
+    than lose the task definition or output contract.
+    """
+    system_len = len(system) if system else 0
+    budget = max(2000, char_limit - system_len - 500)  # 500 chars for marker
+    if len(prompt) <= budget:
+        return prompt
+    head = int(budget * 0.6)
+    tail = budget - head
+    marker = "\n\n…[research truncated to fit fallback model]…\n\n"
+    return prompt[:head] + marker + prompt[-tail:]
+
+
 async def _groq_text(prompt: str, system: Optional[str], max_tokens: int) -> str:
     from groq import Groq
     client = Groq(api_key=settings.GROQ_API_KEY)
 
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-
-    def _run(model: str):
+    def _call(model: str, user_prompt: str) -> str:
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": user_prompt})
         return client.chat.completions.create(
             model=model,
             messages=messages,
             max_tokens=min(max_tokens, 8000),
         ).choices[0].message.content
 
-    # Primary: 70b versatile. On 413 (prompt too large), fall back to 8b-instant (20k TPM limit)
+    # Try 70b first. On 413, switch to 8b-instant WITH an aggressively
+    # truncated prompt — 8b's free-tier TPM cap is so small that a real
+    # research-heavy prompt always 413s at full size.
     try:
-        return await asyncio.to_thread(_run, "llama-3.3-70b-versatile")
+        return await asyncio.to_thread(_call, "llama-3.3-70b-versatile", prompt)
     except Exception as e:
-        if "413" in str(e) or "too large" in str(e).lower() or "rate_limit_exceeded" in str(e):
-            return await asyncio.to_thread(_run, "llama-3.1-8b-instant")
+        msg = str(e)
+        too_big = ("413" in msg or "too large" in msg.lower() or "rate_limit_exceeded" in msg)
+        if not too_big:
+            raise
+    short = _truncate_for_groq(prompt, system, _GROQ_PROMPT_CHAR_LIMIT)
+    try:
+        return await asyncio.to_thread(_call, "llama-3.1-8b-instant", short)
+    except Exception as e:
+        msg = str(e)
+        if "413" in msg or "rate_limit_exceeded" in msg:
+            # One more aggressive trim — halve the budget and retry.
+            shorter = _truncate_for_groq(prompt, system, _GROQ_PROMPT_CHAR_LIMIT // 2)
+            return await asyncio.to_thread(_call, "llama-3.1-8b-instant", shorter)
         raise
 
 
@@ -350,7 +401,9 @@ def llm_text_sync(
             from google.genai import types
             full_prompt = f"{system}\n\n{prompt}" if system else prompt
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            for model in [GEMINI_MODEL, *GEMINI_FALLBACKS]:
+            import time as _time
+            models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
+            for i, model in enumerate(models):
                 try:
                     response = client.models.generate_content(
                         model=model,
@@ -359,11 +412,9 @@ def llm_text_sync(
                     )
                     return response.text
                 except Exception as me:
-                    msg = str(me)
-                    if ("RESOURCE_EXHAUSTED" in msg
-                        or "quota" in msg.lower()
-                        or "404" in msg
-                        or "NOT_FOUND" in msg):
+                    if _is_gemini_retryable(str(me)):
+                        if i < len(models) - 1:
+                            _time.sleep(0.8)
                         continue
                     raise
             raise RuntimeError("All Gemini models exhausted quota or unavailable")
@@ -374,22 +425,33 @@ def llm_text_sync(
         try:
             from groq import Groq
             client = Groq(api_key=settings.GROQ_API_KEY)
-            messages = []
-            if system:
-                messages.append({"role": "system", "content": system})
-            messages.append({"role": "user", "content": prompt})
-            for model in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
-                try:
-                    return client.chat.completions.create(
-                        model=model,
-                        messages=messages,
-                        max_tokens=min(max_tokens, 8000),
-                    ).choices[0].message.content
-                except Exception as me:
-                    if "413" in str(me) or "too large" in str(me).lower() or "rate_limit_exceeded" in str(me):
-                        continue
+
+            def _groq_call(model: str, user_prompt: str) -> str:
+                msgs = []
+                if system:
+                    msgs.append({"role": "system", "content": system})
+                msgs.append({"role": "user", "content": user_prompt})
+                return client.chat.completions.create(
+                    model=model,
+                    messages=msgs,
+                    max_tokens=min(max_tokens, 8000),
+                ).choices[0].message.content
+
+            try:
+                return _groq_call("llama-3.3-70b-versatile", prompt)
+            except Exception as me:
+                m = str(me)
+                if not ("413" in m or "too large" in m.lower() or "rate_limit_exceeded" in m):
                     raise
-            raise RuntimeError("All Groq models failed token limit")
+            short = _truncate_for_groq(prompt, system, _GROQ_PROMPT_CHAR_LIMIT)
+            try:
+                return _groq_call("llama-3.1-8b-instant", short)
+            except Exception as me:
+                m = str(me)
+                if "413" in m or "rate_limit_exceeded" in m:
+                    shorter = _truncate_for_groq(prompt, system, _GROQ_PROMPT_CHAR_LIMIT // 2)
+                    return _groq_call("llama-3.1-8b-instant", shorter)
+                raise
         except Exception as e:
             errors.append(f"Groq: {e}")
 
@@ -425,8 +487,10 @@ def llm_vision_sync(
             from google.genai import types
             full_prompt = f"{system}\n\n{prompt}" if system else prompt
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            import time as _time
             last_me: Exception = RuntimeError("no Gemini vision models tried")
-            for model in [GEMINI_MODEL, *GEMINI_FALLBACKS]:
+            models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
+            for i, model in enumerate(models):
                 try:
                     response = client.models.generate_content(
                         model=model,
@@ -439,11 +503,9 @@ def llm_vision_sync(
                     return response.text
                 except Exception as me:
                     last_me = me
-                    msg = str(me)
-                    if ("RESOURCE_EXHAUSTED" in msg
-                        or "quota" in msg.lower()
-                        or "404" in msg
-                        or "NOT_FOUND" in msg):
+                    if _is_gemini_retryable(str(me)):
+                        if i < len(models) - 1:
+                            _time.sleep(0.8)
                         continue
                     raise
             raise last_me

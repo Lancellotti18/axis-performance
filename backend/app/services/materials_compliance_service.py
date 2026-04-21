@@ -325,31 +325,40 @@ async def check_materials_compliance(
         research=(research[:20000] if research else "(No research retrieved — evaluate using IRC/IBC/IECC base code for the state and FLAG verified=false on every item.)"),
     )
 
-    raw = await llm_text(prompt, max_tokens=8192)
     parse_failed = False
+    result: dict
     try:
-        result = _parse_json(raw)
-    except Exception:
-        # First parse failed — retry once with a tighter "JSON ONLY" reminder
-        # before giving up and falling back. Catches the common case where
-        # the model added an apologetic preamble or a trailing "let me know
-        # if you want more detail" that blew our brace balance.
-        logger.warning("materials compliance JSON parse failed — retrying with JSON-only reminder. raw[:500]=%r",
-                       raw[:500] if raw else None)
-        retry_prompt = (
-            "The previous response was not valid JSON. Re-emit ONLY the JSON object "
-            "described below — no markdown fences, no prose, no apology, nothing before "
-            "the opening '{' or after the closing '}'.\n\n" + prompt
-        )
+        raw = await llm_text(prompt, max_tokens=8192)
+    except Exception as e:
+        logger.warning("materials compliance: LLM providers all failed — base-code fallback. err=%s",
+                       str(e)[:500])
+        parse_failed = True
+        result = _base_code_materials_fallback(materials or [], j, project_type, loc)
+        result["llm_unavailable"] = True
+    else:
         try:
-            raw2 = await llm_text(retry_prompt, max_tokens=8192)
-            result = _parse_json(raw2)
-            logger.info("materials compliance: recovered on retry")
+            result = _parse_json(raw)
         except Exception:
-            logger.warning("materials compliance JSON parse failed (both attempts) — building base-code fallback. raw2[:500]=%r",
-                           (raw2[:500] if 'raw2' in locals() and raw2 else None), exc_info=True)
-            parse_failed = True
-            result = _base_code_materials_fallback(materials or [], j, project_type, loc)
+            # First parse failed — retry once with a tighter "JSON ONLY" reminder
+            # before giving up and falling back. Catches the common case where
+            # the model added an apologetic preamble or a trailing "let me know
+            # if you want more detail" that blew our brace balance.
+            logger.warning("materials compliance JSON parse failed — retrying with JSON-only reminder. raw[:500]=%r",
+                           raw[:500] if raw else None)
+            retry_prompt = (
+                "The previous response was not valid JSON. Re-emit ONLY the JSON object "
+                "described below — no markdown fences, no prose, no apology, nothing before "
+                "the opening '{' or after the closing '}'.\n\n" + prompt
+            )
+            try:
+                raw2 = await llm_text(retry_prompt, max_tokens=8192)
+                result = _parse_json(raw2)
+                logger.info("materials compliance: recovered on retry")
+            except Exception:
+                logger.warning("materials compliance JSON parse failed (both attempts) — building base-code fallback. raw2[:500]=%r",
+                               (raw2[:500] if 'raw2' in locals() and raw2 else None), exc_info=True)
+                parse_failed = True
+                result = _base_code_materials_fallback(materials or [], j, project_type, loc)
 
     result["checklist"] = _verify(result.get("checklist") or [], allowed_urls)
     # Missing-items list gets the same URL verification treatment.
