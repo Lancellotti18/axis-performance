@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -298,6 +299,22 @@ async def transcribe_voice_note(
     return result
 
 
+_FILENAME_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_filename(name: str, fallback: str = "project") -> str:
+    """
+    Collapse any non-ASCII / non-filename-safe chars to `_` so the string is
+    safe to put in a `Content-Disposition: filename="…"` header. Starlette
+    serialises headers as latin-1 — a single em-dash or accented char in a
+    project name will raise `UnicodeEncodeError` deep in the response writer,
+    which bypasses endpoint-level try/except and surfaces as the generic
+    500 `{"detail":"Internal server error"}`.
+    """
+    cleaned = _FILENAME_SAFE_RE.sub("_", name or "").strip("._-")
+    return cleaned or fallback
+
+
 @router.get("/damage-report/{project_id}/pdf")
 async def damage_report_pdf(
     project_id: str,
@@ -306,40 +323,51 @@ async def damage_report_pdf(
 ):
     """Render a multi-page damage report PDF for this project."""
     from app.services.damage_report_pdf import generate_damage_report_pdf
-    db = get_supabase()
-
-    proj_row = (
-        db.table("projects")
-        .select("id, name, address, city, state")
-        .eq("id", project_id)
-        .limit(1)
-        .execute()
-    )
-    if not proj_row.data:
-        raise HTTPException(status_code=404, detail="Project not found")
-    project = proj_row.data[0]
-
-    photos_row = (
-        db.table("project_photos")
-        .select("*")
-        .eq("project_id", project_id)
-        .order("created_at")
-        .execute()
-    )
-    photos = photos_row.data or []
-
     try:
-        pdf_bytes = generate_damage_report_pdf(project, photos, include_all=include_all)
+        db = get_supabase()
+
+        proj_row = (
+            db.table("projects")
+            .select("id, name, address, city, state")
+            .eq("id", project_id)
+            .limit(1)
+            .execute()
+        )
+        if not proj_row.data:
+            raise HTTPException(status_code=404, detail="Project not found")
+        project = proj_row.data[0]
+
+        photos_row = (
+            db.table("project_photos")
+            .select("*")
+            .eq("project_id", project_id)
+            .order("created_at")
+            .execute()
+        )
+        photos = photos_row.data or []
+
+        # Blocking PDF generation (reportlab + sync httpx image fetches) would
+        # stall the event loop for every other request. Push it to a thread so
+        # the worker stays responsive while a big report renders.
+        pdf_bytes = await run_in_threadpool(
+            generate_damage_report_pdf, project, photos, include_all=include_all
+        )
+
+        safe_name = _safe_filename(project.get("name") or "project")
+        filename = f"damage-report-{safe_name}-{project_id[:8]}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
     except Exception as e:
+        # Widen the net: DB errors, header-encoding bugs, reportlab XML parse
+        # crashes all get a specific message instead of leaking as a generic
+        # "Internal server error" from the global handler.
         logger.exception("damage_report: generation failed")
         raise HTTPException(status_code=500, detail=f"Damage report generation failed: {e}")
-
-    filename = f"damage-report-{project.get('name', 'project')}-{project_id[:8]}.pdf".replace(" ", "_")
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
 
 @router.delete("/{project_id}/{photo_id}")

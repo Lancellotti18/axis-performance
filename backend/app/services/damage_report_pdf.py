@@ -11,6 +11,7 @@ adjuster without re-photographing or re-typing.
 """
 from __future__ import annotations
 
+import html
 import io
 import logging
 from datetime import datetime
@@ -41,6 +42,18 @@ BORDER = colors.HexColor("#e2e8f0")
 WARN = colors.HexColor("#f59e0b")
 BAD = colors.HexColor("#ef4444")
 SAFE = colors.HexColor("#22c55e")
+
+
+def _esc(text: Any) -> str:
+    """
+    Escape user-supplied text before wrapping it in reportlab Paragraph().
+    reportlab parses a mini-XML dialect, so raw `<`, `>`, `&` in AI summaries,
+    contractor notes, or filenames crash `doc.build()` with a cryptic XML
+    parse error — which used to leak as a generic 500 `Internal server error`.
+    """
+    if text is None:
+        return ""
+    return html.escape(str(text), quote=True)
 
 
 def _fetch(url: str) -> Optional[bytes]:
@@ -123,10 +136,10 @@ def _meta_table(photo: dict, styles: dict) -> Table:
     filename = photo.get("filename") or "—"
 
     rows = [
-        [Paragraph("CAPTURED", styles["label"]), Paragraph(captured, styles["body"])],
-        [Paragraph("PHASE", styles["label"]),    Paragraph(phase, styles["body"])],
-        [Paragraph("LOCATION", styles["label"]), Paragraph(geo, styles["body"])],
-        [Paragraph("FILE", styles["label"]),     Paragraph(filename, styles["caption"])],
+        [Paragraph("CAPTURED", styles["label"]), Paragraph(_esc(captured), styles["body"])],
+        [Paragraph("PHASE", styles["label"]),    Paragraph(_esc(phase), styles["body"])],
+        [Paragraph("LOCATION", styles["label"]), Paragraph(_esc(geo), styles["body"])],
+        [Paragraph("FILE", styles["label"]),     Paragraph(_esc(filename), styles["caption"])],
     ]
     t = Table(rows, colWidths=[1.0 * inch, 5.2 * inch])
     t.setStyle(TableStyle([
@@ -143,18 +156,18 @@ def _tag_paragraphs(auto_tags: dict, styles: dict) -> list:
     out: list = []
     summary = (auto_tags or {}).get("summary")
     if summary:
-        out.append(Paragraph(f"&ldquo;{summary}&rdquo;", styles["summary"]))
+        out.append(Paragraph(f"&ldquo;{_esc(summary)}&rdquo;", styles["summary"]))
 
     area = (auto_tags or {}).get("area")
     phase_guess = (auto_tags or {}).get("phase")
     meta_bits = []
     if area:
-        meta_bits.append(f"<b>Area:</b> {area}")
+        meta_bits.append(f"<b>Area:</b> {_esc(area)}")
     if phase_guess:
-        meta_bits.append(f"<b>Phase:</b> {phase_guess}")
+        meta_bits.append(f"<b>Phase:</b> {_esc(phase_guess)}")
     materials = (auto_tags or {}).get("materials") or []
     if materials:
-        meta_bits.append("<b>Materials:</b> " + ", ".join(materials))
+        meta_bits.append("<b>Materials:</b> " + ", ".join(_esc(m) for m in materials))
     if meta_bits:
         out.append(Paragraph(" &nbsp;·&nbsp; ".join(meta_bits), styles["body"]))
         out.append(Spacer(1, 6))
@@ -163,14 +176,14 @@ def _tag_paragraphs(auto_tags: dict, styles: dict) -> list:
     if damage:
         out.append(Paragraph("Damage observed", styles["h2"]))
         for d in damage:
-            out.append(Paragraph(f"&#9888; {d}", styles["damage"]))
+            out.append(Paragraph(f"&#9888; {_esc(d)}", styles["damage"]))
         out.append(Spacer(1, 4))
 
     safety = (auto_tags or {}).get("safety") or []
     if safety:
         out.append(Paragraph("Safety / site notes", styles["h2"]))
         for s in safety:
-            out.append(Paragraph(f"&#128737; {s}", styles["body"]))
+            out.append(Paragraph(f"&#128737; {_esc(s)}", styles["body"]))
 
     conf = (auto_tags or {}).get("confidence")
     if isinstance(conf, (int, float)) and conf > 0:
@@ -187,8 +200,8 @@ def _cover_page(project: dict, photo_count: int, damage_count: int, styles: dict
 
     elems: list = [
         Paragraph("DAMAGE DOCUMENTATION REPORT", styles["label"]),
-        Paragraph(project_name, styles["title"]),
-        Paragraph(f"{addr} &nbsp;·&nbsp; generated {now}", styles["subtitle"]),
+        Paragraph(_esc(project_name), styles["title"]),
+        Paragraph(f"{_esc(addr)} &nbsp;·&nbsp; generated {now}", styles["subtitle"]),
         Spacer(1, 12),
     ]
 
@@ -295,13 +308,14 @@ def generate_damage_report_pdf(project: dict, photos: list[dict], *, include_all
         if notes:
             flow.append(Spacer(1, 8))
             flow.append(Paragraph("Contractor notes", styles["h2"]))
-            flow.append(Paragraph(notes.replace("\n", "<br/>"), styles["body"]))
+            # Escape first, *then* convert \n → <br/> so the <br/> survives.
+            flow.append(Paragraph(_esc(notes).replace("\n", "<br/>"), styles["body"]))
 
         manual_tags = p.get("tags") or []
         if manual_tags:
             flow.append(Spacer(1, 6))
             flow.append(Paragraph(
-                "<b>Tags:</b> " + ", ".join(manual_tags),
+                "<b>Tags:</b> " + ", ".join(_esc(t) for t in manual_tags),
                 styles["caption"],
             ))
 
