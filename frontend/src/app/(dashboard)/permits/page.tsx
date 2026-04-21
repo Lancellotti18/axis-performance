@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
@@ -93,6 +93,9 @@ export default function PermitsPage() {
   // Cache of looked-up offices keyed by "STATE_County"
   const [officeCache, setOfficeCache] = useState<Record<string, PermitOffice | null>>({})
   const [officeLoadingKey, setOfficeLoadingKey] = useState<string | null>(null)
+  // Ref mirrors officeLoadingKey so we can guard without adding it as an effect dep
+  // (doing so would cancel its own in-flight fetch when React re-runs the effect).
+  const inFlightKeyRef = useRef<string | null>(null)
   // Requirement attachments: per-index file metadata and text values
   type ReqAttachment = { filename: string; size: number; url?: string }
   const [reqFiles, setReqFiles] = useState<Record<number, ReqAttachment>>({})
@@ -142,15 +145,18 @@ export default function PermitsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
-  // Look up verified portal URL from backend when county isn't in PERMIT_OFFICES
+  // Look up verified portal URL from backend when county isn't in PERMIT_OFFICES.
+  // Deps are intentionally limited to state/county/city — adding officeCache or
+  // officeLoadingKey would cause this effect to re-run and cancel its own fetch.
   useEffect(() => {
     if (!state || !county) return
     const key = `${state}_${county}`
     if (PERMIT_OFFICES[key] || PERMIT_OFFICES[state]) return
     if (key in officeCache) return // already looked up (success or null)
-    if (officeLoadingKey === key) return
+    if (inFlightKeyRef.current === key) return
 
     let cancelled = false
+    inFlightKeyRef.current = key
     setOfficeLoadingKey(key)
     ;(async () => {
       try {
@@ -173,11 +179,15 @@ export default function PermitsPage() {
       } catch {
         if (!cancelled) setOfficeCache(prev => ({ ...prev, [key]: null }))
       } finally {
-        if (!cancelled) setOfficeLoadingKey(null)
+        if (!cancelled) {
+          inFlightKeyRef.current = null
+          setOfficeLoadingKey(null)
+        }
       }
     })()
     return () => { cancelled = true }
-  }, [state, county, city, officeCache, officeLoadingKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, county, city])
 
   // Load existing requirement attachments/text on mount or project change
   useEffect(() => {
