@@ -30,11 +30,21 @@ _ALGORITHMS = ["HS256"]
 
 
 def _decode_unverified(token: str) -> dict:
+    # Shadow / legacy mode: disable every verifier. python-jose otherwise
+    # enforces `exp`, `nbf`, `iat`, and `aud` even when the signature check
+    # is off — so a slightly-stale Supabase token would still 401 despite
+    # the signature not being checked.
     return jwt.decode(
         token,
         key="",
         algorithms=["HS256", "RS256"],
-        options={"verify_signature": False},
+        options={
+            "verify_signature": False,
+            "verify_exp": False,
+            "verify_nbf": False,
+            "verify_iat": False,
+            "verify_aud": False,
+        },
     )
 
 

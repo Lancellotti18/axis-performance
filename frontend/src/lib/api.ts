@@ -31,21 +31,24 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
   }
 }
 
+async function buildAuthHeaders(options?: RequestInit): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options?.headers as Record<string, string> | undefined),
+  }
+}
+
 export async function apiRequest<T>(
   path: string,
   options?: RequestInit,
   timeoutMs = 90000   // 90s — Render free tier cold starts can take 75s
 ): Promise<T> {
-  const { data: { session } } = await supabase.auth.getSession()
-  const token = session?.access_token
-
   const fetchOptions: RequestInit = {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options?.headers,
-    },
+    headers: await buildAuthHeaders(options),
   }
 
   let res: Response | undefined
@@ -68,6 +71,23 @@ export async function apiRequest<T>(
     const name = lastErr instanceof Error ? lastErr.name : ''
     if (name === 'AbortError') throw new Error('Server is taking too long to respond. Please try again in a moment.')
     throw new Error('Network error. Please check your connection.')
+  }
+
+  // On 401, the Supabase session is likely stale. Force a refresh and retry once
+  // with the fresh token before surfacing an auth error to the user.
+  if (res!.status === 401) {
+    try {
+      const { data } = await supabase.auth.refreshSession()
+      if (data?.session?.access_token) {
+        const retryOptions: RequestInit = {
+          ...options,
+          headers: await buildAuthHeaders(options),
+        }
+        res = await fetchWithTimeout(`${API_BASE}${path}`, retryOptions, timeoutMs)
+      }
+    } catch {
+      // fall through with the original 401 response
+    }
   }
 
   if (!res!.ok) {
