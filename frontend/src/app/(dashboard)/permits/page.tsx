@@ -158,6 +158,17 @@ export default function PermitsPage() {
     let cancelled = false
     inFlightKeyRef.current = key
     setOfficeLoadingKey(key)
+
+    // Hard safety timeout — the spinner will never hang past 25s even if
+    // fetch hangs, the backend is down, or a promise never resolves.
+    const hardTimeout = setTimeout(() => {
+      if (cancelled) return
+      cancelled = true
+      setOfficeCache(prev => (key in prev ? prev : { ...prev, [key]: null }))
+      inFlightKeyRef.current = null
+      setOfficeLoadingKey(null)
+    }, 25000)
+
     ;(async () => {
       try {
         const result = await api.permits.searchPortal(city || county, state, 'residential')
@@ -179,13 +190,14 @@ export default function PermitsPage() {
       } catch {
         if (!cancelled) setOfficeCache(prev => ({ ...prev, [key]: null }))
       } finally {
+        clearTimeout(hardTimeout)
         if (!cancelled) {
           inFlightKeyRef.current = null
           setOfficeLoadingKey(null)
         }
       }
     })()
-    return () => { cancelled = true }
+    return () => { cancelled = true; clearTimeout(hardTimeout) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, county, city])
 
