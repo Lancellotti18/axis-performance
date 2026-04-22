@@ -20,20 +20,27 @@ logger = logging.getLogger(__name__)
 
 def _verify_url(url: str) -> bool:
     """
-    Verify a URL actually loads. Uses GET with a small byte range since many
-    .gov sites block HEAD requests entirely.
+    Verify a URL isn't definitively dead. Gov sites commonly return
+    401/403/406/429/Cloudflare challenges to bot requests while loading
+    fine in a real browser, so we only reject 404/410 and network errors.
     """
+    DEAD_STATUSES = {404, 410}
     try:
         resp = _requests.get(
             url, timeout=10, allow_redirects=True,
             headers={
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0) "
+                    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                    "Version/17.0 Safari/605.1.15"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Range": "bytes=0-1023",  # Only fetch first 1KB to keep it fast
             },
             stream=True,
         )
         resp.close()
-        return resp.status_code in (200, 206, 301, 302, 303, 307, 308)
+        return resp.status_code not in DEAD_STATUSES
     except Exception:
         logger.debug("URL verify request failed", exc_info=True)
         return False
