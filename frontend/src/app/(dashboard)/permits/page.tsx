@@ -146,8 +146,9 @@ export default function PermitsPage() {
   }, [step])
 
   // Look up verified portal URL from backend when county isn't in PERMIT_OFFICES.
-  // Deps are intentionally limited to state/county/city — adding officeCache or
-  // officeLoadingKey would cause this effect to re-run and cancel its own fetch.
+  // Deps = [state, county] ONLY. The lookup key is ${state}_${county}; city is
+  // just a search term. Including city caused the cleanup→re-run to short-
+  // circuit on the ref guard, leaving loadingKey stuck forever.
   useEffect(() => {
     if (!state || !county) return
     const key = `${state}_${county}`
@@ -197,9 +198,16 @@ export default function PermitsPage() {
         }
       }
     })()
-    return () => { cancelled = true; clearTimeout(hardTimeout) }
+    // Cleanup: clear ref + loadingKey so a dep change never strands the UI
+    // in a "loading" state with no fetch actually running.
+    return () => {
+      cancelled = true
+      clearTimeout(hardTimeout)
+      if (inFlightKeyRef.current === key) inFlightKeyRef.current = null
+      setOfficeLoadingKey(prev => (prev === key ? null : prev))
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, county, city])
+  }, [state, county])
 
   // Load existing requirement attachments/text on mount or project change
   useEffect(() => {
