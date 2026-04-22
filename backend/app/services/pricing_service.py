@@ -93,131 +93,6 @@ TRADE_DISTRIBUTORS = [
     },
 ]
 
-
-# Per-vendor, per-category landing pages used as a fallback when the
-# search-URL doesn't resolve to a real page (404, redirect to "no results",
-# or unreachable). These are curated product category hubs that are stable
-# across redesigns and always return something usable.
-TRADE_DISTRIBUTOR_CATEGORY_PAGES: dict[str, dict[str, str]] = {
-    "ABC Supply": {
-        "roofing":       "https://www.abcsupply.com/products/residential-roofing",
-        "siding":        "https://www.abcsupply.com/products/siding",
-        "windows":       "https://www.abcsupply.com/products/windows",
-        "gutters":       "https://www.abcsupply.com/products/gutters",
-        "tools":         "https://www.abcsupply.com/products/tools-and-equipment",
-        "default":       "https://www.abcsupply.com/products",
-    },
-    "QXO (Beacon)": {
-        "roofing":       "https://www.qxo.com/products/roofing",
-        "siding":        "https://www.qxo.com/products/siding",
-        "windows":       "https://www.qxo.com/products/windows-doors",
-        "waterproofing": "https://www.qxo.com/products/waterproofing",
-        "default":       "https://www.qxo.com/products",
-    },
-    "SRS Distribution": {
-        "roofing":       "https://www.srsdistribution.com/en/products/roofing/",
-        "siding":        "https://www.srsdistribution.com/en/products/siding/",
-        "windows":       "https://www.srsdistribution.com/en/products/windows-doors/",
-        "landscape":     "https://www.srsdistribution.com/en/products/landscape/",
-        "default":       "https://www.srsdistribution.com/en/products/",
-    },
-}
-
-
-# Keywords → category bucket used for selecting a category-page fallback.
-# Roofing-heavy because the three distributors are roofing-first; the
-# remaining buckets degrade gracefully to "default".
-_CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
-    ("roofing",       ("shingle", "roof", "underlayment", "ice", "drip edge",
-                       "starter strip", "ridge cap", "felt", "flashing")),
-    ("siding",        ("siding", "j-channel", "corner post", "housewrap", "tyvek")),
-    ("windows",       ("window", "door", "glazing", "skylight")),
-    ("gutters",       ("gutter", "downspout", "leader")),
-    ("waterproofing", ("waterproof", "membrane", "vapor barrier")),
-    ("landscape",     ("gravel", "stone", "aggregate", "drainage", "landscape")),
-    ("tools",         ("nailer", "saw", "drill", "ladder")),
-]
-
-
-def _category_bucket_for(item_name: str) -> str:
-    name = (item_name or "").lower()
-    for bucket, kws in _CATEGORY_KEYWORDS:
-        if any(k in name for k in kws):
-            return bucket
-    return "default"
-
-
-def _verify_url_resolves(url: str, timeout_s: float = 5.0) -> tuple[bool, str | None]:
-    """
-    Lightweight HEAD/GET check for trade-distributor search URLs. Returns
-    (ok, final_url).
-
-    - ok=False when the URL hard-fails (404 / 410) OR redirects to an obvious
-      "no results" search landing page. The caller should swap in a category
-      page in that case.
-    - ok=True otherwise — including opaque 403 / 429 / timeout, since those
-      don't prove the link is broken (many supplier sites bot-block HEAD
-      requests from cloud IPs but still work in a real browser).
-
-    Uses httpx with a strict 5s timeout and follow_redirects=True. Never
-    raises — any exception is logged and treated as "inconclusive → keep
-    original URL".
-    """
-    try:
-        import httpx
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        with httpx.Client(
-            follow_redirects=True,
-            timeout=timeout_s,
-            headers=headers,
-        ) as client:
-            # HEAD first — cheaper. Some sites reject HEAD → fall through to GET.
-            try:
-                resp = client.head(url)
-                if resp.status_code in (405, 501):
-                    resp = client.get(url)
-            except httpx.HTTPError:
-                resp = client.get(url)
-
-            status = resp.status_code
-            final_url = str(resp.url)
-
-            if status in (404, 410):
-                return False, final_url
-
-            # "No results" heuristic — look at the body on a 200.
-            # Cheap substring scan against the first 20kB.
-            if 200 <= status < 300:
-                try:
-                    body = resp.text[:20000].lower() if resp.text else ""
-                except Exception:
-                    body = ""
-                no_results_signals = (
-                    "no results found",
-                    "no matching results",
-                    "0 results",
-                    "did not match any products",
-                    "sorry, we could not find",
-                    "your search returned no results",
-                )
-                if body and any(sig in body for sig in no_results_signals):
-                    return False, final_url
-
-            # 3xx that landed somewhere reasonable, or 2xx with content → keep.
-            # 403/429/5xx → inconclusive, don't over-penalize.
-            return True, final_url
-    except Exception as e:
-        logger.debug("supplier URL verify failed (non-fatal) for %s: %s", url, e)
-        return True, None  # inconclusive — don't fall back on network flake
-
 # Price extraction — the first well-formed dollar figure in the result
 # content/title that isn't obviously bogus (handles "$12.99", "$4" but
 # rejects "$0.01" or "$999999").
@@ -260,65 +135,19 @@ def _trade_distributor_entries(item_name: str) -> List[dict]:
     Always-present trade distributor rows. Contractor accounts that stay
     logged into these sites in the same browser land inside their account
     search results and see real trade pricing.
-
-    Each search URL is verified to actually resolve to a product/search page.
-    If it 404s or lands on a "no results" page, we swap in the supplier's
-    category page for the item's bucket (roofing/siding/windows/…) so the
-    contractor at least sees relevant products instead of a dead link.
-    Verification is best-effort — a network error keeps the original URL
-    rather than failing the whole request.
     """
     query = quote_plus(item_name)
-    bucket = _category_bucket_for(item_name)
-
-    # Verify all three distributor search URLs in parallel so worst-case
-    # latency is ~5s (one timeout) instead of 15s (three sequential timeouts).
-    search_urls = [d["url_template"].format(query=query) for d in TRADE_DISTRIBUTORS]
-    verify_results: dict[str, bool] = {}
-    try:
-        with ThreadPoolExecutor(max_workers=len(TRADE_DISTRIBUTORS)) as pool:
-            futures = {pool.submit(_verify_url_resolves, u): u for u in search_urls}
-            for fut in as_completed(futures):
-                u = futures[fut]
-                try:
-                    ok, _ = fut.result(timeout=6)
-                except Exception:
-                    ok = True  # inconclusive → keep original
-                verify_results[u] = ok
-    except Exception:
-        logger.debug("supplier URL verify pool crashed — keeping all original URLs", exc_info=True)
-        verify_results = {u: True for u in search_urls}
-
-    rows: List[dict] = []
-    for d, search_url in zip(TRADE_DISTRIBUTORS, search_urls):
-        final_url = search_url
-        fallback_applied = False
-
-        if not verify_results.get(search_url, True):
-            category_map = TRADE_DISTRIBUTOR_CATEGORY_PAGES.get(d["vendor"], {})
-            fallback = category_map.get(bucket) or category_map.get("default")
-            if fallback:
-                logger.info(
-                    "supplier link fallback: %s search URL unusable for %r → category page (%s)",
-                    d["vendor"], item_name, bucket,
-                )
-                final_url = fallback
-                fallback_applied = True
-
-        row = {
+    return [
+        {
             "vendor":     d["vendor"],
             "price":      None,
-            "url":        final_url,
+            "url":        d["url_template"].format(query=query),
             "is_local":   False,
             "note":       d["note"],
             "quote_only": True,
         }
-        if fallback_applied:
-            row["fallback"] = True
-            row["fallback_reason"] = "search_no_results_or_broken"
-        rows.append(row)
-
-    return rows
+        for d in TRADE_DISTRIBUTORS
+    ]
 
 
 # Vendors where we hard-verify the product page by actually fetching it.

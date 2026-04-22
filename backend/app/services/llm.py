@@ -55,34 +55,30 @@ async def llm_text(
     system: Optional[str] = None,
     max_tokens: int = 8192,
     json_mode: bool = False,
-    temperature: Optional[float] = None,
 ) -> str:
     """
     Run a text prompt. Tries providers in priority order with automatic fallback.
     Gemini → Groq → Claude. Raises only if ALL configured providers fail.
-
-    temperature: if set (e.g. 0.0 for deterministic verdicts), forwarded to each
-    provider. When None, provider defaults are used (model-specific creativity).
     """
     errors = []
 
     if settings.GEMINI_API_KEY:
         try:
             from google import genai  # noqa: F401
-            return await _gemini_text(prompt, system, max_tokens, temperature=temperature)
+            return await _gemini_text(prompt, system, max_tokens)
         except Exception as e:
             errors.append(f"Gemini: {e}")
 
     if settings.GROQ_API_KEY:
         try:
             import groq  # noqa: F401
-            return await _groq_text(prompt, system, max_tokens, temperature=temperature)
+            return await _groq_text(prompt, system, max_tokens)
         except Exception as e:
             errors.append(f"Groq: {e}")
 
     if settings.ANTHROPIC_API_KEY:
         try:
-            return await _anthropic_text(prompt, system, max_tokens, temperature=temperature)
+            return await _anthropic_text(prompt, system, max_tokens)
         except Exception as e:
             errors.append(f"Anthropic: {e}")
 
@@ -206,12 +202,7 @@ def _gemini_client():
     return genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
-async def _gemini_text(
-    prompt: str,
-    system: Optional[str],
-    max_tokens: int,
-    temperature: Optional[float] = None,
-) -> str:
+async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> str:
     from google import genai
     from google.genai import types
 
@@ -219,13 +210,10 @@ async def _gemini_text(
 
     def _run(api_key: str, model: str):
         client = genai.Client(api_key=api_key)
-        cfg_kwargs: dict = {"max_output_tokens": max_tokens}
-        if temperature is not None:
-            cfg_kwargs["temperature"] = temperature
         response = client.models.generate_content(
             model=model,
             contents=full_prompt,
-            config=types.GenerateContentConfig(**cfg_kwargs),
+            config=types.GenerateContentConfig(max_output_tokens=max_tokens),
         )
         return response.text
 
@@ -317,12 +305,7 @@ def _truncate_for_groq(prompt: str, system: Optional[str], char_limit: int) -> s
     return prompt[:head] + marker + prompt[-tail:]
 
 
-async def _groq_text(
-    prompt: str,
-    system: Optional[str],
-    max_tokens: int,
-    temperature: Optional[float] = None,
-) -> str:
+async def _groq_text(prompt: str, system: Optional[str], max_tokens: int) -> str:
     from groq import Groq
     client = Groq(api_key=settings.GROQ_API_KEY)
 
@@ -331,14 +314,11 @@ async def _groq_text(
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": user_prompt})
-        kwargs = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": min(max_tokens, 8000),
-        }
-        if temperature is not None:
-            kwargs["temperature"] = temperature
-        return client.chat.completions.create(**kwargs).choices[0].message.content
+        return client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=min(max_tokens, 8000),
+        ).choices[0].message.content
 
     # Try 70b first. On 413, switch to 8b-instant WITH an aggressively
     # truncated prompt — 8b's free-tier TPM cap is so small that a real
@@ -398,12 +378,7 @@ async def _groq_vision(
 # Anthropic (Claude) implementation — kept as fallback
 # ---------------------------------------------------------------------------
 
-async def _anthropic_text(
-    prompt: str,
-    system: Optional[str],
-    max_tokens: int,
-    temperature: Optional[float] = None,
-) -> str:
+async def _anthropic_text(prompt: str, system: Optional[str], max_tokens: int) -> str:
     import anthropic
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
@@ -411,8 +386,6 @@ async def _anthropic_text(
               "messages": [{"role": "user", "content": prompt}]}
     if system:
         kwargs["system"] = system
-    if temperature is not None:
-        kwargs["temperature"] = temperature
 
     def _run():
         return client.messages.create(**kwargs).content[0].text

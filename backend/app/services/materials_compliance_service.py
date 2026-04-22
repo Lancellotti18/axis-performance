@@ -205,23 +205,6 @@ def _verify(items: list[dict], allowed_urls: set[str]) -> list[dict]:
     return out
 
 
-# Fixed system prompt pinned to this service. Combined with temperature=0 on every
-# provider, identical (jurisdiction + project_type + materials) inputs MUST produce
-# an identical verdict across runs — no stochastic reordering, no "creative"
-# paraphrasing. The only acceptable source of variance is the upstream research
-# retrieval (Tavily), which we snapshot into the prompt before the LLM call.
-COMPLIANCE_SYSTEM_PROMPT = (
-    "You are a deterministic building-code compliance evaluator. "
-    "For a given (jurisdiction, project_type, materials list, research snippets) input, "
-    "you MUST return the same verdict, the same overall_status, the same per-item statuses, "
-    "the same code_reference strings, and the same missing-required items on every call. "
-    "Do not paraphrase. Do not reorder. Do not introduce creative wording. "
-    "If the evidence is identical, your output MUST be identical. "
-    "Emit ONLY the JSON object described in the user prompt — no prose, no markdown fences, "
-    "no apology, nothing before the opening '{' or after the closing '}'."
-)
-
-
 PROMPT = """You are a certified building-code compliance expert for the United States.
 
 JURISDICTION PROFILE:
@@ -345,14 +328,7 @@ async def check_materials_compliance(
     parse_failed = False
     result: dict
     try:
-        # temperature=0 + fixed system prompt → deterministic verdict for the
-        # same (jurisdiction, project_type, materials, research) input.
-        raw = await llm_text(
-            prompt,
-            system=COMPLIANCE_SYSTEM_PROMPT,
-            max_tokens=8192,
-            temperature=0,
-        )
+        raw = await llm_text(prompt, max_tokens=8192)
     except Exception as e:
         logger.warning("materials compliance: LLM providers all failed — base-code fallback. err=%s",
                        str(e)[:500])
@@ -375,12 +351,7 @@ async def check_materials_compliance(
                 "the opening '{' or after the closing '}'.\n\n" + prompt
             )
             try:
-                raw2 = await llm_text(
-                    retry_prompt,
-                    system=COMPLIANCE_SYSTEM_PROMPT,
-                    max_tokens=8192,
-                    temperature=0,
-                )
+                raw2 = await llm_text(retry_prompt, max_tokens=8192)
                 result = _parse_json(raw2)
                 logger.info("materials compliance: recovered on retry")
             except Exception:
