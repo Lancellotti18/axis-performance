@@ -39,6 +39,12 @@ logger = logging.getLogger(__name__)
 CACHE_TTL_SECONDS = 6 * 60 * 60
 _cache: dict[str, tuple[float, dict]] = {}
 
+# Max materials per LLM call. Each checklist row is ~200 output tokens, so
+# 15 items × ~200 = ~3k tokens — safely under the 8192 output budget even
+# with a long summary and a few missing_required_items. Batching avoids the
+# silent-truncation bug where large material lists would drop off the end.
+CHUNK_SIZE = 15
+
 
 # Category → query template. The jurisdiction profile is interpolated at
 # call time so results are tight to the user's city/state, not generic.
@@ -268,6 +274,81 @@ RULES:
 """
 
 
+async def _evaluate_chunk(
+    materials_chunk: list[dict],
+    chunk_idx: int,
+    total_chunks: int,
+    include_missing_items: bool,
+    jurisdiction_json: str,
+    code_cycles_block: str,
+    research_block: str,
+) -> dict:
+    """
+    Run one compliance LLM call on a subset of materials. Returns the parsed
+    JSON dict, or `{"_parse_failed": True}` if both the primary and retry
+    attempts failed to produce valid JSON.
+    """
+    materials_text = "\n".join([
+        f"  {i+1}. {m.get('item_name','Unknown')} "
+        f"[{m.get('category','general')}] "
+        f"qty: {m.get('quantity',0)} {m.get('unit','each')}"
+        for i, m in enumerate(materials_chunk)
+    ]) or "  (no materials provided)"
+
+    base_prompt = PROMPT.format(
+        jurisdiction_json=jurisdiction_json,
+        code_cycles=code_cycles_block,
+        materials_text=materials_text,
+        research=research_block,
+    )
+
+    if total_chunks > 1:
+        batch_note = (
+            f"\n\nBATCH {chunk_idx + 1} OF {total_chunks}: evaluate ONLY the "
+            f"{len(materials_chunk)} materials in the list above. "
+            + (
+                "Populate `missing_required_items` normally — this batch owns that list."
+                if include_missing_items
+                else "Return `missing_required_items` as an empty list [] — another batch handles it."
+            )
+        )
+        prompt = base_prompt + batch_note
+    else:
+        prompt = base_prompt
+
+    try:
+        raw = await llm_text(prompt, max_tokens=8192)
+    except Exception as e:
+        logger.warning(
+            "materials compliance chunk %d/%d: LLM providers all failed. err=%s",
+            chunk_idx + 1, total_chunks, str(e)[:300],
+        )
+        return {"_parse_failed": True, "_error": "llm_unavailable"}
+
+    try:
+        return _parse_json(raw)
+    except Exception:
+        logger.warning(
+            "materials compliance chunk %d/%d: JSON parse failed — retrying with JSON-only reminder. raw[:300]=%r",
+            chunk_idx + 1, total_chunks, raw[:300] if raw else None,
+        )
+        retry_prompt = (
+            "The previous response was not valid JSON. Re-emit ONLY the JSON object "
+            "described below — no markdown fences, no prose, no apology, nothing before "
+            "the opening '{' or after the closing '}'.\n\n" + prompt
+        )
+        try:
+            raw2 = await llm_text(retry_prompt, max_tokens=8192)
+            return _parse_json(raw2)
+        except Exception:
+            logger.warning(
+                "materials compliance chunk %d/%d: JSON parse failed on retry — chunk dropped",
+                chunk_idx + 1, total_chunks,
+                exc_info=True,
+            )
+            return {"_parse_failed": True, "_error": "parse_failed"}
+
+
 async def check_materials_compliance(
     materials: list,
     city: str,
@@ -310,55 +391,102 @@ async def check_materials_compliance(
 
     results = await asyncio.gather(*[_tavily_category(c, q) for c, q in queries])
     research, allowed_urls = _format_research(results)
-
-    materials_text = "\n".join([
-        f"  {i+1}. {m.get('item_name','Unknown')} "
-        f"[{m.get('category','general')}] "
-        f"qty: {m.get('quantity',0)} {m.get('unit','each')}"
-        for i, m in enumerate(materials or [])
-    ]) or "  (no materials provided)"
-
-    prompt = PROMPT.format(
-        jurisdiction_json=json.dumps({k: j[k] for k in ("state","state_name","city","county","zip","climate_zone","high_wind","hurricane_prone")}, indent=2),
-        code_cycles="\n".join(f"  - {k}: {v}" for k, v in j["code_cycles"].items()),
-        materials_text=materials_text,
-        research=(research[:20000] if research else "(No research retrieved — evaluate using IRC/IBC/IECC base code for the state and FLAG verified=false on every item.)"),
+    research_block = (
+        research[:20000] if research
+        else "(No research retrieved — evaluate using IRC/IBC/IECC base code for the state and FLAG verified=false on every item.)"
     )
+    jurisdiction_json = json.dumps(
+        {k: j[k] for k in ("state","state_name","city","county","zip","climate_zone","high_wind","hurricane_prone")},
+        indent=2,
+    )
+    code_cycles_block = "\n".join(f"  - {k}: {v}" for k, v in j["code_cycles"].items())
+
+    material_list = list(materials or [])
+    if not material_list:
+        chunks = [[]]
+    elif len(material_list) <= CHUNK_SIZE:
+        chunks = [material_list]
+    else:
+        chunks = [material_list[i:i + CHUNK_SIZE] for i in range(0, len(material_list), CHUNK_SIZE)]
+
+    chunk_results = await asyncio.gather(*[
+        _evaluate_chunk(
+            chunk, idx, len(chunks), idx == 0,
+            jurisdiction_json, code_cycles_block, research_block,
+        )
+        for idx, chunk in enumerate(chunks)
+    ])
 
     parse_failed = False
-    result: dict
-    try:
-        raw = await llm_text(prompt, max_tokens=8192)
-    except Exception as e:
-        logger.warning("materials compliance: LLM providers all failed — base-code fallback. err=%s",
-                       str(e)[:500])
+    merged_checklist: list = []
+    merged_missing: list = []
+    chunk_summaries: list[str] = []
+    status_rank = {"pass": 0, "warning": 1, "fail": 2}
+    worst_status = "pass"
+    evaluated_names: set[str] = set()
+    any_chunk_failed = False
+
+    for chunk, cr in zip(chunks, chunk_results):
+        if cr.get("_parse_failed"):
+            any_chunk_failed = True
+            continue
+        for item in (cr.get("checklist") or []):
+            if isinstance(item, dict):
+                merged_checklist.append(item)
+                name_key = (item.get("item_name") or "").strip().lower()
+                if name_key:
+                    evaluated_names.add(name_key)
+        for miss in (cr.get("missing_required_items") or []):
+            if isinstance(miss, dict):
+                merged_missing.append(miss)
+        if cr.get("summary"):
+            chunk_summaries.append(str(cr["summary"]).strip())
+        cs = (cr.get("overall_status") or "warning").lower()
+        if status_rank.get(cs, 1) > status_rank.get(worst_status, 0):
+            worst_status = cs
+
+    # Fill in any materials that never got evaluated (dropped chunks or LLM
+    # elided them) with base-code placeholders so the UI still shows the
+    # full material list.
+    unevaluated = [
+        m for m in material_list
+        if (m.get("item_name") or "").strip().lower() not in evaluated_names
+    ]
+    if unevaluated:
+        stub = _base_code_materials_fallback(unevaluated, j, project_type, loc)
+        merged_checklist.extend(stub.get("checklist") or [])
+        if not merged_missing:
+            merged_missing = stub.get("missing_required_items") or []
+        if worst_status == "pass":
+            worst_status = "warning"
+
+    # Dedupe missing items by name, cap at 8 (matches PROMPT contract).
+    seen_missing: set[str] = set()
+    dedup_missing: list = []
+    for m in merged_missing:
+        key = (m.get("item_name") or "").strip().lower()
+        if not key or key in seen_missing:
+            continue
+        seen_missing.add(key)
+        dedup_missing.append(m)
+    dedup_missing = dedup_missing[:8]
+
+    if any_chunk_failed and not merged_checklist:
+        # Every chunk failed — fall back to the base-code brick wall.
         parse_failed = True
-        result = _base_code_materials_fallback(materials or [], j, project_type, loc)
-        result["llm_unavailable"] = True
+        result = _base_code_materials_fallback(material_list, j, project_type, loc)
+        if not chunks or all(c == [] for c in chunks):
+            result["llm_unavailable"] = True
     else:
-        try:
-            result = _parse_json(raw)
-        except Exception:
-            # First parse failed — retry once with a tighter "JSON ONLY" reminder
-            # before giving up and falling back. Catches the common case where
-            # the model added an apologetic preamble or a trailing "let me know
-            # if you want more detail" that blew our brace balance.
-            logger.warning("materials compliance JSON parse failed — retrying with JSON-only reminder. raw[:500]=%r",
-                           raw[:500] if raw else None)
-            retry_prompt = (
-                "The previous response was not valid JSON. Re-emit ONLY the JSON object "
-                "described below — no markdown fences, no prose, no apology, nothing before "
-                "the opening '{' or after the closing '}'.\n\n" + prompt
-            )
-            try:
-                raw2 = await llm_text(retry_prompt, max_tokens=8192)
-                result = _parse_json(raw2)
-                logger.info("materials compliance: recovered on retry")
-            except Exception:
-                logger.warning("materials compliance JSON parse failed (both attempts) — building base-code fallback. raw2[:500]=%r",
-                               (raw2[:500] if 'raw2' in locals() and raw2 else None), exc_info=True)
-                parse_failed = True
-                result = _base_code_materials_fallback(materials or [], j, project_type, loc)
+        summary = " ".join(chunk_summaries[:3]) if chunk_summaries else (
+            f"Reviewed {len(merged_checklist)} materials against {loc} adopted codes."
+        )
+        result = {
+            "overall_status": worst_status,
+            "summary": summary,
+            "checklist": merged_checklist,
+            "missing_required_items": dedup_missing,
+        }
 
     result["checklist"] = _verify(result.get("checklist") or [], allowed_urls)
     # Missing-items list gets the same URL verification treatment.
