@@ -174,22 +174,41 @@ export default function PermitsPage() {
       try {
         const result = await api.permits.searchPortal(city || county, state, 'residential')
         if (cancelled) return
-        if (result.found && result.portal_url) {
-          setOfficeCache(prev => ({
-            ...prev,
-            [key]: {
+        const fallbackSearch =
+          (result as { fallback_search_url?: string }).fallback_search_url ||
+          `https://www.google.com/search?q=${encodeURIComponent(`${city || county} ${state} building permit office`)}`
+        // Always produce a usable office card. Verified URL if we have one;
+        // otherwise a Google search link (user can override if wrong).
+        const office: PermitOffice = result.found && result.portal_url
+          ? {
               name: result.portal_name || `${county} County Building Department`,
               address: `Contact your local ${county} County government office`,
               phone: result.submission_email || 'See county website',
-              portal: result.portal_url!,
+              portal: result.portal_url,
               portalVerified: true,
+            }
+          : {
+              name: `${county} County Building Department`,
+              address: `${city || county}, ${state} — address not on file`,
+              phone: 'Call county directly — number not on file',
+              portal: fallbackSearch,
+              portalVerified: false,
+            }
+        setOfficeCache(prev => ({ ...prev, [key]: office }))
+      } catch {
+        if (!cancelled) {
+          const fallbackSearch = `https://www.google.com/search?q=${encodeURIComponent(`${city || county} ${state} building permit office`)}`
+          setOfficeCache(prev => ({
+            ...prev,
+            [key]: {
+              name: `${county} County Building Department`,
+              address: `${city || county}, ${state} — address not on file`,
+              phone: 'Call county directly — number not on file',
+              portal: fallbackSearch,
+              portalVerified: false,
             },
           }))
-        } else {
-          setOfficeCache(prev => ({ ...prev, [key]: null }))
         }
-      } catch {
-        if (!cancelled) setOfficeCache(prev => ({ ...prev, [key]: null }))
       } finally {
         clearTimeout(hardTimeout)
         if (!cancelled) {
@@ -479,12 +498,24 @@ export default function PermitsPage() {
                       </div>
                     ) : office ? (
                       <div>
-                        <div className="text-slate-800 font-semibold text-sm">{office.name}</div>
-                        <div className="text-slate-500 text-xs mt-0.5">{office.address}</div>
-                        <div className="flex items-center gap-4 mt-2">
-                          <span className="text-slate-500 text-xs">{office.phone}</span>
-                          <a href={office.portal} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs hover:text-blue-700 underline underline-offset-2">{office.portal}</a>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-800 font-semibold text-sm">{office.name}</span>
+                          {!office.portalVerified && (
+                            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Best guess</span>
+                          )}
                         </div>
+                        <div className="text-slate-500 text-xs mt-0.5">{office.address}</div>
+                        <div className="flex items-center gap-4 mt-2 flex-wrap">
+                          <span className="text-slate-500 text-xs">{office.phone}</span>
+                          <a href={office.portal} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs hover:text-blue-700 underline underline-offset-2 break-all">
+                            {office.portalVerified ? office.portal : `Search for ${city || county}, ${state} permit office →`}
+                          </a>
+                        </div>
+                        {!office.portalVerified && (
+                          <div className="text-amber-600 text-[11px] mt-2">
+                            ⓘ We couldn&apos;t verify a specific office for this area. The link above runs a Google search. Double-check it&apos;s correct, or use the &quot;No&quot; option below to enter the right office.
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
