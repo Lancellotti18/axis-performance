@@ -58,22 +58,37 @@ async def search_permit_portal(
         portal_url  = jurisdiction.get("gov_url") or jurisdiction.get("fallback_search_url")
         portal_name = jurisdiction.get("authority_name") or f"{city}, {state} Building Department"
 
-        # Re-verify the portal URL at response time. A URL may have worked
-        # during jurisdiction detection but be stale by the time the frontend
-        # tries to open it. If it fails, signal the UI to show a "search
-        # manually" fallback instead of a broken link.
+        # Re-verify the portal URL at response time. We only reject URLs that
+        # are definitively dead (404/410) or totally unreachable. Gov sites
+        # routinely return 401/403/406/429/5xx/Cloudflare challenges to bot
+        # requests while serving fine to a real browser — don't flag those.
+        DEAD_STATUSES = {404, 410}
         url_verified = False
         if portal_url and portal_url != jurisdiction.get("fallback_search_url"):
             try:
-                async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-                    # HEAD first (cheap); some servers refuse HEAD — fall back to GET.
+                async with httpx.AsyncClient(
+                    timeout=10.0,
+                    follow_redirects=True,
+                    headers={
+                        # Some gov CDNs block non-browser UAs entirely
+                        "User-Agent": (
+                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0) "
+                            "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                            "Version/17.0 Safari/605.1.15"
+                        ),
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    },
+                ) as client:
+                    # HEAD first (cheap); if the server rejects HEAD (405) or
+                    # claims 404/410 on HEAD, do a GET before giving up.
                     try:
                         resp = await client.head(portal_url)
-                        if resp.status_code >= 400:
+                        if resp.status_code in DEAD_STATUSES or resp.status_code == 405:
                             resp = await client.get(portal_url)
                     except httpx.HTTPError:
                         resp = await client.get(portal_url)
-                    url_verified = 200 <= resp.status_code < 400
+                    # Reachable unless explicitly 404/410.
+                    url_verified = resp.status_code not in DEAD_STATUSES
             except Exception as verify_err:
                 logger.warning(f"Portal URL verification failed for {portal_url}: {verify_err}")
                 url_verified = False
