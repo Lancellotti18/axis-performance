@@ -26,7 +26,10 @@ import re
 import json
 from datetime import datetime
 from app.services.llm import llm_text
-from app.services.search import web_search_multi
+from app.services.search import (
+    web_search_multi_structured,
+    _format_articles_for_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +148,7 @@ async def get_risk_score(city: str, state: str, zip_code: str = "") -> dict:
 
     # Pull recent, location-specific evidence from multiple hazard angles.
     # Dates are included in the queries so the web_search backend prioritises fresh results.
-    research = await web_search_multi(
+    articles = await web_search_multi_structured(
         [
             f"{city} {state} severe weather damage {last_year} {this_year} news",
             f"{city} {state} hurricane tropical storm flooding {last_year} {this_year}",
@@ -157,6 +160,8 @@ async def get_risk_score(city: str, state: str, zip_code: str = "") -> dict:
         ],
         max_results=4,
     )
+
+    research = _format_articles_for_prompt(articles) if articles else ""
 
     # Cap research to ~12k chars (~3k tokens). Keeps the full prompt inside
     # Groq's free-tier TPM cap so it can serve as a real fallback when Gemini
@@ -244,10 +249,12 @@ Keep recent_events to at most 5 items, newest first."""
     text = await llm_text(prompt, max_tokens=2000)
     result = _parse_risk_json(text)
     if not result:
-        return _empty_risk_payload(
+        fallback = _empty_risk_payload(
             location,
             "The AI response could not be parsed as JSON — try refreshing in a moment.",
         )
+        fallback["articles"] = articles
+        return fallback
 
     # Defensive back-compat: derive legacy scores from hazards[] if the model
     # skipped filling them in at the top level.
@@ -255,5 +262,8 @@ Keep recent_events to at most 5 items, newest first."""
     for legacy_field, hazard_key in (("hail_risk", "hail"), ("wind_risk", "wind"), ("flood_risk", "flood")):
         if legacy_field not in result and hazard_key in hazards_by_key:
             result[legacy_field] = hazards_by_key[hazard_key].get("score", 0)
+
+    # Surface the raw research articles so the UI can render them as cards.
+    result["articles"] = articles
 
     return result

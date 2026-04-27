@@ -42,6 +42,7 @@ function barColorFor(score: number): string {
 type Hazard = { key: string; label: string; score: number; rationale?: string }
 type Recommendation = { hazard?: string; action: string; why?: string; priority?: string }
 type RecentEvent = { year?: number | string; type?: string; severity?: string; impact?: string; source?: string }
+type Article = { title?: string; url?: string; snippet?: string; published?: string | null; query?: string }
 
 type RiskResult = {
   overall_risk?: number
@@ -55,10 +56,27 @@ type RiskResult = {
   reinforcement_recommendations?: Recommendation[]
   insurance_note?: string
   data_source?: string
+  articles?: Article[]
   // legacy
   hail_risk?: number
   wind_risk?: number
   flood_risk?: number
+}
+
+function hostnameOf(url?: string): string {
+  if (!url) return ''
+  try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' }
+}
+
+function categoryFor(query?: string): { label: string; icon: string } {
+  const q = (query || '').toLowerCase()
+  if (q.includes('hurricane') || q.includes('tropical') || q.includes('flood')) return { label: 'Hurricane / Flood', icon: '🌀' }
+  if (q.includes('tornado') || q.includes('hail')) return { label: 'Tornado / Hail',     icon: '🌪' }
+  if (q.includes('wildfire'))                       return { label: 'Wildfire',          icon: '🔥' }
+  if (q.includes('earthquake') || q.includes('seismic')) return { label: 'Earthquake',   icon: '🌋' }
+  if (q.includes('fema'))                           return { label: 'FEMA Declaration',  icon: '📋' }
+  if (q.includes('code'))                           return { label: 'Building Code',     icon: '📐' }
+  return { label: 'Severe Weather', icon: '⚠️' }
 }
 
 function RiskBar({ label, score, icon }: { label: string; score: number; icon?: string }) {
@@ -116,10 +134,10 @@ export default function StormReportPage() {
     return legacy
   })()
 
-  // Sort hazards by score descending, drop zero-score items
-  const visibleHazards = hazards
-    .filter(h => (h.score || 0) > 0)
-    .sort((a, b) => (b.score || 0) - (a.score || 0))
+  // Show every hazard so the user sees the full disaster spectrum (flood, hail,
+  // earthquake, etc.) — even ones at 0/10. Sorted by score descending so the
+  // material risks land at the top.
+  const visibleHazards = [...hazards].sort((a, b) => (b.score || 0) - (a.score || 0))
 
   const recs = (result?.reinforcement_recommendations ?? []).filter(r => r?.action)
 
@@ -331,6 +349,58 @@ export default function StormReportPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Source articles — the actual research the analysis is grounded in */}
+            {result.articles && result.articles.length > 0 && (
+              <div className="bg-white rounded-2xl px-5 py-4" style={cardStyle}>
+                <div className="flex items-baseline justify-between mb-3">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Source Articles</div>
+                  <div className="text-[10px] text-slate-400">{result.articles.length} result{result.articles.length === 1 ? '' : 's'} · NOAA, FEMA, USGS, news</div>
+                </div>
+                <div className="space-y-2.5">
+                  {result.articles.map((a, i) => {
+                    const cat = categoryFor(a.query)
+                    const host = hostnameOf(a.url)
+                    return (
+                      <a
+                        key={i}
+                        href={a.url || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block border rounded-xl p-3 hover:bg-blue-50/40 transition-colors"
+                        style={{ borderColor: 'rgba(219,234,254,0.8)' }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="text-base flex-shrink-0 leading-none mt-0.5">{cat.icon}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold border bg-slate-50 text-slate-600 border-slate-200">
+                                {cat.label}
+                              </span>
+                              {host && (
+                                <span className="text-[10px] text-slate-400 truncate">{host}</span>
+                              )}
+                              {a.published && (
+                                <span className="text-[10px] text-slate-400">· {a.published}</span>
+                              )}
+                            </div>
+                            <div className="text-slate-800 text-sm font-semibold leading-snug">
+                              {a.title || a.url}
+                            </div>
+                            {a.snippet && (
+                              <p className="text-slate-500 text-xs leading-relaxed mt-1 line-clamp-3">
+                                {a.snippet}
+                              </p>
+                            )}
+                          </div>
+                          <svg className="text-slate-300 flex-shrink-0 mt-1" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                        </div>
+                      </a>
+                    )
+                  })}
                 </div>
               </div>
             )}
