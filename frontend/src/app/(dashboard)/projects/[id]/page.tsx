@@ -2235,6 +2235,17 @@ Thank you for your time.`
                   <h2 className="text-slate-800 font-bold text-lg">Permit Applications</h2>
                   <p className="text-slate-400 text-xs mt-0.5">Find and submit your building permit for {project?.city ? `${project.city}, ` : ''}{project?.region}</p>
                 </div>
+                {project && (!project.city || !project.region) && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <div className="flex items-start gap-3">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      <div className="flex-1">
+                        <div className="text-amber-800 font-bold text-sm">Project is missing its city or state</div>
+                        <p className="text-amber-700 text-xs mt-1">We need the project&apos;s city and state to fetch the right permit form. Edit the project to add them.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <PermitPortalSection project={project} projectId={projectId} />
               </div>
             )}

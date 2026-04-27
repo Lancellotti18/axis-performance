@@ -572,6 +572,128 @@ def _pollinations_url(prompt: str, seed: int) -> str:
     return f"{POLLINATIONS_API}/{encoded}?width=1280&height=960&model=flux&seed={seed}&nologo=true"
 
 
+async def _generate_via_fal_i2i(
+    prompt: str, reference_url: str, strength: float = 0.65, seed: int = 0,
+) -> str:
+    """
+    fal.ai FLUX image-to-image. `reference_url` may be an http(s) URL or a
+    base64 `data:` URL — fal_client accepts both.
+
+    `strength` is how much the model is allowed to deviate from the reference:
+    0.0 = identical to reference, 1.0 = pure text-to-image. 0.6–0.7 keeps the
+    building geometry while letting the angle change.
+    """
+    import fal_client
+
+    os.environ.setdefault("FAL_KEY", _fal_key())
+
+    def _run():
+        args = {
+            "prompt":              prompt,
+            "image_url":           reference_url,
+            "strength":            strength,
+            "num_inference_steps": 28,
+            "guidance_scale":      3.5,
+            "num_images":          1,
+            "safety_tolerance":    "2",
+            "output_format":       "jpeg",
+        }
+        if seed:
+            args["seed"] = int(seed)
+        result = fal_client.run("fal-ai/flux/dev/image-to-image", arguments=args)
+        return result["images"][0]["url"]
+
+    image_url = await asyncio.wait_for(asyncio.to_thread(_run), timeout=90)
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(image_url)
+        r.raise_for_status()
+        return "data:image/jpeg;base64," + base64.b64encode(r.content).decode()
+
+
+async def _decode_reference_to_bytes(reference: str) -> tuple[bytes, str]:
+    """Pull (raw_bytes, mime) from a `data:` URL or http(s) URL."""
+    if reference.startswith("data:"):
+        header, _, b64 = reference.partition(",")
+        mime = header.split(";")[0][5:] or "image/jpeg"
+        return base64.b64decode(b64), mime
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(reference)
+        r.raise_for_status()
+        mime = r.headers.get("content-type", "image/jpeg").split(";")[0]
+        return r.content, mime
+
+
+def _gemini_i2i_call(prompt: str, ref_bytes: bytes, ref_mime: str = "image/jpeg") -> str:
+    """Sync Gemini call with a reference image. Same model list as text-only."""
+    from google import genai
+    from google.genai import types
+
+    MODELS = [
+        "gemini-2.5-flash-image",
+        "gemini-2.5-flash-image-preview",
+    ]
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    contents = [
+        types.Part.from_bytes(data=ref_bytes, mime_type=ref_mime),
+        prompt,
+    ]
+    last_err: Exception = ValueError("No models tried")
+    for model in MODELS:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
+            )
+            for part in response.candidates[0].content.parts:
+                if part.inline_data is not None:
+                    out_mime = part.inline_data.mime_type or "image/jpeg"
+                    encoded  = base64.b64encode(part.inline_data.data).decode("ascii")
+                    return f"data:{out_mime};base64,{encoded}"
+            last_err = ValueError(f"{model}: no image parts in response")
+        except Exception as e:
+            last_err = e
+            log.warning(f"[Renders] Gemini i2i {model!r}: {e}")
+    raise last_err
+
+
+async def _generate_via_gemini_i2i(prompt: str, ref_bytes: bytes, ref_mime: str) -> str:
+    async with _get_gemini_sem():
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(_gemini_i2i_call, prompt, ref_bytes, ref_mime),
+                timeout=30,
+            )
+        finally:
+            await asyncio.sleep(10)
+
+
+async def _generate_image_i2i(prompt: str, reference: str, seed: int = 0) -> str:
+    """
+    Image-to-image generation seeded with a reference. Used for keeping the
+    side/rear exterior renders on-model with the front render.
+
+    Falls back to text-to-image if no i2i-capable provider succeeds, so the
+    caller still gets *some* image rather than an exception.
+    """
+    if _fal_key():
+        try:
+            return await _generate_via_fal_i2i(prompt, reference, strength=0.65, seed=seed)
+        except Exception as e:
+            log.warning(f"[Renders] fal.ai i2i failed: {e}")
+
+    if settings.GEMINI_API_KEY:
+        try:
+            ref_bytes, ref_mime = await _decode_reference_to_bytes(reference)
+            return await _generate_via_gemini_i2i(prompt, ref_bytes, ref_mime)
+        except Exception as e:
+            log.warning(f"[Renders] Gemini i2i failed: {e}")
+
+    log.warning("[Renders] No i2i provider succeeded — falling back to text-only")
+    return await _generate_image(prompt, seed)
+
+
 async def _generate_image(prompt: str, seed: int = 0) -> str:
     """
     Try providers in priority order. Always returns a string — never raises.
@@ -715,11 +837,47 @@ async def generate_renders(project_id: str, request: RenderRequest):
         for j, r in enumerate(resolved_rooms)
     ]
 
-    all_pairs   = exterior_pairs + room_pairs
-    all_results = await asyncio.gather(
-        *[_generate_image(prompt, seed) for prompt, seed in all_pairs],
-        return_exceptions=True,
-    )
+    # Strategy:
+    # - Generate the FRONT exterior with text-to-image first.
+    # - Use that front render as a reference image for the other 3 exterior
+    #   angles (image-to-image) so they show the same building, not 4
+    #   different houses.
+    # - Rooms run in parallel with the front render — they don't need a
+    #   reference and we don't want to block them on the i2i ladder.
+    # - If the front render itself fails, fall back to plain t2i for all
+    #   four angles so the user still gets something.
+    front_prompt, front_seed = exterior_pairs[0]
+    front_task = asyncio.create_task(_generate_image(front_prompt, front_seed))
+    room_tasks = [
+        asyncio.create_task(_generate_image(prompt, seed))
+        for prompt, seed in room_pairs
+    ]
+
+    front_result: object
+    front_img: str | None = None
+    try:
+        front_img = await front_task
+        front_result = front_img
+    except Exception as e:
+        log.warning(f"[Renders] Front exterior render failed — falling back to t2i for all angles: {e}")
+        front_result = e
+
+    if front_img:
+        side_results = await asyncio.gather(
+            *[
+                _generate_image_i2i(prompt, front_img, seed)
+                for prompt, seed in exterior_pairs[1:]
+            ],
+            return_exceptions=True,
+        )
+    else:
+        side_results = await asyncio.gather(
+            *[_generate_image(prompt, seed) for prompt, seed in exterior_pairs[1:]],
+            return_exceptions=True,
+        )
+
+    room_results = await asyncio.gather(*room_tasks, return_exceptions=True)
+    all_results = [front_result, *side_results, *room_results]
 
     def _url(r) -> str | None:
         if isinstance(r, str) and r:
