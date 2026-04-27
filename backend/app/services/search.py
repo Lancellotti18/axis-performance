@@ -13,7 +13,50 @@ Usage:
 """
 import asyncio
 from typing import Optional
+from urllib.parse import urlparse, parse_qs, unquote
 from app.core.config import settings
+
+
+def _normalize_url(url: str) -> str:
+    """
+    Unwrap DuckDuckGo redirect URLs (e.g. //duckduckgo.com/l/?uddg=ENCODED)
+    so users land on the real article rather than a redirector that often
+    404s and gets hijacked by Edge → support.microsoft.com.
+    """
+    if not url:
+        return ""
+    raw = url.strip()
+    if raw.startswith("//"):
+        raw = "https:" + raw
+    if not (raw.startswith("http://") or raw.startswith("https://")):
+        return ""
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return ""
+
+    host = (parsed.hostname or "").lower()
+    if host.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+        qs = parse_qs(parsed.query)
+        target = qs.get("uddg", [""])[0]
+        if target:
+            target = unquote(target)
+            if target.startswith("http://") or target.startswith("https://"):
+                return target
+        return ""
+
+    # Drop known dead-end / unhelpful hosts that frequently surface from web
+    # search but never contain real article content for our hazard queries.
+    BAD_HOSTS = (
+        "support.microsoft.com",
+        "go.microsoft.com",
+        "bing.com",
+        "duckduckgo.com",
+    )
+    if any(host == bad or host.endswith("." + bad) for bad in BAD_HOSTS):
+        return ""
+
+    return raw
 
 
 async def web_search(query: str, max_results: int = 5) -> str:
@@ -126,15 +169,17 @@ async def _duckduckgo_search_structured(query: str, max_results: int) -> list[di
         from duckduckgo_search import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
-        return [
-            {
+        out = []
+        for r in results or []:
+            url = _normalize_url(r.get("href", ""))
+            if not url:
+                continue
+            out.append({
                 "title": r.get("title", ""),
-                "url": r.get("href", ""),
+                "url": url,
                 "snippet": r.get("body", ""),
-            }
-            for r in (results or [])
-            if r.get("href")
-        ]
+            })
+        return out
 
     try:
         return await asyncio.to_thread(_run)
@@ -180,16 +225,18 @@ async def _tavily_search_structured(query: str, max_results: int) -> list[dict]:
             max_results=max_results,
             include_answer=False,
         )
-        return [
-            {
+        out = []
+        for r in result.get("results") or []:
+            url = _normalize_url(r.get("url", ""))
+            if not url:
+                continue
+            out.append({
                 "title": r.get("title", ""),
-                "url": r.get("url", ""),
+                "url": url,
                 "snippet": r.get("content", ""),
                 "published": r.get("published_date") or None,
-            }
-            for r in (result.get("results") or [])
-            if r.get("url")
-        ]
+            })
+        return out
 
     try:
         return await asyncio.to_thread(_run)

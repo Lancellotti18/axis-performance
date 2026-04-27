@@ -122,22 +122,38 @@ export default function StormReportPage() {
     }
   }
 
-  // Build hazards list — prefer new structured `hazards`, fall back to legacy top-level fields.
-  const hazards: Hazard[] = (() => {
-    if (result?.hazards && Array.isArray(result.hazards)) {
-      return result.hazards.filter(h => typeof h?.score === 'number')
-    }
-    const legacy: Hazard[] = []
-    if (typeof result?.hail_risk  === 'number') legacy.push({ key: 'hail',  label: 'Hail',  score: result.hail_risk })
-    if (typeof result?.wind_risk  === 'number') legacy.push({ key: 'wind',  label: 'Wind',  score: result.wind_risk })
-    if (typeof result?.flood_risk === 'number') legacy.push({ key: 'flood', label: 'Flood', score: result.flood_risk })
-    return legacy
-  })()
+  // Canonical 8-hazard spectrum — always shown on the graph so the user sees
+  // the full disaster picture (flood, hail, earthquake, etc.) even if the LLM
+  // omitted entries or returned a truncated `hazards` array.
+  const HAZARD_SPECTRUM: Array<{ key: string; label: string }> = [
+    { key: 'hail',       label: 'Hail' },
+    { key: 'wind',       label: 'Wind / Severe Thunderstorm' },
+    { key: 'tornado',    label: 'Tornado' },
+    { key: 'hurricane',  label: 'Hurricane / Tropical Storm' },
+    { key: 'flood',      label: 'Flood / Storm Surge' },
+    { key: 'wildfire',   label: 'Wildfire' },
+    { key: 'earthquake', label: 'Earthquake' },
+    { key: 'winter',     label: 'Winter Storm / Ice' },
+  ]
 
-  // Show every hazard so the user sees the full disaster spectrum (flood, hail,
-  // earthquake, etc.) — even ones at 0/10. Sorted by score descending so the
-  // material risks land at the top.
-  const visibleHazards = [...hazards].sort((a, b) => (b.score || 0) - (a.score || 0))
+  // Build a lookup from whatever the backend gave us — supports both the new
+  // structured hazards[] payload and the legacy hail_risk/wind_risk/flood_risk
+  // top-level fields.
+  const hazardMap = new Map<string, Hazard>()
+  if (result?.hazards && Array.isArray(result.hazards)) {
+    for (const h of result.hazards) {
+      if (h?.key && typeof h.score === 'number') hazardMap.set(h.key, h)
+    }
+  }
+  if (typeof result?.hail_risk  === 'number' && !hazardMap.has('hail'))  hazardMap.set('hail',  { key: 'hail',  label: 'Hail',  score: result.hail_risk })
+  if (typeof result?.wind_risk  === 'number' && !hazardMap.has('wind'))  hazardMap.set('wind',  { key: 'wind',  label: 'Wind',  score: result.wind_risk })
+  if (typeof result?.flood_risk === 'number' && !hazardMap.has('flood')) hazardMap.set('flood', { key: 'flood', label: 'Flood', score: result.flood_risk })
+
+  // Always 8 entries in the canonical order: backend-provided fills in scores;
+  // anything missing falls back to 0 with the canonical label.
+  const visibleHazards: Hazard[] = HAZARD_SPECTRUM
+    .map(spec => hazardMap.get(spec.key) || { key: spec.key, label: spec.label, score: 0 })
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
 
   const recs = (result?.reinforcement_recommendations ?? []).filter(r => r?.action)
 
@@ -146,7 +162,7 @@ export default function StormReportPage() {
 
   return (
     <div className="min-h-screen p-6 md:p-8" style={{ background: 'linear-gradient(135deg, #f0f7ff 0%, #f8faff 100%)' }}>
-      <div className="max-w-2xl mx-auto space-y-6">
+      <div className="max-w-3xl mx-auto space-y-6">
 
         {/* Header */}
         <div>
@@ -264,18 +280,50 @@ export default function StormReportPage() {
               </div>
             </div>
 
-            {/* Per-hazard risk bars */}
+            {/* Per-hazard risk graph — always shows the full 8-hazard spectrum */}
             {visibleHazards.length > 0 && (
-              <div className="bg-white rounded-2xl px-5 py-4 space-y-3" style={cardStyle}>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Hazard Breakdown</div>
-                {visibleHazards.map(h => (
-                  <div key={h.key}>
-                    <RiskBar label={h.label} score={h.score || 0} icon={HAZARD_ICON[h.key]} />
-                    {h.rationale && (
-                      <p className="text-slate-500 text-xs mt-1 leading-relaxed">{h.rationale}</p>
-                    )}
-                  </div>
-                ))}
+              <div className="bg-white rounded-2xl px-5 py-5" style={cardStyle}>
+                <div className="flex items-baseline justify-between mb-1">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Natural Disaster Risk Graph</div>
+                  <div className="text-[10px] text-slate-400">Score 0–10 · higher = more exposure</div>
+                </div>
+                {/* 0–10 scale axis */}
+                <div className="relative ml-[42%] mr-1 mt-2 mb-3 h-3 select-none">
+                  <div className="absolute inset-x-0 top-1/2 h-px bg-slate-200" />
+                  {[0, 2, 4, 6, 8, 10].map(n => (
+                    <div
+                      key={n}
+                      className="absolute -translate-x-1/2 text-[9px] text-slate-400 font-semibold"
+                      style={{ left: `${n * 10}%` }}
+                    >
+                      {n}
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-3">
+                  {visibleHazards.map(h => (
+                    <div key={h.key} className="grid grid-cols-[42%_1fr] gap-3 items-center">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="flex-shrink-0">{HAZARD_ICON[h.key] || '⚠️'}</span>
+                        <span className="text-slate-700 text-xs font-semibold truncate">{h.label}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden relative">
+                          <div
+                            className={`h-full rounded-full transition-[width] ${RISK_COLORS[barColorFor(h.score || 0)].bar}`}
+                            style={{ width: `${Math.max(0, Math.min(10, h.score || 0)) * 10}%` }}
+                          />
+                        </div>
+                        <span className={`text-xs font-bold tabular-nums w-10 text-right ${RISK_COLORS[barColorFor(h.score || 0)].text}`}>
+                          {h.score || 0}/10
+                        </span>
+                      </div>
+                      {h.rationale && (
+                        <p className="col-start-2 text-slate-500 text-[11px] leading-relaxed -mt-1">{h.rationale}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
