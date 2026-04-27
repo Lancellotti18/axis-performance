@@ -58,7 +58,7 @@ EXTERIOR_ANGLES = [
     ("rear",       "rear elevation view showing the backyard and rear facade"),
 ]
 
-MAX_ROOM_RENDERS = 3  # 4 + 3 = 7 images; at $0.03 each = $0.21/request with fal.ai
+MAX_ROOM_RENDERS = 20  # Generate one render per room on the blueprint up to this safety cap
 
 # ── Setting-aware room type mapping ───────────────────────────────────────────
 # Each generated interior render must be a plausible room for the project type.
@@ -320,14 +320,24 @@ def _build_exterior_prompt(
         cam     = rng.choice(_VARIETY_EXTERIOR_CAMERA)
         variety = f"{cam.capitalize()}. "
 
+    # Stable building description first, angle text last. The leading block is
+    # identical across all four exterior calls so seed-aware models treat them
+    # as the same building from different angles.
+    building_block = (
+        f"{stories} {bp_type}, {style_desc}"
+        f"{', ' + vision_str if vision_str else ''}, "
+        f"{sqft_str}located in {location}"
+    )
+
     prompt = (
         f"Ultra-photorealistic architectural exterior render, 8K quality. "
         f"{lead}"
-        f"{stories} {bp_type}, {style_desc}"
-        f"{', ' + vision_str if vision_str else ''}, "
-        f"{sqft_str}located in {location}. "
+        f"SAME building, multi-angle architectural photography series — keep the "
+        f"roof pitch, window placement, siding material, color palette, and "
+        f"proportions identical across views. "
+        f"BUILDING: {building_block}. "
         f"{size_nudge}"
-        f"{angle_desc.capitalize()}. {time_desc.capitalize()}. "
+        f"VIEW: {angle_desc}. {time_desc.capitalize()}. "
         f"{variety}"
         f"Professional landscaping, concrete driveway. "
         f"Shot on Phase One XF IQ4, architectural photography, no people, tack sharp, correct architectural proportions."
@@ -677,15 +687,21 @@ async def generate_renders(project_id: str, request: RenderRequest):
             seen[r["label"]] = seen.get(r["label"], 0) + 1
             r["label"] = f"{r['label']} {seen[r['label']]}"
 
+    # Exterior views: lock the seed AND the variety nudge across all 4 angles
+    # so we get "same building from 4 sides", not 4 different buildings. Single-
+    # shot t2i can't guarantee geometric identity across angles, but a shared
+    # seed + identical building description block gets us the closest possible
+    # result on seed-aware providers (fal.ai, Replicate) without an i2i pass.
+    exterior_seed = base_seed
     exterior_pairs = [
         (
             _build_exterior_prompt(
                 project, analysis, bp_vision, request.style, request.time_of_day,
-                angle_desc, user_context, variety_seed=base_seed + i,
+                angle_desc, user_context, variety_seed=None,
             ),
-            base_seed + i,
+            exterior_seed,
         )
-        for i, (_, angle_desc) in enumerate(EXTERIOR_ANGLES)
+        for _, angle_desc in EXTERIOR_ANGLES
     ]
     room_pairs = [
         (
