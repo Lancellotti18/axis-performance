@@ -21,11 +21,115 @@ updates surfaced in the research.
 """
 from __future__ import annotations
 
+import logging
 import re
 import json
 from datetime import datetime
 from app.services.llm import llm_text
 from app.services.search import web_search_multi
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_risk_json(text: str) -> dict:
+    """
+    Tolerant JSON parser for the storm-risk LLM response. Strips fences, finds
+    the largest balanced {...} block, fixes trailing commas / Python-isms, and
+    walks back through `}` boundaries if the first parse fails (covers
+    truncated responses with unterminated strings at the tail).
+    """
+    raw = (text or "").strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, count=1)
+    raw = re.sub(r"\s*```\s*$", "", raw)
+    start = raw.find("{")
+    if start < 0:
+        return {}
+
+    depth, end, in_str, escape = 0, -1, False, False
+    for i in range(start, len(raw)):
+        ch = raw[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+
+    candidate = raw[start:end + 1] if end > 0 else raw[start:]
+    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+    candidate = re.sub(r"\bNone\b", "null", candidate)
+    candidate = re.sub(r"\bTrue\b", "true", candidate)
+    candidate = re.sub(r"\bFalse\b", "false", candidate)
+
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        # Walk back through `}` boundaries to salvage truncated output.
+        for i in range(len(candidate) - 1, -1, -1):
+            if candidate[i] != "}":
+                continue
+            try:
+                return json.loads(candidate[:i + 1])
+            except Exception:
+                continue
+        # Last resort: try closing any open string + any open arrays/objects so
+        # we can salvage the structured fields that did parse cleanly.
+        repaired = candidate
+        if repaired.count('"') % 2 == 1:
+            repaired += '"'
+        open_arr = repaired.count("[") - repaired.count("]")
+        open_obj = repaired.count("{") - repaired.count("}")
+        repaired += "]" * max(open_arr, 0) + "}" * max(open_obj, 0)
+        repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+        try:
+            return json.loads(repaired)
+        except Exception:
+            logger.warning(
+                "risk_score: JSON parse failed, returning empty dict. raw[:200]=%r",
+                (text or "")[:200],
+            )
+            return {}
+
+
+def _empty_risk_payload(location: str, reason: str) -> dict:
+    """Graceful fallback when the LLM response can't be parsed."""
+    return {
+        "overall_risk": 0,
+        "risk_label": "Unknown",
+        "risk_color": "amber",
+        "summary": f"Could not generate a structured risk report for {location}. {reason}",
+        "scoring_rationale": "",
+        "significance": "",
+        "hazards": [
+            {"key": "hail",      "label": "Hail",                          "score": 0, "rationale": ""},
+            {"key": "wind",      "label": "Wind / Severe Thunderstorm",    "score": 0, "rationale": ""},
+            {"key": "tornado",   "label": "Tornado",                       "score": 0, "rationale": ""},
+            {"key": "hurricane", "label": "Hurricane / Tropical Storm",    "score": 0, "rationale": ""},
+            {"key": "flood",     "label": "Flood / Storm Surge",           "score": 0, "rationale": ""},
+            {"key": "wildfire",  "label": "Wildfire",                      "score": 0, "rationale": ""},
+            {"key": "earthquake","label": "Earthquake",                    "score": 0, "rationale": ""},
+            {"key": "winter",    "label": "Winter Storm / Ice",            "score": 0, "rationale": ""},
+        ],
+        "recent_events": [],
+        "reinforcement_recommendations": [],
+        "insurance_note": "",
+        "data_source": "",
+        "hail_risk": 0,
+        "wind_risk": 0,
+        "flood_risk": 0,
+    }
 
 
 async def get_risk_score(city: str, state: str, zip_code: str = "") -> dict:
@@ -138,13 +242,12 @@ Keep reinforcement_recommendations to at most 6 items, ordered by priority (high
 Keep recent_events to at most 5 items, newest first."""
 
     text = await llm_text(prompt, max_tokens=2000)
-    text = re.sub(r'^```(?:json)?\s*', '', text, count=1)
-    text = re.sub(r'\s*```\s*$', '', text)
-    start = text.find("{")
-    if start > 0:
-        text = text[start:]
-
-    result = json.loads(text)
+    result = _parse_risk_json(text)
+    if not result:
+        return _empty_risk_payload(
+            location,
+            "The AI response could not be parsed as JSON — try refreshing in a moment.",
+        )
 
     # Defensive back-compat: derive legacy scores from hazards[] if the model
     # skipped filling them in at the top level.
