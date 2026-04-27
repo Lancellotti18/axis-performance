@@ -6,6 +6,7 @@ GET  /roofing/{blueprint_id}/measurements — Get stored measurements
 GET  /roofing/{project_id}/shingle-estimate — Calculate shingle material list
 """
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException
@@ -402,7 +403,15 @@ async def detect_roof_outline_endpoint(payload: RoofOutlineRequest):
             image_height_px=payload.image_height_px or 840,
             zoom=payload.zoom or 18,
         )
+    except json.JSONDecodeError:
+        # Vision response wasn't parseable — service already returns an empty
+        # polygon in this case, so this branch is defensive only.
+        logger.warning("roof outline: JSON decode bubbled up to endpoint")
+        return {"polygon": [], "confidence": 0.0, "structure": "",
+                "notes": "Could not auto-detect the roof outline — drag a polygon over the building to get started.",
+                "warnings": ["AI vision response was not valid JSON."]}
     except ValueError as e:
+        # Real validation errors (missing required input, etc.) — keep the 422.
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.exception("roof outline detection failed")

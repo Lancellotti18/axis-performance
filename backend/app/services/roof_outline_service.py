@@ -75,6 +75,68 @@ def _sanitize(raw: str) -> str:
     return raw
 
 
+def _parse_outline_json(text: str) -> dict:
+    """
+    Tolerant JSON parser for the outline LLM response. Strips fences, finds
+    the largest balanced {...} block, fixes trailing commas / Python-isms,
+    and walks back through `}` boundaries if the first parse fails (covers
+    truncated responses).
+    """
+    cleaned = _sanitize(text or "")
+    if not cleaned:
+        return {}
+
+    start = cleaned.find("{")
+    if start < 0:
+        return {}
+
+    # Find the largest balanced {...} block by tracking string state.
+    depth, end, in_str, escape = 0, -1, False, False
+    for i in range(start, len(cleaned)):
+        ch = cleaned[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+
+    candidate = cleaned[start:end + 1] if end > 0 else cleaned[start:]
+    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+    candidate = re.sub(r"\bNone\b", "null", candidate)
+    candidate = re.sub(r"\bTrue\b", "true", candidate)
+    candidate = re.sub(r"\bFalse\b", "false", candidate)
+
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        # Walk back through `}` boundaries to salvage truncated output.
+        for i in range(len(candidate) - 1, -1, -1):
+            if candidate[i] != "}":
+                continue
+            try:
+                return json.loads(candidate[:i + 1])
+            except Exception:
+                continue
+        logger.warning(
+            "roof outline: JSON parse failed, returning empty polygon. raw[:200]=%r",
+            (text or "")[:200],
+        )
+        return {}
+
+
 def _polygon_area_fraction(polygon: list[list[float]]) -> float:
     """Shoelace area in image-fraction squared (0..1 range)."""
     n = len(polygon)
@@ -117,7 +179,18 @@ async def detect_roof_outline(
     image_bytes, media_type = await _download(satellite_image_url)
 
     text = await llm_vision(image_bytes, media_type, OUTLINE_PROMPT, max_tokens=900)
-    payload = json.loads(_sanitize(text))
+    payload = _parse_outline_json(text)
+    if not payload:
+        # LLM returned something we couldn't parse — degrade gracefully so the
+        # UI shows an empty editable canvas instead of a 422. The frontend
+        # already supports drawing the outline by hand.
+        payload = {
+            "polygon": [],
+            "confidence": 0.0,
+            "structure": "",
+            "notes": "Could not auto-detect the roof outline — drag a polygon over the building to get started.",
+            "warnings": ["AI vision response was not valid JSON."],
+        }
 
     polygon = payload.get("polygon") or []
     # Defensive: clamp to [0,1] and drop malformed points
