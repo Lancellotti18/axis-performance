@@ -59,7 +59,25 @@ class CostEngine:
         rates = REGIONAL_RATES.get(region, REGIONAL_RATES["DEFAULT"])
         mat_index = MATERIAL_INDEX.get(region, 1.0)
 
-        materials_total = sum(m.get("total_cost", 0) for m in materials) * mat_index
+        # Derive each line from the canonical inputs (unit_cost × quantity)
+        # rather than trusting any precomputed total_cost. The LLM and several
+        # upstream paths can leave total_cost inconsistent with unit×qty; the
+        # bottom line must reflect the real quantities, not the model's
+        # arithmetic.
+        def _line_total(m: dict) -> float:
+            try:
+                unit = float(m.get("unit_cost") or 0)
+                qty = float(m.get("quantity") or 0)
+            except (TypeError, ValueError):
+                unit, qty = 0.0, 0.0
+            if unit > 0 and qty > 0:
+                return unit * qty
+            try:
+                return float(m.get("total_cost") or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        materials_total = sum(_line_total(m) for m in materials) * mat_index
 
         if total_sqft is None or total_sqft <= 0:
             # Fall back to deriving from flooring material — still better than

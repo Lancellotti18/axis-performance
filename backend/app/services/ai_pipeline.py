@@ -93,6 +93,21 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
         logger.debug("pricing enrichment failed (non-fatal)", exc_info=True)
         pass
 
+    # 9.5 Reconcile total_cost = unit_cost × quantity. The LLM emits unit_cost,
+    # quantity, and total_cost as independent fields and frequently fails the
+    # arithmetic; pricing enrichment only recomputes for items it priced
+    # successfully (the trade-distributor fallback leaves the row untouched).
+    # Everything downstream — saved line items, cost engine, compliance check —
+    # depends on these matching, so force the relationship here.
+    for m in materials:
+        try:
+            unit = float(m.get("unit_cost") or 0)
+            qty = float(m.get("quantity") or 0)
+        except (TypeError, ValueError):
+            continue
+        if unit > 0 and qty > 0:
+            m["total_cost"] = round(unit * qty, 2)
+
     # 10. Cost estimation
     try:
         from app.services.cost_engine import CostEngine
