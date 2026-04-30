@@ -19,16 +19,7 @@ const PRIORITY_STYLE: Record<string, { label: string; chip: string }> = {
   low:    { label: 'Best practice',   chip: 'bg-blue-100 text-blue-700 border-blue-200' },
 }
 
-const HAZARD_ICON: Record<string, string> = {
-  hail: '🧊',
-  wind: '💨',
-  tornado: '🌪',
-  hurricane: '🌀',
-  flood: '🌊',
-  wildfire: '🔥',
-  earthquake: '🌋',
-  winter: '❄️',
-}
+// Hazard icons removed — clean text-only labels per design feedback.
 
 // Choose per-bar color based on the hazard's own score, not the overall color
 function barColorFor(score: number): string {
@@ -66,26 +57,23 @@ function hostnameOf(url?: string): string {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' }
 }
 
-function categoryFor(query?: string): { label: string; icon: string } {
+function categoryFor(query?: string): { label: string } {
   const q = (query || '').toLowerCase()
-  if (q.includes('hurricane') || q.includes('tropical') || q.includes('flood')) return { label: 'Hurricane / Flood', icon: '🌀' }
-  if (q.includes('tornado') || q.includes('hail')) return { label: 'Tornado / Hail',     icon: '🌪' }
-  if (q.includes('wildfire'))                       return { label: 'Wildfire',          icon: '🔥' }
-  if (q.includes('earthquake') || q.includes('seismic')) return { label: 'Earthquake',   icon: '🌋' }
-  if (q.includes('fema'))                           return { label: 'FEMA Declaration',  icon: '📋' }
-  if (q.includes('code'))                           return { label: 'Building Code',     icon: '📐' }
-  return { label: 'Severe Weather', icon: '⚠️' }
+  if (q.includes('hurricane') || q.includes('tropical') || q.includes('flood')) return { label: 'Hurricane / Flood' }
+  if (q.includes('tornado') || q.includes('hail')) return { label: 'Tornado / Hail' }
+  if (q.includes('wildfire'))                       return { label: 'Wildfire' }
+  if (q.includes('earthquake') || q.includes('seismic')) return { label: 'Earthquake' }
+  if (q.includes('fema'))                           return { label: 'FEMA Declaration' }
+  if (q.includes('code'))                           return { label: 'Building Code' }
+  return { label: 'Severe Weather' }
 }
 
-function RiskBar({ label, score, icon }: { label: string; score: number; icon?: string }) {
+function RiskBar({ label, score }: { label: string; score: number }) {
   const c = RISK_COLORS[barColorFor(score)]
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-slate-600 text-xs font-semibold flex items-center gap-1.5">
-          {icon && <span>{icon}</span>}
-          {label}
-        </span>
+        <span className="text-slate-600 text-xs font-semibold">{label}</span>
         <span className={`text-xs font-bold ${c.text}`}>{score}/10</span>
       </div>
       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -250,7 +238,7 @@ export default function StormReportPage() {
             loading={loading}
             className="w-full"
           >
-            {loading ? 'Pulling recent disaster data…' : '⚡ Run Risk Report'}
+            {loading ? 'Pulling recent disaster data…' : 'Run Risk Report'}
           </AxisButton>
         </SurfacePanel>
 
@@ -348,8 +336,7 @@ export default function StormReportPage() {
                         : 'linear-gradient(90deg, #BFE6FF 0%, #4FB0EA 100%)'
                     return (
                       <div key={h.key} className="grid grid-cols-[42%_1fr] gap-3 items-center">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="flex-shrink-0">{HAZARD_ICON[h.key] || '⚠️'}</span>
+                        <div className="min-w-0">
                           <span className="text-slate-800 text-xs font-bold truncate tracking-tight">{h.label}</span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -412,7 +399,6 @@ export default function StormReportPage() {
                   {recs.map((r, i) => {
                     const priorityKey = (r.priority || 'medium').toLowerCase()
                     const p = PRIORITY_STYLE[priorityKey] || PRIORITY_STYLE.medium
-                    const hazardIcon = r.hazard ? HAZARD_ICON[r.hazard] : ''
                     return (
                       <div
                         key={i}
@@ -424,8 +410,7 @@ export default function StormReportPage() {
                         }}
                       >
                         <div className="flex items-start justify-between gap-3 mb-1.5">
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            {hazardIcon && <span className="text-base flex-shrink-0">{hazardIcon}</span>}
+                          <div className="flex-1 min-w-0">
                             <div className="text-slate-900 text-sm font-bold">{r.action}</div>
                           </div>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border flex-shrink-0 ${p.chip}`}>
@@ -433,7 +418,7 @@ export default function StormReportPage() {
                           </span>
                         </div>
                         {r.why && (
-                          <p className="text-slate-500 text-xs leading-relaxed ml-6">{r.why}</p>
+                          <p className="text-slate-500 text-xs leading-relaxed">{r.why}</p>
                         )}
                       </div>
                     )
@@ -497,7 +482,6 @@ export default function StormReportPage() {
                         }}
                       >
                         <div className="flex items-start gap-3">
-                          <div className="text-base flex-shrink-0 leading-none mt-0.5">{cat.icon}</div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                               <span

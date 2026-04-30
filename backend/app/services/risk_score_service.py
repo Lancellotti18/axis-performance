@@ -253,17 +253,109 @@ Keep recent_events to at most 5 items, newest first."""
             location,
             "The AI response could not be parsed as JSON — try refreshing in a moment.",
         )
-        fallback["articles"] = articles
+        fallback["articles"] = _filter_disaster_articles(articles)
         return fallback
+
+    # Always guarantee all 8 canonical hazards are present so the graph never
+    # renders empty. Missing entries default to score=0; the model is allowed
+    # to fill in any subset.
+    CANONICAL_HAZARDS = [
+        ("hail",       "Hail"),
+        ("wind",       "Wind / Severe Thunderstorm"),
+        ("tornado",    "Tornado"),
+        ("hurricane",  "Hurricane / Tropical Storm"),
+        ("flood",      "Flood / Storm Surge"),
+        ("wildfire",   "Wildfire"),
+        ("earthquake", "Earthquake"),
+        ("winter",     "Winter Storm / Ice"),
+    ]
+    hazards_by_key = {
+        h.get("key"): h
+        for h in (result.get("hazards") or [])
+        if isinstance(h, dict) and h.get("key")
+    }
+    full_hazards = []
+    for key, label in CANONICAL_HAZARDS:
+        existing = hazards_by_key.get(key) or {}
+        full_hazards.append({
+            "key":       key,
+            "label":     existing.get("label") or label,
+            "score":     existing.get("score") if isinstance(existing.get("score"), (int, float)) else 0,
+            "rationale": existing.get("rationale") or "",
+        })
+    result["hazards"] = full_hazards
 
     # Defensive back-compat: derive legacy scores from hazards[] if the model
     # skipped filling them in at the top level.
-    hazards_by_key = {h.get("key"): h for h in (result.get("hazards") or []) if isinstance(h, dict)}
+    score_by_key = {h["key"]: h["score"] for h in full_hazards}
     for legacy_field, hazard_key in (("hail_risk", "hail"), ("wind_risk", "wind"), ("flood_risk", "flood")):
-        if legacy_field not in result and hazard_key in hazards_by_key:
-            result[legacy_field] = hazards_by_key[hazard_key].get("score", 0)
+        if legacy_field not in result:
+            result[legacy_field] = score_by_key.get(hazard_key, 0)
 
-    # Surface the raw research articles so the UI can render them as cards.
-    result["articles"] = articles
+    # Surface only the disaster-relevant research articles so the UI cards
+    # are real recent-event evidence, not generic tourism / homepage results.
+    result["articles"] = _filter_disaster_articles(articles)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Article quality filter
+# ---------------------------------------------------------------------------
+
+# Words that strongly suggest the article is actually about a weather /
+# seismic / fire / disaster event — used to filter out tourism, government
+# homepage, and general-info results that aren't usable evidence.
+_DISASTER_KEYWORDS = (
+    "hurricane", "tropical storm", "tropical depression", "cyclone",
+    "tornado", "storm", "thunderstorm", "severe weather", "derecho",
+    "hail", "wind damage", "high wind", "microburst",
+    "flood", "flash flood", "storm surge", "rainfall",
+    "wildfire", "fire", "evacuation", "burn",
+    "earthquake", "seismic", "tremor", "magnitude", "fault",
+    "winter storm", "ice storm", "blizzard", "snowstorm",
+    "fema", "disaster declaration", "noaa", "usgs", "national weather service",
+    "damage", "destroyed", "claims", "insurance",
+    "building code", "code update", "resilience",
+)
+
+# Domains that are almost always noise for disaster research, regardless of
+# the query. These are tourism boards, generic city homepages, marketing
+# blogs, and shopping/realty hubs that fill DDG results when a city name
+# matches a tourism keyword.
+_BAD_DOMAIN_FRAGMENTS = (
+    "visit",          # visitwilmingtonnc.com, visitfla.com
+    "tourism",
+    "tripadvisor",
+    "yelp.com",
+    "booking.com",
+    "expedia",
+    "hotels.com",
+    "zillow",
+    "realtor",
+    "redfin",
+    "trulia",
+)
+
+
+def _filter_disaster_articles(articles: list[dict]) -> list[dict]:
+    """
+    Keep only articles that look like real disaster / weather / code-update
+    coverage. Removes tourism boards, city homepages, and other DDG noise.
+    """
+    if not articles:
+        return []
+    kept: list[dict] = []
+    for a in articles:
+        url     = (a.get("url") or "").lower()
+        title   = (a.get("title") or "").lower()
+        snippet = (a.get("snippet") or "").lower()
+        if not url:
+            continue
+        if any(frag in url for frag in _BAD_DOMAIN_FRAGMENTS):
+            continue
+        haystack = f"{title} {snippet}"
+        if not any(kw in haystack for kw in _DISASTER_KEYWORDS):
+            continue
+        kept.append(a)
+    return kept[:12]
