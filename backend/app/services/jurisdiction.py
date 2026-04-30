@@ -125,6 +125,20 @@ STATE_CODE_CYCLES: dict[str, dict[str, str]] = {
            "residential": "2020 NYS Residential Code",
            "energy": "2020 NYS Energy Conservation Construction Code",
            "electrical": "2020 NEC"},
+    # Pennsylvania — UCC triennial update effective 2026-01-01: 2021 I-codes
+    # adopted as amended by RAC (34 Pa. Code Ch. 403). 2020 NEC effective
+    # 2025-07-13. Transitional window for 2018 codes ends 2026-07-01 (only if
+    # the design contract pre-dates 2026-01-01). Hanover Borough and most
+    # municipalities enforce UCC; some townships have opted out of UCC
+    # enforcement for residential — confirm with the local AHJ.
+    "PA": {"building": "2021 IBC adopted via PA UCC (34 Pa. Code Ch. 403, effective 2026-01-01)",
+           "residential": "2021 IRC adopted via PA UCC (34 Pa. Code Ch. 403, effective 2026-01-01)",
+           "energy": "2021 IECC adopted via PA UCC (34 Pa. Code Ch. 403, effective 2026-01-01)",
+           "electrical": "2020 NEC adopted via PA UCC (effective 2025-07-13)",
+           "plumbing": "2021 IPC adopted via PA UCC (effective 2026-01-01)",
+           "mechanical": "2021 IMC adopted via PA UCC (effective 2026-01-01)",
+           "fire": "2021 IFC adopted via PA UCC (effective 2026-01-01)",
+           "fuel_gas": "2021 IFGC adopted via PA UCC (effective 2026-01-01)"},
     # Default fallback for states not pinned — the LLM is told to use the
     # latest adopted IBC/IRC/IECC/NEC the research supports, and to flag
     # the code cycle it used.
@@ -153,8 +167,12 @@ AUTHORITATIVE_DOMAINS: list[str] = [
     # State contractor boards / building code commissions — top-level .gov
     # domain inclusion catches state-specific sub-sites automatically.
     ".gov",
-    # The state-by-state building code boards that don't live on .gov (rare)
+    # State code resources that aren't on .gov but are authoritative.
     "iapmo.org",
+    "phrc.psu.edu",          # PA Housing Research Center — PA UCC quick-guide hub
+    "pacodeandbulletin.gov",  # 34 Pa. Code Ch. 401–405 (UCC) + PA Bulletin
+    "njcrr.com",             # NJ code reference — neighbor-state lookups
+    "dos.ny.gov",            # NY Dept of State (building code division)
 ]
 
 
@@ -219,11 +237,15 @@ def resolve_jurisdiction(
     code_cycles = STATE_CODE_CYCLES.get(state_code, {})
     code_pinned = bool(code_cycles)
     if not code_cycles:
+        # Short tokens — these get interpolated INTO Tavily queries, so prose
+        # like "Use whichever IRC edition the research indicates is adopted"
+        # poisons every search. The LLM still infers the actual cycle from
+        # research and returns the verified edition.
         code_cycles = {
-            "building": "Use whichever IBC/IRC edition the research indicates is adopted in this jurisdiction",
-            "residential": "Use whichever IRC edition the research indicates is adopted",
-            "energy": "Use whichever IECC edition the research indicates is adopted",
-            "electrical": "Use whichever NEC edition the research indicates is adopted",
+            "building": "IBC",
+            "residential": "IRC",
+            "energy": "IECC",
+            "electrical": "NEC",
         }
 
     fp_source = "|".join([
