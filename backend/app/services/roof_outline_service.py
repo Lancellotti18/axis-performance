@@ -130,11 +130,48 @@ def _parse_outline_json(text: str) -> dict:
                 return json.loads(candidate[:i + 1])
             except Exception:
                 continue
-        logger.warning(
-            "roof outline: JSON parse failed, returning empty polygon. raw[:200]=%r",
-            (text or "")[:200],
-        )
         return {}
+
+
+# Match a JSON-like polygon array — at least 3 [x, y] pairs in a row.
+# Tolerates whitespace and an optional trailing comma. Used as a final
+# fallback when the surrounding object is mangled but the polygon itself
+# was emitted correctly (the most common failure mode).
+_POLYGON_RE = re.compile(
+    r"\[\s*(?:\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]\s*,?\s*){3,}\]",
+    re.DOTALL,
+)
+
+
+def _extract_polygon_array(text: str) -> list[list[float]]:
+    """
+    Last-resort polygon extractor: scan the raw text for a JSON-like array
+    of [x, y] pairs and parse just that. Lets us recover from responses
+    where the model returned the right vertices but wrapped them in prose,
+    a code-block, or malformed object syntax.
+
+    Returns the longest valid polygon match, or [] if nothing parseable.
+    """
+    if not text:
+        return []
+    candidates = sorted(_POLYGON_RE.findall(text), key=len, reverse=True)
+    for raw in candidates:
+        try:
+            arr = json.loads(raw)
+        except Exception:
+            continue
+        if (
+            isinstance(arr, list)
+            and len(arr) >= 3
+            and all(
+                isinstance(p, list)
+                and len(p) >= 2
+                and all(isinstance(v, (int, float)) for v in p[:2])
+                for p in arr
+            )
+        ):
+            return [[float(p[0]), float(p[1])] for p in arr]
+    return []
 
 
 def _polygon_area_fraction(polygon: list[list[float]]) -> float:
@@ -180,10 +217,29 @@ async def detect_roof_outline(
 
     text = await llm_vision(image_bytes, media_type, OUTLINE_PROMPT, max_tokens=900)
     payload = _parse_outline_json(text)
+
+    # If the structured parse failed OR returned no polygon, scan the raw text
+    # for the vertex array itself — it's usually present even when the
+    # surrounding object is mangled (truncation, prose wrapping, code fences).
+    if not payload or not payload.get("polygon"):
+        fallback_polygon = _extract_polygon_array(text)
+        if fallback_polygon:
+            base = payload or {}
+            payload = {
+                "polygon": fallback_polygon,
+                "confidence": float(base.get("confidence") or 0.5),
+                "structure": base.get("structure") or "",
+                "notes": base.get("notes") or "Recovered roof outline from a partially malformed AI response — drag vertices to refine.",
+                "warnings": base.get("warnings") or [],
+            }
+
     if not payload:
-        # LLM returned something we couldn't parse — degrade gracefully so the
-        # UI shows an empty editable canvas instead of a 422. The frontend
-        # already supports drawing the outline by hand.
+        # Both the JSON parser and the regex fallback came up empty — degrade
+        # gracefully so the UI shows an empty editable canvas instead of a 422.
+        logger.warning(
+            "roof outline: JSON + regex fallback both failed. raw[:200]=%r",
+            (text or "")[:200],
+        )
         payload = {
             "polygon": [],
             "confidence": 0.0,
