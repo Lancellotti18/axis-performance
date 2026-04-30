@@ -1,0 +1,486 @@
+/* ─────────────────────────────────────────────────────────────────────
+   Axis Performance — Cosmetic Theme Layer
+   Pure presentation. No JS, no logic. All variables / utilities live in
+   :root and are referenced by the Axis* primitive components.
+   ───────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Core Axis palette */
+  --axis-baby-blue:        #BFE6FF;
+  --axis-baby-blue-soft:   #DCEFFB;
+  --axis-baby-blue-deep:   #7FC9F4;
+  --axis-baby-blue-edge:   #4FB0EA;
+  --axis-white:            #FFFFFF;
+  --axis-ivory:            #F6FAFE;
+  --axis-steel-50:         #F1F5F9;
+  --axis-steel-100:        #E2E8F0;
+  --axis-steel-200:        #CBD5E1;
+  --axis-steel-700:        #334155;
+  --axis-steel-800:        #1E293B;
+  --axis-steel-900:        #0F172A;
+  --axis-black:            #0A0A0A;
+
+  /* Glow + glass */
+  --axis-glow-soft:   0 0 18px rgba(127, 201, 244, 0.40);
+  --axis-glow-strong: 0 0 28px rgba(79, 176, 234, 0.55);
+  --axis-glow-rim:    0 0 0 1px rgba(127, 201, 244, 0.45), 0 0 14px rgba(127, 201, 244, 0.25);
+  --axis-glass-bg:    rgba(255, 255, 255, 0.66);
+  --axis-glass-bg-strong: rgba(255, 255, 255, 0.82);
+  --axis-glass-border: rgba(191, 230, 255, 0.55);
+  --axis-glass-border-strong: rgba(127, 201, 244, 0.65);
+  --axis-glass-blur:  blur(14px);
+  --axis-glass-blur-lg: blur(22px);
+
+  /* Shadows — multi-layer for depth */
+  --axis-shadow-flat:   0 1px 2px rgba(15, 23, 42, 0.04);
+  --axis-shadow-card:   0 2px 6px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(127, 201, 244, 0.06);
+  --axis-shadow-raised: 0 6px 20px -8px rgba(15, 23, 42, 0.16), 0 2px 6px -2px rgba(127, 201, 244, 0.18);
+  --axis-shadow-float:  0 18px 36px -16px rgba(15, 23, 42, 0.28), 0 6px 14px -6px rgba(127, 201, 244, 0.22);
+  --axis-shadow-press:  inset 0 2px 4px rgba(15, 23, 42, 0.18), inset 0 -1px 1px rgba(255, 255, 255, 0.4);
+  --axis-shadow-button: 0 4px 10px -3px rgba(79, 176, 234, 0.45), 0 1px 2px rgba(15, 23, 42, 0.10);
+
+  /* Reflection / sheen — top-edge highlight every primary surface uses */
+  --axis-sheen-top:
+    linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.65) 0%,
+      rgba(255, 255, 255, 0.18) 18%,
+      rgba(255, 255, 255, 0.00) 38%
+    );
+
+  /* Button gradient — subtle two-tone (baby blue → soft white) at the top
+     ~30% of the button, fading smoothly into the base color below.
+     Per user spec: not flashy, just lifts the perceived quality. */
+  --axis-btn-primary-base:    linear-gradient(180deg, #BFE6FF 0%, #98D5FA 28%, #6FBFEC 70%, #5DB1E1 100%);
+  --axis-btn-primary-sheen:
+    linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.10) 32%, rgba(255,255,255,0) 60%);
+  --axis-btn-secondary-base:  linear-gradient(180deg, #FFFFFF 0%, #F4F8FC 28%, #E5EEF6 70%, #D8E5F0 100%);
+  --axis-btn-secondary-sheen:
+    linear-gradient(180deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.20) 35%, rgba(255,255,255,0) 65%);
+  --axis-btn-dark-base:       linear-gradient(180deg, #1F2937 0%, #131A24 30%, #0A0F18 70%, #06090E 100%);
+  --axis-btn-dark-sheen:
+    linear-gradient(180deg, rgba(191,230,255,0.18) 0%, rgba(191,230,255,0.04) 35%, rgba(191,230,255,0) 60%);
+  --axis-btn-ghost-base:      linear-gradient(180deg, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.30) 50%, rgba(220,239,251,0.22) 100%);
+  --axis-btn-ghost-sheen:
+    linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.06) 30%, rgba(255,255,255,0) 60%);
+
+  /* Motion */
+  --axis-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --axis-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --axis-dur-fast: 140ms;
+  --axis-dur:      220ms;
+  --axis-dur-slow: 420ms;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Diamond plate — industrial steel texture (low opacity, premium feel)
+   ────────────────────────────────────────────────────────────────── */
+.axis-plate {
+  position: relative;
+  isolation: isolate;
+}
+.axis-plate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(15, 23, 42, 0.045) 0 6px,
+      transparent 6px 14px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(15, 23, 42, 0.045) 0 6px,
+      transparent 6px 14px
+    );
+  background-size: 14px 14px;
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  border-radius: inherit;
+  z-index: 0;
+}
+.axis-plate > * { position: relative; z-index: 1; }
+
+.axis-plate-soft::before { opacity: 0.30; }
+
+/* ──────────────────────────────────────────────────────────────────
+   Glassmorphism utilities
+   ────────────────────────────────────────────────────────────────── */
+.axis-glass {
+  background: var(--axis-glass-bg);
+  backdrop-filter: var(--axis-glass-blur);
+  -webkit-backdrop-filter: var(--axis-glass-blur);
+  border: 1px solid var(--axis-glass-border);
+}
+.axis-glass-strong {
+  background: var(--axis-glass-bg-strong);
+  backdrop-filter: var(--axis-glass-blur-lg);
+  -webkit-backdrop-filter: var(--axis-glass-blur-lg);
+  border: 1px solid var(--axis-glass-border-strong);
+}
+
+/* Top-edge sheen overlay — drop on top of any panel for a pane-of-glass feel */
+.axis-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--axis-sheen-top);
+  border-radius: inherit;
+  z-index: 2;
+}
+
+/* Gradient edge that subtly shifts on hover — borders feel "alive" */
+.axis-gradient-edge {
+  position: relative;
+}
+.axis-gradient-edge::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(191,230,255,0.55), rgba(255,255,255,0.10) 35%, rgba(127,201,244,0.45) 100%);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.65;
+  transition: opacity var(--axis-dur) var(--axis-ease-out);
+  pointer-events: none;
+}
+.axis-gradient-edge:hover::before { opacity: 1; }
+
+/* ──────────────────────────────────────────────────────────────────
+   Animations
+   ────────────────────────────────────────────────────────────────── */
+@keyframes axis-pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(127, 201, 244, 0.0); }
+  50%      { box-shadow: 0 0 18px 4px rgba(127, 201, 244, 0.45); }
+}
+@keyframes axis-sweep {
+  0%   { transform: translateX(-110%); opacity: 0; }
+  20%  { opacity: 0.9; }
+  60%  { opacity: 0.9; }
+  100% { transform: translateX(110%); opacity: 0; }
+}
+@keyframes axis-trace {
+  0%   { stroke-dashoffset: 100%; opacity: 0.0; }
+  20%  { opacity: 1; }
+  100% { stroke-dashoffset: 0%; opacity: 0.4; }
+}
+@keyframes axis-fade-rise {
+  from { opacity: 0; transform: translateY(8px); filter: blur(6px); }
+  to   { opacity: 1; transform: translateY(0);   filter: blur(0); }
+}
+@keyframes axis-soft-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+
+.axis-anim-pulse  { animation: axis-pulse-glow 2.4s ease-in-out infinite; }
+.axis-anim-rise   { animation: axis-fade-rise var(--axis-dur-slow) var(--axis-ease-out) both; }
+.axis-anim-bob    { animation: axis-soft-bob 3.2s ease-in-out infinite; }
+
+/* Sheen sweep — drop a child element with this class to get a glint */
+.axis-sweep {
+  position: relative;
+  overflow: hidden;
+}
+.axis-sweep::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 0;
+  width: 35%;
+  background: linear-gradient(
+    100deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.55) 50%,
+    rgba(255,255,255,0) 100%
+  );
+  transform: translateX(-110%);
+  pointer-events: none;
+}
+.axis-sweep:hover::before { animation: axis-sweep 0.9s var(--axis-ease-out) forwards; }
+
+/* ──────────────────────────────────────────────────────────────────
+   Smart Surface — cards reflect cursor light (driven by --mx/--my JS)
+   ────────────────────────────────────────────────────────────────── */
+.axis-surface {
+  position: relative;
+  background: var(--axis-glass-bg-strong);
+  border: 1px solid var(--axis-glass-border);
+  border-radius: 18px;
+  box-shadow: var(--axis-shadow-card);
+  transition:
+    transform var(--axis-dur) var(--axis-ease-out),
+    box-shadow var(--axis-dur) var(--axis-ease-out),
+    border-color var(--axis-dur) var(--axis-ease-out);
+  isolation: isolate;
+}
+.axis-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 0%),
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.10) 35%,
+    rgba(255, 255, 255, 0.00) 60%
+  );
+  opacity: 0.85;
+  z-index: 1;
+  mix-blend-mode: screen;
+}
+.axis-surface > * { position: relative; z-index: 2; }
+.axis-surface:hover {
+  border-color: var(--axis-glass-border-strong);
+  box-shadow: var(--axis-shadow-raised);
+  transform: translateY(-2px);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Floating tabs — detached glass strip with active-tab glow
+   ────────────────────────────────────────────────────────────────── */
+.axis-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 999px;
+  background: var(--axis-glass-bg-strong);
+  backdrop-filter: var(--axis-glass-blur);
+  -webkit-backdrop-filter: var(--axis-glass-blur);
+  border: 1px solid var(--axis-glass-border);
+  box-shadow: var(--axis-shadow-raised);
+  position: relative;
+}
+.axis-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--axis-steel-700);
+  white-space: nowrap;
+  transition:
+    color var(--axis-dur) var(--axis-ease-out),
+    background var(--axis-dur) var(--axis-ease-out),
+    transform var(--axis-dur) var(--axis-ease-out),
+    box-shadow var(--axis-dur) var(--axis-ease-out);
+}
+.axis-tab:hover { color: var(--axis-steel-900); background: rgba(220,239,251,0.55); }
+.axis-tab[data-active="true"] {
+  color: var(--axis-steel-900);
+  background: linear-gradient(180deg, #FFFFFF 0%, #E5F2FB 100%);
+  box-shadow: var(--axis-glow-rim), 0 1px 0 rgba(255,255,255,0.7) inset;
+  transform: scale(1.04);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Buttons — gradient top-edge blend that quietly reads as quality
+   ────────────────────────────────────────────────────────────────── */
+.axis-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: var(--axis-steel-900);
+  background: var(--axis-btn-secondary-base);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: var(--axis-shadow-flat);
+  cursor: pointer;
+  user-select: none;
+  isolation: isolate;
+  transition:
+    transform var(--axis-dur-fast) var(--axis-ease-out),
+    box-shadow var(--axis-dur) var(--axis-ease-out),
+    filter var(--axis-dur) var(--axis-ease-out),
+    border-color var(--axis-dur) var(--axis-ease-out);
+}
+/* Top-edge highlight overlay — subtle two-tone bleed */
+.axis-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--axis-btn-secondary-sheen);
+  pointer-events: none;
+  z-index: 1;
+}
+.axis-btn > * { position: relative; z-index: 2; }
+.axis-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--axis-shadow-raised);
+  filter: brightness(1.03);
+}
+.axis-btn:active {
+  transform: translateY(0);
+  box-shadow: var(--axis-shadow-press);
+  filter: brightness(0.97);
+}
+.axis-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.25);
+  transform: none !important;
+}
+
+/* Variants */
+.axis-btn--primary {
+  color: #0A2240;
+  background: var(--axis-btn-primary-base);
+  border-color: rgba(79, 176, 234, 0.55);
+  box-shadow: var(--axis-shadow-button);
+}
+.axis-btn--primary::before { background: var(--axis-btn-primary-sheen); }
+.axis-btn--primary:hover {
+  box-shadow: var(--axis-shadow-button), var(--axis-glow-soft);
+  border-color: rgba(79, 176, 234, 0.85);
+}
+
+.axis-btn--dark {
+  color: #E2EEF8;
+  background: var(--axis-btn-dark-base);
+  border-color: rgba(191, 230, 255, 0.20);
+  box-shadow: 0 4px 14px -4px rgba(0,0,0,0.55);
+}
+.axis-btn--dark::before { background: var(--axis-btn-dark-sheen); }
+.axis-btn--dark:hover {
+  box-shadow: 0 8px 22px -8px rgba(0,0,0,0.65), var(--axis-glow-soft);
+  border-color: rgba(191, 230, 255, 0.55);
+}
+
+.axis-btn--ghost {
+  color: var(--axis-steel-800);
+  background: var(--axis-btn-ghost-base);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-color: rgba(127, 201, 244, 0.30);
+}
+.axis-btn--ghost::before { background: var(--axis-btn-ghost-sheen); }
+
+.axis-btn--sm { padding: 7px 13px; font-size: 12px; border-radius: 11px; }
+.axis-btn--lg { padding: 14px 24px; font-size: 14px; border-radius: 16px; }
+
+/* ──────────────────────────────────────────────────────────────────
+   Data Pulse — a number/badge that softly pulses while "live"
+   ────────────────────────────────────────────────────────────────── */
+.axis-pulse {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.axis-pulse::after {
+  content: "";
+  width: 7px; height: 7px;
+  border-radius: 999px;
+  background: var(--axis-baby-blue-edge);
+  box-shadow: 0 0 0 0 rgba(79,176,234,0.6);
+  animation: axis-pulse-dot 1.6s ease-in-out infinite;
+}
+@keyframes axis-pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79,176,234,0.6); transform: scale(1); }
+  50%      { box-shadow: 0 0 0 6px rgba(79,176,234,0); transform: scale(1.15); }
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   AI Insight — animated outline trace + sweep over outputs
+   ────────────────────────────────────────────────────────────────── */
+.axis-insight {
+  position: relative;
+  border-radius: 18px;
+  isolation: isolate;
+  overflow: hidden;
+}
+.axis-insight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, rgba(127,201,244,0.0) 0%, rgba(127,201,244,0.85) 35%, rgba(255,255,255,0.85) 50%, rgba(127,201,244,0.85) 65%, rgba(127,201,244,0.0) 100%);
+  background-size: 220% 100%;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: axis-insight-shift 3.6s linear infinite;
+  pointer-events: none;
+}
+@keyframes axis-insight-shift {
+  0%   { background-position: 0% 0%; }
+  100% { background-position: 200% 0%; }
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Precision Mode — flips on a darker / sharper engineering theme
+   Toggled by setting [data-mode="precision"] on <html>.
+   ────────────────────────────────────────────────────────────────── */
+html[data-mode="precision"] {
+  --axis-glass-bg: rgba(10, 14, 22, 0.78);
+  --axis-glass-bg-strong: rgba(10, 14, 22, 0.92);
+  --axis-glass-border: rgba(127, 201, 244, 0.30);
+  --axis-glass-border-strong: rgba(127, 201, 244, 0.55);
+  --axis-shadow-card:   0 1px 0 rgba(127, 201, 244, 0.08), 0 0 0 1px rgba(127, 201, 244, 0.06);
+  --axis-shadow-raised: 0 10px 28px -10px rgba(0,0,0,0.65), 0 0 0 1px rgba(127, 201, 244, 0.12);
+}
+html[data-mode="precision"] body {
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(127,201,244,0.08), transparent 60%),
+    linear-gradient(180deg, #06090F 0%, #0A0E18 100%);
+  color: #E2EEF8;
+}
+html[data-mode="precision"] .axis-surface {
+  color: #E2EEF8;
+  background: linear-gradient(180deg, rgba(20,28,40,0.92) 0%, rgba(10,14,22,0.92) 100%);
+  border-color: rgba(127, 201, 244, 0.25);
+}
+html[data-mode="precision"] .axis-surface::after { display: none; }
+html[data-mode="precision"] .axis-tab { color: #94A8C2; }
+html[data-mode="precision"] .axis-tab[data-active="true"] {
+  color: #E2EEF8;
+  background: linear-gradient(180deg, #1A2433 0%, #0E1622 100%);
+  box-shadow: 0 0 0 1px rgba(127, 201, 244, 0.55), 0 0 18px rgba(79, 176, 234, 0.45);
+}
+html[data-mode="precision"] .axis-btn { color: #DDE9F4; background: linear-gradient(180deg, #1B2433 0%, #0E1622 100%); border-color: rgba(127,201,244,0.18); }
+html[data-mode="precision"] .axis-btn::before { background: linear-gradient(180deg, rgba(127,201,244,0.18) 0%, rgba(127,201,244,0.0) 50%); }
+html[data-mode="precision"] .axis-btn--primary { color: #06121F; background: linear-gradient(180deg, #DCEFFB 0%, #98D5FA 30%, #4FB0EA 100%); }
+
+/* Precision-mode plate is sharper and brighter on the dark surface */
+html[data-mode="precision"] .axis-plate::before {
+  background-image:
+    repeating-linear-gradient(45deg, rgba(127,201,244,0.08) 0 6px, transparent 6px 14px),
+    repeating-linear-gradient(-45deg, rgba(127,201,244,0.08) 0 6px, transparent 6px 14px);
+  mix-blend-mode: screen;
+  opacity: 0.55;
+}
+
+/* Reduced-motion: kill nice-to-have animations */
+@media (prefers-reduced-motion: reduce) {
+  .axis-anim-pulse,
+  .axis-anim-rise,
+  .axis-anim-bob,
+  .axis-pulse::after,
+  .axis-insight::before { animation: none !important; }
+  .axis-surface, .axis-btn, .axis-tab { transition: none !important; }
+}
