@@ -80,7 +80,7 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
         <div className="text-slate-800 font-semibold text-sm leading-tight">{lead.name}</div>
         {(lead.estimated_value ?? 0) > 0 && <span className="text-emerald-600 font-black text-xs flex-shrink-0">{fmt(lead.estimated_value!)}</span>}
       </div>
-      {(lead.city || lead.state) && <div className="text-slate-400 text-xs mb-1">📍 {[lead.city, lead.state].filter(Boolean).join(', ')}</div>}
+      {(lead.city || lead.state) && <div className="text-slate-400 text-xs mb-1">{[lead.city, lead.state].filter(Boolean).join(', ')}</div>}
       {lead.job_type && <div className="inline-block text-[10px] font-semibold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full mb-2 capitalize">{lead.job_type}</div>}
       {lead.notes && <p className="text-slate-400 text-xs line-clamp-2 mb-2 italic">{lead.notes}</p>}
       <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
@@ -126,7 +126,7 @@ function ListRow({ lead, onStageChange, onOpen, onDelete }: { lead: Lead; onStag
       >
         {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
       </select>
-      <button onClick={e => { e.stopPropagation(); onDelete(lead.id) }} className="text-xs text-red-400 font-medium px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 transition-all">✕</button>
+      <button onClick={e => { e.stopPropagation(); onDelete(lead.id) }} className="text-xs text-red-400 font-medium px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 transition-all"></button>
     </div>
   )
 }
@@ -463,10 +463,10 @@ export default function CRMPage() {
       {/* Stats */}
       <div className="flex gap-4 px-6 py-4 flex-shrink-0">
         {[
-          { label: 'Total Leads',     value: leads.length,       icon: '👥', sub: `${filtered.length} shown` },
-          { label: 'Active Pipeline', value: fmt(pipelineValue), icon: '📈', sub: `${leads.filter(l => !['won','lost'].includes(l.stage)).length} active` },
-          { label: 'Jobs Won',        value: wonCount,            icon: '🏆', sub: `${convRate}% close rate` },
-          { label: 'Won Revenue',     value: fmt(wonValue),       icon: '💰', sub: 'closed deals' },
+          { label: 'Total Leads',     value: leads.length,       icon: '', sub: `${filtered.length} shown` },
+          { label: 'Active Pipeline', value: fmt(pipelineValue), icon: '', sub: `${leads.filter(l => !['won','lost'].includes(l.stage)).length} active` },
+          { label: 'Jobs Won',        value: wonCount,            icon: '', sub: `${convRate}% close rate` },
+          { label: 'Won Revenue',     value: fmt(wonValue),       icon: '', sub: 'closed deals' },
         ].map(stat => (
           <div key={stat.label} className="bg-white rounded-2xl px-4 py-3 flex items-center gap-3 flex-1" style={cardStyle}>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base bg-blue-50 flex-shrink-0">{stat.icon}</div>
@@ -533,7 +533,7 @@ export default function CRMPage() {
           <div className="space-y-3 overflow-y-auto h-full">
             {filtered.length === 0 ? (
               <div className="text-center py-24">
-                <div className="text-4xl mb-3">👥</div>
+                <div className="text-4xl mb-3"></div>
                 <div className="text-slate-600 font-semibold">No leads yet</div>
                 <div className="text-slate-400 text-sm mt-1">Click "+ Add Lead" to add your first prospect.</div>
               </div>
@@ -566,7 +566,7 @@ export default function CRMPage() {
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]" style={{ border: '1px solid rgba(219,234,254,0.8)' }}>
             <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
               <h2 className="text-lg font-bold text-slate-800">{editingLead ? 'Edit Lead' : 'New Lead'}</h2>
-              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-700 transition-colors text-xl leading-none">✕</button>
+              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-700 transition-colors text-xl leading-none"></button>
             </div>
             <div className="p-6 space-y-4">
               <div>

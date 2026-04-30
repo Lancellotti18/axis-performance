@@ -582,7 +582,7 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
         {distFt !== null && (
           <div className="absolute bottom-3 right-3 px-3 py-1.5 rounded-xl text-sm font-bold text-white"
             style={{ background: 'rgba(245,158,11,0.93)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', pointerEvents: 'none' }}>
-            📏 {fmtDist(distFt)}
+            {fmtDist(distFt)}
           </div>
         )}
 
@@ -601,7 +601,7 @@ export default function AerialViewer({ imageUrl, lat, address, damageZones, fill
               top:  pan.y + (hy - 20) * zoom - 30,
             }}
           >
-            📍 Property
+            Property
           </div>
         )}
       </div>

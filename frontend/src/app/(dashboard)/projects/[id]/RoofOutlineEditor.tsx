@@ -786,7 +786,7 @@ export default function RoofOutlineEditor({
             {warnings.length > 0 && (
               <div className="text-[11px] text-amber-700 bg-amber-50 rounded-lg p-2 border border-amber-200 leading-relaxed space-y-1">
                 {warnings.map((w, i) => (
-                  <div key={i}>⚠ {w}</div>
+                  <div key={i}>{w}</div>
                 ))}
               </div>
             )}

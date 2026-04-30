@@ -49,17 +49,17 @@ function formatMoneyExact(n: number) {
 }
 
 const CATEGORY_META: Record<string, { label: string; icon: string; color: string }> = {
-  lumber:        { label: 'Lumber & Framing',      icon: '🪵', color: 'bg-amber-50 text-amber-700 border-amber-200' },
-  sheathing:     { label: 'Sheathing & Subfloor',  icon: '📐', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
-  drywall:       { label: 'Drywall',               icon: '🧱', color: 'bg-gray-50 text-gray-700 border-gray-200' },
-  insulation:    { label: 'Insulation',            icon: '🌡️', color: 'bg-orange-50 text-orange-700 border-orange-200' },
-  roofing:       { label: 'Roofing',               icon: '🏠', color: 'bg-red-50 text-red-700 border-red-200' },
-  concrete:      { label: 'Concrete & Foundation', icon: '⚙️', color: 'bg-slate-50 text-slate-700 border-slate-200' },
-  flooring:      { label: 'Flooring',              icon: '🪟', color: 'bg-teal-50 text-teal-700 border-teal-200' },
-  doors_windows: { label: 'Doors & Windows',       icon: '🚪', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
-  electrical:    { label: 'Electrical',            icon: '⚡', color: 'bg-yellow-50 text-yellow-800 border-yellow-300' },
-  plumbing:      { label: 'Plumbing',              icon: '🔧', color: 'bg-blue-50 text-blue-700 border-blue-200' },
-  finishing:     { label: 'Finishing Materials',   icon: '🎨', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+  lumber:        { label: 'Lumber & Framing',      icon: '', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  sheathing:     { label: 'Sheathing & Subfloor',  icon: '', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
+  drywall:       { label: 'Drywall',               icon: '', color: 'bg-gray-50 text-gray-700 border-gray-200' },
+  insulation:    { label: 'Insulation',            icon: '', color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  roofing:       { label: 'Roofing',               icon: '', color: 'bg-red-50 text-red-700 border-red-200' },
+  concrete:      { label: 'Concrete & Foundation', icon: '', color: 'bg-slate-50 text-slate-700 border-slate-200' },
+  flooring:      { label: 'Flooring',              icon: '', color: 'bg-teal-50 text-teal-700 border-teal-200' },
+  doors_windows: { label: 'Doors & Windows',       icon: '', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  electrical:    { label: 'Electrical',            icon: '', color: 'bg-yellow-50 text-yellow-800 border-yellow-300' },
+  plumbing:      { label: 'Plumbing',              icon: '', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  finishing:     { label: 'Finishing Materials',   icon: '', color: 'bg-purple-50 text-purple-700 border-purple-200' },
 }
 
 const SEVERITY: Record<ComplianceSeverity, { badge: string; dot: string; label: string }> = {
@@ -694,11 +694,11 @@ Thank you for your time.`
   const isRoofing = project?.blueprint_type === 'roofing'
   const TABS: { id: Tab; label: string; badge?: number }[] = [
     { id: 'overview',   label: 'Overview' },
-    ...(isRoofing ? [{ id: 'roofing' as Tab, label: '🏠 Roof' }] : []),
+    ...(isRoofing ? [{ id: 'roofing' as Tab, label: 'Roof' }] : []),
     { id: 'materials',  label: 'Materials', badge: materials.length || undefined },
     { id: 'cost',       label: 'Cost Estimate' },
-    { id: 'view3d',     label: '✦ Renders' },
-    { id: 'photos' as Tab,     label: '📸 Photos', badge: photos.length || undefined },
+    { id: 'view3d',     label: 'Renders' },
+    { id: 'photos' as Tab,     label: 'Photos', badge: photos.length || undefined },
     { id: 'compliance', label: 'Compliance', badge: (requiredCount + (matCheckResult?.violations?.length ?? 0)) || undefined },
     { id: 'permits',    label: 'Permits' },
   ]
@@ -734,7 +734,7 @@ Thank you for your time.`
       {!hasBlueprint ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="text-5xl mb-4">📐</div>
+            <div className="text-5xl mb-4"></div>
             <div className="text-slate-700 font-semibold mb-2">No blueprint uploaded</div>
             <Link href="/projects/new" className="text-blue-600 text-sm hover:text-blue-800">Upload a blueprint →</Link>
           </div>
@@ -756,7 +756,7 @@ Thank you for your time.`
       ) : blueprintStatus === 'failed' ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center bg-white rounded-2xl p-10 max-w-md" style={cardStyle}>
-            <div className="text-5xl mb-4">⚠️</div>
+            <div className="text-5xl mb-4"></div>
             <div className="text-slate-800 font-semibold mb-2">Analysis Failed</div>
             <div className="text-slate-500 text-sm mb-4">The AI could not process this blueprint.</div>
             {blueprintError && (
@@ -873,7 +873,7 @@ Thank you for your time.`
                   {/* Compliance banner */}
                   {compliance?.status === 'complete' && compliance.risk_level && (
                     <div className={`flex items-start gap-3 rounded-xl border px-5 py-4 ${RISK_BANNER[compliance.risk_level]}`}>
-                      <span className="text-lg mt-0.5">⚖️</span>
+                      <span className="text-lg mt-0.5"></span>
                       <div>
                         <div className="font-bold text-sm mb-0.5 capitalize">Compliance Risk: {compliance.risk_level}</div>
                         <p className="text-xs opacity-80 leading-relaxed">{compliance.summary}</p>
@@ -953,7 +953,7 @@ Thank you for your time.`
                     >
                       {refreshingPrices ? (
                         <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Refreshing…</>
-                      ) : refreshPricesResult ? refreshPricesResult : '🔄 Refresh All Prices'}
+                      ) : refreshPricesResult ? refreshPricesResult : 'Refresh All Prices'}
                     </button>
                     {Object.keys(materialChanges).length > 0 && (
                       <button
@@ -973,7 +973,7 @@ Thank you for your time.`
                     >
                       {takeoffLoading ? (
                         <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Reading blueprint…</>
-                      ) : '📐 Blueprint Takeoff'}
+                      ) : 'Blueprint Takeoff'}
                     </button>
                     <button
                       onClick={() => setAddingMaterial(v => !v)}
@@ -1006,11 +1006,11 @@ Thank you for your time.`
                       className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all inline-flex items-center gap-1.5 ${reviewFilterOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400'}`}
                       title="Items with placeholder prices or missing vendor data"
                     >
-                      <span>⚠</span> Review needed ({unreviewedLowConfCount})
+                      <span></span> Review needed ({unreviewedLowConfCount})
                     </button>
                   )}
                   {categoriesInData.map(cat => {
-                    const meta = CATEGORY_META[cat] || { label: cat, icon: '📦', color: '' }
+                    const meta = CATEGORY_META[cat] || { label: cat, icon: '', color: '' }
                     const count = materials.filter(m => m.category === cat).length
                     return (
                       <button
@@ -1051,7 +1051,7 @@ Thank you for your time.`
                 ) : (
                   <div className="space-y-6">
                     {Object.entries(byCategory).map(([cat, items]) => {
-                      const meta = CATEGORY_META[cat] || { label: cat, icon: '📦', color: 'bg-slate-50 text-slate-700 border-slate-200' }
+                      const meta = CATEGORY_META[cat] || { label: cat, icon: '', color: 'bg-slate-50 text-slate-700 border-slate-200' }
                       const catTotal = items.reduce((s, m) => s + (m.total_cost || 0), 0)
                       return (
                         <div key={cat} className="bg-white rounded-2xl overflow-hidden" style={cardStyle}>
@@ -1138,14 +1138,14 @@ Thank you for your time.`
                                               title={conf?.reasons.join(' · ')}
                                             >
                                               <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full">
-                                                ⚠ Review
+                                                Review
                                               </span>
                                               <button
                                                 onClick={() => toggleReviewed(m.id)}
                                                 className="text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-2 py-0.5 rounded-full transition-colors"
                                                 title="Mark this price as verified"
                                               >
-                                                ✓
+
                                               </button>
                                             </div>
                                           )}
@@ -1155,7 +1155,7 @@ Thank you for your time.`
                                               className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full hover:bg-emerald-100"
                                               title="Click to un-mark as reviewed"
                                             >
-                                              ✓ Reviewed
+                                              Reviewed
                                             </button>
                                           )}
                                           <div className="text-right">
@@ -1321,7 +1321,7 @@ Thank you for your time.`
                       {unreviewedLowConfCount > 0 && (
                         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <span className="text-xl">⚠</span>
+                            <span className="text-xl"></span>
                             <div>
                               <div className="text-amber-800 font-bold text-sm">
                                 {unreviewedLowConfCount} item{unreviewedLowConfCount === 1 ? '' : 's'} still need{unreviewedLowConfCount === 1 ? 's' : ''} price review
@@ -1362,7 +1362,7 @@ Thank you for your time.`
                         {Object.entries(categoryTotals)
                           .sort((a, b) => b[1] - a[1])
                           .map(([cat, total]) => {
-                            const meta = CATEGORY_META[cat] || { label: cat, icon: '📦', color: '' }
+                            const meta = CATEGORY_META[cat] || { label: cat, icon: '', color: '' }
                             const pct  = matTotal > 0 ? (total / matTotal) * 100 : 0
                             return (
                               <div key={cat} className="px-5 py-3.5 border-b last:border-0" style={{ borderColor: 'rgba(219,234,254,0.5)' }}>
@@ -1401,7 +1401,7 @@ Thank you for your time.`
                           return (
                             <div key={trade} className="px-5 py-3.5 border-b last:border-0" style={{ borderColor: 'rgba(219,234,254,0.5)' }}>
                               <div className="flex justify-between items-center mb-1.5">
-                                <span className="text-slate-600 text-sm">👷 {trade}</span>
+                                <span className="text-slate-600 text-sm">{trade}</span>
                                 <div className="flex items-center gap-3">
                                   <span className="text-slate-400 text-xs">{pct.toFixed(1)}%</span>
                                   <span className="text-slate-800 font-bold text-sm w-20 text-right">{formatMoney(cost)}</span>
@@ -1440,7 +1440,7 @@ Thank you for your time.`
                         </div>
                         <div className="divide-y" style={{ borderColor: 'rgba(219,234,254,0.5)' }}>
                           {Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]).map(([cat, est]) => {
-                            const meta = CATEGORY_META[cat] || { label: cat, icon: '📦' }
+                            const meta = CATEGORY_META[cat] || { label: cat, icon: '' }
                             const actual = actualCosts[cat] || 0
                             const diff = actual - (est as number)
                             return (
@@ -1485,10 +1485,10 @@ Thank you for your time.`
                           <span className="text-slate-800 font-bold">Project Cost Summary</span>
                         </div>
                         {[
-                          { label: 'Materials',      value: matTotal,   color: 'bg-blue-500',   icon: '🪵' },
-                          { label: 'Labor',          value: laborTotal, color: 'bg-purple-500', icon: '👷' },
-                          { label: 'Overhead (10%)', value: overhead,   color: 'bg-slate-400',  icon: '📊' },
-                          { label: `Markup (${estimate.markup_pct || 15}%)`, value: markupAmt, color: 'bg-amber-500', icon: '💼' },
+                          { label: 'Materials',      value: matTotal,   color: 'bg-blue-500',   icon: '' },
+                          { label: 'Labor',          value: laborTotal, color: 'bg-purple-500', icon: '' },
+                          { label: 'Overhead (10%)', value: overhead,   color: 'bg-slate-400',  icon: '' },
+                          { label: `Markup (${estimate.markup_pct || 15}%)`, value: markupAmt, color: 'bg-amber-500', icon: '' },
                         ].map(row => (
                           <div key={row.label} className="px-5 py-3.5 border-b last:border-0 flex justify-between items-center" style={{ borderColor: 'rgba(219,234,254,0.5)' }}>
                             <span className="text-slate-600 text-sm flex items-center gap-2"><span>{row.icon}</span>{row.label}</span>
@@ -1640,7 +1640,7 @@ Thank you for your time.`
                         >
                           {renderLoading
                             ? <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Generating…</>
-                            : renders ? '↺ Re-generate' : '✦ Generate Renders'}
+                            : renders ? 'Re-generate' : 'Generate Renders'}
                         </button>
                       </div>
                     </div>
@@ -1703,7 +1703,6 @@ Thank you for your time.`
 
                   {!renderLoading && !renders && !renderError && (
                     <div className="px-6 py-12 text-center text-slate-400 text-sm">
-                      <div className="text-2xl mb-3">🏠</div>
                       <div className="font-semibold text-slate-500">No renders yet</div>
                       <div className="text-xs mt-1">Choose a style and click Generate Renders to create 4 exterior angles and per-room interior views.</div>
                     </div>
@@ -1819,7 +1818,7 @@ Thank you for your time.`
                       onClick={() => setPhotoViewMode('map')}
                       className={`text-xs font-semibold px-3 py-1 rounded-full transition-all ${photoViewMode === 'map' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
-                      🗺 Map
+                      Map
                     </button>
                   </div>
                 </div>
@@ -1834,7 +1833,6 @@ Thank you for your time.`
                   const displayed = photoPhase === 'all' ? photos : photos.filter(p => p.phase === photoPhase)
                   if (displayed.length === 0) return (
                     <div className="bg-white rounded-2xl p-16 text-center" style={cardStyle}>
-                      <div className="text-5xl mb-4">📸</div>
                       <div className="text-slate-700 font-semibold mb-1">No photos yet</div>
                       <div className="text-slate-400 text-sm">Upload before, during, and after photos using the buttons above.</div>
                     </div>
@@ -1853,13 +1851,13 @@ Thank you for your time.`
                               <div className="absolute top-2 left-2 flex items-center gap-1">
                                 <span className={`text-[10px] font-bold text-white px-2 py-0.5 rounded-full capitalize ${phaseColors[photo.phase] || 'bg-slate-500'}`}>{photo.phase}</span>
                                 {hasGeo && (
-                                  <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title={`${photo.latitude.toFixed(4)}, ${photo.longitude.toFixed(4)}`}>📍</span>
+                                  <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title={`${photo.latitude.toFixed(4)}, ${photo.longitude.toFixed(4)}`}></span>
                                 )}
                                 {hasNotes && (
-                                  <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title="Has notes">📝</span>
+                                  <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title="Has notes"></span>
                                 )}
                                 {hasAutoTags && (
-                                  <span className="text-[10px] font-bold text-white bg-indigo-500/90 px-1.5 py-0.5 rounded-full" title="AI-tagged">✨</span>
+                                  <span className="text-[10px] font-bold text-white bg-indigo-500/90 px-1.5 py-0.5 rounded-full" title="AI-tagged"></span>
                                 )}
                               </div>
                               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-end justify-end p-2">
@@ -1907,7 +1905,7 @@ Thank you for your time.`
                     >
                       {photoMeasureLoading ? (
                         <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Analyzing…</>
-                      ) : '📐 Measure from Photos'}
+                      ) : 'Measure from Photos'}
                     </button>
                   </div>
                   {photoMeasureError && (
@@ -1944,7 +1942,7 @@ Thank you for your time.`
                       {photoMeasureResult.warnings?.length > 0 && (
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-2">
                           {photoMeasureResult.warnings.map((w: string, i: number) => (
-                            <div key={i} className="text-amber-700 text-xs flex items-start gap-1.5"><span className="mt-0.5">⚠</span>{w}</div>
+                            <div key={i} className="text-amber-700 text-xs flex items-start gap-1.5"><span className="mt-0.5"></span>{w}</div>
                           ))}
                         </div>
                       )}
@@ -1988,12 +1986,11 @@ Thank you for your time.`
                   >
                     {matCheckLoading ? (
                       <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Checking…</>
-                    ) : '⚖ Check Code Compliance'}
+                    ) : 'Check Code Compliance'}
                   </button>
                 </div>
                 {!compliance || compliance.status === 'not_run' ? (
                   <div className="bg-white rounded-2xl p-12 text-center" style={cardStyle}>
-                    <div className="text-5xl mb-4">⚖️</div>
                     <div className="text-slate-800 font-semibold mb-2">No compliance check run</div>
                     <div className="text-slate-400 text-sm">Runs automatically when your blueprint is analyzed.</div>
                   </div>
@@ -2072,9 +2069,9 @@ Thank you for your time.`
                                     </div>
                                   )}
                                   <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-400">
-                                    {item.deadline && <span>⏱ {item.deadline}</span>}
-                                    {item.penalty && <span>⚠️ {item.penalty}</span>}
-                                    {item.source && <span>📖 {item.source}</span>}
+                                    {item.deadline && <span>{item.deadline}</span>}
+                                    {item.penalty && <span>{item.penalty}</span>}
+                                    {item.source && <span>{item.source}</span>}
                                   </div>
                                 </div>
                               )}
@@ -2271,7 +2268,7 @@ Thank you for your time.`
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                   Print / Save PDF
                 </button>
-                <button onClick={() => setShowProposal(false)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
+                <button onClick={() => setShowProposal(false)} className="text-slate-400 hover:text-slate-700 text-xl leading-none"></button>
               </div>
             </div>
 
@@ -2324,7 +2321,7 @@ Thank you for your time.`
                   <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Materials Summary</div>
                   <div className="space-y-1">
                     {Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]).map(([cat, total]) => {
-                      const meta = CATEGORY_META[cat] || { label: cat, icon: '📦' }
+                      const meta = CATEGORY_META[cat] || { label: cat, icon: '' }
                       return (
                         <div key={cat} className="flex justify-between items-center py-2 border-b" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
                           <span className="text-slate-600 text-sm flex items-center gap-2"><span>{meta.icon}</span>{meta.label}</span>
@@ -2377,7 +2374,7 @@ Thank you for your time.`
                 <h2 className="text-slate-800 font-bold text-base">Quote Request — {quoteModal.vendor}</h2>
                 <p className="text-slate-400 text-xs mt-0.5">Fill in your info, then copy the generated text to send to the distributor.</p>
               </div>
-              <button onClick={() => setQuoteModal(null)} className="text-slate-400 hover:text-slate-700 text-lg font-light leading-none">✕</button>
+              <button onClick={() => setQuoteModal(null)} className="text-slate-400 hover:text-slate-700 text-lg font-light leading-none"></button>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -2428,7 +2425,7 @@ Thank you for your time.`
                   className="w-full flex items-center justify-center gap-2 text-white font-bold py-3 rounded-xl text-sm transition-all"
                   style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', boxShadow: '0 4px 14px rgba(245,158,11,0.3)' }}
                 >
-                  📋 Generate Quote Request
+                  Generate Quote Request
                 </button>
               ) : (
                 <div>
@@ -2439,7 +2436,7 @@ Thank you for your time.`
                       onClick={() => { navigator.clipboard.writeText(generateQuoteText()); setQuoteCopied(true); setTimeout(() => setQuoteCopied(false), 2000) }}
                       className={`flex-1 flex items-center justify-center gap-2 font-bold py-2.5 rounded-xl text-sm transition-all ${quoteCopied ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-900 text-white'}`}
                     >
-                      {quoteCopied ? '✓ Copied!' : '📋 Copy to Clipboard'}
+                      {quoteCopied ? 'Copied!' : 'Copy to Clipboard'}
                     </button>
                     <a
                       href={quoteModal.url}
@@ -2472,7 +2469,7 @@ Thank you for your time.`
           >
             <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(226,232,240,0.8)' }}>
               <div>
-                <h2 className="text-lg font-bold text-slate-800">📐 Blueprint Takeoff</h2>
+                <h2 className="text-lg font-bold text-slate-800">Blueprint Takeoff</h2>
                 <p className="text-xs text-slate-500 mt-0.5">Per-room quantities extracted from the blueprint — review before applying to materials.</p>
               </div>
               <button
@@ -2495,7 +2492,7 @@ Thank you for your time.`
                   {/* Scale warning */}
                   {takeoffData.takeoff.scale?.unverified && (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-                      ⚠ {takeoffData.takeoff.scale.warning || 'Blueprint scale was not verified — confirm one dimension before ordering.'}
+                      {takeoffData.takeoff.scale.warning || 'Blueprint scale was not verified — confirm one dimension before ordering.'}
                     </div>
                   )}
 

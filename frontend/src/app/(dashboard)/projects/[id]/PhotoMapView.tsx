@@ -88,7 +88,7 @@ export default function PhotoMapView({
   if (geoPhotos.length === 0) {
     return (
       <div className="bg-white rounded-2xl p-12 text-center" style={{ boxShadow: '0 1px 3px rgba(15,23,42,0.06)' }}>
-        <div className="text-5xl mb-4">🗺</div>
+        <div className="text-5xl mb-4"></div>
         <div className="text-slate-700 font-semibold mb-1">No geotagged photos yet</div>
         <div className="text-slate-400 text-sm">
           Photos captured with the Guided Capture wizard (or any upload that allowed location access)
@@ -149,7 +149,7 @@ export default function PhotoMapView({
               style={{ left: `${leftPct}%`, top: `${topPct}%`, transform: `translate(-50%, -100%) scale(${isHover ? 1.1 : 1})` }}
               title={p.filename}
             >
-              <span className="w-7 h-7 rounded-full border-2 border-white bg-red-500 shadow-lg shadow-red-900/40 flex items-center justify-center text-white text-xs font-bold">📍</span>
+              <span className="w-7 h-7 rounded-full border-2 border-white bg-red-500 shadow-lg shadow-red-900/40 flex items-center justify-center text-white text-xs font-bold"></span>
               {isHover && (
                 <span className="mt-1 bg-slate-900/90 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap max-w-[180px] truncate">
                   {p.filename}

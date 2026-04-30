@@ -740,7 +740,7 @@ function AnnotationPin({ ann,wallH }:{ ann:Annotation; wallH:number }) {
     <>
       <mesh position={[ann.x,wallH*.4,ann.z]}><sphereGeometry args={[0.28,14,14]}/><meshStandardMaterial color="#7c3aed" emissive="#7c3aed" emissiveIntensity={0.5} roughness={0.3}/></mesh>
       <Html position={[ann.x,wallH*.62,ann.z]} center style={{pointerEvents:"none"}}>
-        <div style={{background:"rgba(124,58,237,0.9)",color:"#fff",borderRadius:7,padding:"3px 9px",fontSize:10,fontWeight:600,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>📌 {ann.text}</div>
+        <div style={{background:"rgba(124,58,237,0.9)",color:"#fff",borderRadius:7,padding:"3px 9px",fontSize:10,fontWeight:600,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>{ann.text}</div>
       </Html>
     </>
   );
@@ -791,7 +791,7 @@ function MeasureFloor({ active,points,onPoint,bw,bd }:{ active:boolean; points:T
           <Line points={[[points[0].x,.12,points[0].z],[points[1].x,.12,points[1].z]]} color="#f59e0b" lineWidth={2.5}/>
           <Html position={[(points[0].x+points[1].x)/2,1.4,(points[0].z+points[1].z)/2]} center style={{pointerEvents:"none"}}>
             <div style={{background:"rgba(0,0,0,0.88)",color:"#fbbf24",padding:"4px 12px",borderRadius:8,fontSize:13,fontWeight:800,whiteSpace:"nowrap",boxShadow:"0 2px 10px rgba(0,0,0,0.4)"}}>
-              📐 {dist!.toFixed(2)} ft
+              {dist!.toFixed(2)} ft
             </div>
           </Html>
         </>
@@ -1076,7 +1076,7 @@ function buildRooms(analysis:any):PlacedRoom[] {
 // ─── Property panel ───────────────────────────────────────────────────────────
 
 function PropertyPanel({ obj,onClose }:{ obj:SelectedObject; onClose:()=>void }) {
-  const icons:Record<string,string>={ room:"🏠",wall:"🧱",door:"🚪",window:"🪟",electrical:"⚡",plumbing:"🔧" };
+  const icons:Record<string,string>={ room:"",wall:"",door:"",window:"",electrical:"",plumbing:"" };
   const rows:{ label:string; value:string }[]=[];
   if(obj.type==="room"){
     const r=obj.data as SceneRoom;
@@ -1184,8 +1184,8 @@ export default function Blueprint3DViewer({ analysis, sceneData, blueprintUrl }:
         <div className="flex items-center gap-1.5 flex-wrap px-1">
           {/* View mode */}
           <div className="flex rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-            <button className={`px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode==="iso"?"bg-indigo-600 text-white":"bg-white text-gray-600 hover:bg-gray-50"}`} onClick={exitWalk}>⬡ Overview</button>
-            <button className={`px-3 py-1.5 text-xs font-semibold border-l border-gray-200 transition-colors ${viewMode==="fp"?"bg-indigo-600 text-white":"bg-white text-gray-600 hover:bg-gray-50"}`} onClick={()=>setViewMode("fp")}>🚶 Walk</button>
+            <button className={`px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode==="iso"?"bg-indigo-600 text-white":"bg-white text-gray-600 hover:bg-gray-50"}`} onClick={exitWalk}>Overview</button>
+            <button className={`px-3 py-1.5 text-xs font-semibold border-l border-gray-200 transition-colors ${viewMode==="fp"?"bg-indigo-600 text-white":"bg-white text-gray-600 hover:bg-gray-50"}`} onClick={()=>setViewMode("fp")}>Walk</button>
           </div>
 
           <div className="w-px h-5 bg-gray-200"/>
@@ -1194,7 +1194,7 @@ export default function Blueprint3DViewer({ analysis, sceneData, blueprintUrl }:
           <div className="flex rounded-lg overflow-hidden border border-gray-200 shadow-sm">
             {(["photo","minimal","wireframe"] as StyleMode[]).map((s,i)=>(
               <button key={s} className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${i>0?"border-l border-gray-200":""} ${styleMode===s?"bg-slate-800 text-white":"bg-white text-gray-600 hover:bg-gray-50"}`} onClick={()=>setStyleMode(s)}>
-                {s==="photo"?"🖼 Photo":s==="minimal"?"◻ Flat":"⬡ Wire"}
+                {s==="photo"?"Photo":s==="minimal"?"Flat":"Wire"}
               </button>
             ))}
           </div>
@@ -1203,7 +1203,7 @@ export default function Blueprint3DViewer({ analysis, sceneData, blueprintUrl }:
 
           {/* Layers */}
           <div className="relative">
-            <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showLayers?"bg-gray-800 text-white border-gray-800":"bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={()=>setShowLayers(p=>!p)}>🏗 Layers</button>
+            <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showLayers?"bg-gray-800 text-white border-gray-800":"bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={()=>setShowLayers(p=>!p)}>Layers</button>
             {showLayers&&(
               <div className="absolute left-0 top-full mt-1 z-40 bg-white border border-gray-200 rounded-xl shadow-xl p-3 w-48">
                 <p className="text-xs font-semibold text-gray-400 mb-2 uppercase tracking-widest">Visibility</p>
@@ -1219,34 +1219,34 @@ export default function Blueprint3DViewer({ analysis, sceneData, blueprintUrl }:
           </div>
 
           {/* Dimensions */}
-          <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showDimensions?"bg-blue-600 text-white border-blue-600":"bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={()=>setShowDimensions(d=>!d)}>📏 Dims</button>
+          <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showDimensions?"bg-blue-600 text-white border-blue-600":"bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={()=>setShowDimensions(d=>!d)}>Dims</button>
 
           {/* Measure */}
-          <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${measureMode?"bg-amber-500 text-white border-amber-500":"bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={toggleMeasure}>📐 Measure</button>
+          <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${measureMode?"bg-amber-500 text-white border-amber-500":"bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={toggleMeasure}>Measure</button>
 
           {/* Split view */}
           {blueprintUrl&&(
-            <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showSplit?"bg-teal-600 text-white border-teal-600":"bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={()=>setShowSplit(s=>!s)}>⬛ Split</button>
+            <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showSplit?"bg-teal-600 text-white border-teal-600":"bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={()=>setShowSplit(s=>!s)}>Split</button>
           )}
 
           <div className="flex-1"/>
 
-          <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50" onClick={()=>screenshotRef.current?.()} title="Export PNG">📸 PNG</button>
-          <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50" onClick={()=>glbRef.current?.()} title="Export GLB">📦 GLB</button>
+          <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50" onClick={()=>screenshotRef.current?.()} title="Export PNG">PNG</button>
+          <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50" onClick={()=>glbRef.current?.()} title="Export GLB">GLB</button>
 
           <select className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 font-medium" value={unit} onChange={e=>setUnit(e.target.value as UnitKey)}>
             {(Object.keys(UNIT_LABELS) as UnitKey[]).map(k=><option key={k} value={k}>{UNIT_LABELS[k]}</option>)}
           </select>
 
           {viewMode==="fp"&&(
-            <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100" onClick={exitWalk}>✕ Exit Walk</button>
+            <button className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100" onClick={exitWalk}>Exit Walk</button>
           )}
         </div>
 
         {/* Measure hint bar */}
         {measureMode&&(
           <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-medium flex items-center gap-2">
-            <span>📐</span>
+            <span></span>
             {measurePts.length===0&&"Click a point on the floor to start measuring"}
             {measurePts.length===1&&"Click a second point to complete the measurement"}
             {measurePts.length===2&&`Distance: ${measurePts[0].distanceTo(measurePts[1]).toFixed(2)} ft — click again to reset`}
@@ -1290,12 +1290,12 @@ export default function Blueprint3DViewer({ analysis, sceneData, blueprintUrl }:
         {annotations.length>0&&(
           <div className="border border-gray-200 rounded-xl bg-white shadow-sm p-3">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">📌 Notes ({annotations.length})</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes ({annotations.length})</p>
               <button className="text-xs text-red-500 hover:text-red-700" onClick={()=>setAnnotations([])}>Clear all</button>
             </div>
             {annotations.map(ann=>(
               <div key={ann.id} className="flex items-center gap-2 py-1.5 px-2 bg-purple-50 rounded-lg mb-1">
-                <span className="w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center text-white text-[10px] flex-shrink-0">✏</span>
+                <span className="w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center text-white text-[10px] flex-shrink-0"></span>
                 <span className="text-xs text-gray-700 flex-1">{ann.text}</span>
                 <button className="text-gray-400 hover:text-red-500" onClick={()=>setAnnotations(p=>p.filter(a=>a.id!==ann.id))}>×</button>
               </div>

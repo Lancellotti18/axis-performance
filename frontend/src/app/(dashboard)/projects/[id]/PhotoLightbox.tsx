@@ -185,7 +185,7 @@ export default function PhotoLightbox({
               </div>
             </div>
             <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 font-bold">
-              ✕
+
             </button>
           </div>
 
@@ -216,7 +216,7 @@ export default function PhotoLightbox({
                 <div className="flex items-center gap-2">
                   {transcribing && <span className="text-[10px] text-blue-600 font-semibold">Transcribing…</span>}
                   {savedAt && !dirty && !transcribing && (
-                    <span className="text-[10px] text-emerald-600 font-semibold">✓ Saved</span>
+                    <span className="text-[10px] text-emerald-600 font-semibold">Saved</span>
                   )}
                   <button
                     onClick={recording ? stopRecording : startRecording}
@@ -283,7 +283,7 @@ export default function PhotoLightbox({
                   disabled={tagging}
                   className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
                 >
-                  {tagging ? 'Analyzing…' : autoTags ? 'Re-run' : '✨ Auto-tag with AI'}
+                  {tagging ? 'Analyzing…' : autoTags ? 'Re-run' : 'Auto-tag with AI'}
                 </button>
               </div>
               {autoTags ? (
@@ -311,7 +311,7 @@ export default function PhotoLightbox({
                       <span key={m} className="text-[10px] font-semibold bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 rounded-full">{m}</span>
                     ))}
                     {(autoTags.damage || []).map(d => (
-                      <span key={d} className="text-[10px] font-semibold bg-red-50 border border-red-200 text-red-700 px-2 py-0.5 rounded-full">⚠ {d}</span>
+                      <span key={d} className="text-[10px] font-semibold bg-red-50 border border-red-200 text-red-700 px-2 py-0.5 rounded-full">{d}</span>
                     ))}
                     {(autoTags.safety || []).map(s => (
                       <span key={s} className="text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full">{s}</span>

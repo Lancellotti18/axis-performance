@@ -346,13 +346,13 @@ export default function MaterialCheckPage() {
               <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,.txt" className="hidden" onChange={handleFileChange} />
               {file ? (
                 <div className="space-y-1">
-                  <div className="text-2xl">📄</div>
+                  <div className="text-2xl"></div>
                   <div className="text-slate-800 font-semibold text-sm">{file.name}</div>
                   <div className="text-slate-400 text-xs">{(file.size / 1024).toFixed(1)} KB · click to change</div>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="text-3xl">📋</div>
+                  <div className="text-3xl"></div>
                   <div className="text-slate-600 font-semibold text-sm">Drop your material list here</div>
                   <div className="text-slate-400 text-xs">CSV, Excel (.xlsx), or plain text (.txt) · max 10 MB</div>
                   <div className="text-slate-400 text-xs">CSV columns: <span className="font-mono bg-slate-100 px-1 rounded">item_name</span>, <span className="font-mono bg-slate-100 px-1 rounded">category</span>, <span className="font-mono bg-slate-100 px-1 rounded">quantity</span>, <span className="font-mono bg-slate-100 px-1 rounded">unit</span></div>
@@ -467,7 +467,7 @@ export default function MaterialCheckPage() {
                 </svg>
                 Checking against local building codes…
               </span>
-            ) : '⚖ Check Compliance'}
+            ) : 'Check Compliance'}
           </button>
 
           {!canSubmit && !loading && (

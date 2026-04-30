@@ -33,56 +33,56 @@ const STEPS: CaptureStep[] = [
     title: 'Front elevation',
     instruction: 'Stand directly in front of the house, back up until the whole facade fits in the frame.',
     framing: 'Keep the roofline near the top of the frame and the ground near the bottom.',
-    emoji: '🏠',
+    emoji: '',
   },
   {
     key: 'front_right',
     title: 'Front-right corner',
     instruction: 'Move to the front-right corner of the property at roughly 45°.',
     framing: 'Both the front and right side should be visible in the frame.',
-    emoji: '↗️',
+    emoji: '',
   },
   {
     key: 'right',
     title: 'Right elevation',
     instruction: 'Stand directly to the right of the house, perpendicular to the right wall.',
     framing: 'The right side should fill the frame — no angled walls.',
-    emoji: '➡️',
+    emoji: '',
   },
   {
     key: 'back_right',
     title: 'Back-right corner',
     instruction: 'Move around to the back-right corner, again at a 45° angle.',
     framing: 'Back wall and right wall both visible.',
-    emoji: '↘️',
+    emoji: '',
   },
   {
     key: 'back',
     title: 'Back elevation',
     instruction: 'Stand directly behind the house, perpendicular to the rear wall.',
     framing: 'Keep the entire back wall in frame, horizon level.',
-    emoji: '⬅️',
+    emoji: '',
   },
   {
     key: 'back_left',
     title: 'Back-left corner',
     instruction: 'Move to the back-left corner at a 45° angle.',
     framing: 'Back wall and left wall both visible.',
-    emoji: '↙️',
+    emoji: '',
   },
   {
     key: 'left',
     title: 'Left elevation',
     instruction: 'Stand directly to the left of the house, perpendicular to the left wall.',
     framing: 'Left side fills the frame.',
-    emoji: '⬆️',
+    emoji: '',
   },
   {
     key: 'front_left',
     title: 'Front-left corner',
     instruction: 'Finish at the front-left corner at a 45° angle.',
     framing: 'Front wall and left wall both visible.',
-    emoji: '↖️',
+    emoji: '',
   },
 ]
 
@@ -385,7 +385,7 @@ export default function ExteriorCaptureWizard({
             className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 font-bold"
             aria-label="Close"
           >
-            ✕
+
           </button>
         </div>
 
@@ -502,7 +502,7 @@ export default function ExteriorCaptureWizard({
               <div className="absolute top-3 right-3">
                 {shot.uploaded ? (
                   <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-500 text-white px-2.5 py-1 rounded-full">
-                    ✓ Uploaded
+                    Uploaded
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-amber-500 text-white px-2.5 py-1 rounded-full">
@@ -560,7 +560,7 @@ export default function ExteriorCaptureWizard({
           {analysisResult && (analysisResult as any).success && (
             <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm">
               <div className="text-emerald-700 font-bold mb-1">
-                ✓ {(analysisResult as any).photos_analyzed} photos analyzed
+                {(analysisResult as any).photos_analyzed} photos analyzed
               </div>
               {(analysisResult as any).pitch_estimate && (
                 <div className="text-emerald-700">
@@ -610,8 +610,8 @@ export default function ExteriorCaptureWizard({
                   : analyzing
                   ? 'Analyzing…'
                   : hasNewFiles
-                  ? '✓ Upload & Analyze'
-                  : '✓ Analyze existing photos'}
+                  ? 'Upload & Analyze'
+                  : 'Analyze existing photos'}
               </button>
             )}
           </div>
@@ -636,7 +636,7 @@ export default function ExteriorCaptureWizard({
                     <img src={sh.previewUrl} alt={s.title} className="w-full h-full object-cover" />
                     {sh.uploaded && (
                       <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-emerald-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                        ✓
+
                       </div>
                     )}
                   </>

@@ -274,9 +274,9 @@ export default function ReportsPage() {
                   className="text-2xl font-black text-slate-800 !px-0 !py-0"
                 />
                 <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-xs text-slate-500">
-                  {project.city && <span>📍 {[project.city, (project.region || '').replace('US-', '')].filter(Boolean).join(', ')}</span>}
-                  {project.blueprint_type && <span>🏗 {project.blueprint_type.replace(/_/g,' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>}
-                  <span>📅 {new Date(project.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                  {project.city && <span>{[project.city, (project.region || '').replace('US-', '')].filter(Boolean).join(', ')}</span>}
+                  {project.blueprint_type && <span>{project.blueprint_type.replace(/_/g,' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>}
+                  <span>{new Date(project.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
                 </div>
                 {/* Summary stats */}
                 <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
@@ -290,7 +290,7 @@ export default function ReportsPage() {
                   </div>
                   <div className="text-center">
                     <div className={`text-xl font-black ${requiredItems.length > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
-                      {requiredItems.length > 0 ? `${requiredItems.length} Required` : complianceItems.length > 0 ? '✓ Compliant' : '—'}
+                      {requiredItems.length > 0 ? `${requiredItems.length} Required` : complianceItems.length > 0 ? 'Compliant' : '—'}
                     </div>
                     <div className="text-slate-400 text-xs">Compliance</div>
                   </div>
@@ -298,7 +298,7 @@ export default function ReportsPage() {
               </div>
 
               {/* ── Project Summary ──────────────────────────────────────── */}
-              <Section title="Project Summary" icon="📋">
+              <Section title="Project Summary" icon="">
                 <EditableText
                   value={ov('summary', project.description || analysis?.summary || '')}
                   onSave={v => setOv('summary', v)}
@@ -324,7 +324,7 @@ export default function ReportsPage() {
 
               {/* ── Daily Log (Procore-style) ────────────────────────────── */}
               {dailyLogs.length > 0 && (
-                <Section title={`Daily Log (${dailyLogs.length} day${dailyLogs.length !== 1 ? 's' : ''})`} icon="📅">
+                <Section title={`Daily Log (${dailyLogs.length} day${dailyLogs.length !== 1 ? 's' : ''})`} icon="">
                   <div className="text-xs text-slate-500 mb-3">
                     Auto-generated from uploaded photos, site notes, and AI auto-tags. Newest first.
                   </div>
@@ -359,12 +359,12 @@ export default function ReportsPage() {
                             <div className="flex flex-wrap gap-1.5 mt-2">
                               {(entry.damage || []).slice(0, 5).map((d: string, i: number) => (
                                 <span key={`d${i}`} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
-                                  ⚠ {d}
+                                  {d}
                                 </span>
                               ))}
                               {(entry.safety || []).slice(0, 5).map((s: string, i: number) => (
                                 <span key={`s${i}`} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                                  ⛑ {s}
+                                  {s}
                                 </span>
                               ))}
                             </div>
@@ -395,7 +395,7 @@ export default function ReportsPage() {
               )}
 
               {/* ── Materials List ───────────────────────────────────────── */}
-              <Section title={`Materials List (${materials.length} items)`} icon="🏗️">
+              <Section title={`Materials List (${materials.length} items)`} icon="">
                 {materials.length === 0 ? (
                   <div className="text-slate-400 text-sm text-center py-6">
                     No materials found. Run a blueprint analysis or add materials manually in the project page.
@@ -445,7 +445,7 @@ export default function ReportsPage() {
               </Section>
 
               {/* ── Cost Breakdown ───────────────────────────────────────── */}
-              <Section title="Projected Cost" icon="💰">
+              <Section title="Projected Cost" icon="">
                 {!cost && totalMaterialCost === 0 ? (
                   <div className="text-slate-400 text-sm text-center py-6">
                     No cost data yet. Analyze a blueprint to generate estimates.
@@ -499,7 +499,7 @@ export default function ReportsPage() {
               </Section>
 
               {/* ── Compliance ───────────────────────────────────────────── */}
-              <Section title={`Code Compliance (${complianceItems.length} items)`} icon="⚖️">
+              <Section title={`Code Compliance (${complianceItems.length} items)`} icon="">
                 {complianceItems.length === 0 ? (
                   <div className="text-slate-400 text-sm text-center py-6">
                     No compliance check run. Go to the project page → Compliance tab to run a check.
@@ -513,7 +513,7 @@ export default function ReportsPage() {
                         compliance.risk_level === 'medium' ? 'bg-amber-50 border border-amber-200' :
                         'bg-emerald-50 border border-emerald-200'
                       }`}>
-                        <span className="text-lg mt-0.5">⚖️</span>
+                        <span className="text-lg mt-0.5"></span>
                         <div>
                           <div className="font-bold text-sm text-slate-800 capitalize">
                             {compliance.risk_level || 'Unknown'} Risk · {[compliance.city, compliance.region].filter(Boolean).join(', ')}
@@ -547,7 +547,7 @@ export default function ReportsPage() {
                             </div>
                             {item.description && <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{item.description}</p>}
                             {item.action && <p className="text-xs font-semibold text-slate-700 mt-1">→ {item.action}</p>}
-                            {item.source && <p className="text-[10px] text-slate-400 mt-1">📖 {item.source}</p>}
+                            {item.source && <p className="text-[10px] text-slate-400 mt-1">{item.source}</p>}
                           </div>
                         </div>
                       ))}
@@ -557,7 +557,7 @@ export default function ReportsPage() {
               </Section>
 
               {/* ── Permits ──────────────────────────────────────────────── */}
-              <Section title="Permits Required" icon="📄">
+              <Section title="Permits Required" icon="">
                 <div className="space-y-4">
                   <div className="text-sm text-slate-600 leading-relaxed">
                     Permit requirements for <strong>{[project.city, (project.region || '').replace('US-', '')].filter(Boolean).join(', ')}</strong> · {(project.blueprint_type || 'residential').replace(/_/g,' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} project.
@@ -616,7 +616,7 @@ export default function ReportsPage() {
               </Section>
 
               {/* ── Additional Notes ─────────────────────────────────────── */}
-              <Section title="Additional Notes" icon="📝" defaultOpen={false}>
+              <Section title="Additional Notes" icon="" defaultOpen={false}>
                 <EditableText
                   value={ov('report_notes', '')}
                   onSave={v => setOv('report_notes', v)}

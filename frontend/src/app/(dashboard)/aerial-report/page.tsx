@@ -74,8 +74,8 @@ const CONDITION_COLOR = (score: number | null) =>
 const RISK_COLOR: Record<string, string> = { low: '#22c55e', medium: '#f59e0b', high: '#ef4444', unknown: '#94a3b8' }
 
 const ZONE_ICON: Record<string, string> = {
-  missing_shingles: '🔴', staining: '🟠', debris: '🟡',
-  structural_damage: '⛔', discoloration: '🟠', moss_algae: '🟢',
+  missing_shingles: '', staining: '', debris: '',
+  structural_damage: '', discoloration: '', moss_algae: '',
 }
 
 const selectStyle: React.CSSProperties = {
@@ -148,14 +148,14 @@ function MeasurementsPanel({ result, photoResult }: { result: any; photoResult: 
     <div className="space-y-3">
       <SectionHeader
         title="Roof Measurements"
-        badge={hasPhotos ? '📸 Photo-Enhanced' : (result.source || 'AI Estimate')}
+        badge={hasPhotos ? 'Photo-Enhanced' : (result.source || 'AI Estimate')}
       />
 
       {/* Unverified warning — backend returned no real measurement data */}
       {result.measurements_unverified && (
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
           <span className="text-amber-600 text-[11px] font-semibold leading-snug">
-            ⚠ We couldn't verify measurements for this address from public records. The numbers below are placeholders — please enter them manually or upload a blueprint instead of relying on this estimate.
+            We couldn't verify measurements for this address from public records. The numbers below are placeholders — please enter them manually or upload a blueprint instead of relying on this estimate.
           </span>
         </div>
       )}
@@ -164,7 +164,7 @@ function MeasurementsPanel({ result, photoResult }: { result: any; photoResult: 
       {hasPhotos && (
         <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
           <span className="text-emerald-600 text-[11px] font-semibold">
-            ✓ Measurements refined using {photoResult.photos_analyzed} photo{photoResult.photos_analyzed !== 1 ? 's' : ''}
+            Measurements refined using {photoResult.photos_analyzed} photo{photoResult.photos_analyzed !== 1 ? 's' : ''}
           </span>
           {pitchChanged && <span className="text-[9px] bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded-full font-bold">pitch updated</span>}
           {storiesFromPhoto && <span className="text-[9px] bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded-full font-bold">stories updated</span>}
@@ -177,7 +177,7 @@ function MeasurementsPanel({ result, photoResult }: { result: any; photoResult: 
           <div key={m.label} className="rounded-xl px-3 py-2.5 text-center relative"
             style={{ ...cardStyle, background: m.fromPhoto ? 'rgba(236,253,245,0.8)' : '#f8fafc', borderColor: m.fromPhoto ? 'rgba(52,211,153,0.4)' : undefined }}>
             {m.fromPhoto && (
-              <span className="absolute top-1 right-1.5 text-[8px] text-emerald-600 font-bold">📸</span>
+              <span className="absolute top-1 right-1.5 text-[8px] text-emerald-600 font-bold"></span>
             )}
             <div className="text-slate-800 font-black text-lg leading-none">{m.value}</div>
             <div className="text-slate-400 text-[10px] font-semibold mt-0.5 uppercase">{m.label}</div>
@@ -192,7 +192,7 @@ function MeasurementsPanel({ result, photoResult }: { result: any; photoResult: 
             <span>
               <span className="text-slate-400">Stories</span>{' '}
               <span style={storiesFromPhoto ? { color: '#059669', fontWeight: 700 } : {}}>{effectiveStories}</span>
-              {storiesFromPhoto && <span className="text-[9px] text-emerald-500 ml-1">📸</span>}
+              {storiesFromPhoto && <span className="text-[9px] text-emerald-500 ml-1"></span>}
             </span>
           )}
           {result.house_sqft && <span><span className="text-slate-400">House sqft</span> {result.house_sqft.toLocaleString()}</span>}
@@ -219,8 +219,8 @@ function MeasurementsPanel({ result, photoResult }: { result: any; photoResult: 
             )}
           </div>
           <div className="flex items-center gap-3 mt-1">
-            <span className="text-[10px] text-slate-400">🛰 Satellite: {satPct}%</span>
-            {boostPct > 0 && <span className="text-[10px] text-emerald-600">📸 Photos: +{boostPct}%</span>}
+            <span className="text-[10px] text-slate-400">Satellite: {satPct}%</span>
+            {boostPct > 0 && <span className="text-[10px] text-emerald-600">Photos: +{boostPct}%</span>}
           </div>
         </div>
       )}
@@ -278,14 +278,14 @@ function DamagePanel({ damageResult, loading }: { damageResult: any; loading: bo
 
           {zones.length === 0 ? (
             <p className="text-emerald-600 text-xs bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100">
-              ✓ No visible damage detected in satellite imagery
+              No visible damage detected in satellite imagery
             </p>
           ) : (
             <div className="space-y-2">
               {zones.map((z, i) => (
                 <div key={i} className="bg-red-50 border border-red-100 rounded-xl px-3 py-2">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span>{ZONE_ICON[z.type] || '⚠️'}</span>
+                    <span>{ZONE_ICON[z.type] || ''}</span>
                     <span className="text-red-700 text-[11px] font-bold capitalize">{z.type.replace(/_/g, ' ')}</span>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase ${z.severity === 'high' ? 'bg-red-200 text-red-800' : z.severity === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
                       {z.severity}
@@ -293,7 +293,7 @@ function DamagePanel({ damageResult, loading }: { damageResult: any; loading: bo
                     <span className="text-slate-400 text-[9px] ml-auto">{Math.round(z.confidence * 100)}% conf.</span>
                   </div>
                   <p className="text-red-600 text-[10px] leading-snug">{z.description}</p>
-                  {z.location_description && <p className="text-slate-400 text-[10px] mt-0.5">📍 {z.location_description}</p>}
+                  {z.location_description && <p className="text-slate-400 text-[10px] mt-0.5">{z.location_description}</p>}
                 </div>
               ))}
             </div>
@@ -301,7 +301,7 @@ function DamagePanel({ damageResult, loading }: { damageResult: any; loading: bo
 
           {va.analyst_notes && <p className="text-slate-400 text-[10px] italic">{va.analyst_notes}</p>}
           <p className="text-slate-400 text-[10px]">
-            ⚠ Satellite at ≈0.3 m/px. Major damage visible; individual shingles not resolvable. Physical inspection recommended.
+            Satellite at ≈0.3 m/px. Major damage visible; individual shingles not resolvable. Physical inspection recommended.
           </p>
         </>
       )}
@@ -378,7 +378,7 @@ function PhotoDamagePanel({ photoResult }: { photoResult: any }) {
             <span className="text-slate-400 text-[9px] ml-auto">{Math.round((f.confidence || 0) * 100)}% conf.</span>
           </div>
           {f.description && <p className="text-orange-600 text-[10px] leading-snug">{f.description}</p>}
-          {f.location && <p className="text-slate-400 text-[10px] mt-0.5">📍 {f.location}</p>}
+          {f.location && <p className="text-slate-400 text-[10px] mt-0.5">{f.location}</p>}
         </div>
       ))}
     </div>
@@ -403,13 +403,13 @@ function ReportModal({ result, damageResult, photoResult, type, onClose }: {
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
           <div>
             <div className="text-slate-800 font-bold text-base">
-              {type === 'contractor' ? '📐 Contractor Report' : '🏠 Customer Summary'}
+              {type === 'contractor' ? 'Contractor Report' : 'Customer Summary'}
             </div>
             <div className="text-slate-400 text-xs">{result.address} — {new Date().toLocaleDateString()}</div>
           </div>
           <div className="flex gap-2">
             <button onClick={() => window.print()} className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors">
-              🖨 Print / Save PDF
+              Print / Save PDF
             </button>
             <button onClick={onClose} className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 font-semibold hover:bg-slate-200 transition-colors">Close</button>
           </div>
@@ -752,7 +752,7 @@ export default function AerialReportPage() {
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2"><Spinner size={14} />Analyzing…</span>
-          ) : '🛰 Pull Aerial Report'}
+          ) : 'Pull Aerial Report'}
         </button>
         {error && <p className="text-red-500 text-xs">{error}</p>}
       </div>
@@ -763,7 +763,7 @@ export default function AerialReportPage() {
           Property Photos
         </label>
         <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-[10px] text-indigo-700 leading-relaxed">
-          📸 Photos refine pitch, stories, and features that satellite imagery can't resolve — and detect close-up damage invisible from orbit.
+          Photos refine pitch, stories, and features that satellite imagery can't resolve — and detect close-up damage invisible from orbit.
         </div>
         <div
           className="border-2 border-dashed border-slate-200 rounded-xl p-3 cursor-pointer hover:border-indigo-300 transition-colors text-center"
@@ -795,8 +795,8 @@ export default function AerialReportPage() {
               {photoLoading
                 ? <span className="flex items-center justify-center gap-1.5"><Spinner size={12} />Analyzing &amp; updating measurements…</span>
                 : photoResult
-                  ? `🔄 Re-analyze ${photos.length} Photo${photos.length > 1 ? 's' : ''}`
-                  : `📸 Analyze ${photos.length} Photo${photos.length > 1 ? 's' : ''} → Refine Measurements`}
+                  ? `Re-analyze ${photos.length} Photo${photos.length > 1 ? 's' : ''}`
+                  : `Analyze ${photos.length} Photo${photos.length > 1 ? 's' : ''} → Refine Measurements`}
             </button>
             {photoError && <p className="text-red-500 text-[10px] mt-1">{photoError}</p>}
           </div>
@@ -806,7 +806,7 @@ export default function AerialReportPage() {
       {/* Source info */}
       {result && (
         <div className="bg-slate-50 rounded-xl px-3 py-2.5" style={cardStyle}>
-          <div className="text-slate-700 font-bold text-xs mb-0.5">📍 {result.address}</div>
+          <div className="text-slate-700 font-bold text-xs mb-0.5">{result.address}</div>
           <div className="text-slate-400 text-[10px]">{result.source || 'AI property estimate'}</div>
         </div>
       )}
@@ -819,7 +819,7 @@ export default function AerialReportPage() {
             <button key={t} onClick={() => { setReportType(t); setReportVisible(true) }}
               className="w-full py-2 rounded-xl text-xs font-bold border transition-all hover:bg-slate-50"
               style={{ borderColor: 'rgba(219,234,254,0.9)', color: '#4f46e5' }}>
-              {t === 'contractor' ? '📐 Contractor Report' : '🏠 Customer Summary'}
+              {t === 'contractor' ? 'Contractor Report' : 'Customer Summary'}
             </button>
           ))}
         </div>
@@ -833,7 +833,7 @@ export default function AerialReportPage() {
     <div className="h-full flex flex-col overflow-hidden" style={{ background: '#0f172a' }}>
       {!result && !loading && (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-6">
-          <div className="text-6xl">🛰</div>
+          <div className="text-6xl"></div>
           <div className="text-white font-bold text-xl">Aerial Roofing Intelligence</div>
           <p className="text-slate-400 text-sm max-w-sm">
             Select a state, county, and zip code — then optionally enter a street address — to pull satellite roof measurements, AI damage analysis, and weather risk history.
@@ -862,7 +862,7 @@ export default function AerialReportPage() {
           <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
             {outlineOverride && (
               <span className="text-[10px] px-2 py-1 rounded-full bg-amber-500/95 text-white font-bold shadow-lg">
-                ✎ {outlineOverride.sqft.toLocaleString()} sqft
+                {outlineOverride.sqft.toLocaleString()} sqft
               </span>
             )}
             <button
@@ -870,7 +870,7 @@ export default function AerialReportPage() {
               className="px-3 py-1.5 rounded-lg text-white text-xs font-bold shadow-lg hover:opacity-90 transition-opacity"
               style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
             >
-              🔲 Edit roof outline
+              Edit roof outline
             </button>
           </div>
         </div>
@@ -878,7 +878,7 @@ export default function AerialReportPage() {
 
       {result && !result.satellite_image_url && (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
-          <div className="text-4xl">🗺</div>
+          <div className="text-4xl"></div>
           <p className="text-slate-400 text-sm">Satellite image unavailable for this location.<br/>Geocoding may not have resolved a precise coordinate.</p>
         </div>
       )}
@@ -900,7 +900,7 @@ export default function AerialReportPage() {
     <div className="h-full overflow-y-auto p-4 space-y-5" style={{ background: 'rgba(255,255,255,0.97)' }}>
       {!result && (
         <div className="flex flex-col items-center justify-center h-full text-center gap-3">
-          <div className="text-3xl">📊</div>
+          <div className="text-3xl"></div>
           <p className="text-slate-400 text-sm">Measurements, AI condition analysis, and weather risk will appear here after pulling a report.</p>
         </div>
       )}
@@ -922,11 +922,11 @@ export default function AerialReportPage() {
           <div>
             <SectionHeader title="Data Sources" />
             <div className="space-y-1 text-[10px] text-slate-400">
-              <p>📡 <strong>Measurements:</strong> {result.source || 'AI property record estimate'}</p>
-              <p>🛰 <strong>Imagery:</strong> Esri World Imagery (public satellite, 1280×840 @ ≈0.3 m/px)</p>
-              <p>🤖 <strong>Condition:</strong> {damageResult?.vision_analysis?.can_analyze ? 'AI vision analysis of satellite image' : 'Pending or unavailable'}</p>
-              <p>🔍 <strong>Weather:</strong> NOAA Storm Events + local news web search</p>
-              {photoResult?.success && <p>📸 <strong>Photos:</strong> {photoResult.photos_analyzed} photos analyzed by AI vision</p>}
+              <p><strong>Measurements:</strong> {result.source || 'AI property record estimate'}</p>
+              <p><strong>Imagery:</strong> Esri World Imagery (public satellite, 1280×840 @ ≈0.3 m/px)</p>
+              <p><strong>Condition:</strong> {damageResult?.vision_analysis?.can_analyze ? 'AI vision analysis of satellite image' : 'Pending or unavailable'}</p>
+              <p><strong>Weather:</strong> NOAA Storm Events + local news web search</p>
+              {photoResult?.success && <p><strong>Photos:</strong> {photoResult.photos_analyzed} photos analyzed by AI vision</p>}
             </div>
           </div>
         </>
@@ -935,9 +935,9 @@ export default function AerialReportPage() {
   )
 
   const TABS: { id: MobileTab; label: string }[] = [
-    { id: 'input',    label: '⚙ Input' },
-    { id: 'view',     label: '🛰 View' },
-    { id: 'analysis', label: '📊 Analysis' },
+    { id: 'input',    label: 'Input' },
+    { id: 'view',     label: 'View' },
+    { id: 'analysis', label: 'Analysis' },
   ]
 
   return (

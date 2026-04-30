@@ -406,9 +406,9 @@ export default function DashboardPage() {
         {fabOpen && (
           <div className="flex flex-col items-end gap-2 animate-[fadeIn_0.2s_ease]">
             {[
-              { href: '/projects/new', label: 'Upload Blueprint', icon: '📤' },
-              { href: '/reports',      label: 'Generate Report',  icon: '📊' },
-              { href: '/permits',      label: 'Submit Permit',    icon: '📑' },
+              { href: '/projects/new', label: 'Upload Blueprint', icon: '' },
+              { href: '/reports',      label: 'Generate Report',  icon: '' },
+              { href: '/permits',      label: 'Submit Permit',    icon: '' },
             ].map(a => (
               <Link
                 key={a.href}

@@ -118,7 +118,7 @@ export default function HomeVisualizerPage() {
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center p-10 space-y-2">
-                  <div className="text-4xl">🏠</div>
+                  <div className="text-4xl"></div>
                   <div className="text-slate-600 font-semibold text-sm">Drop a photo or click to upload</div>
                   <div className="text-slate-400 text-xs">JPG, PNG, or WebP · max 10 MB</div>
                 </div>
@@ -197,7 +197,7 @@ export default function HomeVisualizerPage() {
                 </svg>
                 Generating visualization…
               </span>
-            ) : '✨ Visualize Changes'}
+            ) : 'Visualize Changes'}
           </button>
 
           {!canSubmit && !loading && (
@@ -217,14 +217,14 @@ export default function HomeVisualizerPage() {
               <svg className="animate-spin text-purple-600 absolute inset-0" width="64" height="64" viewBox="0 0 64 64" fill="none" style={{ animationDuration: '1s' }}>
                 <path d="M32 4a28 28 0 0128 28" stroke="currentColor" strokeWidth="6" strokeLinecap="round"/>
               </svg>
-              <div className="absolute inset-0 flex items-center justify-center text-2xl">✨</div>
+              <div className="absolute inset-0 flex items-center justify-center text-2xl"></div>
             </div>
             <div className="text-slate-800 font-bold text-base mb-1">Generating your visualization…</div>
             <div className="text-slate-400 text-sm mb-4">This takes 30–90 seconds on first run</div>
             <div className="flex justify-center gap-6 text-xs text-slate-400">
-              <span>📸 Processing photo</span>
-              <span>🎨 Applying changes</span>
-              <span>💰 Estimating costs</span>
+              <span>Processing photo</span>
+              <span>Applying changes</span>
+              <span>Estimating costs</span>
             </div>
           </div>
         )}
@@ -357,7 +357,7 @@ export default function HomeVisualizerPage() {
                 {estimate.disclaimer && (
                   <div className="px-5 pb-4">
                     <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-amber-700 text-xs">
-                      ⚠️ {estimate.disclaimer}
+                      {estimate.disclaimer}
                     </div>
                   </div>
                 )}

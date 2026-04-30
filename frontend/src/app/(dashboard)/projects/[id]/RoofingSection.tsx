@@ -139,9 +139,9 @@ export default function RoofingSection({
   const labelCls = 'block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1'
 
   const ROOF_TABS: { key: RoofTab; label: string }[] = [
-    { key: 'measurements', label: '📐 Measurements' },
-    { key: 'waste',        label: '📊 Waste Calc' },
-    { key: 'shingles',     label: '🏠 Shingle Estimator' },
+    { key: 'measurements', label: 'Measurements' },
+    { key: 'waste',        label: 'Waste Calc' },
+    { key: 'shingles',     label: 'Shingle Estimator' },
   ]
 
   // Waste calc derived values
@@ -171,7 +171,7 @@ export default function RoofingSection({
           {/* Action banner */}
           {!measurements && !analyzing && (
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
-              <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl">📐</div>
+              <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl"></div>
               <h3 className="text-slate-800 font-bold mb-1">Analyze Roof Measurements</h3>
               <p className="text-slate-500 text-sm mb-4 max-w-sm mx-auto">
                 AI will analyze your uploaded blueprint or roof image to extract measurements. You'll review and confirm before anything is used.
@@ -206,7 +206,7 @@ export default function RoofingSection({
               {/* Confirmed / unconfirmed banner */}
               {measurements.confirmed ? (
                 <div className="flex flex-wrap items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-3">
-                  <span className="text-emerald-500 text-xl">✓</span>
+                  <span className="text-emerald-500 text-xl"></span>
                   <div className="min-w-0">
                     <div className="text-emerald-700 font-semibold text-sm">Measurements Confirmed</div>
                     <div className="text-emerald-600 text-xs">These measurements are being used for the shingle estimator.</div>
@@ -244,7 +244,7 @@ export default function RoofingSection({
                 </div>
               ) : (
                 <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3">
-                  <span className="text-amber-500 text-xl">⚠</span>
+                  <span className="text-amber-500 text-xl"></span>
                   <div>
                     <div className="text-amber-700 font-semibold text-sm">Review & Confirm</div>
                     <div className="text-amber-600 text-xs">AI measurements below — adjust any values, then confirm to use them.</div>
@@ -255,7 +255,7 @@ export default function RoofingSection({
 
               {measurements.notes && (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-600 text-sm italic">
-                  💬 {measurements.notes}
+                  {measurements.notes}
                 </div>
               )}
 
@@ -316,7 +316,7 @@ export default function RoofingSection({
                     className="flex items-center gap-2 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40"
                     style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 14px rgba(16,185,129,0.25)' }}
                   >
-                    {confirming ? 'Saving…' : '✓ Confirm Measurements'}
+                    {confirming ? 'Saving…' : 'Confirm Measurements'}
                   </button>
                   <button onClick={handleAnalyze} className="text-sm text-slate-500 hover:text-slate-700 font-medium px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 transition-all">
                     Re-analyze
@@ -352,7 +352,7 @@ export default function RoofingSection({
 
             {!draft ? (
               <div className="text-center py-10 text-slate-400">
-                <div className="text-4xl mb-3">📐</div>
+                <div className="text-4xl mb-3"></div>
                 Run roof measurements first to use the waste calculator.
               </div>
             ) : (
@@ -424,7 +424,7 @@ export default function RoofingSection({
             <div className="flex items-center justify-center py-16 text-slate-400">Loading estimate…</div>
           ) : !shingleData || !shingleData.ready ? (
             <div className="bg-white rounded-2xl p-10 text-center" style={cardStyle}>
-              <div className="text-4xl mb-3">🏠</div>
+              <div className="text-4xl mb-3"></div>
               <div className="text-slate-700 font-bold mb-1">Measurements Not Confirmed</div>
               <div className="text-slate-400 text-sm mb-4">
                 {shingleData?.message || 'Confirm your roof measurements first to generate the shingle material list.'}
@@ -495,7 +495,7 @@ export default function RoofingSection({
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 text-amber-700 text-xs">
-                ⚠ These are estimated material costs. Labor, permits, disposal, and contractor markup are not included. Always get supplier quotes before finalizing bids.
+                These are estimated material costs. Labor, permits, disposal, and contractor markup are not included. Always get supplier quotes before finalizing bids.
               </div>
             </>
           )}

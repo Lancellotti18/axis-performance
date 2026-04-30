@@ -226,7 +226,7 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
             style={measuring ? { background: 'linear-gradient(135deg,#6366f1,#4f46e5)', border: 'none' } : { borderColor: 'rgba(219,234,254,0.9)' }}
             title="Click two points to measure distance"
           >
-            📐 Measure
+            Measure
           </button>
 
           {/* Calibrate */}
@@ -236,7 +236,7 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
             style={calibrating ? { background: 'linear-gradient(135deg,#f59e0b,#d97706)', border: 'none' } : { borderColor: 'rgba(219,234,254,0.9)' }}
             title="Set a known real-world distance to calibrate measurements"
           >
-            ⚙ Calibrate
+            Calibrate
           </button>
 
           {/* Reset */}
@@ -289,7 +289,7 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
       {/* ── Scale info bar ── */}
       {!measuring && !calibrating && feetPerPixel && (
         <div className="px-4 py-1.5 bg-slate-50 border-b text-xs text-slate-400 flex items-center gap-1" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
-          {calConfirmed ? '⚙ Custom calibration active' : '~Estimated scale from blueprint sqft'}
+          {calConfirmed ? 'Custom calibration active' : '~Estimated scale from blueprint sqft'}
           {' '}— scroll to zoom, drag to pan
         </div>
       )}

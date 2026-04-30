@@ -183,12 +183,12 @@ export default function PermitPortalSection({ project, projectId }: { project: a
   }
 
   const sectionIcons: Record<string, string> = {
-    'Property Information': '🏠',
-    'Owner Information': '👤',
-    'Contractor Information': '🔨',
-    'Project Details': '📐',
-    'Signatures': '✍️',
-    'General': '📋',
+    'Property Information': '',
+    'Owner Information': '',
+    'Contractor Information': '',
+    'Project Details': '',
+    'Signatures': '',
+    'General': '',
   }
 
   return (
@@ -212,7 +212,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
                   isDone ? 'bg-emerald-500 text-white' : isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
                 }`}>
-                  {isDone ? '✓' : i + 1}
+                  {isDone ? '' : i + 1}
                 </div>
                 <span className={`text-xs font-semibold truncate ${isActive ? 'text-blue-600' : isDone ? 'text-emerald-600' : 'text-slate-400'}`}>
                   {s.label}
@@ -387,7 +387,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 {reqFiles.map((file, i) => (
                   <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-base flex-shrink-0">{file.type.includes('pdf') ? '📄' : '🖼️'}</span>
+                      <span className="text-base flex-shrink-0">{file.type.includes('pdf') ? '' : ''}</span>
                       <div className="min-w-0">
                         <div className="text-slate-700 text-xs font-semibold truncate">{file.name}</div>
                         <div className="text-slate-400 text-[10px]">{(file.size / 1024).toFixed(0)} KB</div>
@@ -532,7 +532,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
           {Object.entries(fieldsBySection).map(([section, sFields]) => (
             <div key={section} className="bg-white rounded-2xl overflow-hidden" style={cardStyle}>
               <div className="px-5 py-4 border-b flex items-center gap-2" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
-                <span className="text-base">{sectionIcons[section] || '📋'}</span>
+                <span className="text-base">{sectionIcons[section] || ''}</span>
                 <span className="text-slate-800 font-bold text-sm">{section}</span>
               </div>
               <div className="p-5 grid grid-cols-2 gap-x-5 gap-y-4">
@@ -546,10 +546,10 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                           {f.label}{f.required ? <span className="text-red-400 ml-0.5">*</span> : ''}
                         </span>
                         {f.status === 'auto_filled' && fieldValues[f.key] && (
-                          <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full px-1.5 py-0.5">✓ Auto-filled</span>
+                          <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full px-1.5 py-0.5">Auto-filled</span>
                         )}
                         {f.status === 'needs_input' && !fieldValues[f.key] && (
-                          <span className="text-[10px] font-semibold bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-1.5 py-0.5">⚠ Required</span>
+                          <span className="text-[10px] font-semibold bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-1.5 py-0.5">Required</span>
                         )}
                         {hasProfileValue && !fieldValues[f.key] && (
                           <span className="text-[10px] text-blue-500 font-normal">from saved profile</span>
@@ -594,7 +594,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                         {savingProfile ? 'Saving…' : 'Save Now'}
                       </button>
                     )}
-                    {profileSaved && <span className="text-xs text-emerald-600 font-semibold">✓ Saved</span>}
+                    {profileSaved && <span className="text-xs text-emerald-600 font-semibold">Saved</span>}
                   </div>
                 )}
               </div>

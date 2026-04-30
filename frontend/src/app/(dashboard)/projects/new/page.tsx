@@ -254,7 +254,7 @@ export default function NewProjectPage() {
             />
             {file ? (
               <div>
-                <div className="text-4xl mb-3">📄</div>
+                <div className="text-4xl mb-3"></div>
                 <p className="text-slate-800 font-semibold">{file.name}</p>
                 <p className="text-slate-400 text-sm mt-1">{(file.size / 1024 / 1024).toFixed(1)} MB — click to change</p>
               </div>
