@@ -174,15 +174,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     : user?.email?.slice(0, 2).toUpperCase() ?? '?'
 
   return (
-    <div
-      className="flex flex-col h-screen overflow-hidden font-sans"
-      style={{
-        background:
-          'radial-gradient(900px 500px at 100% 0%, rgba(127,201,244,0.20), transparent 60%),' +
-          'radial-gradient(700px 400px at 0% 100%, rgba(220,239,251,0.55), transparent 60%),' +
-          'linear-gradient(135deg, #F4F9FE 0%, #FFFFFF 60%, #EAF4FC 100%)',
-      }}
-    >
+    <div className="flex flex-col h-screen overflow-hidden font-sans axis-bench">
 
       {/* Server wake-up banner */}
       {serverWaking && (
@@ -195,18 +187,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       )}
 
       <div className="flex flex-1 overflow-hidden">
-
-      {/* Subtle dot-grid overlay */}
-      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
-        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="axis-dots" width="28" height="28" patternUnits="userSpaceOnUse">
-              <circle cx="1.2" cy="1.2" r="1.2" fill="#7FC9F4" fillOpacity="0.13" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#axis-dots)" />
-        </svg>
-      </div>
 
       {/* ── SIDEBAR ──────────────────────────────────────────────────────── */}
       <aside
