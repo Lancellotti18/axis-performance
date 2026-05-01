@@ -15,16 +15,12 @@ const ExteriorCarousel  = dynamic(() => import('./ExteriorCarousel'),  { ssr: fa
 import RoofingSection from './RoofingSection'
 import PermitPortalSection from './PermitPortalSection'
 import { computeMaterialConfidence, loadReviewedIds, saveReviewedIds } from './materialConfidence'
-const ExteriorCaptureWizard = dynamic(() => import('./ExteriorCaptureWizard'), { ssr: false })
-const PhotoLightbox = dynamic(() => import('./PhotoLightbox'), { ssr: false })
-const PhotoMapView = dynamic(() => import('./PhotoMapView'), { ssr: false })
-
 // Images are base64 data URIs from backend — no staggering needed
 function StaggeredRender({ src, label, totalSqft }: { src: string; label: string; totalSqft?: number }) {
   return <RenderViewer src={src} label={label} totalSqft={totalSqft} />
 }
 
-type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'photos' | 'compliance' | 'permits' | 'roofing'
+type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'compliance' | 'permits' | 'roofing'
 type SortMode = 'lowest_price' | 'best_value'
 
 // Labor split by trade (fractions of total labor cost)
@@ -128,16 +124,6 @@ export default function ProjectPage() {
   const [reviewedMaterials, setReviewedMaterials] = useState<Set<string>>(new Set())
   const [reviewFilterOnly, setReviewFilterOnly] = useState(false)
 
-  // Photos tab
-  const [photos, setPhotos] = useState<any[]>([])
-  const [photosLoading, setPhotosLoading] = useState(false)
-  const [photoPhase, setPhotoPhase] = useState<'all' | 'before' | 'during' | 'after'>('all')
-  const [uploadingPhoto, setUploadingPhoto] = useState(false)
-  const [selectedPhoto, setSelectedPhoto] = useState<any>(null)
-  const [showCaptureWizard, setShowCaptureWizard] = useState(false)
-  const [damageReportLoading, setDamageReportLoading] = useState(false)
-  const [damageReportError, setDamageReportError] = useState<string | null>(null)
-  const [photoViewMode, setPhotoViewMode] = useState<'grid' | 'map'>('grid')
   // Job costing (actual spend per category, stored in localStorage)
   const [actualCosts, setActualCosts] = useState<Record<string, number>>({})
   // Blueprint signed URL for display
@@ -145,10 +131,6 @@ export default function ProjectPage() {
   const [blueprintFileType, setBlueprintFileType] = useState<string>('')
   // Proposal modal
   const [showProposal, setShowProposal] = useState(false)
-  // Photo-to-Measurements
-  const [photoMeasureLoading, setPhotoMeasureLoading] = useState(false)
-  const [photoMeasureResult, setPhotoMeasureResult] = useState<any>(null)
-  const [photoMeasureError, setPhotoMeasureError] = useState<string | null>(null)
   // Hail/Wind Risk Score
   // Aerial Roof Report
   // EagleView-style roof outline editor
@@ -220,13 +202,6 @@ export default function ProjectPage() {
       }
       const complianceData = await api.compliance.getForProject(projectId).catch(() => null)
       if (complianceData) setCompliance(complianceData)
-      // Load photos
-      try {
-        const photoData = await api.photos.list(projectId)
-        setPhotos(photoData || [])
-      } catch (err) {
-        log.warn('photos.list failed', err)
-      }
     } catch (err) {
       log.error('loadData', err)
       toast.error(`Could not load project: ${describeError(err)}`)
@@ -425,19 +400,6 @@ export default function ProjectPage() {
     setMatCheckLoading(false)
   }
 
-  async function handlePhotoMeasure() {
-    setPhotoMeasureLoading(true)
-    setPhotoMeasureError(null)
-    setPhotoMeasureResult(null)
-    try {
-      const result = await api.photos.measure(projectId)
-      setPhotoMeasureResult(result)
-    } catch (err: any) {
-      setPhotoMeasureError(err.message || 'Measurement analysis failed.')
-    }
-    setPhotoMeasureLoading(false)
-  }
-
   function openQuoteModal(vendor: string, url: string) {
     const allItems = estimate?.material_estimates || []
     setQuoteModal({ vendor, url, items: allItems })
@@ -477,37 +439,6 @@ ${quoteForm.notes || '(none)'}
 ─────────────────────────────────────────────────────
 Please provide pricing and availability for the above items.
 Thank you for your time.`
-  }
-
-  const photoInputRef = useRef<HTMLInputElement>(null)
-
-  async function handlePhotoUpload(phase: 'before' | 'during' | 'after', files: FileList | null) {
-    if (!files || files.length === 0) return
-    setUploadingPhoto(true)
-    try {
-      for (const file of Array.from(files)) {
-        const { upload_url, key, public_url } = await api.photos.getUploadUrl(projectId, `${Date.now()}_${file.name}`, file.type)
-        // Upload directly to Supabase storage
-        await fetch(upload_url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
-        // Register in DB
-        await api.photos.register(projectId, { storage_key: key, filename: file.name, phase })
-      }
-      // Reload photos
-      const updated = await api.photos.list(projectId)
-      setPhotos(updated || [])
-      toast.success('Photos uploaded')
-    } catch (err) {
-      log.error('handleUploadPhoto', err)
-      toast.error(`Upload failed: ${describeError(err)}`)
-    }
-    setUploadingPhoto(false)
-  }
-
-  async function handleDeletePhoto(photo: any) {
-    try {
-      await api.photos.delete(projectId, photo.id)
-      setPhotos(prev => prev.filter(p => p.id !== photo.id))
-    } catch {}
   }
 
   async function handleGenerateProposal() {
@@ -698,7 +629,6 @@ Thank you for your time.`
     { id: 'materials',  label: 'Materials', badge: materials.length || undefined },
     { id: 'cost',       label: 'Cost Estimate' },
     { id: 'view3d',     label: 'Renders' },
-    { id: 'photos' as Tab,     label: 'Photos', badge: photos.length || undefined },
     { id: 'compliance', label: 'Compliance', badge: (requiredCount + (matCheckResult?.violations?.length ?? 0)) || undefined },
     { id: 'permits',    label: 'Permits' },
   ]
@@ -1710,266 +1640,6 @@ Thank you for your time.`
                 </div>
                 {/* ── END AI RENDERS ─────────────────────────────────────────── */}
 
-              </div>
-            )}
-
-            {/* ── PHOTOS ──────────────────────────────────────────────── */}
-            {tab === 'photos' && (
-              <div className="max-w-5xl">
-                {showCaptureWizard && (
-                  <ExteriorCaptureWizard
-                    projectId={projectId}
-                    initialPhotos={photos}
-                    onComplete={async () => {
-                      try {
-                        const photoData = await api.photos.list(projectId)
-                        setPhotos(photoData || [])
-                      } catch {}
-                    }}
-                    onClose={() => setShowCaptureWizard(false)}
-                  />
-                )}
-                <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
-                  <div>
-                    <h2 className="text-slate-800 font-bold text-lg">Job Photos</h2>
-                    <p className="text-slate-400 text-xs mt-0.5">{photos.length} photo{photos.length !== 1 ? 's' : ''} — before, during, and after documentation</p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={() => setShowCaptureWizard(true)}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02]"
-                      style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
-                      title="Guided 8-angle exterior capture"
-                    >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
-                      Guided Capture
-                    </button>
-                    <button
-                      onClick={async () => {
-                        setDamageReportError(null)
-                        setDamageReportLoading(true)
-                        try {
-                          await api.photos.downloadDamageReport(projectId, { includeAll: false })
-                        } catch (err) {
-                          setDamageReportError(err instanceof Error ? err.message : 'Download failed')
-                        }
-                        setDamageReportLoading(false)
-                      }}
-                      disabled={damageReportLoading || photos.length === 0}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ background: damageReportLoading ? '#94a3b8' : 'linear-gradient(135deg, #dc2626, #991b1b)', boxShadow: '0 4px 14px rgba(220,38,38,0.25)' }}
-                      title="One page per AI-tagged damaged photo"
-                    >
-                      {damageReportLoading ? (
-                        <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Building PDF…</>
-                      ) : (
-                        <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Damage PDF</>
-                      )}
-                    </button>
-                    {(['before', 'during', 'after'] as const).map(phase => (
-                      <label key={phase} className="relative cursor-pointer">
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          className="sr-only"
-                          onChange={e => handlePhotoUpload(phase, e.target.files)}
-                        />
-                        <span className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all border ${
-                          phase === 'before' ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' :
-                          phase === 'during' ? 'bg-amber-500 text-white border-amber-500 hover:bg-amber-600' :
-                          'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
-                        }`}>
-                          {uploadingPhoto ? <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> : '+'} {phase.charAt(0).toUpperCase() + phase.slice(1)}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {damageReportError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-2 mb-3">
-                    Damage PDF: {damageReportError}
-                  </div>
-                )}
-
-                {/* Phase filter + view mode toggle */}
-                <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-                  <div className="flex gap-2">
-                    {(['all', 'before', 'during', 'after'] as const).map(p => {
-                      const count = p === 'all' ? photos.length : photos.filter(ph => ph.phase === p).length
-                      const colors: Record<string, string> = { all: 'bg-blue-600 text-white border-blue-600', before: 'bg-blue-600 text-white border-blue-600', during: 'bg-amber-500 text-white border-amber-500', after: 'bg-emerald-600 text-white border-emerald-600' }
-                      return (
-                        <button key={p} onClick={() => setPhotoPhase(p)}
-                          className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all capitalize ${photoPhase === p ? colors[p] : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300'}`}>
-                          {p === 'all' ? 'All' : p.charAt(0).toUpperCase() + p.slice(1)} ({count})
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <div className="inline-flex items-center bg-slate-100 rounded-full p-1">
-                    <button
-                      onClick={() => setPhotoViewMode('grid')}
-                      className={`text-xs font-semibold px-3 py-1 rounded-full transition-all ${photoViewMode === 'grid' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                      ▦ Grid
-                    </button>
-                    <button
-                      onClick={() => setPhotoViewMode('map')}
-                      className={`text-xs font-semibold px-3 py-1 rounded-full transition-all ${photoViewMode === 'map' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                      Map
-                    </button>
-                  </div>
-                </div>
-
-                {/* Photo grid or map */}
-                {photoViewMode === 'map' ? (
-                  <PhotoMapView
-                    photos={(photoPhase === 'all' ? photos : photos.filter(p => p.phase === photoPhase)) as any}
-                    onSelect={p => setSelectedPhoto(p)}
-                  />
-                ) : (() => {
-                  const displayed = photoPhase === 'all' ? photos : photos.filter(p => p.phase === photoPhase)
-                  if (displayed.length === 0) return (
-                    <div className="bg-white rounded-2xl p-16 text-center" style={cardStyle}>
-                      <div className="text-slate-700 font-semibold mb-1">No photos yet</div>
-                      <div className="text-slate-400 text-sm">Upload before, during, and after photos using the buttons above.</div>
-                    </div>
-                  )
-                  return (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {displayed.map((photo: any) => {
-                        const phaseColors: Record<string, string> = { before: 'bg-blue-500', during: 'bg-amber-500', after: 'bg-emerald-500' }
-                        const hasGeo = typeof photo.latitude === 'number' && typeof photo.longitude === 'number'
-                        const hasNotes = !!(photo.notes && photo.notes.trim())
-                        const hasAutoTags = photo.auto_tags && (photo.auto_tags.area || (photo.auto_tags.materials || []).length > 0)
-                        return (
-                          <div key={photo.id} className="relative group bg-white rounded-2xl overflow-hidden cursor-pointer flex flex-col" style={cardStyle} onClick={() => setSelectedPhoto(photo)}>
-                            <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
-                              <img src={photo.url} alt={photo.filename} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
-                              <div className="absolute top-2 left-2 flex items-center gap-1">
-                                <span className={`text-[10px] font-bold text-white px-2 py-0.5 rounded-full capitalize ${phaseColors[photo.phase] || 'bg-slate-500'}`}>{photo.phase}</span>
-                                {hasGeo && (
-                                  <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title={`${photo.latitude.toFixed(4)}, ${photo.longitude.toFixed(4)}`}></span>
-                                )}
-                                {hasNotes && (
-                                  <span className="text-[10px] font-bold text-white bg-slate-900/70 px-1.5 py-0.5 rounded-full" title="Has notes"></span>
-                                )}
-                                {hasAutoTags && (
-                                  <span className="text-[10px] font-bold text-white bg-indigo-500/90 px-1.5 py-0.5 rounded-full" title="AI-tagged"></span>
-                                )}
-                              </div>
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-end justify-end p-2">
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleDeletePhoto(photo) }}
-                                  className="p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                >
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
-                                </button>
-                              </div>
-                            </div>
-                            <div className="px-3 py-2">
-                              <div className="text-slate-500 text-[10px] truncate">{photo.filename}</div>
-                              {(photo.auto_tags?.area || (photo.tags || []).length > 0) && (
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {photo.auto_tags?.area && (
-                                    <span className="text-[9px] bg-slate-100 text-slate-600 font-semibold px-1.5 py-0.5 rounded-full capitalize">{photo.auto_tags.area}</span>
-                                  )}
-                                  {(photo.tags || []).slice(0, 2).map((t: string) => (
-                                    <span key={t} className="text-[9px] bg-indigo-50 text-indigo-700 font-semibold px-1.5 py-0.5 rounded-full">{t}</span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
-
-                {/* Photo-to-Measurements */}
-                <div className="mt-6 bg-white rounded-2xl p-5" style={cardStyle}>
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-slate-800 font-bold text-sm">AI Measurement Estimate</h3>
-                      <p className="text-slate-400 text-xs mt-0.5">Claude Vision analyzes your photos to estimate wall area, roof area, and dimensions.</p>
-                    </div>
-                    <button
-                      onClick={handlePhotoMeasure}
-                      disabled={photoMeasureLoading || photos.length === 0}
-                      title={photos.length === 0 ? 'Upload at least one photo first' : ''}
-                      className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
-                      style={{ background: photoMeasureLoading ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #1e40af)', boxShadow: '0 4px 14px rgba(37,99,235,0.25)' }}
-                    >
-                      {photoMeasureLoading ? (
-                        <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Analyzing…</>
-                      ) : 'Measure from Photos'}
-                    </button>
-                  </div>
-                  {photoMeasureError && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">{photoMeasureError}</div>
-                  )}
-                  {photoMeasureResult && (
-                    <div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                        {[
-                          { label: 'Total Sqft',     value: `${(photoMeasureResult.total_sqft || 0).toLocaleString()} sqft` },
-                          { label: 'Wall Area',      value: `${(photoMeasureResult.wall_area_sqft || 0).toLocaleString()} sqft` },
-                          { label: 'Roof Area',      value: `${(photoMeasureResult.roof_area_sqft || 0).toLocaleString()} sqft` },
-                          { label: 'Perimeter',      value: `${photoMeasureResult.perimeter_ft || 0} ft` },
-                          { label: 'Stories',        value: photoMeasureResult.stories || '—' },
-                          { label: 'Wall Height',    value: `${photoMeasureResult.wall_height_ft || '—'} ft` },
-                          { label: 'Photos Used',    value: photoMeasureResult.photo_count || photos.length },
-                          { label: 'Confidence',     value: `${Math.round((photoMeasureResult.confidence || 0) * 100)}%` },
-                        ].map(s => (
-                          <div key={s.label} className="bg-blue-50 rounded-xl p-3">
-                            <div className="text-blue-800 font-black text-lg">{s.value}</div>
-                            <div className="text-blue-500 text-xs mt-0.5">{s.label}</div>
-                          </div>
-                        ))}
-                      </div>
-                      {photoMeasureResult.structure_type && (
-                        <div className="text-slate-500 text-xs mb-2"><span className="font-semibold text-slate-700">Structure:</span> {photoMeasureResult.structure_type}</div>
-                      )}
-                      {photoMeasureResult.dimensions && (
-                        <div className="text-slate-500 text-xs mb-2"><span className="font-semibold text-slate-700">Est. Dimensions:</span> ~{photoMeasureResult.dimensions.estimated_width_ft}ft wide × {photoMeasureResult.dimensions.estimated_depth_ft}ft deep</div>
-                      )}
-                      {photoMeasureResult.notes && (
-                        <div className="text-slate-500 text-xs mb-2 italic">{photoMeasureResult.notes}</div>
-                      )}
-                      {photoMeasureResult.warnings?.length > 0 && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-2">
-                          {photoMeasureResult.warnings.map((w: string, i: number) => (
-                            <div key={i} className="text-amber-700 text-xs flex items-start gap-1.5"><span className="mt-0.5"></span>{w}</div>
-                          ))}
-                        </div>
-                      )}
-                      <p className="text-slate-400 text-[10px] mt-3">AI estimates only — verify all measurements on-site before ordering materials.</p>
-                    </div>
-                  )}
-                  {!photoMeasureResult && !photoMeasureError && !photoMeasureLoading && (
-                    <div className="text-center py-6 text-slate-400 text-sm">
-                      {photos.length === 0
-                        ? 'Upload photos above, then click "Measure from Photos" to get AI estimates.'
-                        : `${photos.length} photo${photos.length > 1 ? 's' : ''} ready — click "Measure from Photos" to extract dimensions.`}
-                    </div>
-                  )}
-                </div>
-
-                {/* Lightbox with CompanyCam-style metadata side panel */}
-                {selectedPhoto && (
-                  <PhotoLightbox
-                    photo={selectedPhoto}
-                    projectId={projectId}
-                    onClose={() => setSelectedPhoto(null)}
-                    onUpdate={updated => {
-                      setSelectedPhoto(updated)
-                      setPhotos(prev => prev.map(p => (p.id === updated.id ? { ...p, ...updated } : p)))
-                    }}
-                  />
-                )}
               </div>
             )}
 

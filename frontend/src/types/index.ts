@@ -153,38 +153,6 @@ export interface RoofMeasurements {
   created_at: string
 }
 
-// ── Photos ────────────────────────────────────────────────────────────────
-export type PhotoPhase = 'before' | 'during' | 'after'
-
-export interface PhotoAutoTags {
-  phase?: PhotoPhase | null
-  area?: string | null
-  materials?: string[]
-  damage?: string[]
-  safety?: string[]
-  summary?: string | null
-  confidence?: number
-  autotag_unverified?: boolean
-  error?: string
-}
-
-export interface Photo {
-  id: string
-  project_id: string
-  storage_key: string
-  filename: string
-  phase: PhotoPhase
-  url: string
-  created_at: string
-  captured_at?: string | null
-  latitude?: number | null
-  longitude?: number | null
-  notes?: string | null
-  tags?: string[] | null
-  auto_tags?: PhotoAutoTags | null
-  ai_tagged_at?: string | null
-}
-
 // ── Materials pricing ─────────────────────────────────────────────────────
 export interface VendorOption {
   vendor: string

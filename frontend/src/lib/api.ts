@@ -10,7 +10,6 @@ import type {
   ComplianceCheck,
   EstimateFull,
   ReportFull,
-  Photo,
   PermitField,
   Jurisdiction,
   VendorOption,
@@ -486,57 +485,10 @@ export const api = {
     deleteNote: (leadId: string, noteId: string) =>
       apiRequest<{ ok: boolean }>(`/api/v1/crm/leads/${leadId}/notes/${noteId}`, { method: 'DELETE' }),
   },
+  // Voice-note transcription (the rest of the photos surface was archived
+  // 2026-05-01 — see Obsidian: BuildAI - Photo Feature Archive (2026-05-01)).
+  // Path stays /api/v1/photos/transcribe so client + server stay aligned.
   photos: {
-    getUploadUrl: (projectId: string, filename: string, contentType: string) =>
-      apiRequest<{ upload_url: string; key: string; public_url: string }>(
-        `/api/v1/photos/upload-url/${projectId}?filename=${encodeURIComponent(filename)}&content_type=${encodeURIComponent(contentType)}`
-      ),
-    register: (
-      projectId: string,
-      payload: {
-        storage_key: string
-        filename: string
-        phase: string
-        captured_at?: string
-        latitude?: number
-        longitude?: number
-        notes?: string
-        tags?: string[]
-      },
-    ) =>
-      apiRequest<Photo>(`/api/v1/photos/register/${projectId}`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      }),
-    list: (projectId: string) =>
-      apiRequest<Photo[]>(`/api/v1/photos/${projectId}`),
-    update: (
-      projectId: string,
-      photoId: string,
-      patch: { notes?: string; tags?: string[]; phase?: string },
-    ) =>
-      apiRequest<Photo>(`/api/v1/photos/${projectId}/${photoId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(patch),
-      }),
-    autoTag: (projectId: string, photoId: string) =>
-      apiRequest<{ photo_id: string; auto_tags: Record<string, unknown> }>(
-        `/api/v1/photos/autotag/${projectId}/${photoId}`,
-        { method: 'POST' },
-        60000,
-      ),
-    autoTagBulk: (projectId: string, opts?: { force?: boolean }) => {
-      const qs = opts?.force ? '?force=true' : ''
-      return apiRequest<{
-        tagged: number
-        skipped: number
-        results: { photo_id: string; auto_tags: Record<string, unknown> }[]
-      }>(
-        `/api/v1/photos/autotag/${projectId}/bulk${qs}`,
-        { method: 'POST' },
-        180000,
-      )
-    },
     transcribe: async (audio: Blob, filename = 'note.webm') => {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -553,33 +505,6 @@ export const api = {
       }
       return res.json() as Promise<{ text: string; language: string | null; provider: string }>
     },
-    downloadDamageReport: async (projectId: string, opts?: { includeAll?: boolean }) => {
-      const { data: { session } } = await supabase.auth.getSession()
-      const token = session?.access_token
-      const qs = opts?.includeAll ? '?include_all=true' : ''
-      const res = await fetch(`${API_BASE}/api/v1/photos/damage-report/${projectId}/pdf${qs}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
-      if (!res.ok) {
-        const t = await res.text().catch(() => '')
-        throw new Error(t || `HTTP ${res.status}`)
-      }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      const cd = res.headers.get('Content-Disposition') || ''
-      const match = cd.match(/filename="?([^";]+)"?/)
-      a.download = match?.[1] || `damage-report-${projectId.slice(0, 8)}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setTimeout(() => URL.revokeObjectURL(url), 2000)
-    },
-    delete: (projectId: string, photoId: string) =>
-      apiRequest<{ ok: boolean }>(`/api/v1/photos/${projectId}/${photoId}`, { method: 'DELETE' }),
-    measure: (projectId: string) =>
-      apiRequest<Record<string, unknown>>(`/api/v1/photos/measure/${projectId}`, { method: 'POST' }, 120000),
   },
   model3d: {
     parse: (projectId: string) =>
