@@ -382,7 +382,7 @@ async def _anthropic_text(prompt: str, system: Optional[str], max_tokens: int) -
     import anthropic
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-    kwargs = {"model": "claude-opus-4-6", "max_tokens": max_tokens,
+    kwargs = {"model": "claude-sonnet-4-6", "max_tokens": max_tokens,
               "messages": [{"role": "user", "content": prompt}]}
     if system:
         kwargs["system"] = system
@@ -408,7 +408,7 @@ async def _anthropic_vision(
         {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
         {"type": "text", "text": prompt},
     ]
-    kwargs = {"model": "claude-opus-4-6", "max_tokens": max_tokens,
+    kwargs = {"model": "claude-sonnet-4-6", "max_tokens": max_tokens,
               "messages": [{"role": "user", "content": content}]}
     if system:
         kwargs["system"] = system
@@ -502,7 +502,7 @@ def llm_text_sync(
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-            kwargs = {"model": "claude-opus-4-6", "max_tokens": max_tokens,
+            kwargs = {"model": "claude-sonnet-4-6", "max_tokens": max_tokens,
                       "messages": [{"role": "user", "content": prompt}]}
             if system:
                 kwargs["system"] = system
@@ -593,7 +593,7 @@ def llm_vision_sync(
                 {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
                 {"type": "text", "text": prompt},
             ]
-            kwargs = {"model": "claude-opus-4-6", "max_tokens": max_tokens,
+            kwargs = {"model": "claude-sonnet-4-6", "max_tokens": max_tokens,
                       "messages": [{"role": "user", "content": content}]}
             if system:
                 kwargs["system"] = system
