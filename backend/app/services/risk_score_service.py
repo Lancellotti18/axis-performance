@@ -155,6 +155,7 @@ async def get_risk_score(city: str, state: str, zip_code: str = "") -> dict:
             f"{city} {state} tornado hail wind damage reports {last_year} {this_year}",
             f"{city} {state} wildfire evacuation {last_year} {this_year}",
             f"{state} earthquake seismic activity {last_year} {this_year} USGS",
+            f"{city} {state} winter storm blizzard ice snow damage {last_year} {this_year}",
             f"{city} {state} building code update resilience hurricane wind {last_year} {this_year}",
             f"{zip_code or city} {state} FEMA disaster declaration {last_year} {this_year}",
         ],
@@ -179,9 +180,15 @@ RESEARCH (use this to ground your analysis — do not fabricate events that aren
 {research if research else f"No live data retrieved. Use only your own verified knowledge of {location} geography, FEMA/NOAA/USGS records, and published building-code history. If you do not have confident information, leave scores at 0 and arrays empty rather than guessing."}
 
 RULES
-  1. Every score, event, and recommendation must be grounded in the research above OR in verifiable published data for this exact location. Never invent a specific event, date, or code update.
+  1. Every score, event, and recommendation must be grounded in the research above OR in verifiable published climate / seismic / building-code data for this exact location. Never invent a specific event, date, or code update.
   2. "recent_events" should be events from approximately the past 24 months that the research supports. Leave the array empty if nothing verifiable was retrieved.
-  3. Set a hazard score to 0 if that hazard is not realistically applicable at this location (e.g., hurricane risk in landlocked Kansas = 0; tornado risk in coastal Maine = 0-1).
+  3. SCORE EVERY HAZARD based on the location's well-established climate and geological profile, not just on whatever the research happened to surface. Examples:
+       - Pennsylvania / Ohio / Northeast → winter storms typically score 6-8 (lake-effect snow, ice storms, nor'easters)
+       - Texas / Oklahoma / Kansas / Nebraska → tornado typically 7-9, hail typically 6-8
+       - Florida / Gulf Coast / Carolina coast → hurricane typically 7-10
+       - California / Pacific Northwest → earthquake typically 5-9, wildfire 5-9
+       - Arizona / New Mexico / Nevada → wildfire 4-7, earthquake 1-3
+     Use 0 ONLY when a hazard is genuinely not applicable (e.g., hurricane in landlocked Kansas; tornado in coastal Maine = 1-2 not 0).
   4. "reinforcement_recommendations" must cite WHY — tie each recommendation to a recent event, a FEMA/state code update, or documented regional best practice. Do not produce generic advice.
 
 Return ONLY valid JSON — no prose before or after — with this exact shape:
