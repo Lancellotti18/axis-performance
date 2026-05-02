@@ -7,6 +7,7 @@ import cv2
 import logging
 import numpy as np
 import os
+import re
 from app.core.config import settings
 from app.core.supabase import get_supabase
 from app.services.llm import llm_vision_sync
@@ -113,7 +114,10 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
         from app.services.cost_engine import CostEngine
         cost_engine = CostEngine()
         total_sqft = float(structured_data.get("total_sqft") or 0)
-        costs = cost_engine.calculate(materials, region, total_sqft=total_sqft)
+        building_type = structured_data.get("building_type") or "residential"
+        costs = cost_engine.calculate(
+            materials, region, total_sqft=total_sqft, building_type=building_type,
+        )
     except Exception:
         logger.warning("CostEngine failed, using simple total-based fallback", exc_info=True)
         total = sum(m.get("total_cost", 0) for m in materials)
@@ -241,57 +245,89 @@ Pre-detection hints (use as reference only — override with what you see in the
 
     prompt = f"""You are an expert construction estimator analyzing a blueprint or construction image.
 {hint_block}
-Analyze the image carefully and return a single JSON object with ALL of the following fields.
-Even if the image is a photo rather than a formal blueprint, make your best professional estimate.
+FIRST decide what kind of structure this is. The estimate must match the building type — a 10,000 sqft warehouse is NOT priced like a 10,000 sqft house.
+
+building_type values (pick the closest):
+- "residential"   — single-family home, townhouse, duplex
+- "multifamily"   — apartment / condo building
+- "warehouse"     — steel-frame industrial shell, slab-on-grade, metal panels, overhead doors
+- "industrial"    — manufacturing, processing, heavier MEP than warehouse
+- "office"        — commercial office, finished interiors
+- "retail"        — storefront, restaurant, light commercial
+- "mixed_use"     — ground-floor commercial + residential above
+- "other"         — explain in notes
+
+Total-cost benchmarks (US national avg, all-in including labor + markup). Your materials list × 1.5 (rough labor+markup) should land in this band:
+- residential:   $150 – $300 / sqft
+- multifamily:   $180 – $320 / sqft
+- warehouse:     $40  – $90  / sqft  (shell only $25–60, +office finish brings it up)
+- industrial:    $90  – $200 / sqft
+- office:        $180 – $400 / sqft
+- retail:        $150 – $350 / sqft
+- mixed_use:     $200 – $400 / sqft
+
+If the image shows a large open floor plan with no interior rooms, big rectangular footprint, dock doors, or steel column grid → it's a warehouse / industrial — DO NOT estimate residential framing, drywall, copper plumbing, or asphalt shingles for it. Use steel framing, metal roof + wall panels, slab-on-grade concrete (4–6 in thick), overhead doors, fire sprinklers, industrial electrical (3-phase service typical), and minimal interior partitions.
+
+Return a single JSON object with ALL of the following fields:
 
 {{
+  "building_type": "warehouse",
   "rooms": [
-    {{"name": "Kitchen", "sqft": 200.0, "dimensions": {{"width": 16.0, "height": 12.5}}}}
+    {{"name": "Main Warehouse Floor", "sqft": 9000.0, "dimensions": {{"width": 100.0, "height": 90.0}}}},
+    {{"name": "Office", "sqft": 1000.0, "dimensions": {{"width": 25.0, "height": 40.0}}}}
   ],
   "walls": [
-    {{"length": 16.0, "thickness": 0.5, "type": "interior"}}
+    {{"length": 100.0, "thickness": 0.5, "type": "exterior_metal_panel"}}
   ],
   "openings": [
-    {{"type": "door", "width": 3.0, "height": 6.8}},
-    {{"type": "window", "width": 3.0, "height": 4.0}}
+    {{"type": "door", "width": 12.0, "height": 14.0}},
+    {{"type": "window", "width": 4.0, "height": 4.0}}
   ],
   "electrical": [
-    {{"type": "outlet", "count": 12}},
-    {{"type": "switch", "count": 8}},
-    {{"type": "light_fixture", "count": 10}}
+    {{"type": "high_bay_light", "count": 24}},
+    {{"type": "outlet", "count": 20}}
   ],
   "plumbing": [
-    {{"type": "sink", "count": 2}},
-    {{"type": "toilet", "count": 2}},
-    {{"type": "shower", "count": 1}}
+    {{"type": "sink", "count": 1}},
+    {{"type": "toilet", "count": 2}}
   ],
-  "total_sqft": 1850.0,
+  "total_sqft": 10000.0,
   "confidence": 0.85,
-  "notes": "Brief description of the structure",
+  "notes": "Pre-engineered metal building with attached office",
   "materials": [
     {{
-      "category": "lumber",
-      "item_name": "2x4x8 Stud",
-      "quantity": 120,
-      "unit": "each",
-      "unit_cost": 8.50,
-      "total_cost": 1020.00
+      "category": "structural_steel",
+      "item_name": "Pre-engineered steel frame (rigid frames, purlins, girts)",
+      "quantity": 10000,
+      "unit": "sqft_building",
+      "unit_cost": 9.00,
+      "total_cost": 90000.00
+    }},
+    {{
+      "category": "concrete",
+      "item_name": "Slab-on-grade 5in with rebar",
+      "quantity": 10000,
+      "unit": "sqft",
+      "unit_cost": 6.50,
+      "total_cost": 65000.00
     }}
   ]
 }}
 
-Material categories to include (cover all that apply):
-lumber, sheathing, drywall, insulation, roofing, concrete, flooring,
-doors_windows, electrical, plumbing, finishing
+Residential example shape (do NOT use for warehouses):
+- rooms: Kitchen / Bedroom / Bath, ~200 sqft each
+- materials: 2x4 studs, OSB sheathing, drywall, batt insulation, asphalt shingles, copper supply, double-hung windows
+
+Material categories — use ALL that apply for the detected building type:
+- residential / multifamily: lumber, sheathing, drywall, insulation, roofing (asphalt), concrete (footings + slab), flooring, doors_windows, electrical, plumbing, finishing
+- warehouse / industrial: structural_steel, metal_panels (wall + roof), concrete (slab + footings), overhead_doors, fire_protection (sprinklers), electrical (3-phase, high-bay), plumbing (minimal), insulation (rigid + roof blanket), finishing (office only)
+- office / retail: structural_steel OR wood, metal_deck or sheathing, drywall, ceiling (acoustic tile), flooring (carpet/LVT/tile), HVAC, electrical, plumbing, glazing, finishing
 
 For the materials list:
-- Be thorough and realistic — include every major material category needed
-- Base quantities on the detected square footage and room count
+- Size quantities to the DETECTED total_sqft and the building_type benchmark above
 - Use current US market unit costs
-- Include framing lumber, sheathing, drywall, insulation, roofing, flooring,
-  doors, windows, electrical rough-in, plumbing rough-in, and finishing materials
-- If you cannot determine exact quantities from the image, use reasonable estimates
-  for a structure of the detected size
+- If the math (sum of total_cost × ~1.5) doesn't land near the benchmark range for the type, your list is wrong — add or scale items
+- Do not put residential items in a warehouse list, or vice versa
 
 Return ONLY the JSON object, no markdown, no explanation."""
 
@@ -303,28 +339,83 @@ Return ONLY the JSON object, no markdown, no explanation."""
     except Exception:
         logger.exception("llm_vision_sync FAILED")
         raise
-    # Strip markdown fences if present
-    if "```" in text:
-        start = text.find("{", text.find("```"))
-        end = text.rfind("}") + 1
-        text = text[start:end]
-    else:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start != -1:
-            text = text[start:end]
+    parsed = _parse_blueprint_json(text)
+    if parsed is not None:
+        return parsed
+
+    logger.warning(
+        "claude_analyze: JSON parse failed after tolerant recovery. raw[:300]=%r",
+        (text or "")[:300],
+    )
+    raise ValueError(
+        "AI returned an unparseable response. Please try the scan again — if it "
+        "keeps happening, the blueprint may be too low-resolution or unclear."
+    )
+
+
+def _parse_blueprint_json(text: str) -> dict | None:
+    """
+    Tolerant JSON parser for the blueprint LLM response. Strips fences, finds
+    the largest balanced {...} block, fixes trailing commas / Python-isms, and
+    walks back through `}` boundaries on truncated output. Returns None if
+    nothing usable could be salvaged.
+    """
+    raw = (text or "").strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, count=1)
+    raw = re.sub(r"\s*```\s*$", "", raw)
+    start = raw.find("{")
+    if start < 0:
+        return None
+
+    depth, end, in_str, escape = 0, -1, False, False
+    for i in range(start, len(raw)):
+        ch = raw[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+
+    candidate = raw[start:end + 1] if end > 0 else raw[start:]
+    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+    candidate = re.sub(r"\bNone\b", "null", candidate)
+    candidate = re.sub(r"\bTrue\b", "true", candidate)
+    candidate = re.sub(r"\bFalse\b", "false", candidate)
 
     try:
-        return json.loads(text)
+        return json.loads(candidate)
     except json.JSONDecodeError:
-        # Last resort — return minimal valid structure
-        return {
-            "rooms": [], "walls": [], "openings": [],
-            "electrical": [], "plumbing": [],
-            "total_sqft": 0, "confidence": 0.1,
-            "notes": "Could not parse Claude response",
-            "materials": [],
-        }
+        for i in range(len(candidate) - 1, -1, -1):
+            if candidate[i] != "}":
+                continue
+            try:
+                return json.loads(candidate[:i + 1])
+            except Exception:
+                continue
+        repaired = candidate
+        if repaired.count('"') % 2 == 1:
+            repaired += '"'
+        open_arr = repaired.count("[") - repaired.count("]")
+        open_obj = repaired.count("{") - repaired.count("}")
+        repaired += "]" * max(open_arr, 0) + "}" * max(open_obj, 0)
+        repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+        try:
+            return json.loads(repaired)
+        except Exception:
+            return None
 
 
 # ── DB persistence ─────────────────────────────────────────────────────────────

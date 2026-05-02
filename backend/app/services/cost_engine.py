@@ -42,6 +42,36 @@ MATERIAL_INDEX = {
 
 LABOR_HOURS_PER_SQFT = 0.9  # NAHB avg for residential new construction
 
+# Labor hours per sqft by building type. Warehouses are mostly steel erection
+# + slab pour with very little finishing, so labor is a small fraction of a
+# residential build. Office/retail land in the middle.
+LABOR_HOURS_BY_TYPE = {
+    "residential":  0.9,
+    "multifamily": 0.85,
+    "warehouse":   0.20,
+    "industrial":  0.35,
+    "office":      0.55,
+    "retail":      0.45,
+    "mixed_use":   0.70,
+    "other":       0.5,
+}
+
+# Minimum all-in $/sqft (grand_total ÷ total_sqft) by building type — US national
+# avg, conservative low end. If the computed grand_total comes in below this, the
+# materials list almost certainly missed major scope (e.g. residential parts list
+# applied to a warehouse). We scale materials_total up to hit the floor and flag
+# the result so the UI can show "estimate adjusted for missing scope".
+MIN_DOLLARS_PER_SQFT = {
+    "residential":  140.0,
+    "multifamily": 160.0,
+    "warehouse":    40.0,
+    "industrial":   85.0,
+    "office":      170.0,
+    "retail":      140.0,
+    "mixed_use":   180.0,
+    "other":       100.0,
+}
+
 
 class CostEngine:
 
@@ -51,6 +81,7 @@ class CostEngine:
         region: str,
         markup_pct: float = 15.0,
         total_sqft: Optional[float] = None,
+        building_type: Optional[str] = None,
     ) -> dict:
         """Build a cost estimate. Pass total_sqft from the blueprint analysis
         so labor is not derived from flooring material quantity (which fails
@@ -93,13 +124,42 @@ class CostEngine:
                 )
                 total_sqft = 0
 
-        labor_hours = total_sqft * LABOR_HOURS_PER_SQFT
+        btype = (building_type or "residential").lower()
+        hrs_per_sqft = LABOR_HOURS_BY_TYPE.get(btype, LABOR_HOURS_PER_SQFT)
+        labor_hours = total_sqft * hrs_per_sqft
         labor_total = labor_hours * rates["general"]
 
         subtotal = materials_total + labor_total
         overhead = subtotal * 0.10
         markup = (subtotal + overhead) * (markup_pct / 100)
         grand_total = subtotal + overhead + markup
+
+        # Sanity floor — if the grand_total is implausibly low for this building
+        # type and sqft, the LLM materials list almost certainly missed major
+        # scope. Scale materials_total up to hit the floor and flag it so the
+        # UI / report can disclose the adjustment instead of silently shipping
+        # a $29k warehouse.
+        floor_psf = MIN_DOLLARS_PER_SQFT.get(btype, 100.0)
+        adjusted = False
+        if total_sqft > 0 and grand_total > 0:
+            implied_psf = grand_total / total_sqft
+            if implied_psf < floor_psf:
+                target_grand = total_sqft * floor_psf
+                # solve materials_total uplift so subtotal*(1.10*1.15 default)
+                # lands at target_grand
+                multiplier = (1 + 0.10) * (1 + markup_pct / 100)
+                target_subtotal = target_grand / multiplier
+                materials_total = max(0, target_subtotal - labor_total)
+                subtotal = materials_total + labor_total
+                overhead = subtotal * 0.10
+                markup = (subtotal + overhead) * (markup_pct / 100)
+                grand_total = subtotal + overhead + markup
+                adjusted = True
+                logger.warning(
+                    "cost_engine: implied $%.0f/sqft for %s is below $%.0f floor; "
+                    "scaled materials_total up to hit benchmark",
+                    implied_psf, btype, floor_psf,
+                )
 
         return {
             "materials_total": round(materials_total, 2),
@@ -110,4 +170,6 @@ class CostEngine:
             "region": region,
             "labor_hours": round(labor_hours, 1),
             "total_sqft": round(total_sqft, 1),
+            "building_type": btype,
+            "scope_adjusted": adjusted,
         }
