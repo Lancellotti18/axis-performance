@@ -783,6 +783,46 @@ Thank you for your time.`
                     )}
                   </div>
 
+                  {/* Partial-extraction notice — shown when the AI response was
+                      truncated and we recovered just enough to continue. */}
+                  {analysis?.raw_detections?.parse_status === 'partial' && (
+                    <div
+                      className="rounded-2xl border border-amber-200 bg-amber-50/70 px-5 py-4 flex gap-3"
+                      style={cardStyle}
+                    >
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-amber-600 mt-0.5 shrink-0"
+                      >
+                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                      <div className="text-sm">
+                        <p className="font-semibold text-amber-900 mb-1">
+                          Partial analysis — please review before relying on these numbers
+                        </p>
+                        <p className="text-amber-800 leading-relaxed">
+                          The AI&apos;s response was truncated, so this estimate was rebuilt from
+                          the building type and square footage we could recover. Material counts
+                          and room-level detail may be incomplete or rough. We recommend you:
+                        </p>
+                        <ul className="mt-2 space-y-1 text-amber-800 list-disc pl-5">
+                          <li>Double-check the detected square footage and building type against the blueprint.</li>
+                          <li>Re-scan the blueprint — running it again usually produces a complete result.</li>
+                          <li>Verify line-item quantities before sending an estimate to a client.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Stats */}
                   {analysis && (
                     <div className="grid grid-cols-4 gap-3">

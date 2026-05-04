@@ -379,6 +379,7 @@ def _extract_partial_blueprint(text: str) -> dict:
         "building_type": "residential",
         "notes": "Partial extraction — original AI response was truncated.",
         "materials": [],
+        "parse_status": "partial",
     }
     if not text:
         return out
