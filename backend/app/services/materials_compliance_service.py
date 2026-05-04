@@ -257,6 +257,137 @@ def _select_relevant_section(full_text: str, category: str) -> str:
     return "\n\n".join(p for _, p in chosen)
 
 
+# ─── Section-number verification ───────────────────────────────────────────
+# After we verify the URL is real, also verify that the cited section
+# (e.g. "R905.1.1") actually appears in that page's text. Closes the
+# fabrication loophole where the LLM cites a real URL but invents a
+# plausible-but-wrong subsection number.
+
+# Code-cycle prefixes we strip before extracting the section identifier.
+_CYCLE_PREFIX_RE = re.compile(
+    r"^(?:IRC|IBC|IECC|IMC|IPC|NEC|NFPA|FBC|UPC|ASCE|ICC)\s*\d{0,4}",
+    re.IGNORECASE,
+)
+# Section identifier inside a code reference: R905.1.1 / 210.8(A) / R402.1.2
+_SECTION_TOKEN_RE = re.compile(
+    r"([A-Z]?\d{2,4}(?:\.\d{1,3})*(?:\([A-Za-z0-9]+\))?)",
+)
+
+
+def _extract_section_token(reference: str) -> Optional[str]:
+    """Pull the canonical section identifier out of a code reference string.
+       'IRC 2021 §R905.1.1'        -> 'R905.1.1'
+       'IECC 2021 Table R402.1.2'  -> 'R402.1.2'
+       'NEC §210.8(A)'             -> '210.8(A)'
+       'IRC 2021'                  -> None  (no section level cited)
+    """
+    if not reference:
+        return None
+    cleaned = _CYCLE_PREFIX_RE.sub("", reference.strip()).strip()
+    cleaned = re.sub(r"^(?:Table|Section|§|Chapter)\s+", "", cleaned, flags=re.IGNORECASE).strip()
+    m = _SECTION_TOKEN_RE.search(cleaned)
+    if not m:
+        return None
+    token = m.group(1)
+    # Reject pure year-like 4-digit matches with no dot or letter prefix
+    # ('IRC 2021' would otherwise match '2021' as a section token).
+    if not re.search(r"[A-Z]|\.|\(", token):
+        return None
+    return token
+
+
+def _section_in_text(section_token: str, body: str) -> bool:
+    """Substring match that tolerates PDF artifacts (line-break-induced
+    whitespace) and case differences. Avoids regex-escape hazards by
+    collapsing all whitespace before comparison."""
+    if not section_token or not body:
+        return False
+    if section_token.lower() in body.lower():
+        return True
+    body_collapsed = re.sub(r"\s+", "", body.lower())
+    needle_collapsed = re.sub(r"\s+", "", section_token.lower())
+    return needle_collapsed in body_collapsed
+
+
+def _verify_section(section_token: str, body: str) -> Optional[str]:
+    """Return the most-specific verified ancestor of section_token that
+    appears in the page body, or None if even the top-level section is
+    absent. Walks parent sections by stripping trailing '.X' segments.
+
+       'R905.1.1' present     -> 'R905.1.1'
+       only 'R905.1' present  -> 'R905.1'
+       only 'R905' present    -> 'R905'
+       none present           -> None
+    """
+    if not section_token or not body:
+        return None
+    # Strip parenthetical first (e.g. '(A)') before walking dot-segments.
+    bare = re.sub(r"\([^)]*\)$", "", section_token)
+    if _section_in_text(section_token, body):
+        return section_token
+    parts = bare.split(".")
+    while len(parts) > 1:
+        parts.pop()
+        candidate = ".".join(parts)
+        if _section_in_text(candidate, body):
+            return candidate
+    return None
+
+
+def _strip_section_from_reference(ref: str) -> str:
+    """'IRC 2021 §R905.1.1' -> 'IRC 2021'. Used as the safe fallback when
+    no section level can be verified against the cited page."""
+    m = _CYCLE_PREFIX_RE.match(ref.strip())
+    return m.group(0) if m else ref.strip()
+
+
+def _replace_section_in_reference(ref: str, old_token: str, new_token: str) -> str:
+    """Swap the section identifier in a reference string. Preserves the
+    code-cycle prefix and any '§'/'Section'/'Table' qualifier."""
+    if not ref or not old_token or not new_token:
+        return ref
+    # Plain substring swap is enough — section tokens are distinctive.
+    if old_token in ref:
+        return ref.replace(old_token, new_token)
+    return ref
+
+
+def _build_url_to_text(results: list[dict]) -> dict:
+    """Combine the Tavily snippet with the cached full-page extract for
+    each URL. Used by section verification to substring-search both
+    sources — section numbers often appear in the snippet even when the
+    full page wasn't fetched."""
+    out: dict = {}
+    for c in results:
+        for r in c.get("results") or []:
+            url = (r.get("url") or "").strip()
+            if not url:
+                continue
+            parts: list[str] = []
+            snippet = (r.get("content") or "").strip()
+            if snippet:
+                parts.append(snippet)
+            enriched = (r.get("enriched_content") or "").strip()
+            if enriched and enriched != snippet:
+                parts.append(enriched)
+            cached = _page_cache.get(url)
+            if cached and cached[1]:
+                parts.append(cached[1])
+            if parts:
+                # Dedupe while preserving order so we don't blow up the
+                # body with the same text repeated.
+                seen: set[str] = set()
+                uniq: list[str] = []
+                for p in parts:
+                    key = p[:200]
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    uniq.append(p)
+                out[url] = "\n\n".join(uniq)
+    return out
+
+
 async def _enrich_with_full_content(results: list[dict]) -> None:
     """Mutates Tavily results in-place: for the top N results in each
     category, fetch the page and attach `enriched_content` containing the
@@ -465,6 +596,7 @@ def _verify(
     allowed_urls: set[str],
     url_to_meta: Optional[dict] = None,
     base_code_fallback: Optional[dict] = None,
+    url_to_text: Optional[dict] = None,
 ) -> list[dict]:
     """
     For each checklist item, verify its `code_reference_url` (if present) was
@@ -476,6 +608,12 @@ def _verify(
     and `code_reference_jurisdiction` from the matching Tavily result so the UI
     can render a real source preview inline. Unverified items get a base-code
     fallback so the contractor still has something authoritative to read.
+
+    Section-number verification: when `url_to_text` is supplied, also confirm
+    that the section identifier inside `code_reference` (e.g. 'R905.1.1')
+    actually appears in the page text. If only a parent section verifies
+    we downgrade the reference to that parent; if nothing verifies we
+    drop the section and keep the cycle prefix only.
     """
     out = []
     for it in items:
@@ -496,8 +634,50 @@ def _verify(
                 it["code_reference_title"] = meta.get("title")
                 it["code_reference_snippet"] = meta.get("snippet")
                 it["code_reference_jurisdiction"] = meta.get("jurisdiction")
+            _apply_section_verification(it, url, url_to_text)
         out.append(it)
     return out
+
+
+def _apply_section_verification(
+    item: dict,
+    url: str,
+    url_to_text: Optional[dict],
+) -> None:
+    """Mutates the checklist item in-place to either confirm, downgrade,
+    or strip the cited section number based on whether it appears in the
+    page text. No-op if we don't have page text for the URL — we don't
+    falsify what we can't check."""
+    ref = (item.get("code_reference") or "").strip()
+    section_token = _extract_section_token(ref)
+    if not section_token:
+        # Nothing section-level to verify — cycle/chapter only references
+        # are fine as-is.
+        item["code_reference_section_verified"] = None
+        return
+    if not url_to_text or url not in url_to_text:
+        # We can't check, so we don't claim the section is verified.
+        # Leave the reference intact — silently dropping section numbers
+        # we couldn't verify would over-degrade the UI.
+        item["code_reference_section_verified"] = None
+        return
+
+    body = url_to_text[url]
+    verified_section = _verify_section(section_token, body)
+
+    if verified_section == section_token:
+        item["code_reference_section_verified"] = True
+        return
+
+    # Section number doesn't match — preserve the original for transparency
+    # and downgrade the public-facing reference to whatever level we can prove.
+    item["code_reference_original"] = ref
+    if verified_section:
+        item["code_reference_section_verified"] = "partial"
+        item["code_reference"] = _replace_section_in_reference(ref, section_token, verified_section)
+    else:
+        item["code_reference_section_verified"] = False
+        item["code_reference"] = _strip_section_from_reference(ref)
 
 
 PROMPT = """You are a certified building-code compliance expert for the United States.
@@ -685,6 +865,7 @@ async def check_materials_compliance(
     await _enrich_with_full_content(results)
     research, allowed_urls = _format_research(results)
     sources, url_to_meta = _build_sources(results, loc, j)
+    url_to_text = _build_url_to_text(results)
     base_code_fallback = _build_base_code_fallback(loc, j)
     # 20k char cap was sized for snippet-only research. With page extracts
     # we routinely cross that — bump to 40k so the LLM actually sees the
@@ -787,7 +968,11 @@ async def check_materials_compliance(
         }
 
     result["checklist"] = _verify(
-        result.get("checklist") or [], allowed_urls, url_to_meta, base_code_fallback,
+        result.get("checklist") or [],
+        allowed_urls,
+        url_to_meta,
+        base_code_fallback,
+        url_to_text,
     )
     # Missing-items list gets the same URL verification treatment, plus the
     # same enrichment so the UI can show a "checked against" preview for the
@@ -808,6 +993,7 @@ async def check_materials_compliance(
                 m["code_reference_title"] = meta.get("title")
                 m["code_reference_snippet"] = meta.get("snippet")
                 m["code_reference_jurisdiction"] = meta.get("jurisdiction")
+            _apply_section_verification(m, url, url_to_text)
         else:
             m["verified"] = False
             m["code_reference_fallback"] = base_code_fallback
