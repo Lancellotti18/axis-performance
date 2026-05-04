@@ -15,6 +15,7 @@ const ExteriorCarousel  = dynamic(() => import('./ExteriorCarousel'),  { ssr: fa
 import RoofingSection from './RoofingSection'
 import PermitPortalSection from './PermitPortalSection'
 import { computeMaterialConfidence, loadReviewedIds, saveReviewedIds } from './materialConfidence'
+import { CitationInline, CitationBibliography, ComplianceLimitations } from '@/components/MaterialComplianceCitations'
 // Images are base64 data URIs from backend — no staggering needed
 function StaggeredRender({ src, label, totalSqft }: { src: string; label: string; totalSqft?: number }) {
   return <RenderViewer src={src} label={label} totalSqft={totalSqft} />
@@ -1902,9 +1903,8 @@ Thank you for your time.`
                                           {item.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium flex-shrink-0 capitalize">{item.category}</span>}
                                         </div>
                                         {isPass && item.note && <p className="text-slate-500 text-xs mt-0.5">{item.note}</p>}
-                                        {isPass && item.code_reference && <p className="text-emerald-600 text-[10px] mt-0.5 font-medium">{item.code_reference}</p>}
-                                        {(isFail || isWarn) && item.rule_text && (
-                                          <blockquote className={`mt-2 pl-3 border-l-2 text-slate-500 text-xs italic leading-relaxed ${isFail ? 'border-red-300' : 'border-amber-300'}`}>{item.rule_text}</blockquote>
+                                        {(isFail || isWarn) && (item.rule_quote || item.rule_text) && (
+                                          <blockquote className={`mt-2 pl-3 border-l-2 text-slate-500 text-xs italic leading-relaxed ${isFail ? 'border-red-300' : 'border-amber-300'}`}>{item.rule_quote || item.rule_text}</blockquote>
                                         )}
                                         {(isFail || isWarn) && item.violation_reason && (
                                           <p className="mt-1.5 text-slate-600 text-xs">{item.violation_reason}</p>
@@ -1915,6 +1915,7 @@ Thank you for your time.`
                                             <span className="text-slate-700 text-xs">{item.fix_suggestion}</span>
                                           </div>
                                         )}
+                                        <CitationInline item={item} />
                                       </div>
                                     </div>
                                   </div>
@@ -1922,6 +1923,12 @@ Thank you for your time.`
                               })}
                             </div>
                           )}
+
+                          {/* Sources bibliography (rendered before missing items so contractors see the citations alongside the checklist) */}
+                          <CitationBibliography
+                            sources={matCheckResult.sources}
+                            baseCode={matCheckResult.base_code_reference}
+                          />
 
                           {/* Missing required items */}
                           {missing.length > 0 && (
@@ -1935,14 +1942,18 @@ Thank you for your time.`
                                     </div>
                                     <div className="flex-1">
                                       <span className="text-slate-800 text-sm font-semibold">{m.item_name}</span>
-                                      {m.rule_text && <blockquote className="mt-1.5 pl-3 border-l-2 border-amber-300 text-slate-500 text-xs italic leading-relaxed">{m.rule_text}</blockquote>}
+                                      {(m.rule_quote || m.rule_text) && <blockquote className="mt-1.5 pl-3 border-l-2 border-amber-300 text-slate-500 text-xs italic leading-relaxed">{m.rule_quote || m.rule_text}</blockquote>}
                                       {m.reason_required && <p className="mt-1 text-slate-500 text-xs">{m.reason_required}</p>}
+                                      <CitationInline item={m} />
                                     </div>
                                   </div>
                                 ))}
                               </div>
                             </div>
                           )}
+
+                          {/* Scope-of-check disclaimer */}
+                          <ComplianceLimitations />
                         </div>
                       )
                     })()}

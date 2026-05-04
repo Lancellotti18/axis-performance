@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback } from 'react'
 import { api } from '@/lib/api'
 import { STATES, COUNTIES, CITIES } from '@/lib/jurisdictions'
+import { CitationInline, CitationBibliography, ComplianceLimitations } from '@/components/MaterialComplianceCitations'
 
 const PROJECT_TYPES = [
   { value: 'residential', label: 'Residential' },
@@ -64,10 +65,9 @@ function ChecklistItem({ item }: { item: any }) {
             )}
           </div>
           {isPass && item.note && <p className="text-slate-500 text-xs mt-0.5">{item.note}</p>}
-          {isPass && item.code_reference && <p className="text-emerald-600 text-[10px] mt-0.5 font-medium">{item.code_reference}</p>}
-          {(isFail || isWarn) && item.rule_text && (
+          {(isFail || isWarn) && (item.rule_quote || item.rule_text) && (
             <blockquote className={`mt-2 pl-3 border-l-2 text-slate-500 text-xs italic leading-relaxed ${isFail ? 'border-red-300' : 'border-amber-300'}`}>
-              {item.rule_text}
+              {item.rule_quote || item.rule_text}
             </blockquote>
           )}
           {(isFail || isWarn) && item.violation_reason && (
@@ -79,6 +79,7 @@ function ChecklistItem({ item }: { item: any }) {
               <span className="text-slate-700 text-xs">{item.fix_suggestion}</span>
             </div>
           )}
+          <CitationInline item={item} />
         </div>
       </div>
     </div>
@@ -96,12 +97,13 @@ function MissingItem({ item }: { item: any }) {
       </div>
       <div className="flex-1">
         <span className="text-slate-800 text-sm font-semibold">{item.item_name}</span>
-        {item.rule_text && (
+        {(item.rule_quote || item.rule_text) && (
           <blockquote className="mt-1.5 pl-3 border-l-2 border-amber-300 text-slate-500 text-xs italic leading-relaxed">
-            {item.rule_text}
+            {item.rule_quote || item.rule_text}
           </blockquote>
         )}
         {item.reason_required && <p className="mt-1 text-slate-500 text-xs">{item.reason_required}</p>}
+        <CitationInline item={item} />
       </div>
     </div>
   )
@@ -229,6 +231,15 @@ function ComplianceResults({ result }: { result: any }) {
           </div>
         </div>
       )}
+
+      {/* Sources bibliography */}
+      <CitationBibliography
+        sources={result.sources}
+        baseCode={result.base_code_reference}
+      />
+
+      {/* Scope-of-check disclaimer */}
+      <ComplianceLimitations />
     </div>
   )
 }
@@ -504,15 +515,9 @@ export default function MaterialCheckPage() {
         {/* Results */}
         {result && !loading && <ComplianceResults result={result} />}
 
-        {/* Info footer */}
-        <div className="bg-blue-50/60 border border-blue-100 rounded-2xl px-5 py-4 flex gap-3 items-start">
-          <svg className="flex-shrink-0 text-blue-400 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <div className="text-slate-500 text-xs leading-relaxed">
-            <strong className="text-slate-700">How it works:</strong> This tool searches official state and local government building code databases (.gov sites) and cross-references your materials against IRC 2021 / IBC standards using AI analysis. Nothing is fabricated — every result cites the code source it was checked against. Always verify results with your local building department before construction.
-          </div>
-        </div>
+        {/* Show the scope disclaimer here too when there are no results yet,
+            so users know what this tool is before they hit Check. */}
+        {!result && !loading && <ComplianceLimitations />}
 
       </div>
     </div>

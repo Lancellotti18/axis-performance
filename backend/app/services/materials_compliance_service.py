@@ -93,7 +93,206 @@ async def _tavily_category(cat: str, query: str) -> dict:
         return {"category": cat, "results": [], "errored": True, "error": str(e)}
 
 
+# ─── Full-page fetch + extraction ──────────────────────────────────────────
+# Tavily returns ~700-char snippets that are usually the top of the page.
+# Local code amendments live deep inside long municipal documents, so we
+# fetch the actual page (HTML or PDF), extract the section that matches the
+# material category, and feed that to the LLM instead of the snippet.
+# This is the single biggest accuracy unlock — the LLM was previously
+# inferring rules from page intros.
+
+PAGE_CACHE_TTL = 24 * 60 * 60   # code pages don't change daily
+_page_cache: dict[str, tuple[float, str]] = {}
+_fetch_sema: Optional[asyncio.Semaphore] = None
+# Cap how many pages we fetch per check to keep latency under ~10s.
+# Tavily ranks results by relevance, so fetching the top 2 per category
+# covers the high-signal documents without paying for every URL.
+TOP_RESULTS_TO_FETCH = 2
+PER_FETCH_TIMEOUT = 10.0
+MAX_FETCH_CONCURRENCY = 8
+MAX_PAGE_CHARS = 30000          # cap raw extraction before section selection
+MAX_SECTION_CHARS = 3000        # cap relevant-section per result going to LLM
+
+# Per-category keywords used to find the relevant slice of a long document.
+# We pick paragraphs that hit these keywords and concatenate them up to
+# MAX_SECTION_CHARS so the LLM gets the actual code chapter, not the page
+# header / table of contents.
+CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "roofing":      ["roof", "shingle", "underlayment", "ice", "shield", "covering", "asphalt"],
+    "fenestration": ["window", "door", "fenestration", "u-factor", "shgc", "glazing", "skylight"],
+    "insulation":   ["insulation", "r-value", "thermal", "cavity", "attic", "wall"],
+    "framing":      ["framing", "stud", "header", "joist", "rafter", "wall", "lumber"],
+    "electrical":   ["electrical", "afci", "gfci", "receptacle", "branch", "circuit", "panel"],
+    "plumbing":     ["plumbing", "pipe", "trap", "venting", "ipc", "upc", "drain", "supply"],
+    "mechanical":   ["mechanical", "hvac", "ventilation", "duct", "imc", "exhaust"],
+    "fire":         ["smoke", "alarm", "carbon", "monoxide", "fire", "detector", "hardwired"],
+    "egress":       ["egress", "emergency", "escape", "bedroom", "opening", "sill"],
+    "wind_flood":   ["wind", "hurricane", "asce", "impact", "debris", "anchor", "uplift"],
+}
+
+
+def _get_fetch_sema() -> asyncio.Semaphore:
+    global _fetch_sema
+    if _fetch_sema is None:
+        _fetch_sema = asyncio.Semaphore(MAX_FETCH_CONCURRENCY)
+    return _fetch_sema
+
+
+def _extract_pdf_text(data: bytes) -> str:
+    """Extract first ~MAX_PAGE_CHARS of text from a PDF using pymupdf."""
+    try:
+        import fitz  # pymupdf
+        doc = fitz.open(stream=data, filetype="pdf")
+        parts: list[str] = []
+        total = 0
+        for page in doc:
+            if total > MAX_PAGE_CHARS:
+                break
+            t = page.get_text() or ""
+            parts.append(t)
+            total += len(t)
+        doc.close()
+        return "\n".join(parts)
+    except Exception as e:
+        logger.warning("pdf extract failed: %s", str(e)[:200])
+        return ""
+
+
+def _extract_html_text(html: str) -> str:
+    """Strip HTML to plain text, dropping nav/script/style/footer chrome."""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        for el in soup(["script", "style", "nav", "header", "footer", "aside", "form", "noscript"]):
+            el.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text[:MAX_PAGE_CHARS]
+    except Exception as e:
+        logger.warning("html extract failed: %s", str(e)[:200])
+        return ""
+
+
+async def _fetch_page_text(url: str) -> str:
+    """Fetch URL, return cleaned plain-text body. Cached for 24h.
+
+    Returns empty string on any failure (timeout, 4xx/5xx, parse error)
+    so callers can fall back to the Tavily snippet without crashing.
+    """
+    if not url:
+        return ""
+
+    now = time.time()
+    cached = _page_cache.get(url)
+    if cached and (now - cached[0]) < PAGE_CACHE_TTL:
+        return cached[1]
+
+    sema = _get_fetch_sema()
+    async with sema:
+        try:
+            import httpx
+            async with httpx.AsyncClient(
+                timeout=PER_FETCH_TIMEOUT,
+                follow_redirects=True,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; BuildAI-ComplianceBot/1.0; +https://buildai.app)",
+                    "Accept": "text/html,application/xhtml+xml,application/pdf,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+            ) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                ctype = (resp.headers.get("content-type") or "").lower()
+
+                if "pdf" in ctype or url.lower().endswith(".pdf"):
+                    text = _extract_pdf_text(resp.content)
+                else:
+                    text = _extract_html_text(resp.text)
+        except Exception as e:
+            logger.info("page fetch skipped %s: %s", url[:80], str(e)[:120])
+            text = ""
+
+    _page_cache[url] = (now, text)
+    return text
+
+
+def _select_relevant_section(full_text: str, category: str) -> str:
+    """Find the chunks of the document that hit category keywords, return
+    them in document order up to MAX_SECTION_CHARS. Falls back to the head
+    of the document when no keyword hits."""
+    if not full_text:
+        return ""
+
+    keywords = CATEGORY_KEYWORDS.get(category, [])
+    if not keywords:
+        return full_text[:MAX_SECTION_CHARS]
+
+    paragraphs = re.split(r"\n\n+", full_text)
+    scored: list[tuple[int, int, str]] = []
+    for i, p in enumerate(paragraphs):
+        if len(p) < 40:
+            continue
+        p_lower = p.lower()
+        score = sum(1 for k in keywords if k in p_lower)
+        if score > 0:
+            scored.append((score, i, p))
+
+    if not scored:
+        return full_text[:MAX_SECTION_CHARS]
+
+    scored.sort(key=lambda x: -x[0])
+    chosen: list[tuple[int, str]] = []
+    total = 0
+    for _score, idx, p in scored:
+        if total + len(p) > MAX_SECTION_CHARS:
+            continue
+        chosen.append((idx, p))
+        total += len(p) + 2
+
+    if not chosen:
+        # Single paragraph too big — truncate the highest-scoring one.
+        return scored[0][2][:MAX_SECTION_CHARS]
+
+    chosen.sort(key=lambda x: x[0])
+    return "\n\n".join(p for _, p in chosen)
+
+
+async def _enrich_with_full_content(results: list[dict]) -> None:
+    """Mutates Tavily results in-place: for the top N results in each
+    category, fetch the page and attach `enriched_content` containing the
+    section relevant to the category. Keeps the original snippet on failure."""
+    fetch_targets: list[tuple[dict, str]] = []  # (result_row, category)
+    seen_urls: set[str] = set()
+
+    for c in results:
+        cat = c.get("category", "")
+        rows = c.get("results") or []
+        for r in rows[:TOP_RESULTS_TO_FETCH]:
+            url = (r.get("url") or "").strip()
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            fetch_targets.append((r, cat))
+
+    if not fetch_targets:
+        return
+
+    async def _do(r: dict, cat: str) -> None:
+        url = r.get("url") or ""
+        full = await _fetch_page_text(url)
+        if not full:
+            return
+        section = _select_relevant_section(full, cat)
+        if section and len(section) > len(r.get("content") or ""):
+            r["enriched_content"] = section
+
+    await asyncio.gather(*[_do(r, cat) for r, cat in fetch_targets])
+
+
 def _format_research(results: list[dict]) -> tuple[str, set[str]]:
+    """Build the research blob shown to the LLM. For each result we prefer
+    the `enriched_content` (full-page extract scoped to the category) over
+    the Tavily snippet, since the snippet is usually just a page intro."""
     parts: list[str] = []
     urls: set[str] = set()
     for c in results:
@@ -103,9 +302,82 @@ def _format_research(results: list[dict]) -> tuple[str, set[str]]:
         for r in c["results"]:
             if r.get("url"):
                 urls.add(r["url"])
-            parts.append(f"- **{r.get('title','')}**\n  URL: {r.get('url','')}\n  {r.get('content','')}")
+            body = (r.get("enriched_content") or r.get("content") or "").strip()
+            parts.append(f"- **{r.get('title','')}**\n  URL: {r.get('url','')}\n  {body}")
         parts.append("")
     return "\n".join(parts), urls
+
+
+def _jurisdiction_label_for_url(url: str, loc: str, j: dict) -> str:
+    """Best-effort jurisdiction label for a Tavily-fetched citation URL.
+    Used in the per-item citation chip and the bibliography panel so the
+    contractor can tell at a glance whether they're looking at a state .gov
+    page, a municipal code library, or a model code from ICC."""
+    u = (url or "").lower()
+    state_name = j.get("state_name") or j.get("state") or ""
+    if "iccsafe.org" in u or "codes.iccsafe.org" in u:
+        return "International Code Council (model code)"
+    if "ashrae.org" in u:
+        return "ASHRAE (model standard)"
+    if "nfpa.org" in u:
+        return "NFPA (model standard)"
+    if "municode.com" in u or "ecode360.com" in u:
+        return loc or state_name or "Local municipal code"
+    if ".gov" in u:
+        return state_name or loc or "Government source"
+    return loc or state_name or "Code reference"
+
+
+def _build_sources(
+    results: list[dict],
+    loc: str,
+    j: dict,
+) -> tuple[list[dict], dict]:
+    """Bibliography of every research result, deduped by URL, with a
+    per-URL lookup map so checklist items can be enriched with the title
+    and snippet of whatever they cite."""
+    sources: list[dict] = []
+    url_to_meta: dict[str, dict] = {}
+    seen: set[str] = set()
+    for c in results:
+        cat = c.get("category", "")
+        for r in c.get("results") or []:
+            url = (r.get("url") or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            title = (r.get("title") or "Untitled source").strip()
+            snippet = (r.get("content") or "").strip().replace("\n", " ")
+            if len(snippet) > 280:
+                snippet = snippet[:277].rstrip() + "..."
+            entry = {
+                "title": title,
+                "url": url,
+                "snippet": snippet,
+                "category": cat,
+                "jurisdiction": _jurisdiction_label_for_url(url, loc, j),
+            }
+            sources.append(entry)
+            url_to_meta[url] = entry
+    return sources, url_to_meta
+
+
+def _build_base_code_fallback(loc: str, j: dict) -> dict:
+    """Professional fallback shown when a checklist item has no
+    jurisdiction-specific URL — typically niche materials Tavily couldn't
+    pin to a local code page."""
+    state_name = j.get("state_name") or j.get("state") or ""
+    location_phrase = loc or state_name or "this jurisdiction"
+    return {
+        "title": "International Residential Code 2021 — base code",
+        "url": "https://codes.iccsafe.org/content/IRC2021P2",
+        "note": (
+            f"No jurisdiction-specific code reference was retrieved for this material in "
+            f"{location_phrase}. It has been assessed against the International Residential "
+            f"Code 2021 base standard. Confirm with your local Authority Having Jurisdiction "
+            f"(AHJ) before construction."
+        ),
+    }
 
 
 def _materials_signature(materials: list[dict]) -> str:
@@ -188,12 +460,22 @@ def _parse_json(text: str) -> dict:
         raise
 
 
-def _verify(items: list[dict], allowed_urls: set[str]) -> list[dict]:
+def _verify(
+    items: list[dict],
+    allowed_urls: set[str],
+    url_to_meta: Optional[dict] = None,
+    base_code_fallback: Optional[dict] = None,
+) -> list[dict]:
     """
     For each checklist item, verify its `code_reference_url` (if present) was
     in the research. Items whose URL was fabricated keep their content but
     get verified=false and the URL cleared so the UI doesn't link to a
     non-existent statute page.
+
+    Verified items are enriched with `code_reference_title`, `code_reference_snippet`,
+    and `code_reference_jurisdiction` from the matching Tavily result so the UI
+    can render a real source preview inline. Unverified items get a base-code
+    fallback so the contractor still has something authoritative to read.
     """
     out = []
     for it in items:
@@ -205,8 +487,15 @@ def _verify(items: list[dict], allowed_urls: set[str]) -> list[dict]:
             if url:
                 it["code_reference_url"] = None
             it["verified"] = False
+            if base_code_fallback:
+                it["code_reference_fallback"] = base_code_fallback
         else:
             it["verified"] = True
+            if url_to_meta and url in url_to_meta:
+                meta = url_to_meta[url]
+                it["code_reference_title"] = meta.get("title")
+                it["code_reference_snippet"] = meta.get("snippet")
+                it["code_reference_jurisdiction"] = meta.get("jurisdiction")
         out.append(it)
     return out
 
@@ -390,9 +679,18 @@ async def check_materials_compliance(
         queries = [(c, q) for c, q in queries if c != "wind_flood"]
 
     results = await asyncio.gather(*[_tavily_category(c, q) for c, q in queries])
+    # Fetch top-N pages per category and replace the 700-char Tavily snippet
+    # with a real section of the document (HTML or PDF). Failures fall back
+    # to the original snippet, so this can only improve recall.
+    await _enrich_with_full_content(results)
     research, allowed_urls = _format_research(results)
+    sources, url_to_meta = _build_sources(results, loc, j)
+    base_code_fallback = _build_base_code_fallback(loc, j)
+    # 20k char cap was sized for snippet-only research. With page extracts
+    # we routinely cross that — bump to 40k so the LLM actually sees the
+    # local-amendment chapters we just fetched.
     research_block = (
-        research[:20000] if research
+        research[:40000] if research
         else "(No research retrieved — evaluate using IRC/IBC/IECC base code for the state and FLAG verified=false on every item.)"
     )
     jurisdiction_json = json.dumps(
@@ -488,8 +786,12 @@ async def check_materials_compliance(
             "missing_required_items": dedup_missing,
         }
 
-    result["checklist"] = _verify(result.get("checklist") or [], allowed_urls)
-    # Missing-items list gets the same URL verification treatment.
+    result["checklist"] = _verify(
+        result.get("checklist") or [], allowed_urls, url_to_meta, base_code_fallback,
+    )
+    # Missing-items list gets the same URL verification treatment, plus the
+    # same enrichment so the UI can show a "checked against" preview for the
+    # missing items section too.
     verified_missing = []
     for m in result.get("missing_required_items") or []:
         if not isinstance(m, dict):
@@ -498,8 +800,17 @@ async def check_materials_compliance(
         if url and url not in allowed_urls:
             m["code_reference_url"] = None
             m["verified"] = False
+            m["code_reference_fallback"] = base_code_fallback
+        elif url:
+            m["verified"] = True
+            if url in url_to_meta:
+                meta = url_to_meta[url]
+                m["code_reference_title"] = meta.get("title")
+                m["code_reference_snippet"] = meta.get("snippet")
+                m["code_reference_jurisdiction"] = meta.get("jurisdiction")
         else:
-            m["verified"] = bool(url)
+            m["verified"] = False
+            m["code_reference_fallback"] = base_code_fallback
         verified_missing.append(m)
     result["missing_required_items"] = verified_missing
 
@@ -516,6 +827,8 @@ async def check_materials_compliance(
     }
     result["verified_count"] = sum(1 for i in result["checklist"] if i.get("verified"))
     result["total_count"] = len(result["checklist"])
+    result["sources"] = sources
+    result["base_code_reference"] = base_code_fallback
 
     # Only cache successful parses. Caching the "could not be parsed" placeholder
     # would pin that failure for 6h and make the Re-run button useless.
