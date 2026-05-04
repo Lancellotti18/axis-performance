@@ -335,17 +335,31 @@ Return ONLY the JSON object, no markdown, no explanation."""
     jpeg_bytes = _resize_if_needed(jpeg_bytes)
     logger.debug(f"sending {len(jpeg_bytes)} bytes to llm_vision_sync")
     try:
-        text = llm_vision_sync(jpeg_bytes, "image/jpeg", prompt, max_tokens=8192)
+        text = llm_vision_sync(jpeg_bytes, "image/jpeg", prompt, max_tokens=16384)
     except Exception:
         logger.exception("llm_vision_sync FAILED")
         raise
+
     parsed = _parse_blueprint_json(text)
-    if parsed is not None:
+    if parsed is not None and isinstance(parsed, dict):
         return parsed
 
+    # Salvage path — if the structured parse failed (usually because the
+    # response was truncated mid-array), pull the critical fields out by
+    # regex and let MaterialEstimator + CostEngine build the rest from
+    # total_sqft. Better to ship a coarse estimate than fail the whole scan.
+    salvaged = _extract_partial_blueprint(text)
+    if salvaged.get("total_sqft", 0) > 0:
+        logger.warning(
+            "claude_analyze: structured parse failed, using regex-salvaged fields. "
+            "total_sqft=%s building_type=%s",
+            salvaged.get("total_sqft"), salvaged.get("building_type"),
+        )
+        return salvaged
+
     logger.warning(
-        "claude_analyze: JSON parse failed after tolerant recovery. raw[:300]=%r",
-        (text or "")[:300],
+        "claude_analyze: full parse failure. raw_len=%d raw[:600]=%r",
+        len(text or ""), (text or "")[:600],
     )
     raise ValueError(
         "AI returned an unparseable response. Please try the scan again — if it "
@@ -353,7 +367,37 @@ Return ONLY the JSON object, no markdown, no explanation."""
     )
 
 
-def _parse_blueprint_json(text: str) -> dict | None:
+def _extract_partial_blueprint(text: str) -> dict:
+    """Last-resort regex extraction. Pulls top-level scalar fields out of the
+    raw LLM text so we can still produce an estimate when the structured JSON
+    is truncated mid-array. Returns a minimal dict shaped like the analysis
+    schema; MaterialEstimator handles the empty rooms/walls case."""
+    out = {
+        "rooms": [], "walls": [], "openings": [],
+        "electrical": [], "plumbing": [],
+        "total_sqft": 0, "confidence": 0.5,
+        "building_type": "residential",
+        "notes": "Partial extraction — original AI response was truncated.",
+        "materials": [],
+    }
+    if not text:
+        return out
+    m = re.search(r'"total_sqft"\s*:\s*([0-9.]+)', text)
+    if m:
+        try: out["total_sqft"] = float(m.group(1))
+        except ValueError: pass
+    m = re.search(r'"building_type"\s*:\s*"([a-z_]+)"', text)
+    if m: out["building_type"] = m.group(1)
+    m = re.search(r'"confidence"\s*:\s*([0-9.]+)', text)
+    if m:
+        try: out["confidence"] = float(m.group(1))
+        except ValueError: pass
+    m = re.search(r'"notes"\s*:\s*"([^"]{0,400})"', text)
+    if m: out["notes"] = m.group(1)
+    return out
+
+
+def _parse_blueprint_json(text: str):
     """
     Tolerant JSON parser for the blueprint LLM response. Strips fences, finds
     the largest balanced {...} block, fixes trailing commas / Python-isms, and
@@ -405,17 +449,63 @@ def _parse_blueprint_json(text: str) -> dict | None:
                 return json.loads(candidate[:i + 1])
             except Exception:
                 continue
-        repaired = candidate
-        if repaired.count('"') % 2 == 1:
-            repaired += '"'
-        open_arr = repaired.count("[") - repaired.count("]")
-        open_obj = repaired.count("{") - repaired.count("}")
-        repaired += "]" * max(open_arr, 0) + "}" * max(open_obj, 0)
-        repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
-        try:
-            return json.loads(repaired)
-        except Exception:
-            return None
+        return _salvage_truncated_json(candidate)
+
+
+def _salvage_truncated_json(candidate: str):
+    """Salvage a truncated JSON object. Walks the string tracking string state
+    and bracket depth, finds the last position where truncating would leave a
+    closeable structure, then closes the stack in nesting order. Handles the
+    common LLM failure mode: response cut off mid-string deep inside a nested
+    array."""
+    in_str, esc = False, False
+    stack = []          # closers expected, in nesting order
+    last_safe_end = -1  # last index (exclusive) we can truncate to
+    last_safe_stack = []
+
+    # Safe boundaries are positions where the preceding text is a complete
+    # value: just after a `,` (drop the comma), after `}`, or after `]`.
+    # Closing-string is NOT safe because a string might be a key, not a value.
+    for i, ch in enumerate(candidate):
+        if esc:
+            esc = False
+            continue
+        if ch == "\\":
+            esc = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch == "}" or ch == "]":
+            if stack and stack[-1] == ch:
+                stack.pop()
+            last_safe_end = i + 1
+            last_safe_stack = list(stack)
+        elif ch == ",":
+            last_safe_end = i  # truncate BEFORE the comma
+            last_safe_stack = list(stack)
+
+    # If we ended inside a string OR with unclosed structures past the last
+    # safe boundary, revert to the safe boundary.
+    truncated = candidate if (not in_str and not stack) else candidate[:max(last_safe_end, 0)]
+    rebuilt_stack = last_safe_stack if (in_str or stack) else []
+
+    # Strip trailing commas / whitespace, then close remaining structures.
+    truncated = re.sub(r",\s*$", "", truncated.rstrip())
+    truncated = re.sub(r":\s*$", ": null", truncated)  # dangling key:
+    truncated += "".join(reversed(rebuilt_stack))
+    truncated = re.sub(r",\s*([}\]])", r"\1", truncated)
+
+    try:
+        return json.loads(truncated)
+    except Exception:
+        return None
 
 
 # ── DB persistence ─────────────────────────────────────────────────────────────
