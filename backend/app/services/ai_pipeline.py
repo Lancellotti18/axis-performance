@@ -43,6 +43,8 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
     ocr_results = {}
     detections = {}
     rooms_hint = []
+    scale_source = "none"           # 'ocr' (measured), 'fallback' (guessed), or 'none' (CV failed)
+    measured_sqft = 0.0             # only trustworthy when scale_source == 'ocr'
     try:
         from app.services.ocr import extract_text_and_dimensions
         gray = preprocess_to_gray(jpeg_bytes)
@@ -51,21 +53,51 @@ def run_analysis_pipeline(blueprint_id: str) -> dict:
         logger.debug("OCR hint extraction failed (non-fatal)", exc_info=True)
         pass
     try:
-        from app.services.scale_detector import detect_scale
+        from app.services.scale_detector import detect_scale_with_source
         from app.services.object_detector import detect_objects
         from app.services.room_reconstructor import reconstruct_rooms
         gray = preprocess_to_gray(jpeg_bytes)
-        scale = detect_scale(ocr_results, gray)
+        scale, scale_source = detect_scale_with_source(ocr_results, gray)
         detections = detect_objects(gray)
         rooms_hint = reconstruct_rooms(gray, scale, detections)
+        if scale_source == "ocr" and rooms_hint:
+            measured_sqft = sum(float(r.get("sqft") or 0) for r in rooms_hint)
+            logger.info(
+                "scale detected from OCR (%.2f px/ft); measured_sqft=%.0f from %d rooms",
+                scale, measured_sqft, len(rooms_hint),
+            )
     except Exception:
         logger.debug("scale/object/room hint detection failed (non-fatal)", exc_info=True)
         pass
 
-    # 5. LLM Vision — primary analysis + full materials list
+    # 5. LLM Vision — primary analysis + full materials list. When the CV
+    # pipeline produced a real measurement, hand it to the LLM as an
+    # authoritative number (not just a hint) and override afterwards if the
+    # LLM still drifts.
     logger.info("calling llm_vision_sync")
-    structured_data = claude_analyze(jpeg_bytes, rooms_hint, detections, ocr_results)
+    structured_data = claude_analyze(
+        jpeg_bytes, rooms_hint, detections, ocr_results,
+        measured_sqft=measured_sqft,
+    )
     logger.info(f"llm done, confidence={structured_data.get('confidence')}")
+
+    # If we have a CV-measured sqft, trust it over the LLM's eyeball estimate.
+    # The LLM is told to use it, but often anchors back to the prompt example.
+    # Only override when the LLM's number is wildly off (>30% delta) — small
+    # disagreements may reflect rooms outside the bounding contour.
+    if measured_sqft > 0:
+        llm_sqft = float(structured_data.get("total_sqft") or 0)
+        if llm_sqft <= 0 or abs(llm_sqft - measured_sqft) / measured_sqft > 0.30:
+            logger.info(
+                "overriding LLM total_sqft=%s with CV-measured=%.0f (delta too large)",
+                llm_sqft, measured_sqft,
+            )
+            structured_data["total_sqft"] = round(measured_sqft, 1)
+            structured_data["sqft_source"] = "measured"
+        else:
+            structured_data["sqft_source"] = "llm_validated"
+    else:
+        structured_data["sqft_source"] = "llm_estimate"
 
     # 6. Save analysis
     analysis_id = save_analysis(db, blueprint_id, structured_data)
@@ -226,13 +258,24 @@ def download_file(key: str) -> bytes:
 
 # ── Claude analysis ────────────────────────────────────────────────────────────
 
-def claude_analyze(jpeg_bytes: bytes, rooms_hint: list, detections: dict, ocr: dict) -> dict:
+def claude_analyze(
+    jpeg_bytes: bytes,
+    rooms_hint: list,
+    detections: dict,
+    ocr: dict,
+    measured_sqft: float = 0.0,
+) -> dict:
     """
     Claude Vision is the primary analysis engine.
     It receives the original image and produces:
     - Structural analysis (rooms, walls, openings, electrical, plumbing)
     - Complete materials list with quantities and unit costs
-    Hint data from OCR/YOLO is provided as context but Claude decides the final output.
+
+    When measured_sqft > 0, the CV pipeline parsed a real scale string off
+    the drawing (e.g., '1/4" = 1\\'-0"') and computed an authoritative
+    square footage from the wall contours. We pass that to the LLM as a
+    hard constraint, not a hint — guessing the size is the single biggest
+    source of error in the estimate.
     """
     hint_block = ""
     if rooms_hint or detections or ocr:
@@ -243,8 +286,19 @@ Pre-detection hints (use as reference only — override with what you see in the
 - OCR text: {json.dumps(ocr)}
 """
 
+    measured_block = ""
+    if measured_sqft and measured_sqft > 0:
+        measured_block = f"""
+AUTHORITATIVE MEASUREMENT — DO NOT OVERRIDE:
+The drawing's scale was parsed from an OCR-detected scale string and the
+total floor area was computed from the wall contours: total_sqft = {measured_sqft:.0f}.
+Use exactly this value for the `total_sqft` field. Size your materials
+list to this footprint. Do not substitute the example value or your own
+visual estimate — the measurement is more accurate than a vision-only guess.
+"""
+
     prompt = f"""You are an expert construction estimator analyzing a blueprint or construction image.
-{hint_block}
+{hint_block}{measured_block}
 FIRST decide what kind of structure this is. The estimate must match the building type — a 10,000 sqft warehouse is NOT priced like a 10,000 sqft house.
 
 building_type values (pick the closest):

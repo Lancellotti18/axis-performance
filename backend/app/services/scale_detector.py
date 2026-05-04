@@ -4,18 +4,27 @@ import numpy as np
 
 
 def detect_scale(ocr_results: dict, image: np.ndarray) -> float:
-    """Returns pixels_per_foot ratio."""
-    scale_strings = ocr_results.get("scale_strings", [])
+    """Returns pixels_per_foot ratio. Falls back to a sheet-size guess when no
+    scale string is parsed — kept for backwards compatibility with code paths
+    that need a number. New code should use detect_scale_with_source() so it
+    can distinguish a real measurement from a fallback guess."""
+    px_per_ft, _ = detect_scale_with_source(ocr_results, image)
+    return px_per_ft
 
+
+def detect_scale_with_source(ocr_results: dict, image: np.ndarray):
+    """Returns (pixels_per_foot, source) where source is 'ocr' for a scale
+    string parsed off the drawing or 'fallback' for the sheet-size guess.
+    Callers that want to trust the measurement (e.g. authoritative sqft
+    override) should only do so when source == 'ocr'."""
+    scale_strings = ocr_results.get("scale_strings", [])
     for text in scale_strings:
         pixels_per_foot = parse_scale_string(text)
         if pixels_per_foot:
-            return pixels_per_foot
+            return pixels_per_foot, "ocr"
 
-    # Fallback: estimate from image dimensions assuming standard page sizes
     height, width = image.shape[:2]
-    # Assume typical 30x42" architectural D-size sheet at 72dpi
-    return width / (42 * 4)  # rough fallback: 4 feet per inch of drawing
+    return width / (42 * 4), "fallback"
 
 
 def parse_scale_string(text: str) -> float | None:

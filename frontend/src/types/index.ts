@@ -58,7 +58,12 @@ export interface Analysis {
   total_sqft: number
   confidence: number
   overlay_url?: string
-  raw_detections?: { parse_status?: 'partial' | 'ok'; building_type?: string; [key: string]: unknown }
+  raw_detections?: {
+    parse_status?: 'partial' | 'ok'
+    building_type?: string
+    sqft_source?: 'measured' | 'llm_validated' | 'llm_estimate'
+    [key: string]: unknown
+  }
 }
 
 export interface MaterialEstimate {

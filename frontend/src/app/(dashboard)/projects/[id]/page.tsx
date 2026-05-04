@@ -824,21 +824,37 @@ Thank you for your time.`
                   )}
 
                   {/* Stats */}
-                  {analysis && (
-                    <div className="grid grid-cols-4 gap-3">
-                      {[
-                        { label: 'Total Sqft',  value: `${(analysis.total_sqft || 0).toLocaleString()}` },
-                        { label: 'Rooms',       value: analysis.rooms?.length || 0 },
-                        { label: 'Materials',   value: materials.length },
-                        { label: 'Est. Cost',   value: estimate?.grand_total ? formatMoney(estimate.grand_total) : '—' },
-                      ].map(c => (
-                        <div key={c.label} className="bg-white rounded-xl p-4" style={cardStyle}>
-                          <div className="text-xl font-black text-slate-800">{c.value}</div>
-                          <div className="text-slate-400 text-xs mt-0.5">{c.label}</div>
+                  {analysis && (() => {
+                    const sqftSource = (analysis.raw_detections?.sqft_source as string) || 'llm_estimate'
+                    const sqftBadge = sqftSource === 'measured'
+                      ? { text: 'Measured', cls: 'bg-emerald-100 text-emerald-700' }
+                      : sqftSource === 'llm_validated'
+                        ? { text: 'Verified', cls: 'bg-blue-100 text-blue-700' }
+                        : { text: 'AI estimate', cls: 'bg-slate-100 text-slate-600' }
+                    return (
+                      <div className="grid grid-cols-4 gap-3">
+                        <div className="bg-white rounded-xl p-4" style={cardStyle}>
+                          <div className="text-xl font-black text-slate-800">{(analysis.total_sqft || 0).toLocaleString()}</div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-slate-400 text-xs">Total Sqft</span>
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${sqftBadge.cls}`}>
+                              {sqftBadge.text}
+                            </span>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        {[
+                          { label: 'Rooms',     value: analysis.rooms?.length || 0 },
+                          { label: 'Materials', value: materials.length },
+                          { label: 'Est. Cost', value: estimate?.grand_total ? formatMoney(estimate.grand_total) : '—' },
+                        ].map(c => (
+                          <div key={c.label} className="bg-white rounded-xl p-4" style={cardStyle}>
+                            <div className="text-xl font-black text-slate-800">{c.value}</div>
+                            <div className="text-slate-400 text-xs mt-0.5">{c.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
 
                   {/* Compliance banner */}
                   {compliance?.status === 'complete' && compliance.risk_level && (
