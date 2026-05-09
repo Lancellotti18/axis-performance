@@ -134,43 +134,99 @@ def _parse_outline_json(text: str) -> dict:
 
 
 # Match a JSON-like polygon array — at least 3 [x, y] pairs in a row.
-# Tolerates whitespace and an optional trailing comma. Used as a final
-# fallback when the surrounding object is mangled but the polygon itself
-# was emitted correctly (the most common failure mode).
+# Tolerant of stringified numbers and percentage suffixes, since LLMs
+# occasionally emit "0.32" or "32%" instead of bare floats.
 _POLYGON_RE = re.compile(
-    r"\[\s*(?:\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]\s*,?\s*){3,}\]",
+    r'\[\s*(?:\[\s*"?-?\d+(?:\.\d+)?%?"?\s*,\s*"?-?\d+(?:\.\d+)?%?"?\s*\]\s*,?\s*){3,}\]',
     re.DOTALL,
 )
 
 
-def _extract_polygon_array(text: str) -> list[list[float]]:
+def _coerce_coord(v) -> Optional[float]:
+    """Convert a coord cell to a float. Accepts numbers, stringified numbers,
+    and percentage strings ('32%' -> 0.32). Returns None on garbage."""
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.strip()
+        is_pct = s.endswith("%")
+        s = s.rstrip("%").strip().strip('"').strip("'")
+        try:
+            n = float(s)
+        except ValueError:
+            return None
+        return n / 100.0 if is_pct else n
+    return None
+
+
+def _extract_polygon_array(
+    text: str,
+    image_width_px: Optional[int] = None,
+    image_height_px: Optional[int] = None,
+) -> list[list[float]]:
     """
     Last-resort polygon extractor: scan the raw text for a JSON-like array
     of [x, y] pairs and parse just that. Lets us recover from responses
     where the model returned the right vertices but wrapped them in prose,
     a code-block, or malformed object syntax.
 
+    If image dimensions are supplied and the values look like pixel coords
+    (any axis > 1.5), we normalize them to fractions using the matching
+    dimension — handles models that ignore the "fractions 0..1" instruction.
+
     Returns the longest valid polygon match, or [] if nothing parseable.
     """
     if not text:
         return []
+    def _pct_to_decimal(m: "re.Match") -> str:
+        try:
+            return f"{float(m.group(1)) / 100.0:.6f}"
+        except ValueError:
+            return m.group(0)
+
     candidates = sorted(_POLYGON_RE.findall(text), key=len, reverse=True)
     for raw in candidates:
+        # Convert "32%" or 32% to 0.32 BEFORE stripping quotes so we don't
+        # lose the divide-by-100 signal. Then strip surrounding quotes so
+        # json.loads sees plain numbers.
+        cleaned = re.sub(r'"\s*(-?\d+(?:\.\d+)?)\s*%\s*"', _pct_to_decimal, raw)
+        cleaned = re.sub(r'(-?\d+(?:\.\d+)?)\s*%', _pct_to_decimal, cleaned)
+        cleaned = re.sub(r'"\s*(-?\d+(?:\.\d+)?)\s*"', r'\1', cleaned)
+        cleaned = re.sub(r"'\s*(-?\d+(?:\.\d+)?)\s*'", r'\1', cleaned)
         try:
-            arr = json.loads(raw)
+            arr = json.loads(cleaned)
         except Exception:
             continue
-        if (
-            isinstance(arr, list)
-            and len(arr) >= 3
-            and all(
-                isinstance(p, list)
-                and len(p) >= 2
-                and all(isinstance(v, (int, float)) for v in p[:2])
-                for p in arr
-            )
-        ):
-            return [[float(p[0]), float(p[1])] for p in arr]
+        if not (isinstance(arr, list) and len(arr) >= 3
+                and all(isinstance(p, list) and len(p) >= 2 for p in arr)):
+            continue
+
+        coerced: list[list[float]] = []
+        ok = True
+        for p in arr:
+            x = _coerce_coord(p[0])
+            y = _coerce_coord(p[1])
+            if x is None or y is None:
+                ok = False
+                break
+            coerced.append([x, y])
+        if not ok or len(coerced) < 3:
+            continue
+
+        # If the model returned pixel coords, normalize against image dimensions
+        max_x = max(abs(p[0]) for p in coerced)
+        max_y = max(abs(p[1]) for p in coerced)
+        if max_x > 1.5 or max_y > 1.5:
+            w = float(image_width_px or 0)
+            h = float(image_height_px or 0)
+            if w > 0 and h > 0:
+                coerced = [[p[0] / w, p[1] / h] for p in coerced]
+            else:
+                # No dimensions available — fall back to the larger axis as scale
+                scale = max(max_x, max_y) or 1.0
+                coerced = [[p[0] / scale, p[1] / scale] for p in coerced]
+
+        return coerced
     return []
 
 
@@ -222,7 +278,9 @@ async def detect_roof_outline(
     # for the vertex array itself — it's usually present even when the
     # surrounding object is mangled (truncation, prose wrapping, code fences).
     if not payload or not payload.get("polygon"):
-        fallback_polygon = _extract_polygon_array(text)
+        fallback_polygon = _extract_polygon_array(
+            text, image_width_px=image_width_px, image_height_px=image_height_px,
+        )
         if fallback_polygon:
             base = payload or {}
             payload = {
@@ -233,12 +291,45 @@ async def detect_roof_outline(
                 "warnings": base.get("warnings") or [],
             }
 
+    # Both the structured parse AND the regex fallback came up empty —
+    # the model probably returned prose-only ("I can't see clearly...") or
+    # an unrecognized format. Retry once with a JSON-only reminder before
+    # giving up. Mirrors the pattern in materials_compliance_service.
     if not payload:
-        # Both the JSON parser and the regex fallback came up empty — degrade
-        # gracefully so the UI shows an empty editable canvas instead of a 422.
+        logger.info(
+            "roof outline: first parse yielded nothing — retrying with JSON-only reminder. raw[:300]=%r",
+            (text or "")[:300],
+        )
+        retry_prompt = (
+            "Your previous response was not valid JSON. Re-emit ONLY the JSON object "
+            "described below — no markdown fences, no prose, no apology, nothing before "
+            "the opening '{' or after the closing '}'. Coordinates must be plain numbers, "
+            "not strings, not percentages.\n\n" + OUTLINE_PROMPT
+        )
+        try:
+            text = await llm_vision(image_bytes, media_type, retry_prompt, max_tokens=900)
+            payload = _parse_outline_json(text)
+            if not payload or not payload.get("polygon"):
+                fallback_polygon = _extract_polygon_array(
+                    text, image_width_px=image_width_px, image_height_px=image_height_px,
+                )
+                if fallback_polygon:
+                    payload = {
+                        "polygon": fallback_polygon,
+                        "confidence": 0.5,
+                        "structure": "",
+                        "notes": "Recovered roof outline from a partially malformed AI response — drag vertices to refine.",
+                        "warnings": [],
+                    }
+        except Exception:
+            logger.warning("roof outline: JSON-only retry failed", exc_info=True)
+
+    if not payload:
+        # All attempts failed — degrade gracefully so the UI shows an empty
+        # editable canvas instead of a 422.
         logger.warning(
-            "roof outline: JSON + regex fallback both failed. raw[:200]=%r",
-            (text or "")[:200],
+            "roof outline: parse failed after retry. raw[:500]=%r",
+            (text or "")[:500],
         )
         payload = {
             "polygon": [],
