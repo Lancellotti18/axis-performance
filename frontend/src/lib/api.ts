@@ -323,7 +323,7 @@ export const api = {
       })
     },
     fetchForm: (projectId: string, requirementsFields: Record<string, string> = {}, blueprintScan: Record<string, string> = {}) =>
-      apiRequest<{ form_url: string | null; city: string; state: string; project_type: string; fields: PermitField[]; jurisdiction: Jurisdiction; confirmed_at: string | null }>(
+      apiRequest<{ form_url: string | null; city: string; state: string; project_type: string; fields: PermitField[]; jurisdiction: Jurisdiction; confirmed_at: string | null; field_source: 'official_form' | 'standard_fallback' }>(
         `/api/v1/permits/fetch-form/${projectId}`,
         { method: 'POST', body: JSON.stringify({
           requirements_context: JSON.stringify(requirementsFields),

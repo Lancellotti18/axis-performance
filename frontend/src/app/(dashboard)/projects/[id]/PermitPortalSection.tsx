@@ -748,21 +748,37 @@ export default function PermitPortalSection({ project, projectId }: { project: a
           )}
 
           <div className="flex flex-col gap-2">
-            <button
-              onClick={handleAnalyzeRequirements}
-              disabled={reqLoading || formLoading || (reqFiles.length === 0 && !reqNotes.trim())}
-              className="w-full text-white font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-40"
-              style={{ background: (reqLoading || formLoading) ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
-            >
-              {reqLoading || formLoading ? 'Processing…' : reqFiles.length > 0 || reqNotes.trim() ? 'Analyze & Fill Permit →' : 'Add notes or files above to analyze'}
-            </button>
-            <button
-              onClick={() => handleFetchForm({})}
-              disabled={reqLoading || formLoading}
-              className="w-full text-slate-400 text-sm py-2 hover:text-slate-600 transition-colors disabled:opacity-40"
-            >
-              Skip — fill permit from project + blueprint data only →
-            </button>
+            {/* When user has added notes/files, primary CTA is "Analyze & Fill".
+                When nothing's added, primary CTA becomes "Continue without
+                documents" so they're never stuck waiting on uploads. */}
+            {(reqFiles.length > 0 || reqNotes.trim()) ? (
+              <>
+                <button
+                  onClick={handleAnalyzeRequirements}
+                  disabled={reqLoading || formLoading}
+                  className="w-full text-white font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-40"
+                  style={{ background: (reqLoading || formLoading) ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
+                >
+                  {reqLoading || formLoading ? 'Processing…' : 'Analyze & Fill Permit →'}
+                </button>
+                <button
+                  onClick={() => handleFetchForm({})}
+                  disabled={reqLoading || formLoading}
+                  className="w-full text-slate-400 text-sm py-2 hover:text-slate-600 transition-colors disabled:opacity-40"
+                >
+                  Skip analysis — continue with project + blueprint data only →
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => handleFetchForm({})}
+                disabled={reqLoading || formLoading}
+                className="w-full text-white font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-40"
+                style={{ background: (reqLoading || formLoading) ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #1d4ed8)', boxShadow: '0 4px 14px rgba(37,99,235,0.3)' }}
+              >
+                {reqLoading || formLoading ? 'Processing…' : 'Continue without documents →'}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -796,6 +812,26 @@ export default function PermitPortalSection({ project, projectId }: { project: a
             </div>
             <button onClick={() => setStep('requirements')} className="text-slate-400 text-sm hover:text-slate-600 transition-colors">← Back</button>
           </div>
+
+          {/* Field source banner — tells the contractor whether they're filling
+              the official jurisdiction form or our generic fallback */}
+          {formData.field_source === 'official_form' ? (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-start gap-2.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+              <div className="flex-1">
+                <div className="text-emerald-800 font-bold text-xs">Official {project?.city} permit fields</div>
+                <p className="text-emerald-700 text-xs mt-0.5">These fields match the city's actual permit form. Fill them all and you have a complete application.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-2.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <div className="flex-1">
+                <div className="text-amber-800 font-bold text-xs">Standard permit fields — verify with your city</div>
+                <p className="text-amber-700 text-xs mt-0.5">We couldn't locate the official {project?.city} permit form, so this covers what most US building departments ask for. Some jurisdictions want extras (lot setbacks, plumbing fixtures, etc.) — confirm with the building department before submitting.</p>
+              </div>
+            </div>
+          )}
 
           {/* Jurisdiction card */}
           {formData.jurisdiction && (

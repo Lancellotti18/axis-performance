@@ -356,17 +356,23 @@ async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormR
     form_url = None
     raw_fields = None
     cached_confirmed_at = None
+    # field_source: "official_form" when extracted from the city's actual PDF,
+    # "standard_fallback" when we couldn't find/extract the real form.
+    field_source: str = "standard_fallback"
 
     if cache.data and cache.data[0].get("form_fields"):
         form_url = cache.data[0].get("form_url") or jurisdiction.get("permit_form_url")
         raw_fields = cache.data[0]["form_fields"]
         cached_confirmed_at = cache.data[0].get("confirmed_at")
+        # If a form_url was cached, the fields came from the real form
+        field_source = "official_form" if form_url else "standard_fallback"
     else:
         # Use jurisdiction-validated form URL if available
         gov_form_url = jurisdiction.get("permit_form_url")
         form_url, raw_fields = _find_and_analyze_form(
             city, state, project_type, gov_form_url=gov_form_url
         )
+        field_source = "official_form" if form_url else "standard_fallback"
         # Cache it
         try:
             db.table("permit_form_cache").upsert({
@@ -440,6 +446,7 @@ async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormR
         "project_type": project_type,
         "fields": filled,
         "confirmed_at": cached_confirmed_at,  # ISO timestamp of last user confirmation, or None
+        "field_source": field_source,         # "official_form" | "standard_fallback"
         "jurisdiction": {
             "found": jurisdiction.get("found", False),
             "authority_name": jurisdiction.get("authority_name"),
@@ -853,13 +860,20 @@ Be thorough — capture every blank line, checkbox, signature line, and date fie
 
 
 def _standard_fields(city: str, state: str, project_type: str) -> list:
-    """Standard permit fields when we can't find the real form."""
+    """
+    Comprehensive permit fields used when we can't extract the actual jurisdiction
+    form. Covers what nearly every US building department asks for. Specific
+    cities may want extras (lot setbacks, plumbing fixture counts, etc.) but
+    these fields are a complete-enough draft for most residential / commercial
+    permit applications.
+    """
     base = [
         # Property Information
         {"key": "property_address",   "label": "Property Address",              "field_type": "text",      "required": True,  "section": "Property Information"},
         {"key": "apn_number",         "label": "APN / Parcel Number",           "field_type": "text",      "required": True,  "section": "Property Information"},
         {"key": "legal_description",  "label": "Legal Description",             "field_type": "text",      "required": False, "section": "Property Information"},
         {"key": "zoning_district",    "label": "Zoning District",               "field_type": "text",      "required": False, "section": "Property Information"},
+        {"key": "lot_size_sqft",      "label": "Lot Size (sq ft)",              "field_type": "text",      "required": False, "section": "Property Information"},
         {"key": "city",               "label": "City",                          "field_type": "text",      "required": True,  "section": "Property Information"},
         {"key": "state",              "label": "State",                         "field_type": "text",      "required": True,  "section": "Property Information"},
         {"key": "zip_code",           "label": "ZIP Code",                      "field_type": "text",      "required": True,  "section": "Property Information"},
@@ -871,25 +885,44 @@ def _standard_fields(city: str, state: str, project_type: str) -> list:
         # Contractor Information
         {"key": "contractor_name",    "label": "Contractor / Company Name",     "field_type": "text",      "required": True,  "section": "Contractor Information"},
         {"key": "license_number",     "label": "Contractor License Number",     "field_type": "text",      "required": True,  "section": "Contractor Information"},
+        {"key": "license_expiration", "label": "License Expiration Date",       "field_type": "date",      "required": False, "section": "Contractor Information"},
         {"key": "contractor_phone",   "label": "Contractor Phone",              "field_type": "text",      "required": True,  "section": "Contractor Information"},
         {"key": "contractor_email",   "label": "Contractor Email",              "field_type": "text",      "required": False, "section": "Contractor Information"},
         {"key": "contractor_address", "label": "Contractor Address",            "field_type": "text",      "required": False, "section": "Contractor Information"},
+        # Insurance & Workers Comp (commonly required)
+        {"key": "insurance_carrier",  "label": "Liability Insurance Carrier",   "field_type": "text",      "required": True,  "section": "Insurance"},
+        {"key": "insurance_policy",   "label": "Liability Policy Number",       "field_type": "text",      "required": True,  "section": "Insurance"},
+        {"key": "insurance_expires",  "label": "Liability Policy Expiration",   "field_type": "date",      "required": False, "section": "Insurance"},
+        {"key": "workers_comp_carrier", "label": "Workers Comp Carrier",        "field_type": "text",      "required": False, "section": "Insurance"},
+        {"key": "workers_comp_policy",  "label": "Workers Comp Policy #",       "field_type": "text",      "required": False, "section": "Insurance"},
         # Project Details
         {"key": "project_name",       "label": "Project / Job Name",            "field_type": "text",      "required": True,  "section": "Project Details"},
         {"key": "project_type",       "label": "Project Type",                  "field_type": "text",      "required": True,  "section": "Project Details"},
         {"key": "project_description","label": "Description of Work",           "field_type": "text",      "required": True,  "section": "Project Details"},
         {"key": "total_sqft",         "label": "Total Square Footage",          "field_type": "text",      "required": True,  "section": "Project Details"},
         {"key": "estimated_cost",     "label": "Estimated Cost of Construction","field_type": "text",      "required": True,  "section": "Project Details"},
+        {"key": "num_stories",        "label": "Number of Stories",             "field_type": "text",      "required": True,  "section": "Project Details"},
+        {"key": "occupancy_type",     "label": "Occupancy Type",                "field_type": "text",      "required": False, "section": "Project Details"},
+        {"key": "construction_type",  "label": "Construction Type",             "field_type": "text",      "required": False, "section": "Project Details"},
         {"key": "start_date",         "label": "Proposed Start Date",           "field_type": "date",      "required": False, "section": "Project Details"},
         {"key": "completion_date",    "label": "Estimated Completion Date",     "field_type": "date",      "required": False, "section": "Project Details"},
         # Signatures
         {"key": "owner_signature",    "label": "Owner Signature",               "field_type": "signature", "required": True,  "section": "Signatures"},
+        {"key": "contractor_signature", "label": "Contractor Signature",        "field_type": "signature", "required": True,  "section": "Signatures"},
         {"key": "sign_date",          "label": "Date",                          "field_type": "date",      "required": True,  "section": "Signatures"},
     ]
-    # Add new-construction specific fields
+    # Residential-specific fields slot into Project Details before signatures
     if project_type == "residential":
-        base.insert(-2, {"key": "num_bedrooms", "label": "Number of Bedrooms", "field_type": "text", "required": False, "section": "Project Details"})
-        base.insert(-2, {"key": "num_bathrooms","label": "Number of Bathrooms","field_type": "text", "required": False, "section": "Project Details"})
+        # Insert before the start_date / signature group
+        residential_extras = [
+            {"key": "num_bedrooms",   "label": "Number of Bedrooms",            "field_type": "text", "required": False, "section": "Project Details"},
+            {"key": "num_bathrooms",  "label": "Number of Bathrooms",           "field_type": "text", "required": False, "section": "Project Details"},
+        ]
+        # Find the "start_date" entry and insert residential extras just before it
+        for i, f in enumerate(base):
+            if f.get("key") == "start_date":
+                base[i:i] = residential_extras
+                break
     return base
 
 
