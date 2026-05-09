@@ -176,19 +176,22 @@ exposure and building resilience. Today's date is {today.strftime('%Y-%m-%d')}.
 
 Target location: {location}
 
-RESEARCH (use this to ground your analysis — do not fabricate events that aren't supported):
-{research if research else f"No live data retrieved. Use only your own verified knowledge of {location} geography, FEMA/NOAA/USGS records, and published building-code history. If you do not have confident information, leave scores at 0 and arrays empty rather than guessing."}
+RESEARCH (use to ground recent events — do not fabricate; absence of an article does NOT mean the hazard score should be 0):
+{research if research else f"No live news retrieved. Score every hazard from your own verified knowledge of {location} geography, FEMA/NOAA/USGS records, and published building-code history. Empty research is normal for many cities — it does NOT mean the hazards do not exist."}
 
 RULES
-  1. Every score, event, and recommendation must be grounded in the research above OR in verifiable published climate / seismic / building-code data for this exact location. Never invent a specific event, date, or code update.
-  2. "recent_events" should be events from approximately the past 24 months that the research supports. Leave the array empty if nothing verifiable was retrieved.
-  3. SCORE EVERY HAZARD based on the location's well-established climate and geological profile, not just on whatever the research happened to surface. Examples:
-       - Pennsylvania / Ohio / Northeast → winter storms typically score 6-8 (lake-effect snow, ice storms, nor'easters)
-       - Texas / Oklahoma / Kansas / Nebraska → tornado typically 7-9, hail typically 6-8
-       - Florida / Gulf Coast / Carolina coast → hurricane typically 7-10
-       - California / Pacific Northwest → earthquake typically 5-9, wildfire 5-9
-       - Arizona / New Mexico / Nevada → wildfire 4-7, earthquake 1-3
-     Use 0 ONLY when a hazard is genuinely not applicable (e.g., hurricane in landlocked Kansas; tornado in coastal Maine = 1-2 not 0).
+  1. Recent events and code-update citations must be grounded in the research above OR in verifiable published data for this exact location. Never invent a specific event, date, or code update.
+  2. "recent_events" should be events from approximately the past 24 months that the research supports. Leave the array empty if nothing verifiable was retrieved — this is fine.
+  3. **MANDATORY: every hazard MUST receive a 0–10 score based on the location's well-established climate and geological profile**, regardless of what the research returned. Empty research does NOT mean score 0. Use the geography baselines below as your starting point and adjust up/down based on any recent events the research surfaced:
+       - Pennsylvania / Ohio / Northeast → winter storms 6-8, hail 4-5, wind 4-6, tornado 2-4
+       - Texas / Oklahoma / Kansas / Nebraska → tornado 7-9, hail 6-8, wind 6-8, hurricane 0-7 (coast vs inland)
+       - Florida / Gulf Coast / Carolina coast → hurricane 7-10, flood 6-9, wind 7-9, hail 4-6
+       - California / Pacific Northwest → earthquake 5-9, wildfire 5-9, winter 2-5
+       - Arizona / New Mexico / Nevada → wildfire 4-7, earthquake 1-3, flood 2-4 (flash flood risk)
+       - Mountain West / Rockies → winter 7-9, wildfire 5-7, hail 4-6
+       - Midwest (IL, IN, MI, WI) → tornado 5-7, winter 6-8, wind 5-7, hail 5-7
+     Use 0 ONLY when a hazard is genuinely not applicable (e.g., hurricane in landlocked Kansas = 0; tornado in coastal Maine should still be 1-2, not 0).
+     **A response with all 8 hazards at score 0 will be treated as broken and rejected.**
   4. "reinforcement_recommendations" must cite WHY — tie each recommendation to a recent event, a FEMA/state code update, or documented regional best practice. Do not produce generic advice.
 
 Return ONLY valid JSON — no prose before or after — with this exact shape:
@@ -255,6 +258,24 @@ Keep recent_events to at most 5 items, newest first."""
 
     text = await llm_text(prompt, max_tokens=2000)
     result = _parse_risk_json(text)
+
+    # Retry once with a JSON-only reminder if parse failed entirely
+    if not result:
+        logger.info(
+            "risk_score: first parse failed — retrying with JSON-only reminder. raw[:300]=%r",
+            (text or "")[:300],
+        )
+        retry_prompt = (
+            "Your previous response was not valid JSON. Re-emit ONLY the JSON object "
+            "described below — no markdown fences, no prose, no apology, nothing before "
+            "the opening '{' or after the closing '}'.\n\n" + prompt
+        )
+        try:
+            text = await llm_text(retry_prompt, max_tokens=2000)
+            result = _parse_risk_json(text)
+        except Exception:
+            logger.warning("risk_score: JSON-only retry failed", exc_info=True)
+
     if not result:
         fallback = _empty_risk_payload(
             location,
@@ -276,6 +297,21 @@ Keep recent_events to at most 5 items, newest first."""
         ("earthquake", "Earthquake"),
         ("winter",     "Winter Storm / Ice"),
     ]
+
+    def _coerce_score(v) -> int:
+        """Accept ints, floats, and stringified numbers ('7', '7.5', ' 7 ').
+        Clamps to 0..10. Returns 0 for garbage."""
+        if isinstance(v, bool):  # bool is a subclass of int — exclude it
+            return 0
+        if isinstance(v, (int, float)):
+            return max(0, min(10, int(round(v))))
+        if isinstance(v, str):
+            try:
+                return max(0, min(10, int(round(float(v.strip())))))
+            except ValueError:
+                return 0
+        return 0
+
     hazards_by_key = {
         h.get("key"): h
         for h in (result.get("hazards") or [])
@@ -287,10 +323,58 @@ Keep recent_events to at most 5 items, newest first."""
         full_hazards.append({
             "key":       key,
             "label":     existing.get("label") or label,
-            "score":     existing.get("score") if isinstance(existing.get("score"), (int, float)) else 0,
+            "score":     _coerce_score(existing.get("score")),
             "rationale": existing.get("rationale") or "",
         })
     result["hazards"] = full_hazards
+
+    # If every hazard came back at 0, the model bailed out (sparse research, hedging,
+    # or it ignored rule 3). Re-prompt asking for geography-only scoring as a safety
+    # net so the graph never silently renders all zeros.
+    if all(h["score"] == 0 for h in full_hazards):
+        logger.info("risk_score: all-zero hazards — issuing geography-only fallback prompt")
+        fallback_prompt = f"""You returned all zeros for every natural-disaster hazard in {location}. That is wrong — every US location has SOME measurable exposure to most hazards.
+
+Score these 8 hazards 0–10 based ONLY on your verified knowledge of {location}'s geography, climate, and geology. Empty news research is fine — score from base rates.
+
+Return ONLY this JSON:
+{{
+  "hazards": [
+    {{"key": "hail",       "label": "Hail",                          "score": 0, "rationale": "1 sentence on local hail exposure"}},
+    {{"key": "wind",       "label": "Wind / Severe Thunderstorm",    "score": 0, "rationale": "1 sentence"}},
+    {{"key": "tornado",    "label": "Tornado",                       "score": 0, "rationale": "1 sentence"}},
+    {{"key": "hurricane",  "label": "Hurricane / Tropical Storm",    "score": 0, "rationale": "1 sentence"}},
+    {{"key": "flood",      "label": "Flood / Storm Surge",           "score": 0, "rationale": "1 sentence"}},
+    {{"key": "wildfire",   "label": "Wildfire",                      "score": 0, "rationale": "1 sentence"}},
+    {{"key": "earthquake", "label": "Earthquake",                    "score": 0, "rationale": "1 sentence"}},
+    {{"key": "winter",     "label": "Winter Storm / Ice",            "score": 0, "rationale": "1 sentence"}}
+  ]
+}}
+
+Use 0 ONLY for genuinely-not-applicable hazards (hurricane in Kansas, tornado in coastal Maine = 1-2 not 0)."""
+        try:
+            fb_text = await llm_text(fallback_prompt, max_tokens=900)
+            fb_result = _parse_risk_json(fb_text)
+            fb_hazards_by_key = {
+                h.get("key"): h
+                for h in (fb_result.get("hazards") or [])
+                if isinstance(h, dict) and h.get("key")
+            }
+            rebuilt = []
+            for key, label in CANONICAL_HAZARDS:
+                fb = fb_hazards_by_key.get(key) or {}
+                rebuilt.append({
+                    "key":       key,
+                    "label":     fb.get("label") or label,
+                    "score":     _coerce_score(fb.get("score")),
+                    "rationale": fb.get("rationale") or "",
+                })
+            # Only adopt the rebuilt scores if the fallback produced at least one non-zero
+            if any(h["score"] > 0 for h in rebuilt):
+                full_hazards = rebuilt
+                result["hazards"] = full_hazards
+        except Exception:
+            logger.warning("risk_score: geography fallback prompt failed", exc_info=True)
 
     # Defensive back-compat: derive legacy scores from hazards[] if the model
     # skipped filling them in at the top level.
