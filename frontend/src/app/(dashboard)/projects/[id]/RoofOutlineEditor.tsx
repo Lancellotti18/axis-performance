@@ -166,15 +166,77 @@ export default function RoofOutlineEditor({
     })
   }, [])
 
+  // ── Fit-to-polygon: zoom in on the building's bounding box with padding so
+  // the roof fills the viewport instead of being a tiny shape inside the
+  // full satellite tile. Vertices spread out and stop clustering as a result.
+  // Falls back to fitToViewport when there's no polygon yet.
+  const fitToPolygon = useCallback((pts: [number, number][]) => {
+    const el = viewportRef.current
+    if (!el || pts.length < 3) {
+      fitToViewport()
+      return
+    }
+    const { width: cW, height: cH } = el.getBoundingClientRect()
+    if (cW <= 0 || cH <= 0) return
+
+    // Bounding box in image-fraction coords [0..1]
+    let minX = 1, minY = 1, maxX = 0, maxY = 0
+    for (const [x, y] of pts) {
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+    }
+    // Convert to display-pixel space
+    const bbW = (maxX - minX) * DISPLAY_W
+    const bbH = (maxY - minY) * DISPLAY_H
+    const cx = ((minX + maxX) / 2) * DISPLAY_W
+    const cy = ((minY + maxY) / 2) * DISPLAY_H
+
+    // 25% padding so the building isn't pressed against the edges (gives
+    // contractors room to drag corner vertices outside the current shape).
+    const PAD = 1.25
+    const fit = Math.min(cW / (bbW * PAD), cH / (bbH * PAD))
+    const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, fit))
+
+    scaleRef.current = next
+    setScale(next)
+    setPan({
+      x: cW / 2 - cx * next,
+      y: cH / 2 - cy * next,
+    })
+  }, [fitToViewport])
+
   useEffect(() => {
     if (!open) return
     const el = viewportRef.current
     if (!el) return
-    fitToViewport()
-    const ro = new ResizeObserver(fitToViewport)
+    // Initial render: zoom to polygon if we already have one, else show the
+    // whole tile so the user can manually trace.
+    if (polygon.length >= 3) fitToPolygon(polygon)
+    else fitToViewport()
+    const ro = new ResizeObserver(() => {
+      // Re-fit on resize: keep using whichever mode is current.
+      if (polygon.length >= 3) fitToPolygon(polygon)
+      else fitToViewport()
+    })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [open, fitToViewport])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, fitToViewport, fitToPolygon])
+
+  // When auto-detect (or re-detect) returns a polygon, zoom to it.
+  // Tracks length-going-from-zero so dragging a single vertex doesn't re-zoom.
+  const polygonHadVertices = useRef(false)
+  useEffect(() => {
+    if (!open) return
+    const hasNow = polygon.length >= 3
+    if (hasNow && !polygonHadVertices.current) {
+      fitToPolygon(polygon)
+    }
+    polygonHadVertices.current = hasNow
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, polygon.length])
 
   // ── Zoom centred on a viewport point ──────────────────────────────────
   const zoomAt = useCallback((factor: number, cx: number, cy: number) => {
@@ -632,14 +694,18 @@ export default function RoofOutlineEditor({
                   const active = selectedIdx === i
                   const hover = hoverIdx === i
                   const big = active || hover
-                  const rOuter = (big ? 11 : 9) * invS
-                  const rInner = (big ? 5 : 4) * invS
+                  // Slightly smaller dots so adjacent vertices on a tight roof
+                  // don't visually merge into a blob.
+                  const rOuter = (big ? 9 : 7) * invS
+                  const rInner = (big ? 4 : 3) * invS
                   return (
                     <g key={`v-${i}`} transform={`translate(${x} ${y})`}>
-                      {/* Invisible larger hit target for easier grabbing */}
+                      {/* Invisible hit target — generous on small displays
+                          but doesn't balloon when zoomed out (which used to
+                          cause overlapping hit zones on dense polygons). */}
                       <circle
                         data-vertex="1"
-                        r={Math.max(18, 18 * invS)}
+                        r={Math.max(12, 14 * invS)}
                         fill="rgba(0,0,0,0)"
                         style={{ cursor: 'grab' }}
                         onPointerDown={onVertexDown(i)}
@@ -651,7 +717,7 @@ export default function RoofOutlineEditor({
                         r={rOuter}
                         fill="white"
                         stroke={active ? '#1d4ed8' : '#2563eb'}
-                        strokeWidth={(active ? 3 : 2.25) * invS}
+                        strokeWidth={(active ? 2.5 : 2) * invS}
                         filter="url(#vertex-shadow)"
                         pointerEvents="none"
                       />
@@ -704,9 +770,17 @@ export default function RoofOutlineEditor({
               >−</button>
               <div className="w-px h-5 bg-white/15 mx-1" />
               <button
+                onClick={() => fitToPolygon(polygon)}
+                disabled={polygon.length < 3}
+                className="px-2.5 h-8 rounded-md text-slate-200 hover:text-white hover:bg-white/15 transition-all text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Fit roof to viewport"
+              >
+                Fit roof
+              </button>
+              <button
                 onClick={fitToViewport}
                 className="px-2.5 h-8 rounded-md text-slate-200 hover:text-white hover:bg-white/15 transition-all text-xs font-semibold"
-                title="Reset view"
+                title="Reset view to full tile"
               >
                 Reset
               </button>
