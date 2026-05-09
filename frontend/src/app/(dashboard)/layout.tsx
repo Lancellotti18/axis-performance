@@ -4,6 +4,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { getUser, signOut } from '@/lib/auth'
 import { PrecisionToggle } from '@/components/axis'
+import { ChatContextProvider } from '@/lib/chat-context'
+import AxisChat from '@/components/AxisChat'
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
@@ -174,6 +176,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     : user?.email?.slice(0, 2).toUpperCase() ?? '?'
 
   return (
+    <ChatContextProvider>
     <div className="flex flex-col h-screen overflow-hidden font-sans axis-bench">
 
       {/* Server wake-up banner */}
@@ -377,6 +380,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
         </div>
       </div>
+
+      {/* Floating AI assistant — sees the current page's context */}
+      <AxisChat />
     </div>
+    </ChatContextProvider>
   )
 }

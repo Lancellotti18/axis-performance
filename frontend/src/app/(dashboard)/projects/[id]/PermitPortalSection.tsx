@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { api } from '@/lib/api'
+import { useRegisterChatContext } from '@/lib/chat-context'
 
 type Step = 'portal' | 'confirm' | 'requirements' | 'form' | 'review'
 type EntryMode = 'checklist' | 'wizard'
@@ -315,6 +316,27 @@ export default function PermitPortalSection({ project, projectId }: { project: a
     if (!formData?.fields) return 0
     return formData.fields.filter((f: any) => (fieldValues[f.key] || '').trim()).length
   }, [formData, fieldValues])
+
+  // Publish current permit state to AxisChat so the user can ask questions
+  // about specific fields, what they mean, and what's still missing.
+  useRegisterChatContext('permit', {
+    step,
+    project: { city: project?.city, state: project?.region?.replace('US-', ''), type: project?.blueprint_type },
+    portal: portal ? { name: portal.portal_name, url: portal.portal_url, found: !!portal.portal_url } : null,
+    feesTimeline,
+    blueprintScan,
+    formFound: !!formData?.form_url,
+    fieldSource: formData?.field_source,
+    jurisdiction: formData?.jurisdiction
+      ? { name: formData.jurisdiction.authority_name, submission_method: formData.jurisdiction.submission_method }
+      : null,
+    fieldsTotal: formData?.fields?.length || 0,
+    fieldsFilled: filledCount,
+    missingRequired: missingFields.map((f: any) => ({ label: f.label, section: f.section })),
+    sections: formData?.fields
+      ? Array.from(new Set(formData.fields.map((f: any) => f.section || 'General')))
+      : [],
+  })
 
   const sectionIcons: Record<string, string> = {
     'Property Information': '',

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { STATES } from '@/lib/jurisdictions'
+import { useRegisterChatContext } from '@/lib/chat-context'
 
 const cardStyle = {
   boxShadow: '0 2px 12px rgba(59,130,246,0.07)',
@@ -121,6 +122,19 @@ export default function StormReportPage() {
       setLoading(false)
     }
   }
+
+  // Publish the current report to the AxisChat assistant so the user can
+  // ask questions about hazard scores, recommendations, and recent events.
+  useRegisterChatContext('storm-report', {
+    location: { city, state, zip },
+    overall_risk: result?.overall_risk,
+    risk_label: result?.risk_label,
+    summary: result?.summary,
+    hazards: result?.hazards,
+    recent_events: result?.recent_events,
+    reinforcement_recommendations: result?.reinforcement_recommendations,
+    has_result: !!result,
+  })
 
   // Canonical 8-hazard spectrum — always shown on the graph so the user sees
   // the full disaster picture (flood, hail, earthquake, etc.) even if the LLM

@@ -16,6 +16,7 @@ import RoofingSection from './RoofingSection'
 import PermitPortalSection from './PermitPortalSection'
 import { computeMaterialConfidence, loadReviewedIds, saveReviewedIds } from './materialConfidence'
 import { CitationInline, CitationBibliography, ComplianceLimitations } from '@/components/MaterialComplianceCitations'
+import { useRegisterChatContext } from '@/lib/chat-context'
 // Images are base64 data URIs from backend — no staggering needed
 function StaggeredRender({ src, label, totalSqft }: { src: string; label: string; totalSqft?: number }) {
   return <RenderViewer src={src} label={label} totalSqft={totalSqft} />
@@ -612,6 +613,42 @@ Thank you for your time.`
       complianceByCategory[item.category].push(item)
     }
   }
+
+  // Publish project context to AxisChat. The section depends on which tab is
+  // open — permits/roofing/compliance get their own dedicated prompts; the
+  // others share the project-detail prompt.
+  const chatSection: 'permit' | 'compliance' | 'project-detail' = (
+    tab === 'permits' ? 'permit' :
+    tab === 'compliance' ? 'compliance' :
+    'project-detail'
+  )
+  useRegisterChatContext(chatSection, {
+    tab,
+    project: project ? {
+      id: project.id,
+      name: project.name,
+      city: project.city,
+      state: (project.region || '').replace('US-', ''),
+      type: project.blueprint_type,
+      total_sqft: project.total_sqft,
+    } : null,
+    analysis: analysis ? {
+      total_sqft: analysis.total_sqft,
+      room_count: Array.isArray(analysis.rooms) ? analysis.rooms.length : 0,
+      opening_count: Array.isArray(analysis.openings) ? analysis.openings.length : 0,
+    } : null,
+    estimate: estimate ? {
+      grand_total: estimate.grand_total,
+      labor_hours: estimate.labor_hours,
+      material_count: Array.isArray(estimate.items) ? estimate.items.length : 0,
+    } : null,
+    compliance_summary: compliance ? {
+      status: compliance.status,
+      risk_level: compliance.risk_level,
+      total_items: compliance.items?.length || 0,
+      required_failures: compliance.items?.filter(i => i.severity === 'required' && i.status === 'fail').length || 0,
+    } : null,
+  })
 
   if (loading) return (
     <div className="flex items-center justify-center h-full" style={{ background: 'linear-gradient(135deg, #eef6ff 0%, #ffffff 100%)' }}>

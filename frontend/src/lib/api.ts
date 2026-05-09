@@ -493,6 +493,19 @@ export const api = {
       } catch (err) { clearTimeout(timer); throw err }
     },
   },
+  chat: {
+    ask: (payload: {
+      section: string
+      page_data: Record<string, unknown>
+      history: Array<{ role: 'user' | 'assistant'; content: string }>
+      message: string
+    }) =>
+      apiRequest<{ reply: string; section?: string }>(
+        `/api/v1/chat/ask`,
+        { method: 'POST', body: JSON.stringify(payload) },
+        45000,
+      ),
+  },
   crm: {
     listLeads: (userId: string) =>
       apiRequest<CRMLead[]>(`/api/v1/crm/leads?user_id=${userId}`),
