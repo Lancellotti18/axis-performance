@@ -521,21 +521,101 @@ Rules:
 - Do not include the $ sign or units in numeric fields.
 - Return only the JSON object, no markdown."""
 
+    def _parse_scan_json(text: str) -> dict:
+        """Tolerant JSON extractor: strips fences, finds the largest balanced
+        {...} block, fixes trailing commas / Python-isms. Returns {} on failure
+        rather than raising — caller decides whether to retry."""
+        if not text:
+            return {}
+        raw = text.strip()
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, count=1)
+        raw = re.sub(r"\s*```\s*$", "", raw)
+        start = raw.find("{")
+        if start < 0:
+            return {}
+        # Find the largest balanced {...} block
+        depth, end, in_str, escape = 0, -1, False, False
+        for i in range(start, len(raw)):
+            ch = raw[i]
+            if escape:
+                escape = False; continue
+            if ch == "\\":
+                escape = True; continue
+            if ch == '"':
+                in_str = not in_str; continue
+            if in_str:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i; break
+        candidate = raw[start:end + 1] if end > 0 else raw[start:]
+        candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+        candidate = re.sub(r"\bNone\b", "null", candidate)
+        candidate = re.sub(r"\bTrue\b", "true", candidate)
+        candidate = re.sub(r"\bFalse\b", "false", candidate)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            for i in range(len(candidate) - 1, -1, -1):
+                if candidate[i] != "}":
+                    continue
+                try:
+                    return json.loads(candidate[:i + 1])
+                except Exception:
+                    continue
+            return {}
+
+    result_text = ""
+    extracted: dict = {}
     try:
         result_text = await llm_vision(
-            image_bytes=image_data,
-            media_type=media_type,
-            prompt=prompt,
-            max_tokens=1024,
+            image_bytes=image_data, media_type=media_type, prompt=prompt, max_tokens=1024,
         )
-        cleaned = result_text.strip()
-        cleaned = cleaned[cleaned.find("{"):cleaned.rfind("}") + 1]
-        extracted = json.loads(cleaned)
-        # Filter empties
-        extracted = {k: str(v).strip() for k, v in extracted.items() if v and str(v).strip()}
+        extracted = _parse_scan_json(result_text)
     except Exception as e:
-        logger.warning(f"blueprint scan LLM failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Blueprint scan failed: {e}")
+        # LLM provider failure (all providers tried, all failed) — bail loudly
+        # so the frontend's soft-fail message kicks in.
+        logger.warning(f"blueprint scan LLM call failed: {e}")
+        raise HTTPException(status_code=502, detail=f"AI vision unavailable: {e}")
+
+    # Retry once with a JSON-only reminder if the model returned prose or empty
+    if not extracted:
+        logger.info(
+            "blueprint scan: first parse yielded nothing — retrying with JSON-only reminder. raw[:300]=%r",
+            (result_text or "")[:300],
+        )
+        retry_prompt = (
+            "Your previous response was not valid JSON. Re-emit ONLY the JSON object "
+            "described below — no markdown fences, no prose, no apology, nothing before "
+            "the opening '{' or after the closing '}'.\n\n" + prompt
+        )
+        try:
+            result_text = await llm_vision(
+                image_bytes=image_data, media_type=media_type, prompt=retry_prompt, max_tokens=1024,
+            )
+            extracted = _parse_scan_json(result_text)
+        except Exception:
+            logger.warning("blueprint scan: JSON-only retry failed", exc_info=True)
+
+    if not extracted:
+        # Soft-fail: return an empty result instead of 500. Scan is optional —
+        # the user can still fill the permit manually. The frontend already
+        # treats {} as "no data extracted, you can fill in manually."
+        logger.warning(
+            "blueprint scan: parse failed after retry. raw[:500]=%r",
+            (result_text or "")[:500],
+        )
+        return {
+            "fields": {},
+            "summary": "Could not extract permit data from this blueprint — fill the permit manually.",
+            "confidence": "low",
+        }
+
+    # Filter empties + coerce values to strings
+    extracted = {k: str(v).strip() for k, v in extracted.items() if v and str(v).strip()}
 
     # Persist alongside the cache row so subsequent fetch-form calls can re-use it
     try:
