@@ -173,6 +173,7 @@ export interface VendorOption {
 // ── Permits ───────────────────────────────────────────────────────────────
 export type PermitFieldType = 'text' | 'date' | 'checkbox' | 'signature'
 export type PermitFieldStatus = 'auto_filled' | 'needs_input' | 'optional'
+export type PermitFieldConfidence = 'high' | 'medium' | 'low'
 
 export interface PermitField {
   key: string
@@ -185,6 +186,7 @@ export interface PermitField {
   y?: number | null
   page?: number
   status?: PermitFieldStatus
+  confidence?: PermitFieldConfidence | null
 }
 
 export interface Jurisdiction {

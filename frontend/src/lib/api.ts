@@ -322,11 +322,38 @@ export const api = {
         return res.json() as Promise<{ fields: Record<string, string>; summary: string; files_processed: number }>
       })
     },
-    fetchForm: (projectId: string, requirementsFields: Record<string, string> = {}) =>
-      apiRequest<{ form_url: string | null; city: string; state: string; project_type: string; fields: PermitField[]; jurisdiction: Jurisdiction }>(
+    fetchForm: (projectId: string, requirementsFields: Record<string, string> = {}, blueprintScan: Record<string, string> = {}) =>
+      apiRequest<{ form_url: string | null; city: string; state: string; project_type: string; fields: PermitField[]; jurisdiction: Jurisdiction; confirmed_at: string | null }>(
         `/api/v1/permits/fetch-form/${projectId}`,
-        { method: 'POST', body: JSON.stringify({ requirements_context: JSON.stringify(requirementsFields) }) },
+        { method: 'POST', body: JSON.stringify({
+          requirements_context: JSON.stringify(requirementsFields),
+          blueprint_scan: JSON.stringify(blueprintScan),
+        }) },
         60000
+      ),
+    scanBlueprint: (projectId: string) =>
+      apiRequest<{ fields: Record<string, string>; summary: string; confidence: string }>(
+        `/api/v1/permits/scan-blueprint/${projectId}`,
+        { method: 'POST' },
+        90000,
+      ),
+    confirmForm: (projectId: string, opts: { formUrl?: string | null; useManual?: boolean } = {}) =>
+      apiRequest<{ ok: boolean; confirmed_at: string; form_url: string | null }>(
+        `/api/v1/permits/confirm-form/${projectId}`,
+        { method: 'POST', body: JSON.stringify({ form_url: opts.formUrl ?? null, use_manual: !!opts.useManual }) },
+        15000,
+      ),
+    feesTimeline: (city: string, state: string, projectType: string, estimatedCost?: number) => {
+      const params = new URLSearchParams({ city, state, project_type: projectType })
+      if (estimatedCost) params.set('estimated_cost', String(estimatedCost))
+      return apiRequest<{ fees_estimate: string; review_days_estimate: string; cached: boolean }>(
+        `/api/v1/permits/fees-timeline?${params}`,
+      )
+    },
+    preflight: (fields: PermitField[]) =>
+      apiRequest<{ ok: boolean; missing_required: Array<{ key: string; label: string; section: string }>; missing_count: number }>(
+        `/api/v1/permits/preflight`,
+        { method: 'POST', body: JSON.stringify({ fields }) },
       ),
     generatePdf: (projectId: string, fields: PermitField[], formUrl: string | null, useWebForm: boolean): Promise<Blob> =>
       fetch(`${API_BASE}/api/v1/permits/generate-pdf/${projectId}`, {

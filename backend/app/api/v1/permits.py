@@ -19,6 +19,8 @@ class PermitField(BaseModel):
     field_type: str = "text"   # text | date | checkbox | signature
     required: bool = True
     section: str = "General"
+    confidence: Optional[str] = None  # high | medium | low — source-of-value trust signal for the UI
+    status: Optional[str] = None      # auto_filled | needs_input | optional
     x: Optional[float] = None  # PDF coordinate (points from bottom-left)
     y: Optional[float] = None
     page: int = 0
@@ -30,6 +32,14 @@ class GeneratePDFRequest(BaseModel):
 
 class FetchFormRequest(BaseModel):
     requirements_context: str = ""  # extracted text from uploaded requirements docs
+    blueprint_scan: Optional[str] = ""  # JSON of blueprint-derived field values
+
+class ConfirmFormRequest(BaseModel):
+    form_url: Optional[str] = None      # If user pasted a different URL, store that
+    use_manual: bool = False            # User uploaded their own PDF or pasted a URL
+
+class PreflightRequest(BaseModel):
+    fields: List[PermitField]
 
 
 # ── Portal Search (existing) ────────────────────────────────────────────────
@@ -345,10 +355,12 @@ async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormR
 
     form_url = None
     raw_fields = None
+    cached_confirmed_at = None
 
     if cache.data and cache.data[0].get("form_fields"):
         form_url = cache.data[0].get("form_url") or jurisdiction.get("permit_form_url")
         raw_fields = cache.data[0]["form_fields"]
+        cached_confirmed_at = cache.data[0].get("confirmed_at")
     else:
         # Use jurisdiction-validated form URL if available
         gov_form_url = jurisdiction.get("permit_form_url")
@@ -386,6 +398,10 @@ async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormR
         "contractor_zip":   contractor.get("zip_code") or "",
     }
 
+    # Track where each field's value came from so the UI can surface confidence.
+    # Built up alongside base_data as we layer in requirements + blueprint scan data.
+    sources: dict = {}
+
     # If requirements context was provided (parsed from uploaded docs), use it to
     # parse additional fields. Requirements data overrides generic project defaults.
     if body.requirements_context:
@@ -393,12 +409,29 @@ async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormR
             req_fields = json.loads(body.requirements_context)
             if isinstance(req_fields, dict):
                 # Requirements fields take priority — they come from actual uploaded documents
-                base_data = {**base_data, **{k: v for k, v in req_fields.items() if v}}
+                for k, v in req_fields.items():
+                    if v:
+                        base_data[k] = v
+                        sources[k] = "medium"  # OCR'd from user-uploaded doc — trust but verify
         except Exception:
             logger.debug("requirements_context parse failed, using base project data", exc_info=True)
             pass
 
-    filled = _prefill_fields(raw_fields, base_data)
+    # If blueprint scan was provided, layer it in. Blueprint-derived values are "medium"
+    # confidence — Vision OCR can mis-read floorplan callouts.
+    if body.blueprint_scan:
+        try:
+            bp_fields = json.loads(body.blueprint_scan)
+            if isinstance(bp_fields, dict):
+                for k, v in bp_fields.items():
+                    if v and not base_data.get(k):  # don't overwrite higher-priority sources
+                        base_data[k] = v
+                        sources[k] = "medium"
+        except Exception:
+            logger.debug("blueprint_scan parse failed", exc_info=True)
+            pass
+
+    filled = _prefill_fields(raw_fields, base_data, sources=sources)
 
     return {
         "form_url": form_url,
@@ -406,6 +439,7 @@ async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormR
         "state": state,
         "project_type": project_type,
         "fields": filled,
+        "confirmed_at": cached_confirmed_at,  # ISO timestamp of last user confirmation, or None
         "jurisdiction": {
             "found": jurisdiction.get("found", False),
             "authority_name": jurisdiction.get("authority_name"),
@@ -416,6 +450,238 @@ async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormR
             "error": jurisdiction.get("error"),
             "fallback_search_url": jurisdiction.get("fallback_search_url"),
         },
+    }
+
+
+# ── Blueprint Scan for Permit Fields ───────────────────────────────────────
+
+@router.post("/scan-blueprint/{project_id}")
+async def scan_blueprint_for_permit(project_id: str):
+    """
+    Run LLM Vision over the project's blueprint and extract permit-relevant data:
+    sqft, room counts, project description, dimensions, story count, occupancy hints.
+
+    Returns extracted values that can be merged into the permit form. The frontend
+    shows these to the user for review before applying — Vision OCR can mis-read
+    floorplan callouts, so values come back tagged confidence='medium'.
+    """
+    import asyncio as _asyncio
+    from app.services.llm import llm_vision
+    from app.services.blueprint_vision_service import _download_blueprint
+
+    db = get_supabase()
+
+    # Find the project's primary blueprint
+    bp_r = db.table("blueprints").select("id, file_type").eq("project_id", project_id).order("created_at", desc=True).limit(1).execute()
+    if not bp_r.data:
+        raise HTTPException(status_code=404, detail="No blueprint uploaded for this project")
+    blueprint_id = bp_r.data[0]["id"]
+
+    # Download the blueprint bytes (PDF or image)
+    try:
+        image_data, media_type = await _asyncio.to_thread(_download_blueprint, blueprint_id)
+    except Exception as e:
+        logger.warning(f"blueprint download failed for permit scan: {e}")
+        raise HTTPException(status_code=500, detail=f"Could not load blueprint: {e}")
+
+    # PDFs → render page 1 to JPEG (Gemini/Groq don't take PDF natively)
+    if media_type == "application/pdf":
+        try:
+            import fitz
+            doc = fitz.open(stream=image_data, filetype="pdf")
+            page = doc.load_page(0)
+            pix = page.get_pixmap(dpi=150)
+            image_data = pix.tobytes("jpeg")
+            media_type = "image/jpeg"
+        except Exception as e:
+            logger.warning(f"blueprint PDF render failed: {e}")
+            raise HTTPException(status_code=500, detail="Could not render blueprint PDF")
+
+    prompt = """You are extracting permit-application data from a building blueprint / floor plan.
+
+Return ONLY a JSON object with these keys (use empty string "" if not visible / unclear):
+
+{
+  "total_sqft": "",            // total floor area in square feet, integer string e.g. "2450"
+  "num_bedrooms": "",          // count of bedrooms / BRs
+  "num_bathrooms": "",         // count of bathrooms (decimals OK like "2.5")
+  "num_stories": "",           // 1, 2, etc.
+  "occupancy_type": "",        // e.g. "R-3 Single Family Residential" — only if clearly stated
+  "construction_type": "",     // e.g. "Type V-B Wood Frame" — only if clearly stated
+  "project_description": "",   // 1-sentence plain English description of the work shown
+  "footprint_width_ft": "",    // building outer width in feet
+  "footprint_depth_ft": "",    // building outer depth in feet
+  "garage_sqft": "",           // garage area if separately labeled
+  "ceiling_height_ft": ""      // ceiling height if labeled
+}
+
+Rules:
+- Extract ONLY what you can read from the drawing. Do NOT guess or infer.
+- For sqft, sum room areas if a total isn't labeled. If totally unclear, leave "".
+- Do not include the $ sign or units in numeric fields.
+- Return only the JSON object, no markdown."""
+
+    try:
+        result_text = await llm_vision(
+            image_bytes=image_data,
+            media_type=media_type,
+            prompt=prompt,
+            max_tokens=1024,
+        )
+        cleaned = result_text.strip()
+        cleaned = cleaned[cleaned.find("{"):cleaned.rfind("}") + 1]
+        extracted = json.loads(cleaned)
+        # Filter empties
+        extracted = {k: str(v).strip() for k, v in extracted.items() if v and str(v).strip()}
+    except Exception as e:
+        logger.warning(f"blueprint scan LLM failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Blueprint scan failed: {e}")
+
+    # Persist alongside the cache row so subsequent fetch-form calls can re-use it
+    try:
+        proj_r = db.table("projects").select("city, region, blueprint_type").eq("id", project_id).single().execute()
+        if proj_r.data:
+            city = proj_r.data.get("city") or ""
+            state = (proj_r.data.get("region") or "US-TX").replace("US-", "")
+            project_type = proj_r.data.get("blueprint_type") or "residential"
+            db.table("permit_form_cache").upsert({
+                "city": city, "state": state, "project_type": project_type,
+                "blueprint_scan": extracted,
+            }, on_conflict="city,state,project_type").execute()
+    except Exception:
+        logger.debug("blueprint_scan cache upsert failed", exc_info=True)
+
+    return {
+        "fields": extracted,
+        "summary": f"Extracted {len(extracted)} value(s) from blueprint",
+        "confidence": "medium",
+    }
+
+
+# ── Confirm Permit Form ────────────────────────────────────────────────────
+
+@router.post("/confirm-form/{project_id}")
+async def confirm_permit_form(project_id: str, body: ConfirmFormRequest):
+    """
+    Mark the current permit form as confirmed by the user. If `form_url` is set
+    and differs from cache, replace the cached URL (handles the 'this isn't the
+    right form, here's the real one' escape hatch).
+    """
+    from datetime import datetime, timezone
+    db = get_supabase()
+
+    proj = db.table("projects").select("city, region, blueprint_type").eq("id", project_id).single().execute().data
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    city = proj.get("city") or ""
+    state = (proj.get("region") or "US-TX").replace("US-", "")
+    project_type = proj.get("blueprint_type") or "residential"
+    if not city:
+        raise HTTPException(status_code=400, detail="Project has no city set")
+
+    payload = {
+        "city": city, "state": state, "project_type": project_type,
+        "confirmed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if body.form_url:
+        payload["form_url"] = body.form_url
+    if body.use_manual:
+        # Manual override invalidates extracted fields — they'll be re-extracted
+        # against the new form on next fetch-form call.
+        payload["form_fields"] = None
+
+    try:
+        db.table("permit_form_cache").upsert(payload, on_conflict="city,state,project_type").execute()
+    except Exception as e:
+        logger.warning(f"confirm-form upsert failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Could not save confirmation: {e}")
+
+    return {"ok": True, "confirmed_at": payload["confirmed_at"], "form_url": payload.get("form_url")}
+
+
+# ── Fees & Timeline Estimate ───────────────────────────────────────────────
+
+@router.get("/fees-timeline")
+async def fees_timeline_estimate(
+    city: str = Query(...),
+    state: str = Query(...),
+    project_type: str = Query(default="residential"),
+    estimated_cost: Optional[float] = Query(default=None),
+):
+    """Quick LLM estimate of permit fees and review timeline for the jurisdiction.
+    Cached on permit_form_cache so we don't re-call the LLM on every page load."""
+    from app.services.llm import llm_text
+
+    db = get_supabase()
+
+    # Cache hit?
+    try:
+        cache = (
+            db.table("permit_form_cache")
+            .select("fees_estimate, review_days_estimate")
+            .eq("city", city).eq("state", state).eq("project_type", project_type)
+            .limit(1).execute()
+        )
+        if cache.data and (cache.data[0].get("fees_estimate") or cache.data[0].get("review_days_estimate")):
+            return {
+                "fees_estimate": cache.data[0].get("fees_estimate") or "",
+                "review_days_estimate": cache.data[0].get("review_days_estimate") or "",
+                "cached": True,
+            }
+    except Exception:
+        logger.debug("fees-timeline cache lookup failed", exc_info=True)
+
+    cost_hint = f"Project valuation: approximately ${int(estimated_cost):,}." if estimated_cost else ""
+    prompt = f"""Estimate the typical building permit fees and review timeline for a {project_type} permit in {city}, {state}. {cost_hint}
+
+Return ONLY a JSON object:
+{{
+  "fees_estimate": "$X,XXX – $X,XXX",         // realistic fee range for this jurisdiction + project
+  "review_days_estimate": "X–Y business days" // typical plan review turnaround
+}}
+
+If you don't know a specific jurisdiction, give the typical range for that state. Be concise."""
+
+    try:
+        text = await llm_text(prompt, max_tokens=256)
+        text = text.strip()
+        text = text[text.find("{"):text.rfind("}") + 1]
+        result = json.loads(text)
+        fees = str(result.get("fees_estimate", "")).strip()
+        days = str(result.get("review_days_estimate", "")).strip()
+    except Exception as e:
+        logger.warning(f"fees-timeline LLM failed: {e}")
+        fees, days = "", ""
+
+    # Cache for next time
+    if fees or days:
+        try:
+            db.table("permit_form_cache").upsert({
+                "city": city, "state": state, "project_type": project_type,
+                "fees_estimate": fees, "review_days_estimate": days,
+            }, on_conflict="city,state,project_type").execute()
+        except Exception:
+            logger.debug("fees-timeline cache upsert failed", exc_info=True)
+
+    return {"fees_estimate": fees, "review_days_estimate": days, "cached": False}
+
+
+# ── Pre-flight Validation ──────────────────────────────────────────────────
+
+@router.post("/preflight")
+async def preflight_check(body: PreflightRequest):
+    """Check submitted field values for missing required fields. Used right
+    before PDF download to warn the contractor."""
+    missing_required = [
+        {"key": f.key, "label": f.label, "section": f.section}
+        for f in body.fields
+        if f.required and f.field_type != "signature" and not (f.value and f.value.strip())
+    ]
+    return {
+        "ok": len(missing_required) == 0,
+        "missing_required": missing_required,
+        "missing_count": len(missing_required),
     }
 
 
@@ -547,8 +813,21 @@ def _standard_fields(city: str, state: str, project_type: str) -> list:
     return base
 
 
-def _prefill_fields(raw_fields: list, data: dict) -> list:
-    """Map known project data onto form fields. Each field gets a 'status' key."""
+def _prefill_fields(raw_fields: list, data: dict, sources: Optional[dict] = None) -> list:
+    """
+    Map known project data onto form fields.
+
+    `sources` (optional) maps field_key -> source label so we can stamp a confidence
+    grade on each filled value:
+      - "high"   = pulled from contractor profile / saved settings (trust it)
+      - "medium" = inferred from blueprint Vision scan or extracted requirements docs
+      - "low"    = guessed default / generic placeholder
+
+    Defaults: contractor_* and license_number are "high"; total_sqft / project_description
+    derived from blueprint analyses are "medium" (overridden via `sources` when known).
+    """
+    sources = sources or {}
+
     KEY_MAP = {
         "city":               data.get("city", ""),
         "state":              data.get("state", ""),
@@ -567,19 +846,51 @@ def _prefill_fields(raw_fields: list, data: dict) -> list:
         "contractor_city":    data.get("contractor_city", ""),
         "contractor_state":   data.get("contractor_state", ""),
         "contractor_zip":     data.get("contractor_zip", ""),
+        # Blueprint-derived fields (medium confidence by default — see sources map)
+        "num_bedrooms":       data.get("num_bedrooms", ""),
+        "num_bathrooms":      data.get("num_bathrooms", ""),
+        "num_stories":        data.get("num_stories", ""),
+        "occupancy_type":     data.get("occupancy_type", ""),
+        "construction_type":  data.get("construction_type", ""),
+        # Requirement-extracted fields
+        "owner_name":         data.get("owner_name", ""),
+        "owner_phone":        data.get("owner_phone", ""),
+        "owner_email":        data.get("owner_email", ""),
+        "owner_address":      data.get("owner_address", ""),
+        "property_address":   data.get("property_address", ""),
+        "apn_number":         data.get("apn_number", ""),
+        "legal_description":  data.get("legal_description", ""),
+        "zoning_district":    data.get("zoning_district", ""),
     }
+
+    HIGH_KEYS = {"contractor_name", "license_number", "contractor_phone", "contractor_email",
+                 "contractor_address", "contractor_city", "contractor_state", "contractor_zip"}
+
+    def _confidence_for(key: str) -> str:
+        if key in sources:
+            return sources[key]
+        if key in HIGH_KEYS:
+            return "high"
+        # project metadata (city/state/name) is also high-confidence — user typed it
+        if key in {"city", "state", "zip_code", "project_name", "project_type", "region"}:
+            return "high"
+        return "medium"
+
     result = []
     for f in raw_fields:
         field = dict(f)
-        auto_value = KEY_MAP.get(field.get("key", ""), "")
+        key = field.get("key", "")
+        auto_value = KEY_MAP.get(key, "")
         field["value"] = auto_value
-        # Status: auto_filled | needs_input
         if auto_value:
             field["status"] = "auto_filled"
+            field["confidence"] = _confidence_for(key)
         elif field.get("required"):
             field["status"] = "needs_input"
+            field["confidence"] = None
         else:
             field["status"] = "optional"
+            field["confidence"] = None
         result.append(field)
     return result
 

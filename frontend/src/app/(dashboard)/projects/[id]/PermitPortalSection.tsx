@@ -1,17 +1,33 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { api } from '@/lib/api'
+
+type Step = 'portal' | 'confirm' | 'requirements' | 'form' | 'review'
+type EntryMode = 'checklist' | 'wizard'
+
+const CONFIRM_TTL_MS = 30 * 24 * 60 * 60 * 1000  // skip re-confirmation if confirmed within 30 days
 
 export default function PermitPortalSection({ project, projectId }: { project: any; projectId: string }) {
   const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }
 
-  // Step state: 'portal' | 'requirements' | 'form' | 'review'
-  const [step, setStep] = useState<'portal' | 'requirements' | 'form' | 'review'>('portal')
+  const [step, setStep] = useState<Step>('portal')
   const [portal, setPortal] = useState<any>(null)
   const [portalLoading, setPortalLoading] = useState(false)
   const [portalError, setPortalError] = useState<string | null>(null)
 
-  // Requirements upload state
+  // Confirm step
+  const [feesTimeline, setFeesTimeline] = useState<{ fees_estimate: string; review_days_estimate: string } | null>(null)
+  const [manualFormUrl, setManualFormUrl] = useState('')
+  const [showManualOverride, setShowManualOverride] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+
+  // Blueprint scan
+  const [blueprintScan, setBlueprintScan] = useState<Record<string, string> | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState<string | null>(null)
+  const [scanApplied, setScanApplied] = useState(false)
+
+  // Requirements upload
   const [reqNotes, setReqNotes] = useState('')
   const [reqFiles, setReqFiles] = useState<File[]>([])
   const [reqLoading, setReqLoading] = useState(false)
@@ -19,11 +35,23 @@ export default function PermitPortalSection({ project, projectId }: { project: a
   const [reqSummary, setReqSummary] = useState<string | null>(null)
   const [reqFields, setReqFields] = useState<Record<string, string>>({})
 
-  // Form state
-  const [formData, setFormData] = useState<any>(null)   // { form_url, fields, city, state, jurisdiction }
+  // Form
+  const [formData, setFormData] = useState<any>(null)
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
+
+  // Entry mode (checklist vs wizard)
+  const [entryMode, setEntryMode] = useState<EntryMode>('checklist')
+  const [wizardIdx, setWizardIdx] = useState(0)
+
+  // Voice-to-text
+  const [voiceActive, setVoiceActive] = useState<string | null>(null)
+  const recognitionRef = useRef<any>(null)
+  const voiceSupported = typeof window !== 'undefined' && (
+    typeof (window as any).SpeechRecognition !== 'undefined' ||
+    typeof (window as any).webkitSpeechRecognition !== 'undefined'
+  )
 
   // Contractor profile
   const [contractorProfile, setContractorProfile] = useState<any>({})
@@ -31,11 +59,11 @@ export default function PermitPortalSection({ project, projectId }: { project: a
   const [savingProfile, setSavingProfile] = useState(false)
   const [profileSaved, setProfileSaved] = useState(false)
 
-  // PDF generation
+  // PDF download + preflight
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [downloaded, setDownloaded] = useState(false)
+  const [preflightModal, setPreflightModal] = useState<{ open: boolean; missing: Array<{ key: string; label: string; section: string }>; useWebForm: boolean } | null>(null)
 
-  // Load contractor profile on mount
   useEffect(() => {
     async function loadProfile() {
       try {
@@ -45,7 +73,6 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         const profile = await api.contractorProfile.get(user.id)
         if (profile && Object.keys(profile).length > 0) {
           setContractorProfile(profile)
-          // Pre-fill contractor fields immediately
           setFieldValues(prev => ({
             ...prev,
             contractor_name: profile.company_name || '',
@@ -75,6 +102,53 @@ export default function PermitPortalSection({ project, projectId }: { project: a
     setPortalLoading(false)
   }
 
+  // Move to confirm step. Fetches fees/timeline in the background.
+  async function handleGoToConfirm() {
+    setStep('confirm')
+    // Kick off fees + timeline lookup (cached on backend)
+    if (!feesTimeline) {
+      try {
+        const city  = project?.city || ''
+        const state = project?.region?.replace('US-', '') || ''
+        const result = await api.permits.feesTimeline(city, state, project?.blueprint_type || 'residential')
+        setFeesTimeline({ fees_estimate: result.fees_estimate, review_days_estimate: result.review_days_estimate })
+      } catch {
+        // Non-fatal — UI still works without estimates
+      }
+    }
+  }
+
+  async function handleConfirmForm(opts: { useManual?: boolean; manualUrl?: string | null } = {}) {
+    setConfirming(true)
+    try {
+      await api.permits.confirmForm(projectId, {
+        formUrl: opts.manualUrl || null,
+        useManual: !!opts.useManual,
+      })
+      // After confirming, kick off blueprint scan automatically — it's the
+      // single highest-leverage step (extracts sqft / rooms / dimensions).
+      await handleScanBlueprint()
+      setStep('requirements')
+    } catch (err: any) {
+      setFormError(err.message || 'Could not save confirmation.')
+    }
+    setConfirming(false)
+  }
+
+  async function handleScanBlueprint() {
+    setScanning(true)
+    setScanError(null)
+    try {
+      const result = await api.permits.scanBlueprint(projectId)
+      setBlueprintScan(result.fields || {})
+    } catch (err: any) {
+      // Soft-fail — scan is optional and user can still proceed without it.
+      setScanError(err.message || 'Blueprint scan failed — you can still fill the permit manually.')
+      setBlueprintScan({})
+    }
+    setScanning(false)
+  }
+
   async function handleAnalyzeRequirements() {
     setReqLoading(true)
     setReqError(null)
@@ -82,7 +156,6 @@ export default function PermitPortalSection({ project, projectId }: { project: a
       const result = await api.permits.analyzeRequirements(projectId, reqNotes, reqFiles)
       setReqFields(result.fields || {})
       setReqSummary(result.summary || null)
-      // Proceed directly to fetching + filling the form
       await handleFetchForm(result.fields || {})
     } catch (err: any) {
       setReqError(err.message || 'Failed to analyze requirements. Please try again.')
@@ -94,18 +167,23 @@ export default function PermitPortalSection({ project, projectId }: { project: a
     setFormLoading(true)
     setFormError(null)
     try {
-      const data = await api.permits.fetchForm(projectId, requirementsFields)
+      const data = await api.permits.fetchForm(projectId, requirementsFields, blueprintScan || {})
       setFormData(data)
-      // Merge: requirements fields > auto-filled from project > blank
       const vals: Record<string, string> = { ...fieldValues }
       for (const f of data.fields) {
         if (f.value && !vals[f.key]) vals[f.key] = f.value
       }
-      // Requirements fields take highest priority
       for (const [k, v] of Object.entries(requirementsFields)) {
         if (v) vals[k] = v
       }
+      // Fold blueprint scan values in if not already set
+      if (blueprintScan) {
+        for (const [k, v] of Object.entries(blueprintScan)) {
+          if (v && !vals[k]) vals[k] = v
+        }
+      }
       setFieldValues(vals)
+      setScanApplied(true)
       setStep('form')
     } catch (err: any) {
       setFormError(err.message || 'Failed to fetch permit form. Please try again.')
@@ -132,16 +210,59 @@ export default function PermitPortalSection({ project, projectId }: { project: a
     setSavingProfile(false)
   }
 
-  async function handleDownloadPdf(useWebForm: boolean) {
+  // Voice-to-text via the Web Speech API. Falls back silently on browsers
+  // that don't support it (Firefox, older Safari).
+  function startVoiceInput(fieldKey: string) {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) return
+    const rec = new SR()
+    rec.lang = 'en-US'
+    rec.interimResults = false
+    rec.continuous = false
+    rec.onresult = (e: any) => {
+      const transcript = Array.from(e.results)
+        .map((r: any) => r[0].transcript)
+        .join(' ')
+        .trim()
+      setFieldValues(prev => {
+        const existing = prev[fieldKey] || ''
+        return { ...prev, [fieldKey]: existing ? `${existing} ${transcript}` : transcript }
+      })
+    }
+    rec.onend = () => setVoiceActive(null)
+    rec.onerror = () => setVoiceActive(null)
+    recognitionRef.current = rec
+    setVoiceActive(fieldKey)
+    rec.start()
+  }
+
+  function stopVoiceInput() {
+    try { recognitionRef.current?.stop() } catch {}
+    setVoiceActive(null)
+  }
+
+  // Pre-flight check before download. Surfaces a confirmation modal if any
+  // required fields are blank rather than letting the contractor submit a
+  // packet that'll bounce back from the city.
+  async function handleDownloadClick(useWebForm: boolean) {
+    const fields = (formData?.fields || []).map((f: any) => ({
+      ...f, value: fieldValues[f.key] || f.value || '',
+    }))
+    try {
+      const result = await api.permits.preflight(fields)
+      if (!result.ok) {
+        setPreflightModal({ open: true, missing: result.missing_required, useWebForm })
+        return
+      }
+    } catch {
+      // If preflight fails, fall through and let user download anyway
+    }
+    await actuallyDownloadPdf(useWebForm, fields)
+  }
+
+  async function actuallyDownloadPdf(useWebForm: boolean, fields: any[]) {
     setGeneratingPdf(true)
     try {
-      // Build field list with current values
-      const fields = (formData?.fields || []).map((f: any) => ({
-        ...f,
-        value: fieldValues[f.key] || f.value || '',
-      }))
-
-      // Use raw fetch since response is binary PDF
       const { supabase } = await import('@/lib/supabase')
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -182,6 +303,19 @@ export default function PermitPortalSection({ project, projectId }: { project: a
     }
   }
 
+  // Missing required fields — used by both checklist banner and wizard mode.
+  const missingFields = useMemo(() => {
+    if (!formData?.fields) return []
+    return formData.fields.filter((f: any) =>
+      f.required && f.field_type !== 'signature' && !(fieldValues[f.key] || '').trim()
+    )
+  }, [formData, fieldValues])
+
+  const filledCount = useMemo(() => {
+    if (!formData?.fields) return 0
+    return formData.fields.filter((f: any) => (fieldValues[f.key] || '').trim()).length
+  }, [formData, fieldValues])
+
   const sectionIcons: Record<string, string> = {
     'Property Information': '',
     'Owner Information': '',
@@ -191,17 +325,96 @@ export default function PermitPortalSection({ project, projectId }: { project: a
     'General': '',
   }
 
+  // Color-code autofilled values by source confidence.
+  function confidenceBadge(field: any, hasValue: boolean) {
+    if (!hasValue) return null
+    if (field.status === 'auto_filled' || field.confidence) {
+      const c = field.confidence || 'medium'
+      if (c === 'high') return (
+        <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-1.5 py-0.5" title="From your saved profile — high confidence">From profile</span>
+      )
+      if (c === 'medium') return (
+        <span className="text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-1.5 py-0.5" title="Inferred from your blueprint or uploaded docs — verify">AI inferred · verify</span>
+      )
+      return (
+        <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-1.5 py-0.5" title="Generic default — verify">Default · verify</span>
+      )
+    }
+    return null
+  }
+
+  // Render a single field row (used by both checklist + wizard modes)
+  function renderField(f: any, opts: { fullWidth?: boolean } = {}) {
+    const hasValue = !!(fieldValues[f.key] && fieldValues[f.key].trim())
+    const isLongText = f.key === 'project_description' || f.key === 'legal_description'
+    const fullWidth = opts.fullWidth ?? isLongText
+    const isContractorField = ['contractor_name','license_number','contractor_phone','contractor_email','contractor_address'].includes(f.key)
+    const hasProfileValue = isContractorField && contractorProfile?.company_name
+    const showVoice = voiceSupported && f.field_type === 'text' && (f.key === 'project_description' || f.key === 'legal_description')
+
+    return (
+      <div key={f.key} className={fullWidth ? 'col-span-2' : ''}>
+        <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            {f.label}{f.required ? <span className="text-red-400 ml-0.5">*</span> : ''}
+          </span>
+          {confidenceBadge(f, hasValue)}
+          {f.status === 'needs_input' && !hasValue && (
+            <span className="text-[10px] font-semibold bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-1.5 py-0.5">Required</span>
+          )}
+          {hasProfileValue && !hasValue && (
+            <span className="text-[10px] text-blue-500 font-normal">from saved profile</span>
+          )}
+        </div>
+        {f.field_type === 'signature' ? (
+          <div className="border-b-2 border-slate-300 h-8 flex items-end pb-1">
+            <input type="text" placeholder="Type full name as signature"
+              value={fieldValues[f.key] || ''}
+              onChange={e => setFieldValues(p => ({...p, [f.key]: e.target.value}))}
+              className="w-full text-sm italic text-slate-700 focus:outline-none bg-transparent placeholder-slate-300"
+            />
+          </div>
+        ) : (
+          <div className="relative">
+            <input
+              type={f.field_type === 'date' ? 'date' : 'text'}
+              value={fieldValues[f.key] || ''}
+              onChange={e => setFieldValues(p => ({...p, [f.key]: e.target.value}))}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all"
+              style={showVoice ? { paddingRight: '34px' } : undefined}
+              placeholder={f.required ? 'Required' : 'Optional'}
+              autoFocus={entryMode === 'wizard'}
+            />
+            {showVoice && (
+              <button
+                type="button"
+                onClick={() => voiceActive === f.key ? stopVoiceInput() : startVoiceInput(f.key)}
+                className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                  voiceActive === f.key ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600'
+                }`}
+                title={voiceActive === f.key ? 'Stop' : 'Speak to fill'}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Progress steps */}
       <div className="flex items-center gap-2 bg-white rounded-2xl px-5 py-4" style={cardStyle}>
         {[
           { key: 'portal',       label: 'Find Portal' },
-          { key: 'requirements', label: 'Requirements' },
+          { key: 'confirm',      label: 'Confirm' },
+          { key: 'requirements', label: 'Documents' },
           { key: 'form',         label: 'Fill Permit' },
           { key: 'review',       label: 'Download' },
-        ].map((s, i) => {
-          const steps = ['portal', 'requirements', 'form', 'review']
+        ].map((s, i, arr) => {
+          const steps = ['portal', 'confirm', 'requirements', 'form', 'review']
           const currentIdx = steps.indexOf(step)
           const thisIdx    = steps.indexOf(s.key)
           const isActive   = step === s.key
@@ -218,7 +431,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                   {s.label}
                 </span>
               </div>
-              {i < 3 && <div className="flex-1 h-px bg-slate-200 min-w-[8px]" />}
+              {i < arr.length - 1 && <div className="flex-1 h-px bg-slate-200 min-w-[8px]" />}
             </React.Fragment>
           )
         })}
@@ -227,7 +440,6 @@ export default function PermitPortalSection({ project, projectId }: { project: a
       {/* Step 1: Find Portal */}
       {step === 'portal' && (
         <>
-          {/* Project location */}
           <div className="bg-white rounded-2xl p-5" style={cardStyle}>
             <h3 className="text-slate-800 font-bold text-sm mb-3">Project Location</h3>
             <div className="space-y-1">
@@ -279,31 +491,13 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               {!portal.portal_url && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                   <div className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-1">Not Found</div>
-                  <p className="text-amber-800 text-sm">No verified .gov permit portal found for this jurisdiction. Do not proceed with unverified sources.</p>
-                  <a href={`https://www.google.com/search?q=${encodeURIComponent(`${project?.city} ${project?.region?.replace('US-','')} building permit official`)}`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 mt-3 text-amber-700 font-semibold text-sm hover:text-amber-900 transition-colors">
-                    Search manually →
-                  </a>
+                  <p className="text-amber-800 text-sm">No verified .gov permit portal found for this jurisdiction. You can still continue and paste the correct URL on the next step.</p>
                 </div>
               )}
               {portal.instructions && (
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
                   <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Portal Instructions</div>
                   <p className="text-slate-700 text-sm leading-relaxed">{portal.instructions}</p>
-                </div>
-              )}
-              {formLoading && (
-                <div className="space-y-2 animate-pulse">
-                  <div className="h-3 bg-slate-100 rounded-full w-3/4" />
-                  <div className="h-3 bg-slate-100 rounded-full w-1/2" />
-                  <div className="h-3 bg-slate-100 rounded-full w-2/3" />
-                </div>
-              )}
-              {formError && (
-                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm flex items-center justify-between gap-3">
-                  <span>{formError}</span>
-                  <button onClick={() => handleFetchForm(reqFields)} className="text-red-600 font-bold text-xs underline whitespace-nowrap">Retry</button>
                 </div>
               )}
               <div className="flex items-center gap-3 pt-1">
@@ -314,9 +508,9 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                   </a>
                 )}
-                <button onClick={() => setStep('requirements')}
+                <button onClick={handleGoToConfirm}
                   className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-xl text-sm transition-all">
-                  Upload Requirements →
+                  Continue →
                 </button>
               </div>
             </div>
@@ -324,16 +518,147 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         </>
       )}
 
-      {/* Step 2: Requirements Upload */}
+      {/* Step 2: Confirm — is this the right form? + show fees + escape hatch */}
+      {step === 'confirm' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-slate-800 font-bold text-sm">Confirm Your Permit</h3>
+              <p className="text-slate-400 text-xs mt-0.5">Verify the form we found is the right one for your project before we autofill it.</p>
+            </div>
+            <button onClick={() => setStep('portal')} className="text-slate-400 text-xs hover:text-slate-600">← Back</button>
+          </div>
+
+          {/* Permit summary card */}
+          <div className="bg-white rounded-2xl p-5 space-y-3" style={cardStyle}>
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.75" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-slate-800 font-bold text-sm">{portal?.portal_name || `${project?.city} Building Department`}</div>
+                <div className="text-slate-400 text-xs mt-0.5 capitalize">{project?.blueprint_type || 'residential'} permit · {project?.city}, {project?.region?.replace('US-', '')}</div>
+                {portal?.portal_url && (
+                  <a href={portal.portal_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs mt-1 hover:underline truncate block">{portal.portal_url}</a>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Fees + timeline */}
+          {feesTimeline && (feesTimeline.fees_estimate || feesTimeline.review_days_estimate) && (
+            <div className="bg-white rounded-2xl p-5 grid grid-cols-2 gap-4" style={cardStyle}>
+              <div>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Estimated Fees</div>
+                <div className="text-slate-800 font-bold text-lg">{feesTimeline.fees_estimate || '—'}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Review Timeline</div>
+                <div className="text-slate-800 font-bold text-lg">{feesTimeline.review_days_estimate || '—'}</div>
+              </div>
+              <div className="col-span-2 text-[10px] text-slate-400 italic">AI estimate — confirm exact fees with the building department</div>
+            </div>
+          )}
+
+          {/* Wrong-form escape hatch */}
+          {!showManualOverride ? (
+            <button
+              onClick={() => setShowManualOverride(true)}
+              className="w-full text-slate-500 text-xs py-2 hover:text-slate-700 underline"
+            >
+              This isn't the right permit form →
+            </button>
+          ) : (
+            <div className="bg-white rounded-2xl p-5 space-y-3" style={cardStyle}>
+              <div>
+                <div className="text-slate-800 font-bold text-sm mb-1">Use a different permit form</div>
+                <p className="text-slate-400 text-xs mb-2">Paste the URL of the correct permit form (PDF or web page).</p>
+                <input
+                  type="url"
+                  value={manualFormUrl}
+                  onChange={e => setManualFormUrl(e.target.value)}
+                  placeholder="https://example.gov/permits/application.pdf"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-400"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { setShowManualOverride(false); setManualFormUrl('') }} className="text-xs text-slate-400 hover:text-slate-600 px-3 py-2">Cancel</button>
+                <button
+                  onClick={() => handleConfirmForm({ useManual: true, manualUrl: manualFormUrl || null })}
+                  disabled={!manualFormUrl.trim() || confirming}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-2 rounded-xl disabled:opacity-50"
+                >
+                  {confirming ? 'Saving…' : 'Use this form →'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Confirm button */}
+          {!showManualOverride && (
+            <button
+              onClick={() => handleConfirmForm()}
+              disabled={confirming}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-50"
+            >
+              {confirming ? (
+                <span className="inline-flex items-center gap-2">
+                  <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  Confirming & scanning blueprint…
+                </span>
+              ) : 'Yes, this is the right permit →'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Step 3: Requirements (with optional blueprint scan preview) */}
       {step === 'requirements' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-slate-800 font-bold text-sm">Upload Your Requirements</h3>
-              <p className="text-slate-400 text-xs mt-0.5">Add documents, screenshots, or notes — AI reads them and pre-fills the permit. Or skip to fill manually.</p>
+              <h3 className="text-slate-800 font-bold text-sm">Add Documents & Notes</h3>
+              <p className="text-slate-400 text-xs mt-0.5">AI extracts data from these to autofill the permit. Optional — skip if you've got everything in your profile.</p>
             </div>
-            <button onClick={() => setStep('portal')} className="text-slate-400 text-xs hover:text-slate-600 transition-colors flex-shrink-0 ml-4">← Back</button>
+            <button onClick={() => setStep('confirm')} className="text-slate-400 text-xs hover:text-slate-600 transition-colors flex-shrink-0 ml-4">← Back</button>
           </div>
+
+          {/* Blueprint scan preview */}
+          {(scanning || blueprintScan !== null) && (
+            <div className="bg-white rounded-2xl p-5" style={cardStyle}>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>
+                </div>
+                <div>
+                  <div className="text-slate-800 font-bold text-sm">From Your Blueprint</div>
+                  <div className="text-slate-400 text-[11px]">AI scan — verify before applying</div>
+                </div>
+              </div>
+              {scanning && (
+                <div className="flex items-center gap-2 text-indigo-600 text-sm">
+                  <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  Reading your blueprint…
+                </div>
+              )}
+              {scanError && !scanning && (
+                <div className="text-amber-700 text-xs">{scanError}</div>
+              )}
+              {!scanning && blueprintScan && Object.keys(blueprintScan).length > 0 && (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  {Object.entries(blueprintScan).map(([k, v]) => (
+                    <div key={k} className="flex justify-between border-b border-slate-100 py-1.5">
+                      <span className="text-slate-400 text-xs capitalize">{k.replace(/_/g, ' ')}</span>
+                      <span className="text-slate-800 text-xs font-semibold">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!scanning && blueprintScan && Object.keys(blueprintScan).length === 0 && (
+                <div className="text-slate-400 text-xs italic">No data extracted — you can fill in manually.</div>
+              )}
+            </div>
+          )}
 
           {/* Text notes */}
           <div className="bg-white rounded-2xl p-5" style={cardStyle}>
@@ -387,7 +712,6 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 {reqFiles.map((file, i) => (
                   <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-base flex-shrink-0">{file.type.includes('pdf') ? '' : ''}</span>
                       <div className="min-w-0">
                         <div className="text-slate-700 text-xs font-semibold truncate">{file.name}</div>
                         <div className="text-slate-400 text-[10px]">{(file.size / 1024).toFixed(0)} KB</div>
@@ -413,8 +737,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
             </div>
           )}
 
-          {/* Loading state with clear message */}
-          {reqLoading && (
+          {(reqLoading || formLoading) && (
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-4 flex items-center gap-3">
               <svg className="animate-spin text-indigo-500 flex-shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
               <div>
@@ -438,13 +761,13 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               disabled={reqLoading || formLoading}
               className="w-full text-slate-400 text-sm py-2 hover:text-slate-600 transition-colors disabled:opacity-40"
             >
-              Skip — fill permit from project data only →
+              Skip — fill permit from project + blueprint data only →
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 3 — Fill form (loading skeleton) */}
+      {/* Step 4: Fill form (loading skeleton) */}
       {step === 'form' && !formData && (
         <div className="space-y-4">
           {[1,2,3].map(i => (
@@ -460,7 +783,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         </div>
       )}
 
-      {/* Step 2: Fill Form */}
+      {/* Step 4: Fill Form */}
       {step === 'form' && formData && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -468,7 +791,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               <h3 className="text-slate-800 font-bold">Permit Application</h3>
               <p className="text-slate-400 text-xs mt-0.5">
                 {formData.form_url ? 'Fields extracted from the official form · ' : 'Standard form · '}
-                Fill in all required fields marked with *
+                {filledCount} of {formData.fields?.length || 0} fields filled
               </p>
             </div>
             <button onClick={() => setStep('requirements')} className="text-slate-400 text-sm hover:text-slate-600 transition-colors">← Back</button>
@@ -484,15 +807,8 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-slate-800 font-bold text-sm">{formData.jurisdiction.authority_name}</span>
-                    {formData.jurisdiction.authority_type && (
-                      <span className="text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-100 rounded-full px-2 py-0.5 capitalize">{formData.jurisdiction.authority_type}</span>
-                    )}
                     {formData.jurisdiction.submission_method && formData.jurisdiction.submission_method !== 'unknown' && (
-                      <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 capitalize ${
-                        formData.jurisdiction.submission_method === 'web_form' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                        formData.jurisdiction.submission_method === 'email' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
-                        'bg-amber-50 text-amber-600 border border-amber-100'
-                      }`}>{formData.jurisdiction.submission_method.replace('_', ' ')}</span>
+                      <span className="text-[10px] font-semibold rounded-full px-2 py-0.5 capitalize bg-blue-50 text-blue-600 border border-blue-100">{formData.jurisdiction.submission_method.replace('_', ' ')}</span>
                     )}
                   </div>
                   {formData.jurisdiction.gov_url && (
@@ -500,84 +816,108 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                   )}
                 </div>
               </div>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                <div>
-                  <div className="text-amber-800 font-bold text-sm">Permit portal not automatically found</div>
-                  <p className="text-amber-700 text-xs mt-0.5">{formData.jurisdiction.error || 'No verified .gov source located.'}</p>
-                  {formData.jurisdiction.fallback_search_url && (
-                    <a href={formData.jurisdiction.fallback_search_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-1.5 text-xs font-semibold text-amber-700 underline">Search manually →</a>
-                  )}
-                </div>
-              </div>
-            )
+            ) : null
           )}
 
-          {/* Missing required fields warning */}
-          {(() => {
-            const missing = (formData.fields || []).filter((f: any) => f.status === 'needs_input' && !fieldValues[f.key])
-            if (missing.length === 0) return null
-            return (
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-start gap-2">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                <div>
-                  <span className="text-amber-800 font-bold text-xs">{missing.length} required field{missing.length > 1 ? 's' : ''} still need input: </span>
-                  <span className="text-amber-700 text-xs">{missing.map((f: any) => f.label).join(', ')}</span>
+          {/* Missing fields checklist with mode toggle */}
+          {missingFields.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  <span className="text-amber-800 font-bold text-sm">{missingFields.length} required field{missingFields.length > 1 ? 's' : ''} still need input</span>
                 </div>
+                <button
+                  onClick={() => { setEntryMode('wizard'); setWizardIdx(0) }}
+                  className="text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg whitespace-nowrap"
+                >
+                  Walk me through it →
+                </button>
               </div>
-            )
-          })()}
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {missingFields.map((f: any) => (
+                  <button
+                    key={f.key}
+                    onClick={() => {
+                      const el = document.getElementById(`field-${f.key}`)
+                      if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        const input = el.querySelector('input, textarea') as HTMLElement | null
+                        input?.focus()
+                      }
+                    }}
+                    className="text-[11px] font-semibold bg-white border border-amber-300 hover:border-amber-500 text-amber-800 rounded-full px-2.5 py-1 transition-colors"
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-          {Object.entries(fieldsBySection).map(([section, sFields]) => (
+          {/* Wizard mode overlay — one field at a time */}
+          {entryMode === 'wizard' && missingFields.length > 0 && (
+            (() => {
+              const idx = Math.min(wizardIdx, missingFields.length - 1)
+              const f = missingFields[idx]
+              return (
+                <div className="bg-white rounded-2xl p-6" style={cardStyle}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Step {idx + 1} of {missingFields.length}</div>
+                    <button onClick={() => setEntryMode('checklist')} className="text-xs text-slate-400 hover:text-slate-600">Switch to checklist</button>
+                  </div>
+                  <div className="text-slate-800 font-bold text-lg mb-1">{f.label}</div>
+                  <div className="text-slate-400 text-xs mb-4">Section: {f.section}</div>
+                  <div id={`field-${f.key}`}>
+                    {renderField(f, { fullWidth: true })}
+                  </div>
+                  <div className="flex items-center justify-between mt-5">
+                    <button
+                      disabled={idx === 0}
+                      onClick={() => setWizardIdx(i => Math.max(0, i - 1))}
+                      className="text-sm text-slate-500 hover:text-slate-700 disabled:opacity-40"
+                    >
+                      ← Previous
+                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (idx >= missingFields.length - 1) setEntryMode('checklist')
+                          else setWizardIdx(i => i + 1)
+                        }}
+                        className="text-sm text-slate-500 hover:text-slate-700"
+                      >
+                        Skip
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (idx >= missingFields.length - 1) setEntryMode('checklist')
+                          else setWizardIdx(i => i + 1)
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm px-5 py-2 rounded-xl"
+                      >
+                        {idx >= missingFields.length - 1 ? 'Done →' : 'Next →'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()
+          )}
+
+          {/* Checklist mode — full form grouped by section */}
+          {entryMode === 'checklist' && Object.entries(fieldsBySection).map(([section, sFields]) => (
             <div key={section} className="bg-white rounded-2xl overflow-hidden" style={cardStyle}>
               <div className="px-5 py-4 border-b flex items-center gap-2" style={{ borderColor: 'rgba(219,234,254,0.7)' }}>
-                <span className="text-base">{sectionIcons[section] || ''}</span>
                 <span className="text-slate-800 font-bold text-sm">{section}</span>
               </div>
               <div className="p-5 grid grid-cols-2 gap-x-5 gap-y-4">
-                {(sFields as any[]).map((f: any) => {
-                  const isContractorField = ['contractor_name','license_number','contractor_phone','contractor_email','contractor_address'].includes(f.key)
-                  const hasProfileValue = isContractorField && contractorProfile?.company_name
-                  return (
-                    <div key={f.key} className={f.key === 'project_description' || f.key === 'legal_description' ? 'col-span-2' : ''}>
-                      <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                          {f.label}{f.required ? <span className="text-red-400 ml-0.5">*</span> : ''}
-                        </span>
-                        {f.status === 'auto_filled' && fieldValues[f.key] && (
-                          <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full px-1.5 py-0.5">Auto-filled</span>
-                        )}
-                        {f.status === 'needs_input' && !fieldValues[f.key] && (
-                          <span className="text-[10px] font-semibold bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-1.5 py-0.5">Required</span>
-                        )}
-                        {hasProfileValue && !fieldValues[f.key] && (
-                          <span className="text-[10px] text-blue-500 font-normal">from saved profile</span>
-                        )}
-                      </div>
-                      {f.field_type === 'signature' ? (
-                        <div className="border-b-2 border-slate-300 h-8 flex items-end pb-1">
-                          <input
-                            type="text" placeholder="Type full name as signature"
-                            value={fieldValues[f.key] || ''}
-                            onChange={e => setFieldValues(p => ({...p, [f.key]: e.target.value}))}
-                            className="w-full text-sm italic text-slate-700 focus:outline-none bg-transparent placeholder-slate-300"
-                          />
-                        </div>
-                      ) : (
-                        <input
-                          type={f.field_type === 'date' ? 'date' : 'text'}
-                          value={fieldValues[f.key] || ''}
-                          onChange={e => setFieldValues(p => ({...p, [f.key]: e.target.value}))}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all"
-                          placeholder={f.required ? 'Required' : 'Optional'}
-                        />
-                      )}
-                    </div>
-                  )
-                })}
+                {(sFields as any[]).map((f: any) => (
+                  <div key={f.key} id={`field-${f.key}`} className={f.key === 'project_description' || f.key === 'legal_description' ? 'col-span-2' : ''}>
+                    {renderField(f)}
+                  </div>
+                ))}
 
-                {/* Save contractor profile option */}
                 {section === 'Contractor Information' && (
                   <div className="col-span-2 mt-2 flex items-center gap-3 bg-blue-50 rounded-xl px-4 py-3">
                     <input
@@ -610,7 +950,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         </div>
       )}
 
-      {/* Step 3: Review & Download */}
+      {/* Step 5: Review & Download */}
       {step === 'review' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -636,7 +976,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
             <div className="text-slate-800 font-bold text-sm mb-4">Download Options</div>
             <div className="grid grid-cols-2 gap-4">
               <button
-                onClick={() => handleDownloadPdf(false)}
+                onClick={() => handleDownloadClick(false)}
                 disabled={generatingPdf}
                 className="flex flex-col items-center gap-3 p-5 border-2 border-blue-200 hover:border-blue-400 rounded-2xl transition-all hover:bg-blue-50 disabled:opacity-50"
               >
@@ -649,7 +989,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 </div>
               </button>
               <button
-                onClick={() => handleDownloadPdf(true)}
+                onClick={() => handleDownloadClick(true)}
                 disabled={generatingPdf}
                 className="flex flex-col items-center gap-3 p-5 border-2 border-slate-200 hover:border-slate-400 rounded-2xl transition-all hover:bg-slate-50 disabled:opacity-50"
               >
@@ -670,7 +1010,6 @@ export default function PermitPortalSection({ project, projectId }: { project: a
             )}
           </div>
 
-          {/* Downloaded confirmation */}
           {downloaded && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
@@ -712,6 +1051,74 @@ export default function PermitPortalSection({ project, projectId }: { project: a
             )
             return null
           })()}
+        </div>
+      )}
+
+      {/* Pre-flight modal */}
+      {preflightModal?.open && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setPreflightModal(null)}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <div>
+                <div className="text-slate-800 font-bold text-base">Hold on — incomplete permit</div>
+                <div className="text-slate-400 text-xs">Submitting now will likely get bounced back</div>
+              </div>
+            </div>
+            <p className="text-slate-700 text-sm mb-3">
+              <span className="font-bold">{preflightModal.missing.length} required field{preflightModal.missing.length > 1 ? 's are' : ' is'} still empty:</span>
+            </p>
+            <div className="bg-slate-50 rounded-xl p-3 max-h-48 overflow-y-auto mb-4">
+              <ul className="space-y-1">
+                {preflightModal.missing.map(m => (
+                  <li key={m.key} className="text-slate-700 text-sm flex items-start gap-2">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    <span><span className="font-semibold">{m.label}</span> <span className="text-slate-400 text-xs">({m.section})</span></span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const useWebForm = preflightModal.useWebForm
+                  setPreflightModal(null)
+                  setStep('form')
+                  // After step transition, focus the first missing field
+                  setTimeout(() => {
+                    const first = preflightModal.missing[0]
+                    if (first) {
+                      const el = document.getElementById(`field-${first.key}`)
+                      if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        const input = el.querySelector('input, textarea') as HTMLElement | null
+                        input?.focus()
+                      }
+                    }
+                    void useWebForm  // (referenced so TS doesn't drop the var; download retried by user)
+                  }, 100)
+                }}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-2.5 rounded-xl"
+              >
+                Fix missing fields
+              </button>
+              <button
+                onClick={async () => {
+                  const fields = (formData?.fields || []).map((f: any) => ({
+                    ...f, value: fieldValues[f.key] || f.value || '',
+                  }))
+                  const useWebForm = preflightModal.useWebForm
+                  setPreflightModal(null)
+                  await actuallyDownloadPdf(useWebForm, fields)
+                }}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm py-2.5 rounded-xl"
+              >
+                Download anyway
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
