@@ -730,11 +730,51 @@ Return ONLY a JSON object:
 
 If you don't know a specific jurisdiction, give the typical range for that state. Be concise."""
 
+    def _parse_fees_json(t: str) -> dict:
+        """Tolerant JSON extractor: strips fences, finds the largest balanced
+        {...} block. Returns {} on failure rather than raising."""
+        if not t:
+            return {}
+        s = t.strip()
+        s = re.sub(r"^```(?:json)?\s*", "", s, count=1)
+        s = re.sub(r"\s*```\s*$", "", s)
+        start = s.find("{")
+        if start < 0:
+            return {}
+        end = s.rfind("}") + 1
+        if end <= start:
+            return {}
+        candidate = s[start:end]
+        candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+        try:
+            return json.loads(candidate)
+        except Exception:
+            return {}
+
+    fees, days = "", ""
+    text = ""
     try:
         text = await llm_text(prompt, max_tokens=256)
-        text = text.strip()
-        text = text[text.find("{"):text.rfind("}") + 1]
-        result = json.loads(text)
+        result = _parse_fees_json(text)
+
+        # Retry once with a JSON-only reminder if the first parse came up empty
+        # (mirrors the pattern in scan-blueprint, roof-outline, and storm-risk).
+        if not result:
+            logger.info(
+                "fees-timeline: first parse failed — retrying with JSON-only reminder. raw[:200]=%r",
+                (text or "")[:200],
+            )
+            retry_prompt = (
+                "Your previous response was not valid JSON. Re-emit ONLY the JSON object "
+                "described below — no markdown fences, no prose, nothing before the "
+                "opening '{' or after the closing '}'.\n\n" + prompt
+            )
+            try:
+                text = await llm_text(retry_prompt, max_tokens=256)
+                result = _parse_fees_json(text)
+            except Exception:
+                logger.warning("fees-timeline: JSON-only retry failed", exc_info=True)
+
         fees = str(result.get("fees_estimate", "")).strip()
         days = str(result.get("review_days_estimate", "")).strip()
     except Exception as e:

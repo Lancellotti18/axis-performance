@@ -219,12 +219,64 @@ def detect_jurisdiction(city: str, state: str, address: str = "", project_type: 
         }
 
 
+# Building-department-ish keywords that, if present in the email's local-part
+# or domain, mark it as plausibly the right contact. Used to filter out
+# personal/association emails that the LLM might surface (e.g. apartment
+# associations, realtors, third-party permit-expediter sites).
+_BUILDING_DEPT_KEYWORDS = (
+    "permit", "building", "planning", "inspect", "code", "develop",
+    "zoning", "construction", "land", "engineering",
+)
+
+# Domain fragments that are almost certainly NOT the building department,
+# regardless of whether the LLM placed them next to permit-y text.
+_BAD_EMAIL_DOMAINS = (
+    "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com",
+    "icloud.com", "proton.me", "protonmail.com",
+    "aptassoc", "apartmentassoc", "realtor", "tripadvisor",
+    "linkedin", "facebook", "twitter", "yelp",
+)
+
+
+def _looks_like_dept_email(email: str) -> bool:
+    """
+    Accept the email only if it looks plausibly like a real building/permit
+    department contact. We prefer false negatives (drop a real one) over
+    false positives (route a contractor to the wrong place).
+    """
+    if not email or "@" not in email:
+        return False
+    e = email.lower()
+    local, _, domain = e.partition("@")
+
+    # Hard reject — known non-department domains
+    if any(bad in domain for bad in _BAD_EMAIL_DOMAINS):
+        return False
+
+    # Trust .gov / .us state-style domains by default
+    if domain.endswith(".gov") or domain.endswith(".us"):
+        return True
+
+    # Otherwise require a department-ish keyword in either side of the @
+    if any(kw in local for kw in _BUILDING_DEPT_KEYWORDS):
+        return True
+    if any(kw in domain for kw in _BUILDING_DEPT_KEYWORDS):
+        return True
+
+    return False
+
+
 def _parse_submission_method(raw_text: str):
     text = raw_text.lower()
     email = None
-    m = re.search(r'[\w.+-]+@[\w-]+\.[a-z]{2,}', text)
-    if m:
-        email = m.group(0)
+
+    # Scan all emails in the text, not just the first match. The first hit is
+    # often noise (a press contact, a webmaster, an unrelated quoted entity)
+    # while the real building-dept email appears later in the snippet.
+    for candidate in re.findall(r'[\w.+-]+@[\w-]+\.[a-z]{2,}', text):
+        if _looks_like_dept_email(candidate):
+            email = candidate
+            break
 
     if any(k in text for k in ["online portal", "submit online", "apply online", "etrakit", "accela", "citizenserve", "energov", "mygovernmentonline", "permitsmith"]):
         return "web_form", email

@@ -20,8 +20,10 @@ import json
 import logging
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+
+from app.core.auth import get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -166,14 +168,23 @@ def _build_system_prompt(section: str, page_data: dict) -> str:
 # ── Endpoint ────────────────────────────────────────────────────────────────
 
 @router.post("/ask")
-async def ask_axis(body: ChatRequest):
+async def ask_axis(
+    body: ChatRequest,
+    user: dict = Depends(get_current_user),
+):
     """
     Single-shot chat completion. Returns the assistant's reply as plain text.
-    Non-streaming for now — keeps the UI simple. If we want streaming later
-    we'd add a separate /stream endpoint that uses Server-Sent Events.
+    Non-streaming for now — keeps the UI simple.
+
+    Auth-gated: requires a valid Supabase JWT. The chat widget is mounted only
+    inside the dashboard layout (which already enforces auth client-side), so
+    this is a defense-in-depth check to keep anonymous traffic from burning
+    LLM quota.
     """
     from app.services.llm import llm_text
 
+    # user is available for future per-user rate-limiting; not used yet.
+    _ = user
     user_msg = (body.message or "").strip()
     if not user_msg:
         raise HTTPException(status_code=422, detail="message is required")
