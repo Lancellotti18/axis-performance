@@ -66,6 +66,9 @@ def _sanitize(raw: str) -> str:
     raw = raw.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw, count=1)
     raw = re.sub(r"\s*```\s*$", "", raw)
+    # Strip JS-style comments — some models emit `// 0.32` or /* notes */ inside JSON
+    raw = re.sub(r"//[^\n]*", "", raw)
+    raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.DOTALL)
     start = raw.find("{")
     if start > 0:
         raw = raw[start:]
@@ -119,18 +122,39 @@ def _parse_outline_json(text: str) -> dict:
     candidate = re.sub(r"\bTrue\b", "true", candidate)
     candidate = re.sub(r"\bFalse\b", "false", candidate)
 
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        # Walk back through `}` boundaries to salvage truncated output.
-        for i in range(len(candidate) - 1, -1, -1):
-            if candidate[i] != "}":
+    def _try_loads(s: str) -> dict | None:
+        try:
+            v = json.loads(s)
+            return v if isinstance(v, dict) else None
+        except Exception:
+            return None
+
+    parsed = _try_loads(candidate)
+    if parsed is not None:
+        return parsed
+
+    # Try with single-quotes converted to double — some models emit Python-dict style
+    sq_swapped = re.sub(r"'([^'\\]*(?:\\.[^'\\]*)*)'", r'"\1"', candidate)
+    parsed = _try_loads(sq_swapped)
+    if parsed is not None:
+        return parsed
+
+    # Try with unquoted object keys quoted (common JS-style output:
+    # `{polygon: [...], confidence: 0.5}` → `{"polygon":[...],"confidence":0.5}`)
+    quoted_keys = re.sub(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)", r'\1"\2"\3', sq_swapped)
+    parsed = _try_loads(quoted_keys)
+    if parsed is not None:
+        return parsed
+
+    # Walk back through `}` boundaries to salvage truncated output.
+    for variant in (candidate, sq_swapped, quoted_keys):
+        for i in range(len(variant) - 1, -1, -1):
+            if variant[i] != "}":
                 continue
-            try:
-                return json.loads(candidate[:i + 1])
-            except Exception:
-                continue
-        return {}
+            parsed = _try_loads(variant[:i + 1])
+            if parsed is not None:
+                return parsed
+    return {}
 
 
 # Match a JSON-like polygon array — at least 3 [x, y] pairs in a row.
@@ -324,19 +348,80 @@ async def detect_roof_outline(
         except Exception:
             logger.warning("roof outline: JSON-only retry failed", exc_info=True)
 
+    # Third attempt: ask for just the polygon array. Simpler shape = lower
+    # chance the model wraps it in prose. Used when the structured object
+    # request keeps failing to parse.
+    if not payload:
+        logger.info(
+            "roof outline: object-shape retry also failed — trying barebones array prompt. raw[:200]=%r",
+            (text or "")[:200],
+        )
+        array_prompt = (
+            "Trace the primary building's roof outline on this satellite image as a closed polygon.\n\n"
+            "Return ONLY a JSON array of [x, y] vertex pairs in image fractions (0..1, top-left origin). "
+            "No explanation. No markdown. No object wrapping. Just the array.\n\n"
+            "Example output (and ONLY this shape):\n"
+            "[[0.32, 0.28], [0.68, 0.28], [0.68, 0.72], [0.32, 0.72]]\n\n"
+            "Use 4-12 vertices. Include only the main building, not driveways/pools/sheds. "
+            "If you genuinely cannot see a building, return [].\n"
+            "The first character of your response must be '[' and the last must be ']'."
+        )
+        try:
+            text = await llm_vision(image_bytes, media_type, array_prompt, max_tokens=600)
+            # Try direct array parse first
+            stripped = (text or "").strip()
+            stripped = re.sub(r"^```(?:json)?\s*", "", stripped, count=1)
+            stripped = re.sub(r"\s*```\s*$", "", stripped)
+            arr_start = stripped.find("[")
+            arr_end = stripped.rfind("]") + 1
+            direct: list = []
+            if arr_start >= 0 and arr_end > arr_start:
+                try:
+                    direct = json.loads(stripped[arr_start:arr_end])
+                except Exception:
+                    direct = []
+            # If direct array parse yielded a polygon, use it; else fall back to regex extractor
+            polygon_pts: list[list[float]] = []
+            if isinstance(direct, list) and len(direct) >= 3:
+                from_array = []
+                ok = True
+                for p in direct:
+                    if not (isinstance(p, list) and len(p) >= 2):
+                        ok = False; break
+                    x = _coerce_coord(p[0]); y = _coerce_coord(p[1])
+                    if x is None or y is None:
+                        ok = False; break
+                    from_array.append([x, y])
+                if ok and len(from_array) >= 3:
+                    polygon_pts = from_array
+            if not polygon_pts:
+                polygon_pts = _extract_polygon_array(
+                    text, image_width_px=image_width_px, image_height_px=image_height_px,
+                )
+            if polygon_pts:
+                payload = {
+                    "polygon": polygon_pts,
+                    "confidence": 0.4,
+                    "structure": "",
+                    "notes": "Recovered roof outline using a simplified prompt — drag vertices to refine.",
+                    "warnings": [],
+                }
+        except Exception:
+            logger.warning("roof outline: array-only retry failed", exc_info=True)
+
     if not payload:
         # All attempts failed — degrade gracefully so the UI shows an empty
         # editable canvas instead of a 422.
         logger.warning(
-            "roof outline: parse failed after retry. raw[:500]=%r",
+            "roof outline: all 3 parse attempts failed. raw[:500]=%r",
             (text or "")[:500],
         )
         payload = {
             "polygon": [],
             "confidence": 0.0,
             "structure": "",
-            "notes": "Could not auto-detect the roof outline — drag a polygon over the building to get started.",
-            "warnings": ["AI vision response was not valid JSON."],
+            "notes": "Could not auto-detect the roof outline — drag a polygon over the building to get started, or click 'Re-detect' to try again.",
+            "warnings": [],   # Don't surface the technical "not valid JSON" message — it confuses contractors
         }
 
     polygon = payload.get("polygon") or []
