@@ -1796,11 +1796,14 @@ Thank you for your time.`
                         <div className="space-y-2">
                           {items.map(item => {
                             const isFail = item.status === 'fail'
-                            const isReview = item.status === 'review'
+                            const isReview = item.status === 'review'   // shown as warning to the user
+                            const isPass = item.status === 'pass'
                             const itemCardStyle = isFail
-                              ? { ...cardStyle, border: '1px solid rgba(254,202,202,0.9)', boxShadow: '0 2px 12px rgba(239,68,68,0.08)', background: 'linear-gradient(180deg, #fff 0%, #fef2f2 100%)' }
+                              ? { ...cardStyle, border: '2px solid rgba(239,68,68,0.65)', boxShadow: '0 2px 12px rgba(239,68,68,0.15)', background: 'linear-gradient(180deg, #fff 0%, #fef2f2 100%)' }
+                              : isPass
+                              ? { ...cardStyle, border: '2px solid rgba(16,185,129,0.6)', background: 'transparent', boxShadow: 'none' }
                               : isReview
-                              ? { ...cardStyle, border: '1px solid rgba(253,230,138,0.9)' }
+                              ? { ...cardStyle, border: '2px solid rgba(234,179,8,0.65)', boxShadow: '0 2px 12px rgba(234,179,8,0.10)' }
                               : cardStyle
                             return (
                             <div key={item.id} className="bg-white rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-sm" style={itemCardStyle}
@@ -1911,9 +1914,10 @@ Thank you for your time.`
                                 const isWarn = item.status === 'warning'
                                 const isPass = item.status === 'pass'
                                 return (
-                                  <div key={i} className={`bg-white rounded-xl overflow-hidden`} style={{
-                                    boxShadow: isFail ? '0 2px 12px rgba(239,68,68,0.08)' : isWarn ? '0 2px 12px rgba(245,158,11,0.08)' : '0 2px 8px rgba(59,130,246,0.06)',
-                                    border: isFail ? '1px solid rgba(254,202,202,0.9)' : isWarn ? '1px solid rgba(253,230,138,0.9)' : '1px solid rgba(167,243,208,0.7)',
+                                  <div key={i} className={`rounded-xl overflow-hidden ${isPass ? '' : 'bg-white'}`} style={{
+                                    boxShadow: isFail ? '0 2px 12px rgba(239,68,68,0.15)' : isWarn ? '0 2px 12px rgba(234,179,8,0.10)' : 'none',
+                                    border: isFail ? '2px solid rgba(239,68,68,0.65)' : isWarn ? '2px solid rgba(234,179,8,0.65)' : '2px solid rgba(16,185,129,0.6)',
+                                    background: isPass ? 'transparent' : undefined,
                                   }}>
                                     <div className="px-4 py-3 flex items-start gap-3">
                                       {/* Status icon */}
