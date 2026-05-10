@@ -71,6 +71,93 @@ function perimeterFt(pts: [number, number][], fpp: number): number {
   return total
 }
 
+// ── Polygon simplification (Douglas-Peucker, closed-polygon variant) ──────
+// Used to thin out AI-returned vertex chains so the editor doesn't open
+// with a wall of clustered dots. Contractors can re-add detail via the
+// "+ Detail" button, which inserts midpoints on every edge.
+
+function _perpDist(p: [number, number], a: [number, number], b: [number, number]): number {
+  const [x, y] = p, [x1, y1] = a, [x2, y2] = b
+  const dx = x2 - x1, dy = y2 - y1
+  const lenSq = dx * dx + dy * dy
+  if (lenSq === 0) return Math.hypot(x - x1, y - y1)
+  const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / lenSq))
+  return Math.hypot(x - (x1 + t * dx), y - (y1 + t * dy))
+}
+
+function _douglasPeuckerOpen(points: [number, number][], eps: number): [number, number][] {
+  if (points.length <= 2) return points.slice()
+  let maxDist = 0, maxIdx = 0
+  const a = points[0], b = points[points.length - 1]
+  for (let i = 1; i < points.length - 1; i++) {
+    const d = _perpDist(points[i], a, b)
+    if (d > maxDist) { maxDist = d; maxIdx = i }
+  }
+  if (maxDist > eps) {
+    const left = _douglasPeuckerOpen(points.slice(0, maxIdx + 1), eps)
+    const right = _douglasPeuckerOpen(points.slice(maxIdx), eps)
+    return [...left.slice(0, -1), ...right]
+  }
+  return [a, b]
+}
+
+// Closed polygons need anchoring on two diametrically-opposite points or
+// the simplifier can collapse them. Find the two vertices farthest apart,
+// split the loop into two arcs, simplify each, then stitch.
+function simplifyClosedPolygon(pts: [number, number][], epsilon: number): [number, number][] {
+  if (pts.length <= 4) return pts.slice()
+  let bestSq = 0, p1 = 0, p2 = 0
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      const dx = pts[i][0] - pts[j][0], dy = pts[i][1] - pts[j][1]
+      const d = dx * dx + dy * dy
+      if (d > bestSq) { bestSq = d; p1 = i; p2 = j }
+    }
+  }
+  const arc1: [number, number][] = []
+  const arc2: [number, number][] = []
+  for (let i = p1; ; i = (i + 1) % pts.length) {
+    arc1.push(pts[i])
+    if (i === p2) break
+  }
+  for (let i = p2; ; i = (i + 1) % pts.length) {
+    arc2.push(pts[i])
+    if (i === p1) break
+  }
+  const s1 = _douglasPeuckerOpen(arc1, epsilon)
+  const s2 = _douglasPeuckerOpen(arc2, epsilon)
+  // Stitch: drop the duplicated endpoints
+  return [...s1.slice(0, -1), ...s2.slice(0, -1)]
+}
+
+// Iteratively increase epsilon until vertex count is at or below the target.
+// Operates in image-fraction space, so epsilon ~0.005 = 0.5% of image side.
+function simplifyToCount(pts: [number, number][], targetMax: number): [number, number][] {
+  if (pts.length <= targetMax) return pts.slice()
+  let eps = 0.004
+  for (let iter = 0; iter < 25; iter++) {
+    const out = simplifyClosedPolygon(pts, eps)
+    if (out.length <= targetMax) return out
+    eps *= 1.35
+  }
+  return simplifyClosedPolygon(pts, eps)
+}
+
+// Insert a midpoint between every pair of adjacent vertices — doubles the
+// count. Used by the "+ Detail" button for contractors who need extra
+// control points on a complex roof line.
+function expandWithMidpoints(pts: [number, number][]): [number, number][] {
+  if (pts.length < 2) return pts.slice()
+  const out: [number, number][] = []
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i]
+    const [x2, y2] = pts[(i + 1) % pts.length]
+    out.push([x1, y1])
+    out.push([(x1 + x2) / 2, (y1 + y2) / 2])
+  }
+  return out
+}
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -442,7 +529,17 @@ export default function RoofOutlineEditor({
         imageHeightPx: NATIVE_H,
         zoom: ZOOM,
       })
-      setPolygon((res.polygon || []) as [number, number][])
+      const aiPolygon = (res.polygon || []) as [number, number][]
+      // Auto-thin: AI often returns 8-12 vertices on a simple rectangle and
+      // contractors find the dot density distracting. Cut to ~half (with a
+      // 4-vertex floor) — they can hit "+ Detail" to add corners back.
+      const targetCount = aiPolygon.length > 6
+        ? Math.max(4, Math.ceil(aiPolygon.length / 2))
+        : aiPolygon.length
+      const thinned = aiPolygon.length > 6
+        ? simplifyToCount(aiPolygon, targetCount)
+        : aiPolygon
+      setPolygon(thinned)
       setConfidence(res.confidence || 0)
       setNotes(res.notes || '')
       setWarnings(res.warnings || [])
@@ -452,6 +549,28 @@ export default function RoofOutlineEditor({
     }
     setDetecting(false)
   }
+
+  // Side-toolbar handlers for vertex density. Operate on the current
+  // polygon (preserves manual edits — does NOT re-fetch from AI).
+  const addDetail = useCallback(() => {
+    setPolygon(prev => {
+      if (prev.length === 0) return prev
+      // Cap at 24 vertices — beyond that the editor gets unusably busy
+      if (prev.length >= 24) return prev
+      return expandWithMidpoints(prev)
+    })
+    setSelectedIdx(null)
+  }, [])
+
+  const reduceDetail = useCallback(() => {
+    setPolygon(prev => {
+      // Floor at 4 vertices — minimum for a polygon
+      if (prev.length <= 4) return prev
+      const target = Math.max(4, Math.ceil(prev.length / 2))
+      return simplifyToCount(prev, target)
+    })
+    setSelectedIdx(null)
+  }, [])
 
   // Auto-detect on first open if we don't already have an outline.
   useEffect(() => {
@@ -812,6 +931,47 @@ export default function RoofOutlineEditor({
               <span className="hidden sm:inline">Drag corners to adjust · Click an edge to add a point · Select a corner + Delete to remove · Scroll/pinch to zoom</span>
               <span className="sm:hidden">Drag corners · Tap edge to add · Pinch to zoom</span>
             </div>
+
+            {/* Side panel: vertex density controls */}
+            {polygon.length > 0 && (
+              <div
+                className="absolute top-3 right-3 flex flex-col items-stretch gap-2 rounded-lg p-2"
+                style={{
+                  background: 'rgba(15,23,42,0.92)',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  minWidth: 88,
+                }}
+                onMouseDown={e => e.stopPropagation()}
+              >
+                <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider text-center pt-0.5">
+                  Corners
+                </div>
+                <div className="text-white text-2xl font-bold text-center tabular-nums leading-none py-0.5">
+                  {polygon.length}
+                </div>
+                <div className="w-full h-px bg-white/10 my-0.5" />
+                <button
+                  onClick={addDetail}
+                  disabled={polygon.length >= 24}
+                  className="px-2 h-8 rounded-md flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-all"
+                  title="Add a corner between every existing pair"
+                >
+                  <span className="text-base leading-none">+</span>
+                  <span>Detail</span>
+                </button>
+                <button
+                  onClick={reduceDetail}
+                  disabled={polygon.length <= 4}
+                  className="px-2 h-8 rounded-md flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-all"
+                  title="Cut roughly half the corners while keeping the shape"
+                >
+                  <span className="text-base leading-none">−</span>
+                  <span>Detail</span>
+                </button>
+              </div>
+            )}
 
             {/* Empty / loading states */}
             {detecting && (
