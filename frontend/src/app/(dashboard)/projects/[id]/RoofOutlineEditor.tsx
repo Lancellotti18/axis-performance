@@ -27,11 +27,13 @@ import { api } from '@/lib/api'
 
 // Base (unzoomed) display size of the image inside the viewport. These stay
 // constant — the responsive layout is achieved by scaling the wrapper to fit.
+// NATIVE_W/H + ZOOM must match aerial_roof_service._satellite_url so per-foot
+// measurements are correct.
 const DISPLAY_W = 1280
 const DISPLAY_H = 853
-const NATIVE_W = 1536
-const NATIVE_H = 1024
-const ZOOM = 19
+const NATIVE_W = 2048
+const NATIVE_H = 1366
+const ZOOM = 20
 const ESRI_MPP0 = 156543.03392
 const M_TO_FT = 3.28084
 
@@ -553,15 +555,25 @@ export default function RoofOutlineEditor({
                   width: DISPLAY_W,
                   height: DISPLAY_H,
                   userSelect: 'none',
-                  imageRendering: 'auto',
+                  // Prefer crisp pixel boundaries when the parent transform
+                  // upscales past 100%. WebKit/Chromium keyword that picks
+                  // a sharper interpolator than the default bilinear blur.
+                  imageRendering: '-webkit-optimize-contrast',
                 }}
               />
 
+              {/* Render the SVG at 2x intrinsic resolution then display it
+                  at base size — same trick as a retina image. When the
+                  parent transform zooms in, browsers have more native
+                  vector pixels to work with so polygon strokes and edge
+                  labels stay sharp instead of pixelated. */}
               <svg
                 ref={svgRef}
-                width={DISPLAY_W}
-                height={DISPLAY_H}
+                width={DISPLAY_W * 2}
+                height={DISPLAY_H * 2}
                 viewBox={`0 0 ${DISPLAY_W} ${DISPLAY_H}`}
+                shapeRendering="geometricPrecision"
+                textRendering="geometricPrecision"
                 style={{
                   position: 'absolute',
                   top: 0,

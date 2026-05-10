@@ -168,13 +168,17 @@ async def _geocode_address(full_address: str) -> tuple[float, float] | None:
 def _satellite_image_url(lat: float, lng: float) -> str:
     """
     Build an Esri World Imagery satellite URL for the property.
-    Free, no API key required. Zoom 19 (~0.15 m/px) packed into a
-    1536x1024 PNG — sharper than zoom 18 for single-property framing.
+    Free, no API key required. Zoom 20 (~0.075 m/px in most populated areas)
+    packed into a 2048x1366 PNG — twice the resolution per ground-meter as
+    zoom 19, so the auto-fit-to-roof view stays crisp instead of bilinearly
+    blurred when contractors edit vertices on a small building.
     """
-    zoom = 19
+    zoom = 20
     mpp = 156543.03392 * math.cos(math.radians(lat)) / (2 ** zoom)
-    # Use a bigger output canvas so the higher-resolution tile fills more pixels.
-    out_w, out_h = 1536, 1024
+    # 2048x1366 keeps a reasonable single-property field of view at zoom 20
+    # (~150m wide) while delivering ~33% more native pixels per side than the
+    # old 1536-wide tile. Bandwidth cost is ~1.8x — worth it for crisp roofs.
+    out_w, out_h = 2048, 1366
     half_w_deg = (out_w * mpp / 2) / (111320 * math.cos(math.radians(lat)))
     half_h_deg = (out_h * mpp / 2) / 111320
     west  = lng - half_w_deg
