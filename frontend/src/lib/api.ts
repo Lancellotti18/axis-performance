@@ -475,6 +475,253 @@ export const api = {
           zoom: opts?.zoom ?? 18,
         }),
       }, 60000),
+    // ----- Roofing v2 (per-facet measurement workflow) -----
+    v2: {
+      imageryHealth: (lat: number, lng: number, zoom = 20, width = 2048, height = 1366) =>
+        apiRequest<{
+          status: 'ok' | 'degraded' | 'unavailable'
+          provider?: string
+          url?: string
+          width_px?: number
+          height_px?: number
+          zoom?: number
+          lat?: number
+          lng?: number
+          metres_per_pixel?: number
+          feet_per_pixel?: number
+          health_score: number
+          warnings: string[]
+          providers_tried: string[]
+          cached?: boolean
+        }>(`/api/v1/roofing/v2/imagery/health?lat=${lat}&lng=${lng}&zoom=${zoom}&width_px=${width}&height_px=${height}`),
+      imageryFetch: (lat: number, lng: number, opts?: { zoom?: number; width_px?: number; height_px?: number; include_bytes?: boolean }) =>
+        apiRequest<Record<string, unknown>>(
+          `/api/v1/roofing/v2/imagery/fetch?include_bytes=${opts?.include_bytes ? 'true' : 'false'}`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              lat, lng,
+              zoom: opts?.zoom ?? 20,
+              width_px: opts?.width_px ?? 2048,
+              height_px: opts?.height_px ?? 1366,
+            }),
+          },
+        ),
+      locationSearch: (q: string, withGeographies = false) =>
+        apiRequest<{
+          matches: Array<{
+            matched_address: string
+            street: string
+            city: string
+            state: string
+            zip: string
+            lat: number
+            lng: number
+            county: string
+            county_fips: string
+            state_fips: string
+            source: string
+          }>
+          error: string | null
+        }>(`/api/v1/roofing/v2/location/search?q=${encodeURIComponent(q)}&with_geographies=${withGeographies}`),
+      locationValidate: (address: string) =>
+        apiRequest<{
+          matched_address: string
+          street: string
+          city: string
+          state: string
+          zip: string
+          lat: number
+          lng: number
+          county: string
+          county_fips: string
+          state_fips: string
+        }>(`/api/v1/roofing/v2/location/validate?address=${encodeURIComponent(address)}`),
+      createRun: (req: {
+        project_id: string
+        blueprint_id?: string
+        source?: 'manual' | 'blueprint' | 'aerial_solar' | 'aerial_outline' | 'photo' | 'hybrid'
+        satellite_image_url?: string
+        satellite_provider?: string
+        satellite_zoom?: number
+        satellite_lat?: number
+        satellite_lng?: number
+        imagery_health?: number
+      }) =>
+        apiRequest<{ id: string; project_id: string }>(`/api/v1/roofing/v2/runs`, {
+          method: 'POST',
+          body: JSON.stringify(req),
+        }),
+      getRun: (runId: string) =>
+        apiRequest<{
+          run: Record<string, unknown>
+          facets: Array<Record<string, unknown>>
+          edges: Array<Record<string, unknown>>
+          penetrations: Array<Record<string, unknown>>
+        }>(`/api/v1/roofing/v2/runs/${runId}`),
+      patchRun: (runId: string, updates: Record<string, unknown>) =>
+        apiRequest<Record<string, unknown>>(`/api/v1/roofing/v2/runs/${runId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(updates),
+        }),
+      putFacets: (runId: string, payload: {
+        image_width_px: number
+        image_height_px: number
+        zoom: number
+        lat: number
+        lng: number
+        facets: Array<{
+          facet_label: string
+          polygon: [number, number][]
+          pitch: string
+          confidence?: number
+          user_confirmed?: boolean
+        }>
+      }) =>
+        apiRequest<{ facets: Array<Record<string, unknown>>; count: number }>(
+          `/api/v1/roofing/v2/runs/${runId}/facets`,
+          { method: 'PUT', body: JSON.stringify(payload) },
+        ),
+      putEdges: (runId: string, payload: {
+        image_width_px: number
+        image_height_px: number
+        zoom: number
+        lat: number
+        edges: Array<{
+          facet_label: string
+          vertex_index_start: number
+          vertex_index_end: number
+          edge_type: 'eave' | 'rake' | 'ridge' | 'hip' | 'valley' | 'gable_end' | 'wall_intersection' | 'unlabeled'
+          shared_with_facet_label?: string
+          user_confirmed?: boolean
+        }>
+      }) =>
+        apiRequest<{ edges: Array<Record<string, unknown>>; count: number }>(
+          `/api/v1/roofing/v2/runs/${runId}/edges`,
+          { method: 'PUT', body: JSON.stringify(payload) },
+        ),
+      recompute: (runId: string) =>
+        apiRequest<Record<string, unknown>>(`/api/v1/roofing/v2/runs/${runId}/recompute`),
+      addPenetration: (runId: string, p: {
+        type: string
+        count?: number
+        facet_id?: string
+        pos_x_frac?: number
+        pos_y_frac?: number
+        width_in?: number
+        height_in?: number
+        ai_suggested?: boolean
+        user_confirmed?: boolean
+        notes?: string
+      }) =>
+        apiRequest<Record<string, unknown>>(`/api/v1/roofing/v2/runs/${runId}/penetrations`, {
+          method: 'POST',
+          body: JSON.stringify(p),
+        }),
+      deletePenetration: (runId: string, pid: string) =>
+        apiRequest<Record<string, unknown>>(`/api/v1/roofing/v2/runs/${runId}/penetrations/${pid}`, {
+          method: 'DELETE',
+        }),
+      suggestPenetrations: (runId: string) =>
+        apiRequest<{
+          suggestions: Array<{
+            type: string
+            pos_x_frac: number
+            pos_y_frac: number
+            confidence: number
+            note: string
+            ai_suggested: boolean
+            user_confirmed: boolean
+          }>
+          message: string
+        }>(`/api/v1/roofing/v2/runs/${runId}/penetrations/suggest`),
+      getCatalog: (region?: string) =>
+        apiRequest<{
+          items: Array<{
+            sku: string
+            category: string
+            item_name: string
+            unit: string
+            coverage_basis: string
+            coverage_value: number
+            unit_cost: number
+            notes: string
+          }>
+          count: number
+        }>(`/api/v1/roofing/v2/catalog${region ? `?region=${encodeURIComponent(region)}` : ''}`),
+      getMaterials: (runId: string, wastePct = 12) =>
+        apiRequest<{
+          run_id: string
+          waste_pct: number
+          waste_table: number[]
+          lines: Array<{
+            sku: string
+            item_name: string
+            category: string
+            unit: string
+            coverage_basis: string
+            base_quantity: number
+            waste_quantities: Record<string, number>
+            unit_cost: number
+            total_cost_at_default_waste: number
+            default_waste_pct: number
+            notes: string
+            computation_trace: string
+          }>
+          summary: {
+            per_waste_totals: Record<string, number>
+            per_category: Record<string, { items: number; subtotal: number }>
+            default_waste_pct: number
+            line_count: number
+          }
+          grand_total_at_selected_waste: number
+          totals_input: Record<string, number | string>
+          penetrations_confirmed: Array<Record<string, unknown>>
+        }>(`/api/v1/roofing/v2/runs/${runId}/materials?waste_pct=${wastePct}`),
+      downloadReport: async (runId: string) => {
+        const session = await getCachedSession()
+        const token = session?.access_token
+        const res = await fetch(`${API_BASE}/api/v1/roofing/v2/runs/${runId}/report`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        if (!res.ok) {
+          const msg = await res.text().catch(() => '')
+          throw new Error(msg || `Report failed (${res.status})`)
+        }
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        const cd = res.headers.get('content-disposition') || ''
+        const m = /filename="([^"]+)"/.exec(cd)
+        a.download = m ? m[1] : `axis-roof-report-${runId.slice(0, 8)}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 2000)
+      },
+      addSidingMeasurement: (payload: {
+        project_id: string
+        elevation: 'front' | 'rear' | 'left' | 'right' | 'other'
+        photo_url?: string
+        reference_object?: 'standard_door_80' | 'garage_door_84' | 'window_36' | 'custom'
+        reference_height_in?: number
+        reference_pixel_h?: number
+        region_polygon: [number, number][]
+        material_type?: string
+        notes?: string
+      }) =>
+        apiRequest<Record<string, unknown>>(`/api/v1/roofing/v2/siding/measurements`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }),
+      listSidingMeasurements: (projectId: string) =>
+        apiRequest<{
+          measurements: Array<Record<string, unknown>>
+          total_sqft: number
+          count: number
+        }>(`/api/v1/roofing/v2/siding/measurements?project_id=${projectId}`),
+    },
     analyzePhotos: async (photos: File[], address: string): Promise<Record<string, unknown>> => {
       const { getCachedSession: getSession } = await import('./supabase')
       const session = await getSession()

@@ -16,6 +16,7 @@ const NAV = [
   { href: '/material-check',  label: 'Material Compliance', icon: IconMaterialCheck },
   { href: '/home-visualizer', label: 'Home Visualizer',    icon: IconVisualizer },
   { href: '/aerial-report',   label: 'Aerial Roof Report', icon: IconAerial },
+  { href: '/roof-v2',         label: 'Roof Report (v2)',   icon: IconAerial },
   { href: '/storm-report',    label: 'Storm Risk Report',  icon: IconStorm },
   { href: '/crm',             label: 'CRM',              icon: IconCRM },
   { href: '/reports',         label: 'Reports',          icon: IconReports },
