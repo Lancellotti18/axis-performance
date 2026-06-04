@@ -264,8 +264,8 @@ export default function PermitPortalSection({ project, projectId }: { project: a
   async function actuallyDownloadPdf(useWebForm: boolean, fields: any[]) {
     setGeneratingPdf(true)
     try {
-      const { supabase } = await import('@/lib/supabase')
-      const { data: { session } } = await supabase.auth.getSession()
+      const { getCachedSession } = await import('@/lib/supabase')
+      const session = await getCachedSession()
       const token = session?.access_token
       const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 

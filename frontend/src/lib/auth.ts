@@ -1,5 +1,5 @@
 'use client'
-import { supabase } from './supabase'
+import { supabase, getCachedSession } from './supabase'
 
 export async function signUp(email: string, password: string, fullName: string, companyName: string) {
   const { data, error } = await supabase.auth.signUp({
@@ -22,8 +22,8 @@ export async function signOut() {
 }
 
 export async function getSession() {
-  const { data: { session } } = await supabase.auth.getSession()
-  return session
+  // Uses the module-level session cache to avoid auth-lock contention.
+  return getCachedSession()
 }
 
 export async function getUser() {

@@ -1,0 +1,64 @@
+name: Supabase Keep-Alive
+
+# Hits the Supabase project every day so it never sits idle long enough
+# to be auto-paused. Free-tier projects pause after ~7 days of zero
+# activity; one ping every 24 hours keeps the project warm permanently.
+#
+# Hits two endpoints to count as "real" activity:
+#   - /auth/v1/health         → wakes the auth service
+#   - /rest/v1/?apikey=...    → wakes PostgREST + the underlying database
+#
+# The anon key is published in the frontend bundle (NEXT_PUBLIC_ prefix),
+# so it's not a secret — safe to hardcode here.
+
+on:
+  schedule:
+    # Daily at 14:00 UTC (10:00 ET / 07:00 PT). Random-ish minute reduces
+    # chance of being scheduled together with thousands of other repos.
+    - cron: '23 14 * * *'
+  # Manual trigger so you can test it without waiting for the cron.
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    env:
+      SUPABASE_URL: https://drouqkykdejsxziwkqgy.supabase.co
+      # Publishable anon key — already exposed in the frontend bundle.
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyb3Vxa3lrZGVqc3h6aXdrcWd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0NDIwMzAsImV4cCI6MjA4OTAxODAzMH0.zCC_sDCN6a0Xmx1CUsRnycsZJI5o1SWmcjJAG3BnJWU
+
+    steps:
+      - name: Ping auth service
+        run: |
+          CODE=$(curl -s -o /tmp/auth_body.txt -w "%{http_code}" \
+            --max-time 30 \
+            "$SUPABASE_URL/auth/v1/health" \
+            -H "apikey: $SUPABASE_ANON_KEY")
+          echo "Auth health: HTTP $CODE"
+          if [ "$CODE" != "200" ] && [ "$CODE" != "401" ] && [ "$CODE" != "404" ]; then
+            echo "Auth ping failed."
+            cat /tmp/auth_body.txt
+            exit 1
+          fi
+
+      - name: Ping PostgREST (wakes the database)
+        run: |
+          CODE=$(curl -s -o /tmp/rest_body.txt -w "%{http_code}" \
+            --max-time 30 \
+            "$SUPABASE_URL/rest/v1/projects?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "PostgREST ping: HTTP $CODE"
+          # 200 (data returned), 401 (RLS blocks anon — still wakes DB),
+          # or 404 (table not found yet during warmup) all count as success.
+          if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 500 ]; then
+            echo "REST ping failed — project may be down."
+            cat /tmp/rest_body.txt
+            exit 1
+          fi
+
+      - name: Summary
+        run: echo "✓ Supabase project is awake."

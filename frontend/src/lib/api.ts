@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { supabase, getCachedSession, refreshCachedSession } from './supabase'
 import type {
   Project,
   Blueprint,
@@ -31,7 +31,10 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
 }
 
 async function buildAuthHeaders(options?: RequestInit): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession()
+  // Use the module-level session cache (see supabase.ts) — calling
+  // supabase.auth.getSession() directly under concurrency causes
+  // "AbortError: Lock was stolen by another request".
+  const session = await getCachedSession()
   const token = session?.access_token
   return {
     'Content-Type': 'application/json',
@@ -72,12 +75,12 @@ export async function apiRequest<T>(
     throw new Error('Network error. Please check your connection.')
   }
 
-  // On 401, the Supabase session is likely stale. Force a refresh and retry once
-  // with the fresh token before surfacing an auth error to the user.
+  // On 401, the cached session is likely stale. Force-refresh through the
+  // cache helper (also updates the module-level cache) and retry once.
   if (res!.status === 401) {
     try {
-      const { data } = await supabase.auth.refreshSession()
-      if (data?.session?.access_token) {
+      const refreshed = await refreshCachedSession()
+      if (refreshed?.access_token) {
         const retryOptions: RequestInit = {
           ...options,
           headers: await buildAuthHeaders(options),
@@ -272,7 +275,7 @@ export const api = {
         }>
       }>(`/api/v1/permits/${projectId}/attachments`).catch(() => ({ attachments: [] })),
     uploadRequirement: async (projectId: string, index: number, file: File) => {
-      const { data: { session } } = await supabase.auth.getSession()
+      const session = await getCachedSession()
       const token = session?.access_token
       const form = new FormData()
       form.append('index', String(index))
@@ -295,7 +298,7 @@ export const api = {
         method: 'DELETE',
       }),
     previewDraftPdf: async (projectId: string): Promise<Blob> => {
-      const { data: { session } } = await supabase.auth.getSession()
+      const session = await getCachedSession()
       const token = session?.access_token
       const res = await fetch(`${API_BASE}/api/v1/permits/generate-pdf/${projectId}`, {
         method: 'POST',
@@ -405,7 +408,7 @@ export const api = {
     getShingleEstimate: (projectId: string) =>
       apiRequest<Record<string, unknown>>(`/api/v1/roofing/project/${projectId}/shingle-estimate`),
     downloadPdfReport: async (projectId: string) => {
-      const { data: { session } } = await supabase.auth.getSession()
+      const session = await getCachedSession()
       const token = session?.access_token
       const res = await fetch(`${API_BASE}/api/v1/roofing/project/${projectId}/pdf-report`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -473,7 +476,8 @@ export const api = {
         }),
       }, 60000),
     analyzePhotos: async (photos: File[], address: string): Promise<Record<string, unknown>> => {
-      const { data: { session } } = await (await import('./supabase')).supabase.auth.getSession()
+      const { getCachedSession: getSession } = await import('./supabase')
+      const session = await getSession()
       const token = session?.access_token
       const form = new FormData()
       photos.forEach(p => form.append('photos', p))
@@ -530,7 +534,7 @@ export const api = {
   // Path stays /api/v1/photos/transcribe so client + server stay aligned.
   photos: {
     transcribe: async (audio: Blob, filename = 'note.webm') => {
-      const { data: { session } } = await supabase.auth.getSession()
+      const session = await getCachedSession()
       const token = session?.access_token
       const form = new FormData()
       form.append('audio', audio, filename)
