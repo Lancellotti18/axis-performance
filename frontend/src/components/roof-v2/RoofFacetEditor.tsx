@@ -123,8 +123,17 @@ export function RoofFacetEditor({
   const [dragVertex, setDragVertex] = useState<{ facetIdx: number; vertexIdx: number } | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<{ facetIdx: number; edgeIdx: number } | null>(null)
   const [imageDims, setImageDims] = useState({ w: imageWidthPx, h: imageHeightPx })
+  // Pan + zoom for the canvas. Pure CSS transform on the inner stage — the
+  // SVG's getBoundingClientRect() reports the transformed rect so vertex
+  // click math (eventToFrac) keeps producing correct image fractions.
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
+  const [spaceHeld, setSpaceHeld] = useState(false)
+  const [panning, setPanning] = useState<{
+    startClientX: number; startClientY: number; origX: number; origY: number
+  } | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const stageRef = useRef<HTMLDivElement | null>(null)
   const lastOnChangeRef = useRef<string>('')
 
   // Notify parent whenever facets or edges change — JSON-compare to avoid loops.
@@ -144,6 +153,103 @@ export function RoofFacetEditor({
     const y = (ev.clientY - rect.top) / rect.height
     return [clampFrac(x), clampFrac(y)]
   }, [])
+
+  // ---- Pan + zoom (CSS transform on the stage) ----
+  const MIN_SCALE = 1
+  const MAX_SCALE = 12
+
+  const setViewClamped = useCallback((nextScale: number, anchorX: number, anchorY: number) => {
+    // Anchor zoom at the cursor — the world point under (anchorX, anchorY) in
+    // container-local pixels stays under the cursor after scaling.
+    setView(prev => {
+      const clamped = Math.max(MIN_SCALE, Math.min(MAX_SCALE, nextScale))
+      const worldX = (anchorX - prev.x) / prev.scale
+      const worldY = (anchorY - prev.y) / prev.scale
+      let nx = anchorX - worldX * clamped
+      let ny = anchorY - worldY * clamped
+      // When fully zoomed out we reset the offset so the image always fits.
+      if (clamped <= 1) { nx = 0; ny = 0 }
+      return { scale: clamped, x: nx, y: ny }
+    })
+  }, [])
+
+  const onWheel = useCallback((ev: React.WheelEvent<HTMLDivElement>) => {
+    ev.preventDefault()
+    const container = containerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const cx = ev.clientX - rect.left
+    const cy = ev.clientY - rect.top
+    const factor = ev.deltaY < 0 ? 1.18 : 1 / 1.18
+    setViewClamped(view.scale * factor, cx, cy)
+  }, [view.scale, setViewClamped])
+
+  const zoomIn = useCallback(() => {
+    const c = containerRef.current
+    if (!c) return
+    const r = c.getBoundingClientRect()
+    setViewClamped(view.scale * 1.4, r.width / 2, r.height / 2)
+  }, [view.scale, setViewClamped])
+
+  const zoomOut = useCallback(() => {
+    const c = containerRef.current
+    if (!c) return
+    const r = c.getBoundingClientRect()
+    setViewClamped(view.scale / 1.4, r.width / 2, r.height / 2)
+  }, [view.scale, setViewClamped])
+
+  const resetView = useCallback(() => setView({ scale: 1, x: 0, y: 0 }), [])
+
+  // Spacebar = pan modifier. Don't grab it when the user is typing in an input.
+  useEffect(() => {
+    const onKeyDown = (ev: KeyboardEvent) => {
+      const tag = (ev.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (ev.code === 'Space') {
+        ev.preventDefault()
+        setSpaceHeld(true)
+      }
+    }
+    const onKeyUp = (ev: KeyboardEvent) => {
+      if (ev.code === 'Space') setSpaceHeld(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [])
+
+  // Pan with middle-mouse or space+left-mouse. Runs at the container level so
+  // it works regardless of which child the pointer is over.
+  const onContainerPointerDown = useCallback((ev: React.PointerEvent<HTMLDivElement>) => {
+    const wantsPan = ev.button === 1 || (ev.button === 0 && spaceHeld)
+    if (!wantsPan) return
+    ev.preventDefault()
+    setPanning({
+      startClientX: ev.clientX, startClientY: ev.clientY,
+      origX: view.x, origY: view.y,
+    })
+  }, [spaceHeld, view.x, view.y])
+
+  useEffect(() => {
+    if (!panning) return
+    const onMove = (ev: PointerEvent) => {
+      setView(prev => ({
+        scale: prev.scale,
+        x: panning.origX + (ev.clientX - panning.startClientX),
+        y: panning.origY + (ev.clientY - panning.startClientY),
+      }))
+    }
+    const onUp = () => setPanning(null)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [panning])
 
   // ---- Drawing flow ----
   const onSvgPointerDown = useCallback((ev: React.PointerEvent<SVGSVGElement>) => {
@@ -325,7 +431,7 @@ export function RoofFacetEditor({
               x1={p1[0] * imageDims.w} y1={p1[1] * imageDims.h}
               x2={p2[0] * imageDims.w} y2={p2[1] * imageDims.h}
               stroke={color}
-              strokeWidth={isSel ? 6 : 4}
+              strokeWidth={(isSel ? 6 : 4) / view.scale}
               strokeLinecap="round"
               style={{ cursor: mode === 'label' || mode === 'select' ? 'pointer' : 'default' }}
               onClick={(ev) => {
@@ -346,10 +452,10 @@ export function RoofFacetEditor({
         {f.polygon.map(([x, y], i) => (
           <circle
             key={i}
-            cx={x * imageDims.w} cy={y * imageDims.h} r={8}
+            cx={x * imageDims.w} cy={y * imageDims.h} r={8 / view.scale}
             fill="white"
             stroke={isActive ? '#3b82f6' : '#475569'}
-            strokeWidth={2}
+            strokeWidth={2 / view.scale}
             style={{ cursor: mode === 'select' ? 'grab' : 'default' }}
             onPointerDown={(ev) => onVertexPointerDown(ev, idx, i)}
           />
@@ -360,7 +466,7 @@ export function RoofFacetEditor({
           const cy = f.polygon.reduce((s, p) => s + p[1], 0) / f.polygon.length
           return (
             <g
-              transform={`translate(${cx * imageDims.w}, ${cy * imageDims.h})`}
+              transform={`translate(${cx * imageDims.w}, ${cy * imageDims.h}) scale(${1 / view.scale})`}
               style={{ cursor: 'pointer' }}
               onClick={(ev) => { ev.stopPropagation(); setActiveFacetIdx(idx) }}
             >
@@ -431,55 +537,107 @@ export function RoofFacetEditor({
             if (ev.key === 'Escape' && mode === 'draw') {
               setDrawingPoly([])
             }
+            if (ev.key === '+' || ev.key === '=') zoomIn()
+            if (ev.key === '-' || ev.key === '_') zoomOut()
+            if (ev.key === '0') resetView()
           }}
+          onWheel={onWheel}
+          onPointerDown={onContainerPointerDown}
           tabIndex={0}
+          style={{
+            cursor: panning ? 'grabbing' : spaceHeld ? 'grab' : undefined,
+          }}
         >
-          {/* Satellite tile */}
-          {imageUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={imageUrl}
-              alt="satellite"
-              className="absolute inset-0 h-full w-full object-contain"
-              onLoad={onImageLoad}
-              draggable={false}
-            />
-          )}
-          <svg
-            ref={svgRef}
-            viewBox={`0 0 ${imageDims.w} ${imageDims.h}`}
-            preserveAspectRatio="xMidYMid meet"
-            className="absolute inset-0 h-full w-full"
-            style={{ cursor: mode === 'draw' ? 'crosshair' : 'default' }}
-            onPointerDown={onSvgPointerDown}
-            onDoubleClick={() => mode === 'draw' && finalizeDrawingPoly()}
+          {/* Transformed stage — image + svg move/scale together */}
+          <div
+            ref={stageRef}
+            className="absolute inset-0"
+            style={{
+              transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+              transformOrigin: '0 0',
+              willChange: 'transform',
+            }}
           >
-            {facets.map(renderFacetPolygon)}
-
-            {/* In-progress polygon */}
-            {drawingPoly.length > 0 && (
-              <g>
-                {drawingPoly.length >= 2 && (
-                  <polyline
-                    points={drawingPoly.map(([x, y]) => `${x * imageDims.w},${y * imageDims.h}`).join(' ')}
-                    fill="none"
-                    stroke="#fbbf24"
-                    strokeWidth={3}
-                    strokeDasharray="6 4"
-                  />
-                )}
-                {drawingPoly.map(([x, y], i) => (
-                  <circle
-                    key={i}
-                    cx={x * imageDims.w} cy={y * imageDims.h} r={i === 0 ? 10 : 7}
-                    fill={i === 0 ? '#fbbf24' : 'white'}
-                    stroke="#fbbf24"
-                    strokeWidth={2}
-                  />
-                ))}
-              </g>
+            {/* Satellite tile */}
+            {imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={imageUrl}
+                alt="satellite"
+                className="absolute inset-0 h-full w-full object-contain"
+                onLoad={onImageLoad}
+                draggable={false}
+                style={{ imageRendering: view.scale >= 2 ? 'pixelated' : 'auto' }}
+              />
             )}
-          </svg>
+            <svg
+              ref={svgRef}
+              viewBox={`0 0 ${imageDims.w} ${imageDims.h}`}
+              preserveAspectRatio="xMidYMid meet"
+              className="absolute inset-0 h-full w-full"
+              style={{
+                cursor: spaceHeld || panning ? 'inherit' : mode === 'draw' ? 'crosshair' : 'default',
+                // Scale stroke widths inversely so lines/handles stay readable when zoomed in
+                ['--axis-zoom' as string]: String(view.scale),
+              }}
+              onPointerDown={onSvgPointerDown}
+              onDoubleClick={() => mode === 'draw' && finalizeDrawingPoly()}
+            >
+              {facets.map(renderFacetPolygon)}
+
+              {/* In-progress polygon */}
+              {drawingPoly.length > 0 && (
+                <g>
+                  {drawingPoly.length >= 2 && (
+                    <polyline
+                      points={drawingPoly.map(([x, y]) => `${x * imageDims.w},${y * imageDims.h}`).join(' ')}
+                      fill="none"
+                      stroke="#fbbf24"
+                      strokeWidth={3 / view.scale}
+                      strokeDasharray={`${6 / view.scale} ${4 / view.scale}`}
+                    />
+                  )}
+                  {drawingPoly.map(([x, y], i) => (
+                    <circle
+                      key={i}
+                      cx={x * imageDims.w} cy={y * imageDims.h}
+                      r={(i === 0 ? 10 : 7) / view.scale}
+                      fill={i === 0 ? '#fbbf24' : 'white'}
+                      stroke="#fbbf24"
+                      strokeWidth={2 / view.scale}
+                    />
+                  ))}
+                </g>
+              )}
+            </svg>
+          </div>
+
+          {/* Floating zoom controls */}
+          <div className="pointer-events-none absolute bottom-2 right-2 flex flex-col items-end gap-1">
+            <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-white/10 bg-slate-900/85 p-1 text-xs text-slate-200 backdrop-blur">
+              <button
+                onClick={zoomOut}
+                className="rounded px-2 py-1 hover:bg-slate-800"
+                title="Zoom out (-)"
+              >−</button>
+              <span className="min-w-[3.2rem] px-1 text-center font-mono">
+                {(view.scale * 100).toFixed(0)}%
+              </span>
+              <button
+                onClick={zoomIn}
+                className="rounded px-2 py-1 hover:bg-slate-800"
+                title="Zoom in (+)"
+              >+</button>
+              <button
+                onClick={resetView}
+                className="ml-1 rounded bg-slate-800 px-2 py-1 hover:bg-slate-700"
+                title="Reset view (0)"
+              >Fit</button>
+            </div>
+            <div className="pointer-events-none rounded bg-slate-900/70 px-2 py-1 text-[10px] text-slate-400 backdrop-blur">
+              Wheel = zoom · Space + drag (or middle-mouse) = pan
+            </div>
+          </div>
         </div>
 
         {/* Side panel */}
