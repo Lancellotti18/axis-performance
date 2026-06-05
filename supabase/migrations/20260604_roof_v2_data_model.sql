@@ -377,7 +377,23 @@ ALTER TABLE projects
 -- but new features should target /v2 endpoints directly.
 -- ----------------------------------------------------------------------------
 
--- Drop and recreate so re-running the migration is idempotent.
+-- The legacy `roof_measurements` may exist as a TABLE (created on-the-fly by
+-- the old code path) rather than a view. If so, rename it so its rows survive
+-- and the name is free for the new view. Idempotent: skips if already renamed
+-- or if it's already the view shape.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'roof_measurements'
+      AND table_type = 'BASE TABLE'
+  ) THEN
+    EXECUTE 'ALTER TABLE roof_measurements RENAME TO roof_measurements_legacy';
+  END IF;
+END $$;
+
+-- Drop any leftover view so we can recreate cleanly.
 DROP VIEW IF EXISTS roof_measurements CASCADE;
 
 CREATE VIEW roof_measurements AS
