@@ -744,6 +744,90 @@ export const api = {
       } catch (err) { clearTimeout(timer); throw err }
     },
   },
+  exterior: {
+    createJob: (payload: { project_id: string; report_type?: 'complete' | 'roof_only'; notes?: string }) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/jobs`, {
+        method: 'POST', body: JSON.stringify(payload),
+      }),
+    listJobs: (projectId: string) =>
+      apiRequest<{ jobs: Array<Record<string, unknown>> }>(
+        `/api/v1/exterior/v1/jobs?project_id=${encodeURIComponent(projectId)}`,
+      ),
+    getJob: (jobId: string) =>
+      apiRequest<{
+        job: Record<string, unknown>
+        photos: Array<Record<string, unknown>>
+        measurements: Array<Record<string, unknown>>
+        coverage: Record<string, { count: number; effective_count?: number; status: string }>
+        photogrammetry_available: boolean
+      }>(`/api/v1/exterior/v1/jobs/${jobId}`),
+    patchJob: (jobId: string, updates: Record<string, unknown>) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/jobs/${jobId}`, {
+        method: 'PATCH', body: JSON.stringify(updates),
+      }),
+    registerPhoto: (payload: {
+      job_id: string
+      photo_url: string
+      storage_path?: string
+      original_filename?: string
+      file_size_kb?: number
+      width_px?: number
+      height_px?: number
+      exif_data?: Record<string, unknown>
+      gps_lat?: number
+      gps_lng?: number
+    }) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/photos`, {
+        method: 'POST', body: JSON.stringify(payload),
+      }, 60000),
+    patchPhoto: (photoId: string, updates: Record<string, unknown>) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/photos/${photoId}`, {
+        method: 'PATCH', body: JSON.stringify(updates),
+      }),
+    deletePhoto: (photoId: string) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/photos/${photoId}`, {
+        method: 'DELETE',
+      }),
+    createMeasurement: (payload: {
+      job_id: string
+      photo_id?: string
+      measurement_type: 'wall' | 'window' | 'door' | 'trim' | 'corner_inside' | 'corner_outside' | 'roof_visible'
+      facade_id?: string
+      elevation?: 'front' | 'right' | 'rear' | 'left' | 'other'
+      material_type?: string
+      reference_object?: 'standard_door_80' | 'garage_door_84' | 'window_36' | 'custom' | 'photogrammetry'
+      reference_height_in?: number
+      reference_pixel_h?: number
+      region_polygon?: [number, number][]
+      width_in?: number
+      height_in?: number
+      snapped_to_standard?: boolean
+      notes?: string
+    }) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/measurements`, {
+        method: 'POST', body: JSON.stringify(payload),
+      }),
+    deleteMeasurement: (id: string) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/measurements/${id}`, {
+        method: 'DELETE',
+      }),
+    submitPhotogrammetry: (jobId: string) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/jobs/${jobId}/photogrammetry/submit`, {
+        method: 'POST',
+      }, 120000),
+    photogrammetryStatus: (jobId: string) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/jobs/${jobId}/photogrammetry/status`),
+    getSummary: (jobId: string) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/jobs/${jobId}/summary`),
+    windowStandards: () =>
+      apiRequest<{ sizes: Array<{ width_in: number; height_in: number }> }>(
+        `/api/v1/exterior/v1/standards/windows`,
+      ),
+    doorStandards: () =>
+      apiRequest<{ sizes: Array<{ width_in: number; height_in: number }> }>(
+        `/api/v1/exterior/v1/standards/doors`,
+      ),
+  },
   chat: {
     ask: (payload: {
       section: string

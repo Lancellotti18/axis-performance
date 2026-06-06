@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     BLENDER_PATH: str = "blender"
     RUNPOD_API_KEY: str = ""
     RUNPOD_ENDPOINT_ID: str = ""
+    # Optional: separate RunPod endpoint hosting the COLMAP/OpenSfM container
+    # used by the Exterior Measurement Module's photogrammetry step. Falls
+    # back to RUNPOD_ENDPOINT_ID if unset (useful for early scaffolding).
+    RUNPOD_PHOTOGRAMMETRY_ENDPOINT_ID: str = ""
     AXIS_OUTPUT_DIR: str = "/tmp/axis_outputs"
 
     @property
