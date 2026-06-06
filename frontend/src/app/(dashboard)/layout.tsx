@@ -18,6 +18,7 @@ const NAV = [
   { href: '/aerial-report',   label: 'Aerial Roof Report', icon: IconAerial },
   { href: '/roof-v2',         label: 'Roof Report (v2)',   icon: IconAerial },
   { href: '/exterior',        label: 'Exterior Module',    icon: IconAerial },
+  { href: '/training-data',   label: 'Training Data',      icon: IconAerial },
   { href: '/storm-report',    label: 'Storm Risk Report',  icon: IconStorm },
   { href: '/crm',             label: 'CRM',              icon: IconCRM },
   { href: '/reports',         label: 'Reports',          icon: IconReports },

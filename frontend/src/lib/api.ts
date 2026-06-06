@@ -772,6 +772,56 @@ export const api = {
       } catch (err) { clearTimeout(timer); throw err }
     },
   },
+  training: {
+    stats: () =>
+      apiRequest<{
+        total: number
+        by_task_type: Record<string, number>
+        by_quality: Record<string, number>
+        by_capture_source: Record<string, number>
+        ready_for_training: number
+        recent_7d: number
+      }>(`/api/v1/training/stats`),
+    list: (params?: {
+      task_type?: string
+      quality_tier?: string
+      capture_source?: string
+      limit?: number
+      offset?: number
+    }) => {
+      const qs = new URLSearchParams()
+      if (params?.task_type) qs.set('task_type', params.task_type)
+      if (params?.quality_tier) qs.set('quality_tier', params.quality_tier)
+      if (params?.capture_source) qs.set('capture_source', params.capture_source)
+      if (params?.limit) qs.set('limit', String(params.limit))
+      if (params?.offset) qs.set('offset', String(params.offset))
+      const q = qs.toString() ? `?${qs}` : ''
+      return apiRequest<{
+        examples: Array<Record<string, unknown>>
+        count: number
+      }>(`/api/v1/training/examples${q}`)
+    },
+    patch: (id: string, updates: { quality_tier?: string; reviewer_notes?: string }) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/training/examples/${id}`, {
+        method: 'PATCH', body: JSON.stringify(updates),
+      }),
+    downloadCoco: async (taskType: string, minQuality = 'reviewed') => {
+      const session = await getCachedSession()
+      const token = session?.access_token
+      const res = await fetch(
+        `${API_BASE}/api/v1/training/export?task_type=${taskType}&min_quality=${minQuality}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      )
+      if (!res.ok) throw new Error(`Export failed (${res.status})`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `axis-training-${taskType}-${minQuality}.coco.json`
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 2000)
+    },
+  },
   exterior: {
     createJob: (payload: { project_id: string; report_type?: 'complete' | 'roof_only'; notes?: string }) =>
       apiRequest<Record<string, unknown>>(`/api/v1/exterior/v1/jobs`, {
