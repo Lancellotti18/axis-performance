@@ -93,6 +93,52 @@ async def imagery_health(
     )
 
 
+class UpscaleRequest(BaseModel):
+    image_url: str
+    scale: Literal[2, 4] = 4
+
+
+@router.post("/imagery/upscale")
+async def upscale_imagery(
+    payload: UpscaleRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    AI super-resolution via Replicate's Real-ESRGAN. Returns the upscaled
+    image URL (Replicate-hosted, valid ~1 hour). The frontend swaps the
+    image src to this URL so the satellite tile becomes visually sharper
+    for tracing.
+
+    The math (areas, lengths) is still computed from the ORIGINAL tile's
+    metres-per-pixel — the upscaled image is for visualization only.
+    """
+    from app.services import imagery_enhancement_service as enhance
+    import httpx as _httpx
+
+    if not enhance.is_enabled():
+        return {
+            "status": "disabled",
+            "error": (
+                "Image enhancement requires REPLICATE_API_KEY on the backend. "
+                "Free tier available at replicate.com — set the key in Render env vars."
+            ),
+        }
+
+    try:
+        async with _httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(payload.image_url, follow_redirects=True)
+            r.raise_for_status()
+            img_bytes = r.content
+            mt = (r.headers.get("content-type") or "image/png").split(";")[0].strip()
+            if mt not in ("image/png", "image/jpeg"):
+                mt = "image/png"
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not fetch source image: {e}")
+
+    result = await enhance.upscale_image(img_bytes, mt, scale=payload.scale)
+    return result.to_dict(include_bytes=False)
+
+
 @router.post("/imagery/fetch")
 async def imagery_fetch(
     payload: ImageryHealthRequest,

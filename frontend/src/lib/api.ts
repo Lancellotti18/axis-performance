@@ -645,6 +645,17 @@ export const api = {
           }>
           message: string
         }>(`/api/v1/roofing/v2/runs/${runId}/facets/suggest`, {}, 120000),
+      upscaleImagery: (imageUrl: string, scale: 2 | 4 = 4) =>
+        apiRequest<{
+          status: 'disabled' | 'completed' | 'failed'
+          upscaled_url?: string
+          scale_factor?: number
+          error?: string
+          honesty_note?: string
+        }>(`/api/v1/roofing/v2/imagery/upscale`, {
+          method: 'POST',
+          body: JSON.stringify({ image_url: imageUrl, scale }),
+        }, 120000),
       suggestEdgeLabels: (runId: string, payload: {
         facets: Array<{ label: string; polygon: [number, number][]; pitch_degrees?: number }>
         unlabeled_edges: Array<{ facet_label: string; vertex_index_start: number; vertex_index_end: number }>

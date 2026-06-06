@@ -24,6 +24,8 @@ import LocationPicker, { type LocationSelected } from '@/components/roof-v2/Loca
 import RoofFacetEditor, { type Facet, type LabeledEdge } from '@/components/roof-v2/RoofFacetEditor'
 import MeasurementsSummary from '@/components/roof-v2/MeasurementsSummary'
 import PenetrationSuggestions from '@/components/roof-v2/PenetrationSuggestions'
+import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
+import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
 
 interface Project {
@@ -347,6 +349,40 @@ export default function RoofV2Page() {
       {/* EDITOR step */}
       {step === 'editor' && imagery?.url && runId && (
         <section className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2 text-xs">
+            <span className="text-slate-400">Tile:</span>
+            <span className="font-mono text-slate-200">
+              {imagery.provider} · z{imagery.zoom} · {imagery.feet_per_pixel?.toFixed(2)} ft/px
+            </span>
+            <button
+              onClick={async () => {
+                if (!imagery.url || busy) return
+                setBusy(true)
+                setError(null)
+                try {
+                  const res = await api.roofing.v2.upscaleImagery(imagery.url, 4) as {
+                    status: string
+                    upscaled_url?: string
+                    error?: string
+                  }
+                  if (res.status === 'completed' && res.upscaled_url) {
+                    setImagery({ ...imagery, url: res.upscaled_url, feet_per_pixel: (imagery.feet_per_pixel ?? 0) / 4 })
+                  } else if (res.status === 'disabled') {
+                    setError(res.error || 'Sharpener disabled. Set REPLICATE_API_KEY on the backend.')
+                  } else {
+                    setError(res.error || 'Sharpen failed.')
+                  }
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Sharpen failed')
+                } finally {
+                  setBusy(false)
+                }
+              }}
+              disabled={busy}
+              className="ml-auto rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+              title="AI 4x super-resolution via Replicate Real-ESRGAN"
+            >{busy ? 'Sharpening…' : 'Sharpen tile (AI 4x)'}</button>
+          </div>
           <div className="h-[680px]">
             <RoofFacetEditor
               imageUrl={imagery.url}
@@ -389,28 +425,49 @@ export default function RoofV2Page() {
       )}
 
       {/* REPORT step */}
-      {step === 'report' && runId && (
-        <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
-          <h2 className="mb-3 text-sm font-semibold">Confirm + download</h2>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat label="Facets" value={facets.length.toString()} />
-            <Stat label="Edges labeled" value={edges.filter(e => e.edgeType !== 'unlabeled').length.toString()} />
-            <Stat label="Confidence" value={`${Math.round(confidence * 100)}%`} />
-            <Stat label="Imagery" value={`${Math.round((imagery?.health_score ?? 0) * 100)}%`} />
-          </div>
-          <p className="mt-3 text-xs text-slate-400">
-            Confirming locks the measurement run and generates a contractor-grade PDF report
-            with all 8 sections. You can return and edit later — a confirmed run becomes
-            unconfirmed if you change facets or edges.
-          </p>
-          <button
-            onClick={confirmAndDownload}
-            disabled={busy || facets.length === 0}
-            className="mt-4 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {busy ? 'Generating…' : 'Confirm + download PDF report'}
-          </button>
-        </section>
+      {step === 'report' && runId && imagery && (
+        <>
+          {/* EagleView-style annotated 2D */}
+          <AnnotatedRoofView
+            imageUrl={imagery.url ?? ''}
+            imageWidthPx={imagery.width_px ?? 2048}
+            imageHeightPx={imagery.height_px ?? 1366}
+            facets={facets}
+            edges={edges}
+          />
+
+          {/* 3D viewer */}
+          <RoofViewer3D
+            facets={facets}
+            edges={edges}
+            lat={location?.lat ?? imagery.lat ?? 30.27}
+            zoom={imagery.zoom ?? 20}
+            imageWidthPx={imagery.width_px ?? 2048}
+            imageHeightPx={imagery.height_px ?? 1366}
+          />
+
+          <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
+            <h2 className="mb-3 text-sm font-semibold">Confirm + download</h2>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Stat label="Facets" value={facets.length.toString()} />
+              <Stat label="Edges labeled" value={edges.filter(e => e.edgeType !== 'unlabeled').length.toString()} />
+              <Stat label="Confidence" value={`${Math.round(confidence * 100)}%`} />
+              <Stat label="Imagery" value={`${Math.round((imagery?.health_score ?? 0) * 100)}%`} />
+            </div>
+            <p className="mt-3 text-xs text-slate-400">
+              Confirming locks the measurement run and generates a contractor-grade PDF report
+              with all 8 sections. You can return and edit later — a confirmed run becomes
+              unconfirmed if you change facets or edges.
+            </p>
+            <button
+              onClick={confirmAndDownload}
+              disabled={busy || facets.length === 0}
+              className="mt-4 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {busy ? 'Generating…' : 'Confirm + download PDF report'}
+            </button>
+          </section>
+        </>
       )}
     </div>
   )
