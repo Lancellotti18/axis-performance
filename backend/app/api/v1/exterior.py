@@ -18,6 +18,7 @@ import math
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.auth import require_user
@@ -517,6 +518,67 @@ STANDARD_DOOR_SIZES_IN = [
     (60, 80),       # double / french 60x80
     (72, 80),       # double 72x80
 ]
+
+
+# ----------------------------------------------------------------------------
+# PDF Report
+# ----------------------------------------------------------------------------
+
+@router.get("/jobs/{job_id}/report")
+async def download_exterior_report(
+    job_id: str, user: dict = Depends(require_user),
+):
+    """
+    Generate and return the 9-section exterior PDF for this job. Pulls the
+    project, job, photos, contractor measurements, and aggregate summary;
+    nothing about this report is AI-derived dimensions.
+    """
+    from app.services.exterior_report_pdf import generate_exterior_report
+    db = get_supabase()
+
+    job_res = db.table("exterior_jobs").select("*").eq("id", job_id).single().execute()
+    if not job_res.data:
+        raise HTTPException(status_code=404, detail="Exterior job not found.")
+    job = job_res.data
+
+    proj_res = db.table("projects").select("*").eq("id", job["project_id"]).single().execute()
+    if not proj_res.data:
+        raise HTTPException(status_code=404, detail="Project not found for this job.")
+    project = proj_res.data
+
+    photos_res = (
+        db.table("exterior_photos").select("*")
+        .eq("job_id", job_id).order("sort_index").execute()
+    )
+    photos = photos_res.data or []
+
+    meas_res = (
+        db.table("exterior_measurements").select("*")
+        .eq("job_id", job_id).order("created_at").execute()
+    )
+    measurements = meas_res.data or []
+
+    # Reuse the same summary aggregation the JSON endpoint returns
+    summary_payload = await get_job_summary(job_id, user=user)
+    summary = {
+        "walls": summary_payload.get("walls", {}),
+        "openings": summary_payload.get("openings", {}),
+        "trim_lf": summary_payload.get("trim_lf", 0),
+        "corners": summary_payload.get("corners", {}),
+    }
+
+    pdf_bytes = await asyncio.to_thread(
+        generate_exterior_report, project, job, photos, measurements, summary,
+    )
+
+    slug = (project.get("name") or "exterior").strip().lower()
+    slug = "".join(c if c.isalnum() else "-" for c in slug).strip("-") or "exterior"
+    filename = f"axis-exterior-{slug}-{job_id[:8]}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/standards/windows")

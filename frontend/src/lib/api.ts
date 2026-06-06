@@ -827,6 +827,28 @@ export const api = {
       apiRequest<{ sizes: Array<{ width_in: number; height_in: number }> }>(
         `/api/v1/exterior/v1/standards/doors`,
       ),
+    downloadReport: async (jobId: string) => {
+      const session = await getCachedSession()
+      const token = session?.access_token
+      const res = await fetch(`${API_BASE}/api/v1/exterior/v1/jobs/${jobId}/report`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '')
+        throw new Error(msg || `Report failed (${res.status})`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const cd = res.headers.get('content-disposition') || ''
+      const m = /filename="([^"]+)"/.exec(cd)
+      a.download = m ? m[1] : `axis-exterior-${jobId.slice(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 2000)
+    },
   },
   chat: {
     ask: (payload: {

@@ -188,13 +188,28 @@ export default function ExteriorPage() {
             (no AI hallucination ends up in your material orders).
           </p>
         </div>
-        {photogrammetryAvailable && job && photos.length >= 6 && (
-          <button
-            onClick={onSubmitPhotogrammetry}
-            disabled={busy}
-            className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
-          >Submit for 3D reconstruction</button>
-        )}
+        <div className="flex gap-2">
+          {job && measurements.length > 0 && (
+            <button
+              onClick={async () => {
+                if (!job) return
+                setBusy(true); setError(null)
+                try { await api.exterior.downloadReport(job.id) }
+                catch (err) { setError(err instanceof Error ? err.message : 'Report failed') }
+                finally { setBusy(false) }
+              }}
+              disabled={busy}
+              className="rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-500 disabled:opacity-50"
+            >Download PDF report</button>
+          )}
+          {photogrammetryAvailable && job && photos.length >= 6 && (
+            <button
+              onClick={onSubmitPhotogrammetry}
+              disabled={busy}
+              className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+            >Submit for 3D reconstruction</button>
+          )}
+        </div>
       </header>
 
       {error && (
