@@ -683,6 +683,280 @@ before it enters the material order. Coordinates are image fractions 0..1 (top-l
 
 
 # ----------------------------------------------------------------------------
+# Phase 2.5 — AI-assisted suggestions on top of the manual editors
+# ----------------------------------------------------------------------------
+
+@router.get("/runs/{run_id}/facets/suggest")
+async def suggest_facets(
+    run_id: str, user: dict = Depends(require_user),
+) -> dict:
+    """
+    Vision-suggest distinct roof planes (facets) for the run's satellite tile.
+    Returns N polygon proposals; the contractor accepts each one in the editor.
+
+    NEVER auto-applies. Every accepted facet is added to the manual facet list
+    and the user can then drag vertices, set pitch, and label edges as usual.
+    """
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select(
+        "satellite_image_url, satellite_zoom"
+    ).eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    img_url = run.data.get("satellite_image_url")
+    if not img_url:
+        return {"facets": [], "message": "No satellite image attached to this run."}
+
+    from app.services.llm import llm_vision
+    import httpx, json, re as _re
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(img_url, follow_redirects=True)
+            r.raise_for_status()
+            img_bytes = r.content
+            mt = (r.headers.get("content-type") or "image/png").split(";")[0].strip()
+            if mt not in ("image/png", "image/jpeg", "image/webp"):
+                mt = "image/png"
+    except Exception as e:
+        return {"facets": [], "message": f"Could not download satellite tile: {e}"}
+
+    prompt = """You are a roof inspector analyzing a top-down satellite image of a residential property.
+
+TASK: Identify each DISTINCT roof plane (facet) on the PRIMARY building and trace its outline
+as a separate polygon. A facet is one flat sloping surface — a typical hip-style residential roof
+has 4 facets, a gable has 2, a complex roof can have 6-12.
+
+STRICT HONESTY:
+- Trace only what you can CLEARLY see. Tree canopy, shadow, or low resolution = skip that facet.
+- 4-8 vertices per facet polygon — capture the true shape with the minimum vertex count.
+- Polygons are CLOSED rings; do NOT repeat the first point at the end.
+- Coordinates are [x, y] fractions of image width/height (0..1), top-left origin.
+- Adjacent facets should SHARE edges (vertex coordinates within ~0.005 of each other) — this is how
+  the contractor's tool auto-suggests ridge/hip/valley labels.
+- If you genuinely cannot identify distinct facets, return facets: [].
+
+Return ONLY valid JSON (no prose):
+{
+  "facets": [
+    {
+      "polygon": [[0.30, 0.28], [0.70, 0.28], [0.70, 0.50], [0.30, 0.50]],
+      "confidence": 0.78,
+      "predicted_pitch": "6/12",
+      "note": "Front-facing main facet, eave visible along bottom"
+    }
+  ]
+}
+
+Guidance for predicted_pitch: estimate from shadow direction + visible roof texture / shingle
+courses if any. If unsure, return "6/12" (residential default) and let the contractor override.
+"""
+
+    try:
+        text = await llm_vision(img_bytes, mt, prompt, max_tokens=1500)
+        s = (text or "").strip()
+        s = _re.sub(r"^```(?:json)?\s*", "", s, flags=_re.MULTILINE)
+        s = _re.sub(r"\s*```\s*$", "", s)
+        a, b = s.find("{"), s.rfind("}")
+        if a < 0 or b < 0:
+            return {"facets": [], "message": "Vision returned no JSON object."}
+        parsed = json.loads(s[a:b + 1])
+        facets = parsed.get("facets") or []
+    except Exception as e:
+        return {"facets": [], "message": f"Vision analysis error: {str(e)[:200]}"}
+
+    # Sanitize: each facet must have a polygon of >=3 [x,y] pairs in [0,1]
+    cleaned: list[dict] = []
+    for f in facets:
+        poly = f.get("polygon") or []
+        if not isinstance(poly, list) or len(poly) < 3:
+            continue
+        valid: list[list[float]] = []
+        ok = True
+        for pt in poly:
+            if not isinstance(pt, (list, tuple)) or len(pt) < 2:
+                ok = False
+                break
+            try:
+                x = max(0.0, min(1.0, float(pt[0])))
+                y = max(0.0, min(1.0, float(pt[1])))
+            except (TypeError, ValueError):
+                ok = False
+                break
+            valid.append([x, y])
+        if not ok or len(valid) < 3:
+            continue
+        cleaned.append({
+            "polygon": valid,
+            "confidence": geo.normalize_confidence(f.get("confidence")),
+            "predicted_pitch": str(f.get("predicted_pitch") or "6/12"),
+            "note": str(f.get("note") or "")[:250],
+            "ai_suggested": True,
+            "user_confirmed": False,
+        })
+
+    return {
+        "facets": cleaned,
+        "message": (
+            f"{len(cleaned)} facet(s) suggested by AI vision. Each one must be accepted "
+            "individually — and verified for pitch + edge labels — before measurements are valid."
+        ),
+    }
+
+
+class EdgeLabelSuggestRequest(BaseModel):
+    facets: list[dict]            # [{label, polygon, pitch_degrees}]
+    unlabeled_edges: list[dict]   # [{facet_label, vertex_index_start, vertex_index_end}]
+
+
+@router.post("/runs/{run_id}/edges/suggest-labels")
+async def suggest_edge_labels(
+    run_id: str,
+    req: EdgeLabelSuggestRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    For each unlabeled edge, suggest a type (eave/rake/ridge/hip/valley) using:
+      1. Deterministic geometry first (shared edges → ridge/hip/valley)
+      2. Vision analysis of the satellite tile for unshared edges (what's
+         below the edge — gutter visible = eave, gable end = rake)
+
+    Returns suggestions with confidence + reasoning. Frontend renders these as
+    pre-selected dropdowns the contractor can accept or override per edge.
+    """
+    # Always available: deterministic geometry suggestion (shared edges, angles)
+    geom_suggestions = geo.auto_suggest_edge_types(req.facets)
+    geom_index: dict[tuple[str, int], dict] = {}
+    for s in geom_suggestions:
+        geom_index[(s.get("facet_label"), s.get("vertex_index_start"))] = s
+
+    # Get the satellite image for vision check on unshared edges
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select(
+        "satellite_image_url"
+    ).eq("id", run_id).single().execute()
+    img_url = (run.data or {}).get("satellite_image_url")
+
+    vision_suggestions_by_edge: dict[tuple[str, int], dict] = {}
+    if img_url and req.unlabeled_edges:
+        # We only need vision for unshared edges (the geometry suggester
+        # already handles shared ones via overlap detection).
+        edges_for_vision = [
+            e for e in req.unlabeled_edges
+            if not geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}).get("shared_with_facet_label")
+        ]
+        if edges_for_vision:
+            from app.services.llm import llm_vision
+            import httpx, json as _json, re as _re
+            try:
+                async with httpx.AsyncClient(timeout=20) as client:
+                    r = await client.get(img_url, follow_redirects=True)
+                    r.raise_for_status()
+                    img_bytes = r.content
+                    mt = (r.headers.get("content-type") or "image/png").split(";")[0].strip()
+                    if mt not in ("image/png", "image/jpeg", "image/webp"):
+                        mt = "image/png"
+
+                # Build a compact edges manifest for the prompt
+                edge_lines: list[str] = []
+                for e in edges_for_vision:
+                    fl = e.get("facet_label")
+                    i = e.get("vertex_index_start")
+                    facet = next((f for f in req.facets if f.get("label") == fl), None)
+                    if not facet:
+                        continue
+                    poly = facet.get("polygon") or []
+                    if i >= len(poly):
+                        continue
+                    p1 = poly[i]
+                    p2 = poly[(i + 1) % len(poly)]
+                    edge_lines.append(
+                        f"  - facet {fl} edge {i}: from ({p1[0]:.3f},{p1[1]:.3f}) to ({p2[0]:.3f},{p2[1]:.3f})"
+                    )
+
+                prompt = (
+                    "You are a roof inspector looking at a top-down satellite image with a set of "
+                    "edges I traced on the roof. For each edge below, tell me what TYPE it is by looking "
+                    "at what's visible just outside that edge in the image.\n\n"
+                    "Edge types and their visual cues:\n"
+                    "  - EAVE: bottom edge of a slope; gutter usually visible below it; horizontal\n"
+                    "  - RAKE: sloped edge along a gable end; usually no gutter; meets the wall at an angle\n"
+                    "  - GABLE_END: the short horizontal edge at the very top of a gable end (rare)\n"
+                    "  - WALL_INTERSECTION: edge where roof meets a vertical wall (dormer/second story)\n"
+                    "  Only use these four types — shared edges (ridge/hip/valley) were already labeled.\n\n"
+                    "Edges to classify (coordinates are image fractions, 0..1):\n"
+                    + "\n".join(edge_lines)
+                    + "\n\nReturn ONLY valid JSON:\n"
+                    "{\n  \"labels\": [\n    {\"facet_label\": \"A\", \"vertex_index_start\": 0, \"edge_type\": \"eave\", \"confidence\": 0.8, \"reason\": \"gutter visible below\"},\n    ...\n  ]\n}\n"
+                    "Be honest — confidence < 0.5 if you genuinely cannot tell."
+                )
+                text = await llm_vision(img_bytes, mt, prompt, max_tokens=1200)
+                t = (text or "").strip()
+                t = _re.sub(r"^```(?:json)?\s*", "", t, flags=_re.MULTILINE)
+                t = _re.sub(r"\s*```\s*$", "", t)
+                a, b = t.find("{"), t.rfind("}")
+                if a >= 0 and b >= 0:
+                    parsed = _json.loads(t[a:b + 1])
+                    for v in parsed.get("labels") or []:
+                        key = (v.get("facet_label"), int(v.get("vertex_index_start") or -1))
+                        vision_suggestions_by_edge[key] = {
+                            "edge_type": v.get("edge_type"),
+                            "confidence": geo.normalize_confidence(v.get("confidence")),
+                            "reason": str(v.get("reason") or "")[:200],
+                        }
+            except Exception as e:
+                logger.info("edge-label vision pass failed: %s", e)
+
+    # Merge: shared edges from geometry, unshared from vision (else geometry fallback)
+    out: list[dict] = []
+    for e in req.unlabeled_edges:
+        key = (e.get("facet_label"), int(e.get("vertex_index_start") or 0))
+        geo_sug = geom_index.get(key, {})
+        shared = geo_sug.get("shared_with_facet_label")
+        if shared:
+            out.append({
+                "facet_label": key[0],
+                "vertex_index_start": key[1],
+                "suggested_edge_type": geo_sug.get("edge_type") or "ridge",
+                "confidence": 0.85,
+                "reason": f"Shared edge with facet {shared} (geometric)",
+                "shared_with_facet_label": shared,
+                "ai_suggested": True,
+            })
+        else:
+            v = vision_suggestions_by_edge.get(key)
+            if v and v.get("edge_type") in ("eave", "rake", "gable_end", "wall_intersection"):
+                out.append({
+                    "facet_label": key[0],
+                    "vertex_index_start": key[1],
+                    "suggested_edge_type": v["edge_type"],
+                    "confidence": v["confidence"],
+                    "reason": v["reason"],
+                    "shared_with_facet_label": None,
+                    "ai_suggested": True,
+                })
+            else:
+                # Geometric fallback (horizontal=eave, sloped=rake)
+                out.append({
+                    "facet_label": key[0],
+                    "vertex_index_start": key[1],
+                    "suggested_edge_type": geo_sug.get("edge_type") or "unlabeled",
+                    "confidence": 0.45,
+                    "reason": "Geometric heuristic (no vision confidence)",
+                    "shared_with_facet_label": None,
+                    "ai_suggested": True,
+                })
+
+    return {
+        "suggestions": out,
+        "message": (
+            f"{len(out)} edge label(s) suggested. Vision suggestions have a confidence — "
+            "you should still review unfamiliar edges before continuing."
+        ),
+    }
+
+
+# ----------------------------------------------------------------------------
 # Materials
 # ----------------------------------------------------------------------------
 

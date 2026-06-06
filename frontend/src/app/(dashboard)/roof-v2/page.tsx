@@ -23,6 +23,7 @@ import { getUser } from '@/lib/auth'
 import LocationPicker, { type LocationSelected } from '@/components/roof-v2/LocationPicker'
 import RoofFacetEditor, { type Facet, type LabeledEdge } from '@/components/roof-v2/RoofFacetEditor'
 import MeasurementsSummary from '@/components/roof-v2/MeasurementsSummary'
+import PenetrationSuggestions from '@/components/roof-v2/PenetrationSuggestions'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
 
 interface Project {
@@ -361,6 +362,7 @@ export default function RoofV2Page() {
             geometryStamp={geometryStamp}
             onConfidenceChange={setConfidence}
           />
+          <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setStep('siding')}

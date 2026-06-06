@@ -635,6 +635,34 @@ export const api = {
           }>
           message: string
         }>(`/api/v1/roofing/v2/runs/${runId}/penetrations/suggest`),
+      suggestFacets: (runId: string) =>
+        apiRequest<{
+          facets: Array<{
+            polygon: [number, number][]
+            confidence: number
+            predicted_pitch: string
+            note: string
+          }>
+          message: string
+        }>(`/api/v1/roofing/v2/runs/${runId}/facets/suggest`, {}, 120000),
+      suggestEdgeLabels: (runId: string, payload: {
+        facets: Array<{ label: string; polygon: [number, number][]; pitch_degrees?: number }>
+        unlabeled_edges: Array<{ facet_label: string; vertex_index_start: number; vertex_index_end: number }>
+      }) =>
+        apiRequest<{
+          suggestions: Array<{
+            facet_label: string
+            vertex_index_start: number
+            suggested_edge_type: 'eave' | 'rake' | 'ridge' | 'hip' | 'valley' | 'gable_end' | 'wall_intersection' | 'unlabeled'
+            confidence: number
+            reason: string
+            shared_with_facet_label?: string | null
+          }>
+          message: string
+        }>(`/api/v1/roofing/v2/runs/${runId}/edges/suggest-labels`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }, 120000),
       getCatalog: (region?: string) =>
         apiRequest<{
           items: Array<{
