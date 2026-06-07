@@ -410,13 +410,13 @@ export default function RoofV2Page() {
                 setBusy(true)
                 setError(null)
                 try {
-                  const res = await api.roofing.v2.upscaleImagery(imagery.url, 4) as {
+                  const res = await api.roofing.v2.upscaleImagery(imagery.url, 2) as {
                     status: string
                     upscaled_url?: string
                     error?: string
                   }
                   if (res.status === 'completed' && res.upscaled_url) {
-                    setImagery({ ...imagery, url: res.upscaled_url, feet_per_pixel: (imagery.feet_per_pixel ?? 0) / 4 })
+                    setImagery({ ...imagery, url: res.upscaled_url, feet_per_pixel: (imagery.feet_per_pixel ?? 0) / 2 })
                   } else if (res.status === 'disabled') {
                     setError(res.error || 'Sharpener disabled. Set REPLICATE_API_KEY on the backend.')
                   } else {

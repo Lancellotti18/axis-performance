@@ -36,11 +36,18 @@ REPLICATE_BASE = "https://api.replicate.com/v1"
 # version ids before, leading to status=failed on otherwise-fine requests.
 REAL_ESRGAN_MODEL = "nightmareai/real-esrgan"
 
-# Replicate's Real-ESRGAN GPU memory caps input at ~2,096,704 pixels.
-# A 2048x1366 Esri tile is 2,797,568 — over the limit and rejected outright.
-# We downscale anything above this threshold before sending; the 4x upscale
-# still produces output larger than the original tile.
-MAX_INPUT_PIXELS = 2_000_000
+# Replicate's Real-ESRGAN runs on shared GPUs whose available memory varies
+# between requests. The hard input pixel cap is ~2.09M, but real CUDA OOM
+# kicks in at much smaller sizes when the model also has to allocate the
+# 4x-upscaled output tensor (16x input pixel count). Practical safe ceiling
+# on the OUTPUT side ≈ 4M pixels, so:
+#   - At scale=4: input must be ≤ ~250K pixels
+#   - At scale=2: input must be ≤ ~1M pixels
+# We default to scale=2 with 1M input pixels — produces a 4M-pixel output
+# that's about 1.4x sharper than the original Esri tile (2.8M pixels) and
+# survives any GPU configuration Replicate hands us.
+MAX_INPUT_PIXELS = 1_000_000
+DEFAULT_SCALE = 2
 
 
 class EnhancementStatus(str, Enum):
@@ -88,7 +95,7 @@ async def upscale_image(
     image_bytes: bytes,
     media_type: str = "image/png",
     *,
-    scale: int = 4,
+    scale: int = DEFAULT_SCALE,
     face_enhance: bool = False,
 ) -> EnhancementResult:
     """

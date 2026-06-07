@@ -645,7 +645,7 @@ export const api = {
           }>
           message: string
         }>(`/api/v1/roofing/v2/runs/${runId}/facets/suggest`, {}, 120000),
-      upscaleImagery: (imageUrl: string, scale: 2 | 4 = 4) =>
+      upscaleImagery: (imageUrl: string, scale: 2 | 4 = 2) =>
         apiRequest<{
           status: 'disabled' | 'completed' | 'failed'
           upscaled_url?: string
