@@ -60,6 +60,14 @@ interface Props {
   initialFacets?: Facet[]
   initialEdges?: LabeledEdge[]
   onChange: (facets: Facet[], edges: LabeledEdge[]) => void
+  // Optional pan-by-metres callback. When provided, the editor shows a small
+  // N/S/E/W keypad in the top-right of the canvas so the contractor can shift
+  // the underlying tile (re-fetch) without leaving the editor. Warning: if
+  // facets have been drawn against the OLD tile they will appear shifted on
+  // the new one — the contractor will need to drag vertices or redraw to
+  // realign.
+  onNudge?: (eastMetres: number, northMetres: number) => void | Promise<void>
+  nudging?: boolean
 }
 
 const PITCH_OPTIONS = ['2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '9/12', '10/12', '12/12']
@@ -114,6 +122,7 @@ function clampFrac(v: number): number {
 export function RoofFacetEditor({
   imageUrl, imageWidthPx, imageHeightPx,
   initialFacets = [], initialEdges = [], onChange,
+  onNudge, nudging,
 }: Props) {
   const [facets, setFacets] = useState<Facet[]>(initialFacets)
   const [edges, setEdges] = useState<LabeledEdge[]>(initialEdges)
@@ -611,6 +620,45 @@ export function RoofFacetEditor({
               )}
             </svg>
           </div>
+
+          {/* Floating nudge keypad — top-right. Shifts the underlying tile
+              (re-fetch via onNudge callback) so the contractor can center
+              the house in view before drawing facets. Each click = 10 m. */}
+          {onNudge && (
+            <div className="pointer-events-auto absolute right-2 top-2 grid grid-cols-3 gap-0.5 rounded-md border border-white/20 bg-slate-900/85 p-1 shadow-lg backdrop-blur">
+              <div></div>
+              <button
+                onClick={() => void onNudge(0, 10)}
+                disabled={nudging}
+                title="Move view north (up) 10 m"
+                className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
+              >↑</button>
+              <div></div>
+              <button
+                onClick={() => void onNudge(-10, 0)}
+                disabled={nudging}
+                title="Move view west (left) 10 m"
+                className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
+              >←</button>
+              <div className="flex h-8 w-8 items-center justify-center text-[10px] text-slate-500" title="Each arrow click moves the view 10 metres">
+                {nudging ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> : '10m'}
+              </div>
+              <button
+                onClick={() => void onNudge(10, 0)}
+                disabled={nudging}
+                title="Move view east (right) 10 m"
+                className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
+              >→</button>
+              <div></div>
+              <button
+                onClick={() => void onNudge(0, -10)}
+                disabled={nudging}
+                title="Move view south (down) 10 m"
+                className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
+              >↓</button>
+              <div></div>
+            </div>
+          )}
 
           {/* Floating zoom controls */}
           <div className="pointer-events-none absolute bottom-2 right-2 flex flex-col items-end gap-1">

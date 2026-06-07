@@ -690,6 +690,8 @@ export default function RoofV2Page() {
               initialFacets={facets}
               initialEdges={edges}
               onChange={onEditorChange}
+              onNudge={nudgeImagery}
+              nudging={nudging}
             />
           </div>
           <MeasurementsSummary
