@@ -133,21 +133,25 @@ async def upscale_image(
     b64 = base64.b64encode(image_bytes).decode("ascii")
     data_uri = f"data:{media_type};base64,{b64}"
 
-    # Clarity-Upscaler parameters tuned specifically for satellite imagery:
-    #   - dynamic: 2 (very low creativity — don't invent buildings or trees)
-    #   - resemblance: 1.5 (high faithfulness to original — preserve real features)
-    #   - sharpen: 1 (slight extra sharpening on top of upscale)
-    #   - prompt: tells the model what it's looking at so SD doesn't drift
+    # Clarity-Upscaler parameters tuned for satellite imagery — bumped to
+    # produce a VISIBLE enhancement while still preventing fake-building
+    # hallucination:
+    #   - dynamic: 6 (moderate creativity — visible HDR-like enhancement
+    #     without inventing structures)
+    #   - resemblance: 1.0 (balanced — close to original but not so
+    #     constrained the model can't sharpen edges)
+    #   - sharpen: 3 (clear post-process edge sharpening)
+    #   - prompt: anchors the model to satellite content
     payload = {
         "input": {
             "image": data_uri,
             "scale_factor": scale,
-            "dynamic": 2,
-            "resemblance": 1.5,
-            "sharpen": 1,
+            "dynamic": 6,
+            "resemblance": 1.0,
+            "sharpen": 3,
             "num_inference_steps": 18,
-            "prompt": "satellite aerial view, residential property roof, sharp clear high resolution photograph",
-            "negative_prompt": "blurry, low quality, watermark, distorted, hallucinated buildings, fake structures",
+            "prompt": "high-resolution aerial satellite photograph, residential property, crisp roof shingles, sharp clear details, professional quality",
+            "negative_prompt": "blurry, low quality, watermark, distorted, hallucinated buildings, fake structures, painted texture, cartoon",
             "output_format": "png",
         },
     }

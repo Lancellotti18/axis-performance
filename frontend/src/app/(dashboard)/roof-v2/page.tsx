@@ -133,10 +133,10 @@ export default function RoofV2Page() {
     setBusy(true)
     setError(null)
     try {
-      // Zoom 21 frames the target house tightly (~130m x 86m ground area)
-      // instead of showing the whole neighborhood. MapTiler handles z21+
-      // reliably (Esri's coverage falls off above z20).
-      const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 21) as ImageryPayload
+      // Zoom 22 frames the target house tightly (~65m x 43m ground area).
+      // If MapTiler doesn't have z22 coverage at that exact location, the
+      // backend automatically falls back to z21 then z20 with a warning.
+      const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22) as ImageryPayload
       setImagery(health)
 
       // Auto-sharpen if the fetch produced a usable tile. Failures are
@@ -146,20 +146,34 @@ export default function RoofV2Page() {
           const sharp = await api.roofing.v2.upscaleImagery(health.url, 4) as {
             status: string
             upscaled_url?: string
+            scale_factor?: number
             error?: string
           }
-          if (sharp.status === 'completed' && sharp.upscaled_url) {
+          // Log to console so we can verify in DevTools what happened
+          // eslint-disable-next-line no-console
+          console.log('[axis] sharpen result:', sharp.status, sharp.upscaled_url ? 'URL changed' : 'URL same', sharp.error || '')
+          if (sharp.status === 'completed' && sharp.upscaled_url && sharp.upscaled_url !== health.url) {
+            const factor = sharp.scale_factor ?? 4
             setImagery({
               ...health,
               url: sharp.upscaled_url,
-              // The geometric scale (feet per pixel) is 4x finer after upscale
-              feet_per_pixel: (health.feet_per_pixel ?? 0) / 4,
-              warnings: [...(health.warnings || []), 'Tile sharpened with clarity-upscaler (4x AI upscale)'],
+              feet_per_pixel: (health.feet_per_pixel ?? 0) / factor,
+              warnings: [
+                ...(health.warnings || []),
+                `✨ Tile AI-sharpened ${factor}x via clarity-upscaler`,
+              ],
+            })
+          } else if (sharp.status === 'failed' || sharp.error) {
+            // Surface failures explicitly so user knows sharpening didn't run
+            setImagery({
+              ...health,
+              warnings: [
+                ...(health.warnings || []),
+                `⚠️ Auto-sharpening failed: ${sharp.error || sharp.status}. Original tile loaded.`,
+              ],
             })
           }
         } catch (sharpErr) {
-          // Don't fail the whole flow if sharpening hiccups — the contractor
-          // still has a usable original tile. Surface a non-blocking notice.
           setError(`Auto-sharpening skipped: ${sharpErr instanceof Error ? sharpErr.message : 'unknown'}. Original tile is still loaded — you can continue.`)
         }
       }
