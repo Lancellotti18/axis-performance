@@ -655,7 +655,7 @@ export const api = {
         }>(`/api/v1/roofing/v2/imagery/upscale`, {
           method: 'POST',
           body: JSON.stringify({ image_url: imageUrl, scale }),
-        }, 120000),
+        }, 240000),  // 4 minutes — covers Render cold start (~75s) + clarity-upscaler (~30s) + buffer
       suggestEdgeLabels: (runId: string, payload: {
         facets: Array<{ label: string; polygon: [number, number][]; pitch_degrees?: number }>
         unlabeled_edges: Array<{ facet_label: string; vertex_index_start: number; vertex_index_end: number }>

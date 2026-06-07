@@ -91,6 +91,15 @@ export default function RoofV2Page() {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load projects')
       }
     })()
+
+    // Pre-warm the backend by hitting /health when the contractor lands on
+    // this page. Render free tier sleeps after 15min of inactivity → cold
+    // start takes ~75 seconds. By firing this ping now, the backend is
+    // (hopefully) already warm by the time the contractor finishes picking
+    // a project + address, so sharpening doesn't time out on a cold start.
+    fetch('https://build-backend-jcp9.onrender.com/health', { cache: 'no-store' })
+      .catch(() => { /* pre-warm is best-effort; failures are silent */ })
+
     return () => { cancelled = true }
   }, [router])
 
@@ -135,9 +144,10 @@ export default function RoofV2Page() {
     setBusy(true)
     setError(null)
     try {
-      // Zoom 22 frames the target house tightly (~65m x 43m ground area).
-      // Backend falls back z22 -> z21 -> z20 if MapTiler lacks coverage.
-      const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22) as ImageryPayload
+      // Zoom 22 + tighter 1024x683 image dimensions framing the target house
+      // to ~38m x 25m ground area — basically just the property, no neighbors.
+      // Backend falls back z22 -> z21 -> z20 if provider lacks coverage.
+      const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22, 1024, 683) as ImageryPayload
       setImagery(health)
       // Done with the BLOCKING work. Editor can open now.
       setBusy(false)
