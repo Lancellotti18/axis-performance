@@ -30,14 +30,17 @@ logger = logging.getLogger(__name__)
 
 
 REPLICATE_BASE = "https://api.replicate.com/v1"
-# Clarity-Upscaler — Stable Diffusion-based upscaler with internal tiling that
-# handles 4x cleanly without the CUDA OOM that Real-ESRGAN hit. Tuned for
-# satellite imagery: low creativity + high resemblance so it sharpens existing
-# detail instead of hallucinating buildings or trees that aren't there.
-#
-# Cost: ~$0.02-0.05 per image (vs Real-ESRGAN's ~$0.005). Worth it given how
-# unreliable Real-ESRGAN was on Replicate's shared GPUs.
+# Clarity-Upscaler — Stable Diffusion-based upscaler with internal tiling.
+# Tuned for satellite imagery: low creativity + high resemblance so it
+# sharpens existing detail instead of hallucinating buildings or trees.
+# Cost: ~$0.02-0.05 per image.
 UPSCALER_MODEL = "philz1337x/clarity-upscaler"
+# Real-ESRGAN fallback — used when clarity-upscaler fails (model unavailable,
+# Replicate-side error, etc.). Smaller-input + scale=2 to survive their
+# shared-GPU OOM behavior. ~$0.005/image.
+FALLBACK_MODEL = "nightmareai/real-esrgan"
+FALLBACK_MAX_INPUT_PIXELS = 1_000_000
+FALLBACK_SCALE = 2
 
 # Clarity-Upscaler handles tiling internally so we can send larger inputs.
 # The practical limit is bandwidth + Replicate processing time, not GPU
@@ -160,44 +163,47 @@ async def upscale_image(
         "Prefer": "wait=60",
     }
 
-    # clarity-upscaler isn't opted into the /v1/models/{owner}/{name}/predictions
-    # endpoint, so that route 404s. Instead: fetch the latest published version
-    # of the model, then POST to /v1/predictions with that version in the body.
-    # This is what Replicate's official Python SDK does under the hood.
-    version_id = await _fetch_latest_version(UPSCALER_MODEL)
-    if not version_id:
-        return EnhancementResult(
-            status=EnhancementStatus.FAILED,
-            error=f"Could not resolve latest version of {UPSCALER_MODEL} on Replicate.",
-        )
-    payload = {
-        "version": version_id,
-        "input": input_payload,
-    }
-    predictions_url = f"{REPLICATE_BASE}/predictions"
-    try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            r = await client.post(predictions_url, headers=headers, json=payload)
-            r.raise_for_status()
-            data = r.json()
-    except httpx.HTTPStatusError as http_err:
-        # Surface Replicate's error body when available so the contractor sees
-        # something actionable instead of a bare status code.
-        body = ""
+    # Primary: clarity-upscaler. Falls back to Real-ESRGAN if version lookup
+    # fails or the prediction errors out — that way the contractor always gets
+    # *some* sharpening rather than the original tile.
+    data, primary_error = await _try_predict(
+        UPSCALER_MODEL, input_payload, headers, "clarity-upscaler",
+    )
+    if data is None:
+        # Fall back to Real-ESRGAN with smaller-input config so it always fits
+        # Replicate's shared GPU memory.
+        logger.info("clarity-upscaler failed (%s) — falling back to Real-ESRGAN", primary_error)
+        # Resize input further for Real-ESRGAN's tighter memory budget
+        re_image_bytes, re_media_type = image_bytes, media_type
         try:
-            body = http_err.response.text[:500]
-        except Exception:
-            pass
-        logger.warning("Real-ESRGAN HTTP error: %s | body=%s", http_err, body)
-        return EnhancementResult(
-            status=EnhancementStatus.FAILED,
-            error=f"Replicate {http_err.response.status_code}: {body or str(http_err)[:200]}",
+            from PIL import Image as PILImage
+            import io as _io, math
+            im = PILImage.open(_io.BytesIO(image_bytes))
+            w, h = im.size
+            if w * h > FALLBACK_MAX_INPUT_PIXELS:
+                s = math.sqrt(FALLBACK_MAX_INPUT_PIXELS / float(w * h))
+                im = im.resize((int(w * s), int(h * s)), PILImage.Resampling.LANCZOS)
+                out = _io.BytesIO()
+                im.save(out, format=("PNG" if media_type == "image/png" else "JPEG"), quality=92)
+                re_image_bytes = out.getvalue()
+        except Exception as e:
+            logger.warning("Fallback resize failed: %s", e)
+        re_b64 = base64.b64encode(re_image_bytes).decode("ascii")
+        re_data_uri = f"data:{re_media_type};base64,{re_b64}"
+        re_input = {
+            "image": re_data_uri,
+            "scale": FALLBACK_SCALE,
+            "face_enhance": False,
+        }
+        data, fallback_error = await _try_predict(
+            FALLBACK_MODEL, re_input, headers, "real-esrgan",
         )
-    except Exception as e:
-        logger.warning("Real-ESRGAN call failed: %s", e)
-        return EnhancementResult(
-            status=EnhancementStatus.FAILED, error=str(e)[:300],
-        )
+        if data is None:
+            return EnhancementResult(
+                status=EnhancementStatus.FAILED,
+                error=f"Primary (clarity-upscaler) failed: {primary_error}. "
+                      f"Fallback (real-esrgan) also failed: {fallback_error}.",
+            )
 
     # Replicate returns prediction status + output
     status = (data.get("status") or "").lower()
@@ -257,6 +263,39 @@ async def upscale_image(
 
 
 _VERSION_CACHE: dict[str, str] = {}
+
+
+async def _try_predict(
+    model: str,
+    input_payload: dict,
+    headers: dict,
+    log_name: str,
+) -> tuple[dict | None, str | None]:
+    """
+    Submit a prediction to Replicate using the generic /v1/predictions endpoint
+    with a dynamically resolved version id. Returns (response_data, error_message).
+    """
+    version_id = await _fetch_latest_version(model)
+    if not version_id:
+        return None, f"Could not resolve latest version of {model}"
+    payload = {"version": version_id, "input": input_payload}
+    url = f"{REPLICATE_BASE}/predictions"
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            r = await client.post(url, headers=headers, json=payload)
+            r.raise_for_status()
+            return r.json(), None
+    except httpx.HTTPStatusError as http_err:
+        body = ""
+        try:
+            body = http_err.response.text[:300]
+        except Exception:
+            pass
+        logger.warning("%s HTTP error: %s | body=%s", log_name, http_err, body)
+        return None, f"Replicate {http_err.response.status_code}: {body or 'no body'}"
+    except Exception as e:
+        logger.warning("%s call failed: %s", log_name, e)
+        return None, str(e)[:200]
 
 
 async def _fetch_latest_version(model: str) -> str | None:

@@ -120,9 +120,11 @@ export default function RoofV2Page() {
     }
   }, [])
 
-  // When a location is confirmed: fetch the imagery health, then immediately
-  // auto-sharpen the tile via Replicate's clarity-upscaler. The contractor
-  // always gets a 4x-sharper tile without having to click anything.
+  // When a location is confirmed: fetch the imagery health and surface it to
+  // the user immediately. Sharpening runs in the BACKGROUND and replaces the
+  // tile when ready — the contractor is never blocked waiting for it. If
+  // sharpening fails, the original tile stays.
+  const [sharpening, setSharpening] = useState(false)
   const onLocationSelected = useCallback(async (loc: LocationSelected) => {
     setLocation(loc)
     setStep('imagery')
@@ -134,52 +136,55 @@ export default function RoofV2Page() {
     setError(null)
     try {
       // Zoom 22 frames the target house tightly (~65m x 43m ground area).
-      // If MapTiler doesn't have z22 coverage at that exact location, the
-      // backend automatically falls back to z21 then z20 with a warning.
+      // Backend falls back z22 -> z21 -> z20 if MapTiler lacks coverage.
       const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22) as ImageryPayload
       setImagery(health)
+      // Done with the BLOCKING work. Editor can open now.
+      setBusy(false)
 
-      // Auto-sharpen if the fetch produced a usable tile. Failures are
-      // non-fatal — contractor still gets the original tile, just less crisp.
+      // Fire-and-forget the sharpening pass. When (or if) it succeeds the
+      // tile URL gets swapped — editor watches the URL and re-renders.
       if (health.status !== 'unavailable' && health.url) {
-        try {
-          const sharp = await api.roofing.v2.upscaleImagery(health.url, 4) as {
-            status: string
-            upscaled_url?: string
-            scale_factor?: number
-            error?: string
-          }
-          // Log to console so we can verify in DevTools what happened
-          // eslint-disable-next-line no-console
-          console.log('[axis] sharpen result:', sharp.status, sharp.upscaled_url ? 'URL changed' : 'URL same', sharp.error || '')
-          if (sharp.status === 'completed' && sharp.upscaled_url && sharp.upscaled_url !== health.url) {
-            const factor = sharp.scale_factor ?? 4
-            setImagery({
-              ...health,
-              url: sharp.upscaled_url,
-              feet_per_pixel: (health.feet_per_pixel ?? 0) / factor,
+        setSharpening(true)
+        api.roofing.v2.upscaleImagery(health.url, 4)
+          .then((sharp: unknown) => {
+            const s = sharp as { status: string; upscaled_url?: string; scale_factor?: number; error?: string }
+            // eslint-disable-next-line no-console
+            console.log('[axis] sharpen result:', s.status, s.upscaled_url ? 'URL changed' : 'URL same', s.error || '')
+            if (s.status === 'completed' && s.upscaled_url && s.upscaled_url !== health.url) {
+              const factor = s.scale_factor ?? 4
+              setImagery(prev => prev ? ({
+                ...prev,
+                url: s.upscaled_url,
+                feet_per_pixel: (health.feet_per_pixel ?? 0) / factor,
+                warnings: [
+                  ...(prev.warnings || []),
+                  `✨ Tile AI-sharpened ${factor}x — tile updated in editor`,
+                ],
+              }) : prev)
+            } else if (s.status === 'failed' || s.error) {
+              setImagery(prev => prev ? ({
+                ...prev,
+                warnings: [
+                  ...(prev.warnings || []),
+                  `⚠️ Auto-sharpening failed: ${s.error || s.status}. Original tile is still loaded.`,
+                ],
+              }) : prev)
+            }
+          })
+          .catch(err => {
+            setImagery(prev => prev ? ({
+              ...prev,
               warnings: [
-                ...(health.warnings || []),
-                `✨ Tile AI-sharpened ${factor}x via clarity-upscaler`,
+                ...(prev.warnings || []),
+                `⚠️ Auto-sharpening errored: ${err instanceof Error ? err.message : 'network issue'}. Original tile is still loaded.`,
               ],
-            })
-          } else if (sharp.status === 'failed' || sharp.error) {
-            // Surface failures explicitly so user knows sharpening didn't run
-            setImagery({
-              ...health,
-              warnings: [
-                ...(health.warnings || []),
-                `⚠️ Auto-sharpening failed: ${sharp.error || sharp.status}. Original tile loaded.`,
-              ],
-            })
-          }
-        } catch (sharpErr) {
-          setError(`Auto-sharpening skipped: ${sharpErr instanceof Error ? sharpErr.message : 'unknown'}. Original tile is still loaded — you can continue.`)
-        }
+            }) : prev)
+          })
+          .finally(() => setSharpening(false))
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Imagery health check failed')
-    } finally {
       setBusy(false)
     }
   }, [])
@@ -442,12 +447,18 @@ export default function RoofV2Page() {
                 </ul>
               )}
               {imagery.url && imagery.status !== 'unavailable' && (
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap items-center gap-3">
                   <button
                     onClick={startRun}
                     disabled={busy}
                     className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
                   >Open facet editor →</button>
+                  {sharpening && (
+                    <div className="flex items-center gap-2 text-xs text-slate-300">
+                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+                      <span>Sharpening in background — tile will auto-refresh when ready. Safe to proceed.</span>
+                    </div>
+                  )}
                 </div>
               )}
               {imagery.status === 'unavailable' && (
