@@ -59,6 +59,7 @@ type Step = 'project' | 'location' | 'imagery' | 'editor' | 'siding' | 'report'
 
 export default function RoofV2Page() {
   const router = useRouter()
+  const [userId, setUserId] = useState<string | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [projectId, setProjectId] = useState<string | null>(null)
   const [project, setProject] = useState<Project | null>(null)
@@ -83,6 +84,7 @@ export default function RoofV2Page() {
           router.push('/login')
           return
         }
+        if (!cancelled) setUserId(u.id)
         const res = await api.projects.list(u.id)
         if (!cancelled) setProjects(res as Project[])
       } catch (err) {
@@ -299,28 +301,51 @@ export default function RoofV2Page() {
 
       {/* PROJECT step */}
       {step === 'project' && (
-        <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
-          <h2 className="mb-3 text-sm font-semibold">Pick a project</h2>
-          {projects.length === 0 ? (
-            <p className="text-xs text-slate-400">No projects yet — create one from the Projects page first.</p>
-          ) : (
-            <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
-              {projects.map(p => (
-                <li
-                  key={p.id}
-                  onClick={() => void pickProject(p.id)}
-                  className="cursor-pointer rounded-md border border-white/10 bg-slate-800/40 p-3 text-sm transition hover:border-blue-400/40 hover:bg-blue-500/10"
-                >
-                  <div className="font-medium">{p.name}</div>
-                  {p.address && (
-                    <div className="text-xs text-slate-400">
-                      {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+        <section className="space-y-4">
+          {/* Quick start: create a new roofing project right here */}
+          <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-4">
+            <h2 className="mb-2 text-sm font-semibold text-emerald-200">Quick start — new project</h2>
+            <p className="mb-3 text-xs text-slate-400">
+              Skip the Projects page. Just name your job (the property address or anything memorable)
+              and start measuring. We'll create the project record automatically.
+            </p>
+            <QuickCreateProject
+              userId={userId}
+              busy={busy}
+              onCreated={async (newProject) => {
+                setProjects(prev => [newProject, ...prev])
+                await pickProject(newProject.id)
+              }}
+              onError={(msg) => setError(msg)}
+            />
+          </div>
+
+          {/* Existing projects */}
+          <div className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
+            <h2 className="mb-3 text-sm font-semibold">Or pick an existing project</h2>
+            {projects.length === 0 ? (
+              <p className="text-xs text-slate-400">
+                No existing projects. Use the quick-start form above to create your first one.
+              </p>
+            ) : (
+              <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+                {projects.map(p => (
+                  <li
+                    key={p.id}
+                    onClick={() => void pickProject(p.id)}
+                    className="cursor-pointer rounded-md border border-white/10 bg-slate-800/40 p-3 text-sm transition hover:border-blue-400/40 hover:bg-blue-500/10"
+                  >
+                    <div className="font-medium">{p.name}</div>
+                    {p.address && (
+                      <div className="text-xs text-slate-400">
+                        {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
       )}
 
@@ -534,6 +559,62 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
     <div className="rounded-md border border-white/10 bg-slate-900/60 p-2 text-xs">
       <div className="text-slate-500">{label}</div>
       <div className={`text-sm font-semibold ${color ?? 'text-slate-100'}`}>{value}</div>
+    </div>
+  )
+}
+
+function QuickCreateProject({
+  userId, busy, onCreated, onError,
+}: {
+  userId: string | null
+  busy: boolean
+  onCreated: (project: Project) => void | Promise<void>
+  onError: (msg: string) => void
+}) {
+  const [name, setName] = useState('')
+  const [creating, setCreating] = useState(false)
+
+  const submit = useCallback(async () => {
+    if (!userId) {
+      onError('Not signed in. Refresh and try again.')
+      return
+    }
+    const trimmed = name.trim()
+    if (trimmed.length < 2) {
+      onError('Project name is too short — try the property address.')
+      return
+    }
+    setCreating(true)
+    try {
+      const created = await api.projects.create(
+        { name: trimmed, blueprint_type: 'residential' },
+        userId,
+      )
+      setName('')
+      await onCreated(created as Project)
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Could not create project')
+    } finally {
+      setCreating(false)
+    }
+  }, [userId, name, onCreated, onError])
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <input
+        type="text"
+        placeholder="e.g., 123 Main St roof, or Smith residence"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') void submit() }}
+        disabled={creating || busy}
+        className="min-w-[260px] flex-1 rounded bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400/60 focus:outline-none disabled:opacity-50"
+      />
+      <button
+        onClick={() => void submit()}
+        disabled={creating || busy || name.trim().length < 2}
+        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+      >{creating ? 'Creating…' : '+ Create and continue →'}</button>
     </div>
   )
 }
