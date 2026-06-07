@@ -174,12 +174,14 @@ def _mapbox_url(lat: float, lng: float, zoom: int, w: int, h: int, token: str) -
 
 
 def _maptiler_url(lat: float, lng: float, zoom: int, w: int, h: int, key: str) -> str:
-    # MapTiler Static Maps endpoint
-    capped_w = min(w, 2048)
-    capped_h = min(h, 2048)
+    # MapTiler Static Maps endpoint with @2x retina output. This doubles the
+    # actual pixel density for the same ground coverage — free quality boost.
+    # We request w x h but MapTiler returns (w*2) x (h*2) actual pixels.
+    capped_w = min(w, 1024)   # @2x doubles, so cap at 1024 -> 2048 actual
+    capped_h = min(h, 1024)
     return (
         "https://api.maptiler.com/maps/satellite/static/"
-        f"{lng:.6f},{lat:.6f},{zoom}/{capped_w}x{capped_h}.png"
+        f"{lng:.6f},{lat:.6f},{zoom}@2x/{capped_w}x{capped_h}.png"
         f"?key={key}"
     )
 

@@ -136,10 +136,69 @@ export default function RoofV2Page() {
   }, [])
 
   // When a location is confirmed: fetch the imagery health and surface it to
-  // the user immediately. Sharpening runs in the BACKGROUND and replaces the
-  // tile when ready — the contractor is never blocked waiting for it. If
-  // sharpening fails, the original tile stays.
+  // the user immediately. Sharpening is OPT-IN via a button — the user
+  // reported it wasn't adding visible value, so we don't run it automatically.
   const [sharpening, setSharpening] = useState(false)
+  const [nudging, setNudging] = useState(false)
+
+  // Nudge the displayed view by N metres in lat/lng directions. Used by the
+  // N/S/E/W arrow buttons when the geocoded center isn't quite on the house.
+  // 1 degree latitude ≈ 111,320 m; longitude varies with cos(lat).
+  const nudgeImagery = useCallback(async (eastMetres: number, northMetres: number) => {
+    if (!location || !imagery) return
+    setNudging(true)
+    try {
+      const newLat = location.lat + (northMetres / 111320)
+      const newLng = location.lng + (eastMetres / (111320 * Math.cos(location.lat * Math.PI / 180)))
+      const updatedLoc: LocationSelected = { ...location, lat: newLat, lng: newLng }
+      setLocation(updatedLoc)
+      const health = await api.roofing.v2.imageryHealth(newLat, newLng, 22, 1024, 683) as ImageryPayload
+      // Drop any previous sharpened URL since the view moved
+      setImagery({ ...health, original_url: health.url, display_mode: 'original' })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not re-fetch imagery at new center')
+    } finally {
+      setNudging(false)
+    }
+  }, [location, imagery])
+
+  // Optional on-demand sharpening when the contractor explicitly asks for it.
+  // Same code path as before but only fires when they click the button.
+  const trySharpening = useCallback(async () => {
+    if (!imagery?.url || sharpening) return
+    setSharpening(true)
+    try {
+      const sharp = await api.roofing.v2.upscaleImagery(imagery.url, 4) as {
+        status: string
+        upscaled_url?: string
+        scale_factor?: number
+        error?: string
+      }
+      // eslint-disable-next-line no-console
+      console.log('[axis] manual sharpen result:', sharp.status, sharp.upscaled_url ? 'URL changed' : 'URL same', sharp.error || '')
+      if (sharp.status === 'completed' && sharp.upscaled_url && sharp.upscaled_url !== imagery.url) {
+        const factor = sharp.scale_factor ?? 4
+        setImagery(prev => prev ? ({
+          ...prev,
+          url: sharp.upscaled_url,
+          sharpened_url: sharp.upscaled_url,
+          display_mode: 'sharpened',
+          feet_per_pixel: (prev.feet_per_pixel ?? 0) / factor,
+          warnings: [
+            ...(prev.warnings || []),
+            `✨ Tile AI-sharpened ${factor}x — toggle below to compare with original`,
+          ],
+        }) : prev)
+      } else if (sharp.status === 'failed' || sharp.error) {
+        setError(`Sharpening failed: ${sharp.error || sharp.status}. Original tile is still loaded.`)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sharpening errored')
+    } finally {
+      setSharpening(false)
+    }
+  }, [imagery, sharpening])
+
   const onLocationSelected = useCallback(async (loc: LocationSelected) => {
     setLocation(loc)
     setStep('imagery')
@@ -150,58 +209,17 @@ export default function RoofV2Page() {
     setBusy(true)
     setError(null)
     try {
-      // Zoom 22 + tighter 1024x683 image dimensions framing the target house
-      // to ~38m x 25m ground area — basically just the property, no neighbors.
-      // Backend falls back z22 -> z21 -> z20 if provider lacks coverage.
+      // Zoom 22 + 1024x683 request (which becomes 2048x1366 native because
+      // MapTiler @2x retina doubles the pixel density) — that's ~38m x 25m
+      // ground area at high native resolution. Backend falls back z22 -> z21
+      // -> z20 if provider lacks coverage. Auto-sharpen disabled — contractor
+      // can opt-in via 'Try AI sharpening' button if they want it.
       const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22, 1024, 683) as ImageryPayload
-      // Track the original URL so we can A/B compare after sharpening
+      // Native resolution from MapTiler @2x retina is already much better than
+      // what AI sharpening was producing. Auto-sharpen is OFF — contractor
+      // can opt-in via 'Try AI sharpening' button on the panel if they want it.
       setImagery({ ...health, original_url: health.url, display_mode: 'original' })
-      // Done with the BLOCKING work. Editor can open now.
       setBusy(false)
-
-      // Fire-and-forget the sharpening pass. When (or if) it succeeds the
-      // tile URL gets swapped — editor watches the URL and re-renders.
-      if (health.status !== 'unavailable' && health.url) {
-        setSharpening(true)
-        api.roofing.v2.upscaleImagery(health.url, 4)
-          .then((sharp: unknown) => {
-            const s = sharp as { status: string; upscaled_url?: string; scale_factor?: number; error?: string }
-            // eslint-disable-next-line no-console
-            console.log('[axis] sharpen result:', s.status, s.upscaled_url ? 'URL changed' : 'URL same', s.error || '')
-            if (s.status === 'completed' && s.upscaled_url && s.upscaled_url !== health.url) {
-              const factor = s.scale_factor ?? 4
-              setImagery(prev => prev ? ({
-                ...prev,
-                url: s.upscaled_url,
-                sharpened_url: s.upscaled_url,
-                display_mode: 'sharpened',
-                feet_per_pixel: (health.feet_per_pixel ?? 0) / factor,
-                warnings: [
-                  ...(prev.warnings || []),
-                  `✨ Tile AI-sharpened ${factor}x — toggle below to compare with original`,
-                ],
-              }) : prev)
-            } else if (s.status === 'failed' || s.error) {
-              setImagery(prev => prev ? ({
-                ...prev,
-                warnings: [
-                  ...(prev.warnings || []),
-                  `⚠️ Auto-sharpening failed: ${s.error || s.status}. Original tile is still loaded.`,
-                ],
-              }) : prev)
-            }
-          })
-          .catch(err => {
-            setImagery(prev => prev ? ({
-              ...prev,
-              warnings: [
-                ...(prev.warnings || []),
-                `⚠️ Auto-sharpening errored: ${err instanceof Error ? err.message : 'network issue'}. Original tile is still loaded.`,
-              ],
-            }) : prev)
-          })
-          .finally(() => setSharpening(false))
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Imagery health check failed')
       setBusy(false)
@@ -557,27 +575,73 @@ export default function RoofV2Page() {
                 </div>
               )}
               {imagery.url && imagery.status !== 'unavailable' && (
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={startRun}
-                    disabled={busy}
-                    className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-500 disabled:opacity-60"
-                  >
-                    {busy ? (
-                      <>
-                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                        <span>Opening editor… (creating measurement run)</span>
-                      </>
-                    ) : (
-                      <>Open facet editor →</>
-                    )}
-                  </button>
-                  {sharpening && (
-                    <div className="flex items-center gap-2 text-xs text-slate-300">
-                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-                      <span>Sharpening in background — tile will auto-refresh when ready. Safe to proceed.</span>
+                <div className="mt-3 space-y-3">
+                  {/* Pan controls — nudge view by 10m in each direction */}
+                  <div className="rounded border border-white/10 bg-slate-800/40 p-3">
+                    <div className="mb-2 text-xs font-semibold text-slate-300">
+                      House not centered? Nudge the view:
                     </div>
-                  )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => nudgeImagery(0, 10)}
+                        disabled={busy || nudging}
+                        className="rounded bg-slate-700 px-3 py-1.5 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
+                      >↑ North</button>
+                      <button
+                        onClick={() => nudgeImagery(0, -10)}
+                        disabled={busy || nudging}
+                        className="rounded bg-slate-700 px-3 py-1.5 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
+                      >↓ South</button>
+                      <button
+                        onClick={() => nudgeImagery(-10, 0)}
+                        disabled={busy || nudging}
+                        className="rounded bg-slate-700 px-3 py-1.5 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
+                      >← West</button>
+                      <button
+                        onClick={() => nudgeImagery(10, 0)}
+                        disabled={busy || nudging}
+                        className="rounded bg-slate-700 px-3 py-1.5 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
+                      >→ East</button>
+                      <span className="text-[10px] text-slate-500">
+                        {nudging ? 'Re-fetching…' : 'Each click moves the view 10 m'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={startRun}
+                      disabled={busy}
+                      className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-500 disabled:opacity-60"
+                    >
+                      {busy ? (
+                        <>
+                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          <span>Opening editor…</span>
+                        </>
+                      ) : (
+                        <>Open facet editor →</>
+                      )}
+                    </button>
+                    {!imagery.sharpened_url && (
+                      <button
+                        onClick={trySharpening}
+                        disabled={sharpening || busy}
+                        className="flex items-center gap-2 rounded-md bg-purple-700 px-3 py-2 text-xs text-white transition hover:bg-purple-600 disabled:opacity-50"
+                        title="Optional: try AI sharpening on top of the native @2x retina tile. Takes 15-30 sec."
+                      >
+                        {sharpening ? (
+                          <>
+                            <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            <span>Sharpening…</span>
+                          </>
+                        ) : (
+                          <>✨ Try AI sharpening (optional)</>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               {imagery.status === 'unavailable' && (
