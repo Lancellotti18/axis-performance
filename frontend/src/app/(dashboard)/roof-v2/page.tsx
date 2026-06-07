@@ -189,15 +189,35 @@ export default function RoofV2Page() {
     }
   }, [])
 
-  // Create a measurement run + advance to editor
+  // Create a measurement run + advance to editor. Heavily instrumented so we
+  // can see EXACTLY what happens on each click and where it gets stuck if it
+  // does — silent failures here have made debugging hard before.
   const startRun = useCallback(async () => {
-    if (!projectId || !location || !imagery || !imagery.url) {
-      setError('Missing project, location, or imagery.')
+    // eslint-disable-next-line no-console
+    console.log('[axis] startRun click', { projectId, hasLocation: !!location, hasImagery: !!imagery, imageryUrl: imagery?.url })
+
+    if (!projectId) {
+      setError('Cannot open editor: no project selected. Go back to step 1.')
       return
     }
+    if (!location) {
+      setError('Cannot open editor: location not validated. Go back to step 2.')
+      return
+    }
+    if (!imagery || !imagery.url) {
+      setError('Cannot open editor: satellite tile failed to load. Go back to step 3.')
+      return
+    }
+
     setBusy(true)
     setError(null)
     try {
+      // eslint-disable-next-line no-console
+      console.log('[axis] startRun → POST /runs', {
+        project_id: projectId,
+        source: 'aerial_outline',
+        satellite_image_url: imagery.url,
+      })
       const run = await api.roofing.v2.createRun({
         project_id: projectId,
         source: 'aerial_outline',
@@ -208,10 +228,22 @@ export default function RoofV2Page() {
         satellite_lng: imagery.lng,
         imagery_health: imagery.health_score,
       })
-      setRunId(run.id)
+      // eslint-disable-next-line no-console
+      console.log('[axis] startRun → run created', run)
+      if (!run || !(run as { id?: string }).id) {
+        setError('Backend returned no run id. Check Render logs.')
+        return
+      }
+      setRunId((run as { id: string }).id)
       setStep('editor')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start measurement run')
+      const msg = err instanceof Error ? err.message : 'unknown'
+      // eslint-disable-next-line no-console
+      console.error('[axis] startRun → failed', err)
+      setError(
+        `Failed to open editor: ${msg}. Check browser DevTools Network tab for `
+        + 'the failing /api/v1/roofing/v2/runs request, OR check Render logs for backend errors.',
+      )
     } finally {
       setBusy(false)
     }
@@ -451,8 +483,17 @@ export default function RoofV2Page() {
                   <button
                     onClick={startRun}
                     disabled={busy}
-                    className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
-                  >Open facet editor →</button>
+                    className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-500 disabled:opacity-60"
+                  >
+                    {busy ? (
+                      <>
+                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        <span>Opening editor… (creating measurement run)</span>
+                      </>
+                    ) : (
+                      <>Open facet editor →</>
+                    )}
+                  </button>
                   {sharpening && (
                     <div className="flex items-center gap-2 text-xs text-slate-300">
                       <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
