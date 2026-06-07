@@ -36,6 +36,12 @@ REPLICATE_BASE = "https://api.replicate.com/v1"
 # version ids before, leading to status=failed on otherwise-fine requests.
 REAL_ESRGAN_MODEL = "nightmareai/real-esrgan"
 
+# Replicate's Real-ESRGAN GPU memory caps input at ~2,096,704 pixels.
+# A 2048x1366 Esri tile is 2,797,568 — over the limit and rejected outright.
+# We downscale anything above this threshold before sending; the 4x upscale
+# still produces output larger than the original tile.
+MAX_INPUT_PIXELS = 2_000_000
+
 
 class EnhancementStatus(str, Enum):
     DISABLED = "disabled"
@@ -115,6 +121,10 @@ async def upscale_image(
         )
 
     original_size_kb = round(len(image_bytes) / 1024)
+
+    # Resize if the source tile exceeds Replicate's GPU memory cap. Esri's
+    # default 2048x1366 tile triggers this every time.
+    image_bytes, media_type = _resize_to_fit(image_bytes, media_type)
 
     # Replicate accepts the image as a data URI
     b64 = base64.b64encode(image_bytes).decode("ascii")
@@ -216,6 +226,50 @@ async def upscale_image(
         original_size_kb=original_size_kb,
         upscaled_size_kb=round(len(upscaled_bytes) / 1024),
     )
+
+
+def _resize_to_fit(image_bytes: bytes, media_type: str) -> tuple[bytes, str]:
+    """
+    Downscale the image if it exceeds Replicate's GPU input cap. Preserves
+    aspect ratio. If anything goes wrong, return the original bytes — the
+    upstream call will still attempt and surface a real error.
+    """
+    try:
+        from PIL import Image as PILImage
+        import io as _io
+        import math
+
+        img = PILImage.open(_io.BytesIO(image_bytes))
+        w, h = img.size
+        if w * h <= MAX_INPUT_PIXELS:
+            return image_bytes, media_type
+
+        scale = math.sqrt(MAX_INPUT_PIXELS / float(w * h))
+        new_w = max(1, int(w * scale))
+        new_h = max(1, int(h * scale))
+
+        # Convert palette / RGBA-with-fully-transparent edges to RGB for JPEG;
+        # for PNG keep RGBA so transparency survives.
+        if media_type == "image/jpeg" and img.mode != "RGB":
+            img = img.convert("RGB")
+        elif media_type == "image/png" and img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGBA")
+
+        resized = img.resize((new_w, new_h), PILImage.Resampling.LANCZOS)
+        out = _io.BytesIO()
+        if media_type == "image/jpeg":
+            resized.save(out, format="JPEG", quality=92, optimize=True)
+        else:
+            resized.save(out, format="PNG", optimize=True)
+        new_bytes = out.getvalue()
+        logger.info(
+            "enhancement: resized %sx%s (%s px) -> %sx%s (%s px) for Replicate input cap",
+            w, h, w * h, new_w, new_h, new_w * new_h,
+        )
+        return new_bytes, media_type
+    except Exception as e:
+        logger.warning("enhancement: resize failed (%s) — sending original bytes", e)
+        return image_bytes, media_type
 
 
 async def _poll_until_done(prediction_id: str, *, max_wait_sec: int = 60) -> Optional[dict]:
