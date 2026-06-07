@@ -152,7 +152,7 @@ export default function RoofV2Page() {
       const newLng = location.lng + (eastMetres / (111320 * Math.cos(location.lat * Math.PI / 180)))
       const updatedLoc: LocationSelected = { ...location, lat: newLat, lng: newLng }
       setLocation(updatedLoc)
-      const health = await api.roofing.v2.imageryHealth(newLat, newLng, 22, 1024, 683) as ImageryPayload
+      const health = await api.roofing.v2.imageryHealth(newLat, newLng, 22, 2048, 1366) as ImageryPayload
       // Drop any previous sharpened URL since the view moved
       setImagery({ ...health, original_url: health.url, display_mode: 'original' })
     } catch (err) {
@@ -209,12 +209,12 @@ export default function RoofV2Page() {
     setBusy(true)
     setError(null)
     try {
-      // Zoom 22 + 1024x683 request (which becomes 2048x1366 native because
-      // MapTiler @2x retina doubles the pixel density) — that's ~38m x 25m
-      // ground area at high native resolution. Backend falls back z22 -> z21
-      // -> z20 if provider lacks coverage. Auto-sharpen disabled — contractor
-      // can opt-in via 'Try AI sharpening' button if they want it.
-      const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22, 1024, 683) as ImageryPayload
+      // Zoom 22 + 2048x1366 request → MapTiler @2x retina returns 4096x2732
+      // native pixels at the same ~38m x 25m ground area. That's about 4× more
+      // pixels than the previous 1024x683 setting — real native resolution,
+      // not AI hallucination. Backend falls back z22 -> z21 -> z20 if provider
+      // lacks coverage at that location.
+      const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22, 2048, 1366) as ImageryPayload
       // Native resolution from MapTiler @2x retina is already much better than
       // what AI sharpening was producing. Auto-sharpen is OFF — contractor
       // can opt-in via 'Try AI sharpening' button on the panel if they want it.

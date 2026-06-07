@@ -242,15 +242,15 @@ function PolygonThumb({
   const maxY = Math.min(1, Math.max(...ys) + 0.08)
   const w = Math.max(maxX - minX, 0.1)
   const h = Math.max(maxY - minY, 0.1)
-  // Thumbnail dimensions
   const tW = 200
   const tH = 150
   const points = polygon
     .map(([x, y]) => `${((x - minX) / w) * tW},${((y - minY) / h) * tH}`)
     .join(' ')
 
-  // Use SVG with an embedded image clipped to the bbox region — much more
-  // reliable than CSS object-position + scale tricks across browsers.
+  // Use HTML <img> + CSS positioning instead of SVG <image>. SVG <image> often
+  // fails silently on cross-origin URLs (MapTiler/Replicate don't send CORS
+  // headers for display contexts that they should). HTML <img> always works.
   return (
     <button
       type="button"
@@ -259,20 +259,28 @@ function PolygonThumb({
       className="relative shrink-0 overflow-hidden rounded border-2 bg-slate-900/60 transition hover:brightness-110"
       style={{ width: tW, height: tH, borderColor: color }}
     >
-      <svg viewBox={`0 0 ${tW} ${tH}`} className="h-full w-full">
-        <defs>
-          <clipPath id={`clip-${minX.toFixed(3)}-${minY.toFixed(3)}`}>
-            <rect x={0} y={0} width={tW} height={tH} />
-          </clipPath>
-        </defs>
-        <image
-          href={imageUrl}
-          x={-minX * (tW / w)}
-          y={-minY * (tH / h)}
-          width={tW / w}
-          height={tH / h}
-          preserveAspectRatio="none"
-        />
+      {/* Underlying satellite image, scaled + positioned so the polygon bbox
+          fills the thumbnail. The math: image width = tW/w (so the bbox-relative
+          x maps to thumbnail pixel x), then translate by -minX*(tW/w) to clip
+          the rest off-screen. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imageUrl}
+        alt=""
+        draggable={false}
+        style={{
+          position: 'absolute',
+          left: `${-minX * (tW / w)}px`,
+          top: `${-minY * (tH / h)}px`,
+          width: `${tW / w}px`,
+          height: `${tH / h}px`,
+          maxWidth: 'none',
+          maxHeight: 'none',
+          pointerEvents: 'none',
+        }}
+      />
+      {/* Polygon overlay on top */}
+      <svg viewBox={`0 0 ${tW} ${tH}`} className="absolute inset-0 h-full w-full">
         <polygon
           points={points}
           fill={color + '40'}
