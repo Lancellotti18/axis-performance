@@ -53,6 +53,12 @@ interface ImageryPayload {
   health_score: number
   warnings: string[]
   providers_tried: string[]
+  // Track both the original (unsharpened) URL and the sharpened URL so the
+  // contractor can compare them with their own eyes and verify whether
+  // sharpening is actually adding value.
+  original_url?: string
+  sharpened_url?: string
+  display_mode?: 'original' | 'sharpened'
 }
 
 type Step = 'project' | 'location' | 'imagery' | 'editor' | 'siding' | 'report'
@@ -148,7 +154,8 @@ export default function RoofV2Page() {
       // to ~38m x 25m ground area — basically just the property, no neighbors.
       // Backend falls back z22 -> z21 -> z20 if provider lacks coverage.
       const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22, 1024, 683) as ImageryPayload
-      setImagery(health)
+      // Track the original URL so we can A/B compare after sharpening
+      setImagery({ ...health, original_url: health.url, display_mode: 'original' })
       // Done with the BLOCKING work. Editor can open now.
       setBusy(false)
 
@@ -166,10 +173,12 @@ export default function RoofV2Page() {
               setImagery(prev => prev ? ({
                 ...prev,
                 url: s.upscaled_url,
+                sharpened_url: s.upscaled_url,
+                display_mode: 'sharpened',
                 feet_per_pixel: (health.feet_per_pixel ?? 0) / factor,
                 warnings: [
                   ...(prev.warnings || []),
-                  `✨ Tile AI-sharpened ${factor}x — tile updated in editor`,
+                  `✨ Tile AI-sharpened ${factor}x — toggle below to compare with original`,
                 ],
               }) : prev)
             } else if (s.status === 'failed' || s.error) {
@@ -487,6 +496,65 @@ export default function RoofV2Page() {
                 <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-300">
                   {imagery.warnings.map((w, i) => <li key={i} className={w.includes('sharpened') ? 'text-emerald-300' : ''}>{w}</li>)}
                 </ul>
+              )}
+
+              {/* A/B comparison toggle when sharpening succeeded */}
+              {imagery.sharpened_url && imagery.original_url && (
+                <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-emerald-200">
+                      Verify sharpening visually — toggle between the two:
+                    </div>
+                    <div className="flex gap-2 text-xs">
+                      <button
+                        onClick={() => setImagery(prev => prev ? ({
+                          ...prev,
+                          url: prev.original_url,
+                          display_mode: 'original',
+                        }) : prev)}
+                        className={`rounded px-3 py-1.5 font-medium transition ${
+                          imagery.display_mode === 'original'
+                            ? 'bg-slate-700 text-white ring-2 ring-blue-400'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
+                      >Original</button>
+                      <button
+                        onClick={() => setImagery(prev => prev ? ({
+                          ...prev,
+                          url: prev.sharpened_url,
+                          display_mode: 'sharpened',
+                        }) : prev)}
+                        className={`rounded px-3 py-1.5 font-medium transition ${
+                          imagery.display_mode === 'sharpened'
+                            ? 'bg-emerald-700 text-white ring-2 ring-emerald-400'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
+                      >✨ Sharpened</button>
+                    </div>
+                  </div>
+                  {/* Preview the currently-selected tile */}
+                  {imagery.url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={imagery.url}
+                      alt="tile preview"
+                      className="block max-h-[400px] w-full rounded border border-white/10 bg-black object-contain"
+                    />
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-400">
+                    <a href={imagery.original_url} target="_blank" rel="noreferrer" className="underline hover:text-slate-200">
+                      Open original in new tab ↗
+                    </a>
+                    <span>·</span>
+                    <a href={imagery.sharpened_url} target="_blank" rel="noreferrer" className="underline hover:text-slate-200">
+                      Open sharpened in new tab ↗
+                    </a>
+                    <span>·</span>
+                    <span>
+                      Click both, switch between tabs to A/B compare at full resolution
+                    </span>
+                  </div>
+                </div>
               )}
               {imagery.url && imagery.status !== 'unavailable' && (
                 <div className="mt-3 flex flex-wrap items-center gap-3">
