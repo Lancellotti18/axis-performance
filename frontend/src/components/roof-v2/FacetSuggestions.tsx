@@ -38,6 +38,14 @@ interface Props {
 
 const FACET_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
 
+// Matches AnnotatedRoofView.tsx so accepted suggestions visually align with
+// what the contractor sees in the editor / report.
+const FACET_HUES = ['#3b82f6', '#a855f7', '#22c55e', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16']
+
+function hueByIndex(i: number): string {
+  return FACET_HUES[i % FACET_HUES.length]
+}
+
 function nextLabel(existing: Facet[], offset = 0): string {
   return FACET_LABELS[existing.length + offset] || `F${existing.length + offset + 1}`
 }
@@ -133,18 +141,25 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                 s.confidence >= 0.75 ? 'text-emerald-300'
                 : s.confidence >= 0.5 ? 'text-amber-300'
                 : 'text-rose-300'
+              const facetColor = hueByIndex(existingFacets.length + i)
               return (
                 <li
                   key={i}
-                  className="flex flex-col gap-3 rounded border border-amber-400/30 bg-amber-500/5 p-3 sm:flex-row"
+                  className="flex flex-col gap-3 rounded border bg-slate-900/40 p-3 sm:flex-row"
+                  style={{ borderColor: `${facetColor}66` }}
                 >
                   <PolygonThumb
                     polygon={s.polygon}
                     imageUrl={imageUrl}
+                    color={facetColor}
                     onClick={() => setZoomedSuggestion(s)}
                   />
                   <div className="flex flex-1 flex-col gap-1">
                     <div className="flex items-center gap-2">
+                      <span
+                        className="inline-flex h-6 w-6 items-center justify-center rounded text-xs font-bold text-white"
+                        style={{ background: facetColor }}
+                      >{nextLabel(existingFacets, i)}</span>
                       <strong className="text-slate-100">
                         Facet {nextLabel(existingFacets, i)}
                       </strong>
@@ -208,8 +223,8 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
 }
 
 function PolygonThumb({
-  polygon, imageUrl, onClick,
-}: { polygon: Pt[]; imageUrl: string; onClick?: () => void }) {
+  polygon, imageUrl, color = '#fbbf24', onClick,
+}: { polygon: Pt[]; imageUrl: string; color?: string; onClick?: () => void }) {
   if (!imageUrl) {
     return (
       <div className="flex h-[150px] w-[200px] items-center justify-center rounded border border-white/10 bg-slate-900/60 text-xs text-slate-500">
@@ -241,8 +256,8 @@ function PolygonThumb({
       type="button"
       onClick={onClick}
       title="Click to view at full size"
-      className="relative shrink-0 overflow-hidden rounded border-2 border-amber-400/60 bg-slate-900/60 transition hover:border-amber-300 hover:ring-2 hover:ring-amber-400/40"
-      style={{ width: tW, height: tH }}
+      className="relative shrink-0 overflow-hidden rounded border-2 bg-slate-900/60 transition hover:brightness-110"
+      style={{ width: tW, height: tH, borderColor: color }}
     >
       <svg viewBox={`0 0 ${tW} ${tH}`} className="h-full w-full">
         <defs>
@@ -260,8 +275,8 @@ function PolygonThumb({
         />
         <polygon
           points={points}
-          fill="rgba(251, 191, 36, 0.30)"
-          stroke="#fbbf24"
+          fill={color + '40'}
+          stroke={color}
           strokeWidth={3}
         />
       </svg>

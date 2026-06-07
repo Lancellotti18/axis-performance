@@ -516,6 +516,55 @@ export default function RoofV2Page() {
                 </ul>
               )}
 
+              {/* Main tile preview with corner keypad overlay for centering */}
+              {imagery.url && imagery.status !== 'unavailable' && (
+                <div className="relative mt-4 overflow-hidden rounded border border-white/10 bg-black">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imagery.url}
+                    alt="satellite tile preview"
+                    className="block max-h-[500px] w-full object-contain"
+                  />
+                  {/* 4-arrow keypad overlay in top-right corner */}
+                  <div className="absolute right-2 top-2 grid grid-cols-3 gap-0.5 rounded-md border border-white/20 bg-slate-900/85 p-1 shadow-lg backdrop-blur">
+                    <div></div>
+                    <button
+                      onClick={() => nudgeImagery(0, 10)}
+                      disabled={nudging}
+                      title="Move view north (up)"
+                      className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
+                    >↑</button>
+                    <div></div>
+                    <button
+                      onClick={() => nudgeImagery(-10, 0)}
+                      disabled={nudging}
+                      title="Move view west (left)"
+                      className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
+                    >←</button>
+                    <div className="flex h-8 w-8 items-center justify-center text-[10px] text-slate-500" title="Each arrow click moves the view 10 metres">
+                      {nudging ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> : '·'}
+                    </div>
+                    <button
+                      onClick={() => nudgeImagery(10, 0)}
+                      disabled={nudging}
+                      title="Move view east (right)"
+                      className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
+                    >→</button>
+                    <div></div>
+                    <button
+                      onClick={() => nudgeImagery(0, -10)}
+                      disabled={nudging}
+                      title="Move view south (down)"
+                      className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
+                    >↓</button>
+                    <div></div>
+                  </div>
+                  <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-[10px] text-white">
+                    Use arrows to center the house · each click = 10 m
+                  </div>
+                </div>
+              )}
+
               {/* A/B comparison toggle when sharpening succeeded */}
               {imagery.sharpened_url && imagery.original_url && (
                 <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-3">
@@ -575,73 +624,38 @@ export default function RoofV2Page() {
                 </div>
               )}
               {imagery.url && imagery.status !== 'unavailable' && (
-                <div className="mt-3 space-y-3">
-                  {/* Pan controls — nudge view by 10m in each direction */}
-                  <div className="rounded border border-white/10 bg-slate-800/40 p-3">
-                    <div className="mb-2 text-xs font-semibold text-slate-300">
-                      House not centered? Nudge the view:
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => nudgeImagery(0, 10)}
-                        disabled={busy || nudging}
-                        className="rounded bg-slate-700 px-3 py-1.5 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
-                      >↑ North</button>
-                      <button
-                        onClick={() => nudgeImagery(0, -10)}
-                        disabled={busy || nudging}
-                        className="rounded bg-slate-700 px-3 py-1.5 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
-                      >↓ South</button>
-                      <button
-                        onClick={() => nudgeImagery(-10, 0)}
-                        disabled={busy || nudging}
-                        className="rounded bg-slate-700 px-3 py-1.5 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
-                      >← West</button>
-                      <button
-                        onClick={() => nudgeImagery(10, 0)}
-                        disabled={busy || nudging}
-                        className="rounded bg-slate-700 px-3 py-1.5 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
-                      >→ East</button>
-                      <span className="text-[10px] text-slate-500">
-                        {nudging ? 'Re-fetching…' : 'Each click moves the view 10 m'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Action buttons */}
-                  <div className="flex flex-wrap items-center gap-3">
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={startRun}
+                    disabled={busy}
+                    className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-500 disabled:opacity-60"
+                  >
+                    {busy ? (
+                      <>
+                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        <span>Opening editor…</span>
+                      </>
+                    ) : (
+                      <>Open facet editor →</>
+                    )}
+                  </button>
+                  {!imagery.sharpened_url && (
                     <button
-                      onClick={startRun}
-                      disabled={busy}
-                      className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-500 disabled:opacity-60"
+                      onClick={trySharpening}
+                      disabled={sharpening || busy}
+                      className="flex items-center gap-2 rounded-md bg-purple-700 px-3 py-2 text-xs text-white transition hover:bg-purple-600 disabled:opacity-50"
+                      title="Optional: try AI sharpening on top of the native @2x retina tile. Takes 15-30 sec."
                     >
-                      {busy ? (
+                      {sharpening ? (
                         <>
                           <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          <span>Opening editor…</span>
+                          <span>Sharpening…</span>
                         </>
                       ) : (
-                        <>Open facet editor →</>
+                        <>✨ Try AI sharpening (optional)</>
                       )}
                     </button>
-                    {!imagery.sharpened_url && (
-                      <button
-                        onClick={trySharpening}
-                        disabled={sharpening || busy}
-                        className="flex items-center gap-2 rounded-md bg-purple-700 px-3 py-2 text-xs text-white transition hover:bg-purple-600 disabled:opacity-50"
-                        title="Optional: try AI sharpening on top of the native @2x retina tile. Takes 15-30 sec."
-                      >
-                        {sharpening ? (
-                          <>
-                            <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                            <span>Sharpening…</span>
-                          </>
-                        ) : (
-                          <>✨ Try AI sharpening (optional)</>
-                        )}
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
               )}
               {imagery.status === 'unavailable' && (
