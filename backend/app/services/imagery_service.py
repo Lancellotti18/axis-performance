@@ -426,49 +426,71 @@ async def fetch_satellite_image(
     (network down, all keys revoked, etc.). The caller should map this to
     a 502 with a clear "all satellite providers unavailable" message.
     """
-    # Esri caps reliable coverage around zoom 20 in many areas; MapTiler
-    # supports z21+ consistently across the US. When the caller wants a
-    # tightly-zoomed tile, prefer MapTiler first so we don't waste a roundtrip
-    # to an Esri server that returns an out-of-range or low-quality tile.
-    if zoom >= 21:
-        high_zoom_order: list[Provider] = ["maptiler", "mapbox", "esri"]
-        order = list(high_zoom_order)
-    else:
-        order = []
-    if preferred and preferred in _PROVIDER_ORDER:
-        if preferred in order:
-            order.remove(preferred)
-        order.insert(0, preferred)
-    for p in _PROVIDER_ORDER:
-        if p not in order:
-            order.append(p)
+    # Progressive zoom fallback. When the contractor requests a tight zoom
+    # (e.g. z21), MapTiler is preferred but may not have satellite coverage at
+    # that exact tile, OR Esri may be rate-limited / down. Instead of failing
+    # the whole flow with "all providers failed", we step DOWN the zoom level
+    # one at a time and retry — preserving the user's intent (zoom in as much
+    # as possible) while always returning something usable.
+    requested_zoom = zoom
+    zoom_chain: list[int] = [zoom]
+    for fallback_z in (20, 19, 18):
+        if fallback_z < zoom and fallback_z not in zoom_chain:
+            zoom_chain.append(fallback_z)
 
-    tried: list[Provider] = []
-    best: ImageryResult | None = None
+    all_tried: list[str] = []
+    overall_best: ImageryResult | None = None
+
     async with httpx.AsyncClient() as client:
-        for provider in order:
-            result = await _fetch_one(client, provider, lat, lng, zoom, width_px, height_px)
-            tried.append(provider)
-            if result is None:
-                continue
-            result.providers_tried = list(tried)
-            if result.health_score >= FALLBACK_THRESHOLD:
-                return result
-            # Healthy enough but not great — keep as best so far and try the
-            # next provider for a better tile.
-            if best is None or result.health_score > best.health_score:
-                best = result
+        for try_zoom in zoom_chain:
+            # Build provider order specific to this zoom level
+            if try_zoom >= 21:
+                order: list[Provider] = ["maptiler", "mapbox", "esri"]
+            else:
+                order = []
+            if preferred and preferred in _PROVIDER_ORDER:
+                if preferred in order:
+                    order.remove(preferred)
+                order.insert(0, preferred)
+            for p in _PROVIDER_ORDER:
+                if p not in order:
+                    order.append(p)
 
-    if best is not None:
-        best.providers_tried = tried
-        best.warnings.append(
-            f"All providers returned low-health tiles (best={best.health_score:.2f}). "
+            zoom_best: ImageryResult | None = None
+            for provider in order:
+                result = await _fetch_one(client, provider, lat, lng, try_zoom, width_px, height_px)
+                all_tried.append(f"{provider}@z{try_zoom}")
+                if result is None:
+                    continue
+                result.providers_tried = list(all_tried)
+                if try_zoom != requested_zoom:
+                    result.warnings.insert(0, (
+                        f"Tile unavailable at requested zoom {requested_zoom}; "
+                        f"falling back to zoom {try_zoom}. House framing will be slightly wider."
+                    ))
+                if result.health_score >= FALLBACK_THRESHOLD:
+                    return result
+                if zoom_best is None or result.health_score > zoom_best.health_score:
+                    zoom_best = result
+                if overall_best is None or result.health_score > overall_best.health_score:
+                    overall_best = result
+
+            # If something usable came back at this zoom (even if degraded),
+            # return it. Otherwise step down to the next zoom level.
+            if zoom_best is not None:
+                return zoom_best
+
+    if overall_best is not None:
+        overall_best.providers_tried = list(all_tried)
+        overall_best.warnings.append(
+            f"All providers returned low-health tiles (best={overall_best.health_score:.2f}). "
             "Imagery may be cloudy or low-resolution at this location."
         )
-        return best
+        return overall_best
 
     raise RuntimeError(
-        f"All satellite providers failed: tried={tried}. Check provider API keys and network connectivity."
+        f"All satellite providers failed at all zoom levels. Tried: {', '.join(all_tried)}. "
+        "Check provider API keys and network connectivity on the backend."
     )
 
 
