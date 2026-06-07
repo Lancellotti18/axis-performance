@@ -146,6 +146,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange }
   }, [runId])
 
   const conf = confidenceTag(aggregates?.confidence)
+  const hasNoData = aggregates && (aggregates.facet_count ?? 0) === 0 && !loading
 
   const lineBars = useMemo(() => {
     if (!aggregates) return null
@@ -182,6 +183,13 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange }
 
   return (
     <div className="space-y-4">
+      {hasNoData && (
+        <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+          <strong>No facets saved to the database yet.</strong>
+          {' '}
+          Draw at least one polygon in the editor above — the panel will auto-update within a second once the save completes. If you've drawn polygons and still see this message, check the browser DevTools Network tab for failing requests to <code>/api/v1/roofing/v2/runs/.../facets</code>.
+        </div>
+      )}
       {/* Top totals */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card label="True roof area" value={fmtSf(aggregates?.total_roof_sqft)} sub="(slope-adjusted)" />

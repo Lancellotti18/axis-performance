@@ -165,19 +165,41 @@ export default function RoofV2Page() {
     }
   }, [projectId, location, imagery])
 
-  // Persist facets + edges to backend whenever the editor publishes them
+  // Persist facets + edges to backend whenever the editor publishes them.
+  // Surfaces specific errors instead of silently failing so the contractor
+  // doesn't end up staring at an empty Measurements panel wondering why.
   const persistGeometry = useCallback(async (newFacets: Facet[], newEdges: LabeledEdge[]) => {
     setFacets(newFacets)
     setEdges(newEdges)
-    if (!runId || !imagery || !location) return
-    if (newFacets.length === 0) return
+    if (!runId) {
+      setError('No measurement run created yet — refresh the page if this persists.')
+      return
+    }
+    if (!imagery) {
+      setError('Satellite imagery not loaded — go back to the Imagery step.')
+      return
+    }
+    if (!location) {
+      setError('Address not validated — go back to the Location step. Without a lat/lng, geometry cannot be measured.')
+      return
+    }
+    if (newFacets.length === 0) {
+      // Empty editor state isn't an error — just nothing to save
+      return
+    }
+    const lat = location.lat
+    const lng = location.lng
+    if (lat === 0 && lng === 0) {
+      setError('Address used manual entry (no coordinates). Pick an autocomplete suggestion instead so the platform can compute real measurements.')
+      return
+    }
     try {
       await api.roofing.v2.putFacets(runId, {
         image_width_px: imagery.width_px ?? 2048,
         image_height_px: imagery.height_px ?? 1366,
         zoom: imagery.zoom ?? 20,
-        lat: location.lat,
-        lng: location.lng,
+        lat,
+        lng,
         facets: newFacets.map(f => ({
           facet_label: f.label,
           polygon: f.polygon,
@@ -186,12 +208,11 @@ export default function RoofV2Page() {
           user_confirmed: f.userConfirmed,
         })),
       })
-      // Push edges only after facets exist
       await api.roofing.v2.putEdges(runId, {
         image_width_px: imagery.width_px ?? 2048,
         image_height_px: imagery.height_px ?? 1366,
         zoom: imagery.zoom ?? 20,
-        lat: location.lat,
+        lat,
         edges: newEdges.map(e => ({
           facet_label: e.facetLabel,
           vertex_index_start: e.vertexIndexStart,
@@ -202,8 +223,10 @@ export default function RoofV2Page() {
         })),
       })
       setGeometryStamp(s => s + 1)
+      setError(null)   // clear any prior visible error on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save geometry')
+      const msg = err instanceof Error ? err.message : 'Unknown save error'
+      setError(`Save failed: ${msg}. Check browser DevTools Network tab for the failing request.`)
     }
   }, [runId, imagery, location])
 
