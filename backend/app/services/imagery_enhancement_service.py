@@ -142,18 +142,16 @@ async def upscale_image(
     #     constrained the model can't sharpen edges)
     #   - sharpen: 3 (clear post-process edge sharpening)
     #   - prompt: anchors the model to satellite content
-    payload = {
-        "input": {
-            "image": data_uri,
-            "scale_factor": scale,
-            "dynamic": 6,
-            "resemblance": 1.0,
-            "sharpen": 3,
-            "num_inference_steps": 18,
-            "prompt": "high-resolution aerial satellite photograph, residential property, crisp roof shingles, sharp clear details, professional quality",
-            "negative_prompt": "blurry, low quality, watermark, distorted, hallucinated buildings, fake structures, painted texture, cartoon",
-            "output_format": "png",
-        },
+    input_payload = {
+        "image": data_uri,
+        "scale_factor": scale,
+        "dynamic": 6,
+        "resemblance": 1.0,
+        "sharpen": 3,
+        "num_inference_steps": 18,
+        "prompt": "high-resolution aerial satellite photograph, residential property, crisp roof shingles, sharp clear details, professional quality",
+        "negative_prompt": "blurry, low quality, watermark, distorted, hallucinated buildings, fake structures, painted texture, cartoon",
+        "output_format": "png",
     }
     headers = {
         "Authorization": f"Bearer {settings.REPLICATE_API_KEY}",
@@ -162,11 +160,24 @@ async def upscale_image(
         "Prefer": "wait=60",
     }
 
-    # Use the model-name endpoint so Replicate auto-picks the current version.
-    model_url = f"{REPLICATE_BASE}/models/{UPSCALER_MODEL}/predictions"
+    # clarity-upscaler isn't opted into the /v1/models/{owner}/{name}/predictions
+    # endpoint, so that route 404s. Instead: fetch the latest published version
+    # of the model, then POST to /v1/predictions with that version in the body.
+    # This is what Replicate's official Python SDK does under the hood.
+    version_id = await _fetch_latest_version(UPSCALER_MODEL)
+    if not version_id:
+        return EnhancementResult(
+            status=EnhancementStatus.FAILED,
+            error=f"Could not resolve latest version of {UPSCALER_MODEL} on Replicate.",
+        )
+    payload = {
+        "version": version_id,
+        "input": input_payload,
+    }
+    predictions_url = f"{REPLICATE_BASE}/predictions"
     try:
         async with httpx.AsyncClient(timeout=120) as client:
-            r = await client.post(model_url, headers=headers, json=payload)
+            r = await client.post(predictions_url, headers=headers, json=payload)
             r.raise_for_status()
             data = r.json()
     except httpx.HTTPStatusError as http_err:
@@ -243,6 +254,36 @@ async def upscale_image(
         original_size_kb=original_size_kb,
         upscaled_size_kb=round(len(upscaled_bytes) / 1024),
     )
+
+
+_VERSION_CACHE: dict[str, str] = {}
+
+
+async def _fetch_latest_version(model: str) -> str | None:
+    """
+    Resolve a Replicate model's latest version id.
+
+    For models that aren't opted into the /v1/models/{owner}/{name}/predictions
+    shortcut (clarity-upscaler is one), we have to look up the current version
+    before submitting a prediction. Cached in-process so we only fetch once per
+    backend boot (Replicate versions don't change mid-day).
+    """
+    if model in _VERSION_CACHE:
+        return _VERSION_CACHE[model]
+    url = f"{REPLICATE_BASE}/models/{model}"
+    headers = {"Authorization": f"Bearer {settings.REPLICATE_API_KEY}"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(url, headers=headers)
+            r.raise_for_status()
+            data = r.json()
+    except Exception as e:
+        logger.warning("Replicate model lookup failed for %s: %s", model, e)
+        return None
+    version_id = (data.get("latest_version") or {}).get("id")
+    if version_id:
+        _VERSION_CACHE[model] = version_id
+    return version_id
 
 
 def _resize_to_fit(image_bytes: bytes, media_type: str) -> tuple[bytes, str]:

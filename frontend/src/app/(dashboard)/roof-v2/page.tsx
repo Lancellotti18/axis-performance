@@ -412,12 +412,17 @@ export default function RoofV2Page() {
           {busy && !imagery && (
             <div className="flex items-center gap-3 rounded bg-slate-900/60 p-3 text-sm text-slate-300">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-              <span>Fetching tile at zoom 21 + running AI 4x upscale… (~10 seconds)</span>
+              <span>Fetching tile at zoom 22 + running AI 4x upscale… (~10 seconds)</span>
             </div>
           )}
           {imagery && (
             <>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Stat
+                  label="Zoom (requested 22)"
+                  value={imagery.zoom != null ? `z${imagery.zoom}` : '—'}
+                  color={imagery.zoom === 22 ? 'text-emerald-300' : imagery.zoom && imagery.zoom < 22 ? 'text-amber-300' : undefined}
+                />
                 <Stat label="Status" value={imagery.status} color={
                   imagery.status === 'ok' ? 'text-emerald-300'
                   : imagery.status === 'degraded' ? 'text-amber-300'
