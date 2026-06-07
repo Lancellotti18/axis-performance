@@ -30,9 +30,11 @@ logger = logging.getLogger(__name__)
 
 
 REPLICATE_BASE = "https://api.replicate.com/v1"
-# Real-ESRGAN x4plus — proven model, fast, good for satellite imagery
+# Real-ESRGAN x4plus — proven model, fast, good for satellite imagery.
+# Using the official models endpoint (no version pin) so we always get the
+# current production version. Replicate has deprecated/rotated specific
+# version ids before, leading to status=failed on otherwise-fine requests.
 REAL_ESRGAN_MODEL = "nightmareai/real-esrgan"
-REAL_ESRGAN_VERSION = "350d32041630ffbe63c8352783a26d94126809164e54085352f8326e53999085"
 
 
 class EnhancementStatus(str, Enum):
@@ -119,7 +121,6 @@ async def upscale_image(
     data_uri = f"data:{media_type};base64,{b64}"
 
     payload = {
-        "version": REAL_ESRGAN_VERSION,
         "input": {
             "image": data_uri,
             "scale": scale,
@@ -133,13 +134,27 @@ async def upscale_image(
         "Prefer": "wait=60",
     }
 
+    # Use the model-name endpoint so Replicate auto-picks the current version.
+    # Falls back to versioned /predictions if the model endpoint 404s.
+    model_url = f"{REPLICATE_BASE}/models/{REAL_ESRGAN_MODEL}/predictions"
     try:
         async with httpx.AsyncClient(timeout=120) as client:
-            r = await client.post(
-                f"{REPLICATE_BASE}/predictions", headers=headers, json=payload,
-            )
+            r = await client.post(model_url, headers=headers, json=payload)
             r.raise_for_status()
             data = r.json()
+    except httpx.HTTPStatusError as http_err:
+        # Surface Replicate's error body when available so the contractor sees
+        # something actionable instead of a bare status code.
+        body = ""
+        try:
+            body = http_err.response.text[:500]
+        except Exception:
+            pass
+        logger.warning("Real-ESRGAN HTTP error: %s | body=%s", http_err, body)
+        return EnhancementResult(
+            status=EnhancementStatus.FAILED,
+            error=f"Replicate {http_err.response.status_code}: {body or str(http_err)[:200]}",
+        )
     except Exception as e:
         logger.warning("Real-ESRGAN call failed: %s", e)
         return EnhancementResult(
@@ -157,9 +172,13 @@ async def upscale_image(
             status = (data.get("status") or "").lower()
 
     if status != "succeeded":
+        # Replicate's response body has the actual error reason when status=failed
+        reason = data.get("error") or data.get("logs") or ""
+        if isinstance(reason, str) and len(reason) > 300:
+            reason = reason[-300:]   # tail is usually the useful traceback line
         return EnhancementResult(
             status=EnhancementStatus.FAILED,
-            error=f"Replicate returned status={status} after polling.",
+            error=f"Replicate {status}: {reason or 'no error detail returned'}",
         )
 
     output_url = data.get("output")

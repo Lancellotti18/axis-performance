@@ -63,6 +63,7 @@ interface Props {
   runId: string
   geometryStamp: number       // bump to trigger a recompute (debounced)
   onConfidenceChange?: (c: number) => void
+  onForceSave?: () => void | Promise<void>   // optional: lets the parent force-save + recompute
 }
 
 const COLORS: Record<string, string> = {
@@ -91,7 +92,7 @@ function confidenceTag(c: number | undefined) {
   return { label: 'Low', cls: 'bg-rose-500/20 text-rose-300 border-rose-400/40' }
 }
 
-export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange }: Props) {
+export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave }: Props) {
   const [aggregates, setAggregates] = useState<Aggregates | null>(null)
   const [materials, setMaterials] = useState<MaterialsResponse | null>(null)
   const [wastePct, setWastePct] = useState<number>(12)
@@ -184,10 +185,28 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange }
   return (
     <div className="space-y-4">
       {hasNoData && (
-        <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-200">
-          <strong>No facets saved to the database yet.</strong>
-          {' '}
-          Draw at least one polygon in the editor above — the panel will auto-update within a second once the save completes. If you've drawn polygons and still see this message, check the browser DevTools Network tab for failing requests to <code>/api/v1/roofing/v2/runs/.../facets</code>.
+        <div className="space-y-2 rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+          <div>
+            <strong>No facets saved to the database yet.</strong>
+            {' '}
+            Draw at least one polygon in the editor above — the panel will auto-update within a second.
+          </div>
+          {onForceSave && (
+            <button
+              onClick={async () => { await onForceSave(); await fetchAll(wastePct) }}
+              className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
+            >Force save + recompute now</button>
+          )}
+        </div>
+      )}
+      {!hasNoData && onForceSave && (
+        <div className="flex justify-end">
+          <button
+            onClick={async () => { await onForceSave(); await fetchAll(wastePct) }}
+            disabled={loading}
+            className="rounded bg-slate-700 px-2 py-1 text-[10px] text-slate-200 hover:bg-slate-600 disabled:opacity-50"
+            title="Bypass the debounce and force an immediate save + recompute"
+          >↻ Save & recompute now</button>
         </div>
       )}
       {/* Top totals */}

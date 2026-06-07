@@ -447,6 +447,7 @@ export default function RoofV2Page() {
             runId={runId}
             geometryStamp={geometryStamp}
             onConfidenceChange={setConfidence}
+            onForceSave={async () => { await persistGeometry(facets, edges) }}
           />
           <FacetSuggestions
             runId={runId}
