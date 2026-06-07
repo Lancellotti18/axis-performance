@@ -30,6 +30,8 @@ from typing import Optional
 
 import httpx
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +39,7 @@ CENSUS_BASE = "https://geocoding.geo.census.gov/geocoder"
 CENSUS_BENCHMARK = "Public_AR_Current"
 CENSUS_VINTAGE = "Current_Current"
 FCC_AREA_URL = "https://geo.fcc.gov/api/census/area"
+MAPTILER_GEOCODE_URL = "https://api.maptiler.com/geocoding"
 
 
 # ----------------------------------------------------------------------------
@@ -71,6 +74,100 @@ class SearchResult:
             "matches": [m.to_dict() for m in self.matches],
             "error": self.error,
         }
+
+
+# ----------------------------------------------------------------------------
+# MapTiler Geocoder (autocomplete-friendly — works with partial addresses)
+# ----------------------------------------------------------------------------
+
+async def _maptiler_autocomplete(
+    client: httpx.AsyncClient, query: str, *, limit: int = 5,
+) -> list[LocationMatch]:
+    """
+    MapTiler geocoding suggests addresses as the user types. Unlike the
+    Census Geocoder (which needs a near-complete address), MapTiler returns
+    matches for partial input like "701 rip" within a few hundred ms.
+
+    Returns LocationMatch with lat/lng + parsed components. County/FIPS are
+    NOT populated here (MapTiler doesn't return FIPS); the caller can enrich
+    with `enrich_with_county` once the user picks a suggestion.
+
+    Falls through (empty list) if MAPTILER_API_KEY isn't set so the Census
+    fallback still works.
+    """
+    key = settings.MAPTILER_API_KEY
+    if not key:
+        return []
+
+    url = f"{MAPTILER_GEOCODE_URL}/{query}.json"
+    params = {
+        "key": key,
+        "limit": limit,
+        "country": "us",
+        "autocomplete": "true",
+        "language": "en",
+    }
+    try:
+        r = await client.get(url, params=params, timeout=5.0)
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        logger.info("maptiler geocode failed for %r: %s", query, e)
+        return []
+
+    features = data.get("features") or []
+    out: list[LocationMatch] = []
+    for f in features:
+        props = f.get("properties") or {}
+        geom = f.get("geometry") or {}
+        coords = geom.get("coordinates") or []
+        if len(coords) < 2:
+            continue
+        lng, lat = float(coords[0]), float(coords[1])
+
+        # MapTiler context lists state, postal_code, etc. Walk it to extract.
+        context = f.get("context") or []
+        city = state = zip_code = ""
+        for c in context:
+            cid = (c.get("id") or "").lower()
+            ctext = c.get("text") or ""
+            if cid.startswith("place"):
+                city = ctext
+            elif cid.startswith("region"):
+                # MapTiler region carries the full state name in 'text' but the
+                # 2-letter abbreviation in 'short_code' (us-tx → tx).
+                short = (c.get("short_code") or "").upper().split("-")[-1]
+                state = short[:2] if short else ctext[:2].upper()
+            elif cid.startswith("postal"):
+                zip_code = ctext
+
+        # MapTiler returns the formatted label in `place_name` or `properties.label`
+        matched_address = (
+            f.get("place_name")
+            or props.get("label")
+            or props.get("name")
+            or ""
+        )
+        street = props.get("name") or props.get("housenumber_street") or ""
+        # If "name" is just a city/place and we have an address number, prefix it
+        housenumber = props.get("housenumber") or ""
+        if housenumber and street and not street.startswith(housenumber):
+            street = f"{housenumber} {street}".strip()
+
+        out.append(LocationMatch(
+            matched_address=matched_address,
+            street=street,
+            city=city,
+            state=state,
+            zip=zip_code,
+            lat=lat,
+            lng=lng,
+            county="",       # filled in by FCC enrichment when user picks one
+            county_fips="",
+            state_fips="",
+            source="maptiler",
+        ))
+    return out
 
 
 # ----------------------------------------------------------------------------
@@ -220,25 +317,36 @@ async def _fcc_county_from_latlng(
 
 async def search_address(query: str, *, with_geographies: bool = True) -> SearchResult:
     """
-    Address search. Returns all matches (usually 1 unless the address is
-    ambiguous like "100 Main St" with no city/state).
+    Address search.
 
-    with_geographies=True: returns county/FIPS along with coords. Use this
-    for the final submission.
-    with_geographies=False: faster typeahead; no county data. Use for autocomplete.
+    Provider chain:
+      - with_geographies=False (autocomplete): MapTiler if configured (fast,
+        handles partial addresses), else Census /onelineaddress (validation
+        only — needs near-complete address).
+      - with_geographies=True (final validation): Census /geographies (returns
+        county + FIPS authoritatively). If Census misses, falls back to
+        MapTiler results (county can be enriched later via FCC reverse lookup).
     """
     query = (query or "").strip()
-    if len(query) < 4:
-        return SearchResult(matches=[], error="Address too short")
+    if len(query) < 3:
+        return SearchResult(matches=[], error="Type at least 3 characters")
 
     async with httpx.AsyncClient() as client:
         if with_geographies:
             matches = await _census_geographies(client, query)
+            # If Census didn't match (common for partial / rural addresses),
+            # fall back to MapTiler so we still return something useful.
+            if not matches:
+                matches = await _maptiler_autocomplete(client, query)
         else:
-            matches = await _census_oneline(client, query)
+            # Autocomplete: try MapTiler first (it actually handles partial
+            # typing). Census fallback only if MapTiler not configured.
+            matches = await _maptiler_autocomplete(client, query)
+            if not matches:
+                matches = await _census_oneline(client, query)
 
     if not matches:
-        return SearchResult(matches=[], error="Address not found")
+        return SearchResult(matches=[], error="No matches found — try adding city or state")
     return SearchResult(matches=matches)
 
 

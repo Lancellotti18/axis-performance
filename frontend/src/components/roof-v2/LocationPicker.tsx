@@ -66,7 +66,7 @@ export function LocationPicker({ initialQuery = '', onSelected }: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const runSearch = useCallback(async (q: string) => {
-    if (q.trim().length < 4) {
+    if (q.trim().length < 3) {
       setMatches([])
       return
     }
@@ -87,7 +87,9 @@ export function LocationPicker({ initialQuery = '', onSelected }: Props) {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => { void runSearch(query) }, 350)
+    // 250ms feels closer to Apple/Google Maps responsiveness; MapTiler returns
+    // in ~200ms so 250 keeps us snappy without firing every single keystroke.
+    debounceRef.current = setTimeout(() => { void runSearch(query) }, 250)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
