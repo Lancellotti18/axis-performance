@@ -24,6 +24,8 @@ import LocationPicker, { type LocationSelected } from '@/components/roof-v2/Loca
 import RoofFacetEditor, { type Facet, type LabeledEdge } from '@/components/roof-v2/RoofFacetEditor'
 import MeasurementsSummary from '@/components/roof-v2/MeasurementsSummary'
 import PenetrationSuggestions from '@/components/roof-v2/PenetrationSuggestions'
+import FacetSuggestions from '@/components/roof-v2/FacetSuggestions'
+import EdgeLabelSuggestions from '@/components/roof-v2/EdgeLabelSuggestions'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
@@ -421,6 +423,37 @@ export default function RoofV2Page() {
             geometryStamp={geometryStamp}
             onConfidenceChange={setConfidence}
           />
+          <FacetSuggestions
+            runId={runId}
+            imageUrl={imagery?.url ?? ''}
+            existingFacets={facets}
+            onAccept={(newFacet) => {
+              const merged = [...facets, newFacet]
+              setFacets(merged)
+              // Initialize this facet's edges as unlabeled in the editor state
+              const newEdges: typeof edges = newFacet.polygon.map((_, i) => ({
+                facetLabel: newFacet.label,
+                vertexIndexStart: i,
+                vertexIndexEnd: (i + 1) % newFacet.polygon.length,
+                edgeType: 'unlabeled' as const,
+                userConfirmed: false,
+              }))
+              const mergedEdges = [...edges, ...newEdges]
+              setEdges(mergedEdges)
+              void persistGeometry(merged, mergedEdges)
+            }}
+          />
+          {facets.length > 0 && (
+            <EdgeLabelSuggestions
+              runId={runId}
+              facets={facets}
+              edges={edges}
+              onAcceptEdges={(updatedEdges) => {
+                setEdges(updatedEdges)
+                void persistGeometry(facets, updatedEdges)
+              }}
+            />
+          )}
           <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
           <div className="flex flex-wrap gap-2">
             <button
