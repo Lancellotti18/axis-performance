@@ -16,7 +16,7 @@
  * again and the corrected version replaces the AI's original guess as the
  * training example.
  */
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import type { Facet } from './RoofFacetEditor'
 
@@ -47,6 +47,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [zoomedSuggestion, setZoomedSuggestion] = useState<Suggestion | null>(null)
 
   const runDetect = useCallback(async () => {
     setLoading(true)
@@ -119,14 +120,14 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[10px] uppercase tracking-wide text-amber-300">
-              {suggestions.length} facet{suggestions.length === 1 ? '' : 's'} suggested
+              {suggestions.length} facet{suggestions.length === 1 ? '' : 's'} suggested · click thumbnail to enlarge
             </span>
             <button
               onClick={acceptAll}
               className="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
             >Accept all</button>
           </div>
-          <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {suggestions.map((s, i) => {
               const confColor =
                 s.confidence >= 0.75 ? 'text-emerald-300'
@@ -135,9 +136,13 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
               return (
                 <li
                   key={i}
-                  className="flex items-start gap-3 rounded border border-amber-400/30 bg-amber-500/5 p-3"
+                  className="flex flex-col gap-3 rounded border border-amber-400/30 bg-amber-500/5 p-3 sm:flex-row"
                 >
-                  <PolygonThumb polygon={s.polygon} imageUrl={imageUrl} />
+                  <PolygonThumb
+                    polygon={s.polygon}
+                    imageUrl={imageUrl}
+                    onClick={() => setZoomedSuggestion(s)}
+                  />
                   <div className="flex flex-1 flex-col gap-1">
                     <div className="flex items-center gap-2">
                       <strong className="text-slate-100">
@@ -154,12 +159,16 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                     <div className="mt-1 flex gap-2">
                       <button
                         onClick={() => accept(s, i)}
-                        className="rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-500"
+                        className="rounded bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-500"
                       >Accept</button>
                       <button
                         onClick={() => reject(i)}
-                        className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600"
+                        className="rounded bg-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-600"
                       >Reject</button>
+                      <button
+                        onClick={() => setZoomedSuggestion(s)}
+                        className="rounded bg-blue-700 px-3 py-1.5 text-xs text-white hover:bg-blue-600"
+                      >View full size</button>
                     </div>
                   </div>
                 </li>
@@ -167,6 +176,25 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
             })}
           </ul>
         </div>
+      )}
+
+      {/* Click-to-zoom modal */}
+      {zoomedSuggestion && (
+        <ZoomModal
+          suggestion={zoomedSuggestion}
+          imageUrl={imageUrl}
+          onClose={() => setZoomedSuggestion(null)}
+          onAccept={() => {
+            const idx = suggestions.indexOf(zoomedSuggestion)
+            if (idx >= 0) accept(zoomedSuggestion, idx)
+            setZoomedSuggestion(null)
+          }}
+          onReject={() => {
+            const idx = suggestions.indexOf(zoomedSuggestion)
+            if (idx >= 0) reject(idx)
+            setZoomedSuggestion(null)
+          }}
+        />
       )}
 
       {!suggestions.length && !loading && !error && (
@@ -179,51 +207,151 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
   )
 }
 
-function PolygonThumb({ polygon, imageUrl }: { polygon: Pt[]; imageUrl: string }) {
+function PolygonThumb({
+  polygon, imageUrl, onClick,
+}: { polygon: Pt[]; imageUrl: string; onClick?: () => void }) {
   if (!imageUrl) {
     return (
-      <div className="flex h-[60px] w-[80px] items-center justify-center rounded border border-white/10 bg-slate-900/60 text-[10px] text-slate-500">
-        no tile
+      <div className="flex h-[150px] w-[200px] items-center justify-center rounded border border-white/10 bg-slate-900/60 text-xs text-slate-500">
+        no tile available
       </div>
     )
   }
-  // Compute bounding box of polygon
+  // Show a wider context view: include the polygon plus ~20% margin around it
+  // so the contractor can see what the polygon is relative to its surroundings.
   const xs = polygon.map(p => p[0])
   const ys = polygon.map(p => p[1])
-  const minX = Math.max(0, Math.min(...xs) - 0.02)
-  const maxX = Math.min(1, Math.max(...xs) + 0.02)
-  const minY = Math.max(0, Math.min(...ys) - 0.02)
-  const maxY = Math.min(1, Math.max(...ys) + 0.02)
-  const w = maxX - minX || 0.05
-  const h = maxY - minY || 0.05
-  // Thumbnail is 80x60 — show the polygon area at its actual location on the tile
+  const minX = Math.max(0, Math.min(...xs) - 0.08)
+  const maxX = Math.min(1, Math.max(...xs) + 0.08)
+  const minY = Math.max(0, Math.min(...ys) - 0.08)
+  const maxY = Math.min(1, Math.max(...ys) + 0.08)
+  const w = Math.max(maxX - minX, 0.1)
+  const h = Math.max(maxY - minY, 0.1)
+  // Thumbnail dimensions
+  const tW = 200
+  const tH = 150
   const points = polygon
-    .map(([x, y]) => `${((x - minX) / w) * 80},${((y - minY) / h) * 60}`)
+    .map(([x, y]) => `${((x - minX) / w) * tW},${((y - minY) / h) * tH}`)
     .join(' ')
+
+  // Use SVG with an embedded image clipped to the bbox region — much more
+  // reliable than CSS object-position + scale tricks across browsers.
   return (
-    <div className="relative h-[60px] w-[80px] shrink-0 overflow-hidden rounded border border-amber-400/40 bg-slate-900/60">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt=""
-        className="absolute h-full w-full object-cover"
-        style={{
-          objectPosition: `${(minX + maxX) * 50}% ${(minY + maxY) * 50}%`,
-          transform: `scale(${1 / Math.max(w, h)})`,
-          transformOrigin: 'center',
-        }}
-      />
-      <svg
-        viewBox="0 0 80 60"
-        className="absolute inset-0 h-full w-full"
-      >
+    <button
+      type="button"
+      onClick={onClick}
+      title="Click to view at full size"
+      className="relative shrink-0 overflow-hidden rounded border-2 border-amber-400/60 bg-slate-900/60 transition hover:border-amber-300 hover:ring-2 hover:ring-amber-400/40"
+      style={{ width: tW, height: tH }}
+    >
+      <svg viewBox={`0 0 ${tW} ${tH}`} className="h-full w-full">
+        <defs>
+          <clipPath id={`clip-${minX.toFixed(3)}-${minY.toFixed(3)}`}>
+            <rect x={0} y={0} width={tW} height={tH} />
+          </clipPath>
+        </defs>
+        <image
+          href={imageUrl}
+          x={-minX * (tW / w)}
+          y={-minY * (tH / h)}
+          width={tW / w}
+          height={tH / h}
+          preserveAspectRatio="none"
+        />
         <polygon
           points={points}
-          fill="rgba(251, 191, 36, 0.35)"
+          fill="rgba(251, 191, 36, 0.30)"
           stroke="#fbbf24"
-          strokeWidth={2}
+          strokeWidth={3}
         />
       </svg>
+      <div className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
+        🔍 Click to enlarge
+      </div>
+    </button>
+  )
+}
+
+function ZoomModal({
+  suggestion, imageUrl, onClose, onAccept, onReject,
+}: {
+  suggestion: Suggestion
+  imageUrl: string
+  onClose: () => void
+  onAccept: () => void
+  onReject: () => void
+}) {
+  // Esc to close
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg border border-amber-400/40 bg-slate-950 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Image with polygon overlay at full size */}
+        <div className="relative bg-black">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageUrl}
+            alt="satellite"
+            className="block max-h-[75vh] w-full object-contain"
+          />
+          <svg
+            viewBox={`0 0 1 1`}
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full"
+          >
+            <polygon
+              points={suggestion.polygon.map(([x, y]) => `${x},${y}`).join(' ')}
+              fill="rgba(251, 191, 36, 0.25)"
+              stroke="#fbbf24"
+              strokeWidth={0.004}
+            />
+            {suggestion.polygon.map(([x, y], i) => (
+              <circle key={i} cx={x} cy={y} r={0.006} fill="#fbbf24" stroke="white" strokeWidth={0.002} />
+            ))}
+          </svg>
+        </div>
+
+        {/* Bottom controls */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-slate-900 p-4 text-sm">
+          <div>
+            <div className="font-semibold text-slate-100">
+              AI suggested facet — {(suggestion.confidence * 100).toFixed(0)}% confidence
+            </div>
+            <div className="mt-1 text-xs text-slate-400">{suggestion.note || '—'}</div>
+            <div className="text-[10px] text-slate-500">
+              Pitch guess: {suggestion.predicted_pitch || '6/12'} · {suggestion.polygon.length} vertices
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onReject}
+              className="rounded bg-rose-700 px-4 py-2 text-sm font-medium text-white hover:bg-rose-600"
+            >Reject</button>
+            <button
+              onClick={onAccept}
+              className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+            >Accept</button>
+            <button
+              onClick={onClose}
+              className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-600"
+            >Close (Esc)</button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

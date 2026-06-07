@@ -769,20 +769,45 @@ async def suggest_facets(
 
     prompt = """You are a roof inspector analyzing a top-down satellite image of a residential property.
 
-TASK: Identify each DISTINCT roof plane (facet) on the PRIMARY building and trace its outline
-as a separate polygon. A facet is one flat sloping surface — a typical hip-style residential roof
-has 4 facets, a gable has 2, a complex roof can have 6-12.
+STEP 1 — LOCATE THE PRIMARY BUILDING.
+The image is centered on a residential address. The primary building is usually:
+  - In the central 60% of the image
+  - The largest STRUCTURE with a roof (NOT the largest dark area — that's often pavement)
+  - Has a clear roof texture: shingles, tiles, or metal panels — NOT smooth asphalt
+  - Cast a shadow consistent with a building (not flat ground)
+  - Often has a driveway connecting it to the road
 
-STRICT HONESTY:
-- Trace only what you can CLEARLY see. Tree canopy, shadow, or low resolution = skip that facet.
-- 4-8 vertices per facet polygon — capture the true shape with the minimum vertex count.
-- Polygons are CLOSED rings; do NOT repeat the first point at the end.
-- Coordinates are [x, y] fractions of image width/height (0..1), top-left origin.
-- Adjacent facets should SHARE edges (vertex coordinates within ~0.005 of each other) — this is how
-  the contractor's tool auto-suggests ridge/hip/valley labels.
-- If you genuinely cannot identify distinct facets, return facets: [].
+IGNORE the following — they are NOT roof facets and should NEVER be traced:
+  - Roads, streets, highways (long straight asphalt strips with lane markings)
+  - Driveways (narrow asphalt or concrete strips leading to the house)
+  - Sidewalks, parking lots, parking pads
+  - Lawn, grass, gardens, dirt, mulch
+  - Pool decks, patios, decks (these may LOOK like roof but are at ground level)
+  - Neighboring houses' roofs (unless they share a wall with the primary building)
+  - Sheds, detached garages (only include if part of the same roof line as the primary building)
+  - Trees, hedges, shadows
 
-Return ONLY valid JSON (no prose):
+STEP 2 — IDENTIFY DISTINCT ROOF PLANES (FACETS).
+A facet is ONE flat sloping surface of the roof. Typical residential roofs:
+  - Gable roof: 2 facets (front + back slopes meeting at a ridge)
+  - Hip roof: 4 facets (front + back + 2 sides meeting at hips)
+  - L-shape / complex: 4-8 facets
+  - Each facet has a HORIZONTAL bottom edge (eave) where the gutter sits
+
+How to distinguish a roof facet from the ground:
+  - Roofs are ELEVATED — you can often see shadow under their eaves
+  - Roofs have a defined geometric outline ending at gutters
+  - Roofs have shingle texture visible at zoom 20
+  - The ground/driveway has CONTINUOUS texture flowing past the building outline
+
+STEP 3 — RETURN POLYGONS.
+- Trace each facet as a closed polygon (4-8 vertices, do NOT repeat first vertex at end)
+- Coordinates are [x, y] fractions of image width/height (0..1), top-left origin
+- Adjacent facets should SHARE edges (vertex coordinates within ~0.005 of each other)
+- Only trace facets you can CLEARLY see — skip facets blocked by trees, shadow, or unclear edges
+- If you genuinely cannot identify the building (heavy tree cover, very low res), return facets: []
+
+Return ONLY valid JSON (no prose, no markdown):
 {
   "facets": [
     {
@@ -794,8 +819,16 @@ Return ONLY valid JSON (no prose):
   ]
 }
 
-Guidance for predicted_pitch: estimate from shadow direction + visible roof texture / shingle
-courses if any. If unsure, return "6/12" (residential default) and let the contractor override.
+Guidance for predicted_pitch: estimate from shadow direction and visible roof slope.
+- Flat or barely sloped (commercial): "2/12" to "3/12"
+- Low residential: "4/12"
+- Standard residential: "6/12" (most common)
+- Steeper / older homes: "8/12" to "10/12"
+If unsure, return "6/12" and let the contractor override.
+
+CRITICAL: If your suggestion is the driveway, road, or non-roof feature, set confidence below 0.3
+and note that you're uncertain — better to be uncertain than wrong. The contractor will reject low-confidence
+suggestions and trust your high-confidence ones.
 """
 
     try:
