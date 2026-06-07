@@ -30,24 +30,20 @@ logger = logging.getLogger(__name__)
 
 
 REPLICATE_BASE = "https://api.replicate.com/v1"
-# Real-ESRGAN x4plus — proven model, fast, good for satellite imagery.
-# Using the official models endpoint (no version pin) so we always get the
-# current production version. Replicate has deprecated/rotated specific
-# version ids before, leading to status=failed on otherwise-fine requests.
-REAL_ESRGAN_MODEL = "nightmareai/real-esrgan"
+# Clarity-Upscaler — Stable Diffusion-based upscaler with internal tiling that
+# handles 4x cleanly without the CUDA OOM that Real-ESRGAN hit. Tuned for
+# satellite imagery: low creativity + high resemblance so it sharpens existing
+# detail instead of hallucinating buildings or trees that aren't there.
+#
+# Cost: ~$0.02-0.05 per image (vs Real-ESRGAN's ~$0.005). Worth it given how
+# unreliable Real-ESRGAN was on Replicate's shared GPUs.
+UPSCALER_MODEL = "philz1337x/clarity-upscaler"
 
-# Replicate's Real-ESRGAN runs on shared GPUs whose available memory varies
-# between requests. The hard input pixel cap is ~2.09M, but real CUDA OOM
-# kicks in at much smaller sizes when the model also has to allocate the
-# 4x-upscaled output tensor (16x input pixel count). Practical safe ceiling
-# on the OUTPUT side ≈ 4M pixels, so:
-#   - At scale=4: input must be ≤ ~250K pixels
-#   - At scale=2: input must be ≤ ~1M pixels
-# We default to scale=2 with 1M input pixels — produces a 4M-pixel output
-# that's about 1.4x sharper than the original Esri tile (2.8M pixels) and
-# survives any GPU configuration Replicate hands us.
-MAX_INPUT_PIXELS = 1_000_000
-DEFAULT_SCALE = 2
+# Clarity-Upscaler handles tiling internally so we can send larger inputs.
+# The practical limit is bandwidth + Replicate processing time, not GPU
+# memory. 2M pixels is the Esri tile native size — no resize needed.
+MAX_INPUT_PIXELS = 4_000_000
+DEFAULT_SCALE = 4
 
 
 class EnhancementStatus(str, Enum):
@@ -137,11 +133,22 @@ async def upscale_image(
     b64 = base64.b64encode(image_bytes).decode("ascii")
     data_uri = f"data:{media_type};base64,{b64}"
 
+    # Clarity-Upscaler parameters tuned specifically for satellite imagery:
+    #   - dynamic: 2 (very low creativity — don't invent buildings or trees)
+    #   - resemblance: 1.5 (high faithfulness to original — preserve real features)
+    #   - sharpen: 1 (slight extra sharpening on top of upscale)
+    #   - prompt: tells the model what it's looking at so SD doesn't drift
     payload = {
         "input": {
             "image": data_uri,
-            "scale": scale,
-            "face_enhance": face_enhance,
+            "scale_factor": scale,
+            "dynamic": 2,
+            "resemblance": 1.5,
+            "sharpen": 1,
+            "num_inference_steps": 18,
+            "prompt": "satellite aerial view, residential property roof, sharp clear high resolution photograph",
+            "negative_prompt": "blurry, low quality, watermark, distorted, hallucinated buildings, fake structures",
+            "output_format": "png",
         },
     }
     headers = {
@@ -152,8 +159,7 @@ async def upscale_image(
     }
 
     # Use the model-name endpoint so Replicate auto-picks the current version.
-    # Falls back to versioned /predictions if the model endpoint 404s.
-    model_url = f"{REPLICATE_BASE}/models/{REAL_ESRGAN_MODEL}/predictions"
+    model_url = f"{REPLICATE_BASE}/models/{UPSCALER_MODEL}/predictions"
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             r = await client.post(model_url, headers=headers, json=payload)

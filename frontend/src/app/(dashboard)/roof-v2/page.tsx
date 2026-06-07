@@ -120,20 +120,49 @@ export default function RoofV2Page() {
     }
   }, [])
 
-  // When a location is confirmed
+  // When a location is confirmed: fetch the imagery health, then immediately
+  // auto-sharpen the tile via Replicate's clarity-upscaler. The contractor
+  // always gets a 4x-sharper tile without having to click anything.
   const onLocationSelected = useCallback(async (loc: LocationSelected) => {
     setLocation(loc)
     setStep('imagery')
     if (loc.lat === 0 && loc.lng === 0) {
-      // Manual entry — no imagery possible without coords
       setImagery({ status: 'unavailable', providers_tried: [], warnings: ['Manual address entry — no coordinates available for imagery.'], health_score: 0 })
       return
     }
     setBusy(true)
     setError(null)
     try {
-      const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng) as ImageryPayload
+      // Zoom 21 frames the target house tightly (~130m x 86m ground area)
+      // instead of showing the whole neighborhood. MapTiler handles z21+
+      // reliably (Esri's coverage falls off above z20).
+      const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 21) as ImageryPayload
       setImagery(health)
+
+      // Auto-sharpen if the fetch produced a usable tile. Failures are
+      // non-fatal — contractor still gets the original tile, just less crisp.
+      if (health.status !== 'unavailable' && health.url) {
+        try {
+          const sharp = await api.roofing.v2.upscaleImagery(health.url, 4) as {
+            status: string
+            upscaled_url?: string
+            error?: string
+          }
+          if (sharp.status === 'completed' && sharp.upscaled_url) {
+            setImagery({
+              ...health,
+              url: sharp.upscaled_url,
+              // The geometric scale (feet per pixel) is 4x finer after upscale
+              feet_per_pixel: (health.feet_per_pixel ?? 0) / 4,
+              warnings: [...(health.warnings || []), 'Tile sharpened with clarity-upscaler (4x AI upscale)'],
+            })
+          }
+        } catch (sharpErr) {
+          // Don't fail the whole flow if sharpening hiccups — the contractor
+          // still has a usable original tile. Surface a non-blocking notice.
+          setError(`Auto-sharpening skipped: ${sharpErr instanceof Error ? sharpErr.message : 'unknown'}. Original tile is still loaded — you can continue.`)
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Imagery health check failed')
     } finally {
@@ -361,37 +390,53 @@ export default function RoofV2Page() {
       )}
 
       {/* IMAGERY step */}
-      {step === 'imagery' && imagery && (
+      {step === 'imagery' && (
         <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
-          <h2 className="mb-3 text-sm font-semibold">Satellite imagery health</h2>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat label="Status" value={imagery.status} color={
-              imagery.status === 'ok' ? 'text-emerald-300'
-              : imagery.status === 'degraded' ? 'text-amber-300'
-              : 'text-rose-300'
-            }/>
-            <Stat label="Provider" value={imagery.provider ?? '—'} />
-            <Stat label="Health" value={`${Math.round((imagery.health_score ?? 0) * 100)}%`} />
-            <Stat label="Resolution" value={`${imagery.feet_per_pixel?.toFixed(2) ?? '?'} ft/px`} />
-          </div>
-          {imagery.warnings.length > 0 && (
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-300">
-              {imagery.warnings.map((w, i) => <li key={i}>{w}</li>)}
-            </ul>
-          )}
-          {imagery.url && imagery.status !== 'unavailable' && (
-            <div className="mt-3">
-              <button
-                onClick={startRun}
-                disabled={busy}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
-              >Open facet editor →</button>
+          <h2 className="mb-3 text-sm font-semibold">
+            {busy ? 'Loading + sharpening satellite tile…' : 'Satellite imagery health'}
+          </h2>
+          {busy && !imagery && (
+            <div className="flex items-center gap-3 rounded bg-slate-900/60 p-3 text-sm text-slate-300">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+              <span>Fetching tile at zoom 21 + running AI 4x upscale… (~10 seconds)</span>
             </div>
           )}
-          {imagery.status === 'unavailable' && (
-            <div className="mt-3 text-xs text-rose-300">
-              All satellite providers failed. Configure MAPBOX_ACCESS_TOKEN or MAPTILER_API_KEY on the backend, or use manual measurement via blueprint upload.
-            </div>
+          {imagery && (
+            <>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Stat label="Status" value={imagery.status} color={
+                  imagery.status === 'ok' ? 'text-emerald-300'
+                  : imagery.status === 'degraded' ? 'text-amber-300'
+                  : 'text-rose-300'
+                }/>
+                <Stat label="Provider" value={imagery.provider ?? '—'} />
+                <Stat label="Health" value={`${Math.round((imagery.health_score ?? 0) * 100)}%`} />
+                <Stat
+                  label="Resolution"
+                  value={`${imagery.feet_per_pixel?.toFixed(3) ?? '?'} ft/px`}
+                  color={(imagery.warnings || []).some(w => w.includes('sharpened')) ? 'text-emerald-300' : undefined}
+                />
+              </div>
+              {imagery.warnings.length > 0 && (
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-300">
+                  {imagery.warnings.map((w, i) => <li key={i} className={w.includes('sharpened') ? 'text-emerald-300' : ''}>{w}</li>)}
+                </ul>
+              )}
+              {imagery.url && imagery.status !== 'unavailable' && (
+                <div className="mt-3">
+                  <button
+                    onClick={startRun}
+                    disabled={busy}
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+                  >Open facet editor →</button>
+                </div>
+              )}
+              {imagery.status === 'unavailable' && (
+                <div className="mt-3 text-xs text-rose-300">
+                  All satellite providers failed. Configure MAPBOX_ACCESS_TOKEN or MAPTILER_API_KEY on the backend, or use manual measurement via blueprint upload.
+                </div>
+              )}
+            </>
           )}
         </section>
       )}
@@ -402,36 +447,13 @@ export default function RoofV2Page() {
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2 text-xs">
             <span className="text-slate-400">Tile:</span>
             <span className="font-mono text-slate-200">
-              {imagery.provider} · z{imagery.zoom} · {imagery.feet_per_pixel?.toFixed(2)} ft/px
+              {imagery.provider} · z{imagery.zoom} · {imagery.feet_per_pixel?.toFixed(3)} ft/px
             </span>
-            <button
-              onClick={async () => {
-                if (!imagery.url || busy) return
-                setBusy(true)
-                setError(null)
-                try {
-                  const res = await api.roofing.v2.upscaleImagery(imagery.url, 2) as {
-                    status: string
-                    upscaled_url?: string
-                    error?: string
-                  }
-                  if (res.status === 'completed' && res.upscaled_url) {
-                    setImagery({ ...imagery, url: res.upscaled_url, feet_per_pixel: (imagery.feet_per_pixel ?? 0) / 2 })
-                  } else if (res.status === 'disabled') {
-                    setError(res.error || 'Sharpener disabled. Set REPLICATE_API_KEY on the backend.')
-                  } else {
-                    setError(res.error || 'Sharpen failed.')
-                  }
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Sharpen failed')
-                } finally {
-                  setBusy(false)
-                }
-              }}
-              disabled={busy}
-              className="ml-auto rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
-              title="AI 4x super-resolution via Replicate Real-ESRGAN"
-            >{busy ? 'Sharpening…' : 'Sharpen tile (AI 4x)'}</button>
+            {(imagery.warnings || []).some(w => w.includes('sharpened')) && (
+              <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-emerald-300">
+                ✨ AI-sharpened
+              </span>
+            )}
           </div>
           <div className="h-[680px]">
             <RoofFacetEditor

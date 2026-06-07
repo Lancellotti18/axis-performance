@@ -426,9 +426,19 @@ async def fetch_satellite_image(
     (network down, all keys revoked, etc.). The caller should map this to
     a 502 with a clear "all satellite providers unavailable" message.
     """
-    order: list[Provider] = []
+    # Esri caps reliable coverage around zoom 20 in many areas; MapTiler
+    # supports z21+ consistently across the US. When the caller wants a
+    # tightly-zoomed tile, prefer MapTiler first so we don't waste a roundtrip
+    # to an Esri server that returns an out-of-range or low-quality tile.
+    if zoom >= 21:
+        high_zoom_order: list[Provider] = ["maptiler", "mapbox", "esri"]
+        order = list(high_zoom_order)
+    else:
+        order = []
     if preferred and preferred in _PROVIDER_ORDER:
-        order.append(preferred)
+        if preferred in order:
+            order.remove(preferred)
+        order.insert(0, preferred)
     for p in _PROVIDER_ORDER:
         if p not in order:
             order.append(p)
