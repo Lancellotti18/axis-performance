@@ -46,9 +46,9 @@ from app.services.geometry_service import metres_per_pixel, feet_per_pixel
 logger = logging.getLogger(__name__)
 
 
-Provider = Literal["esri", "mapbox", "maptiler"]
+Provider = Literal["esri", "mapbox", "maptiler", "bing"]
 
-_PROVIDER_ORDER: list[Provider] = ["esri", "mapbox", "maptiler"]
+_PROVIDER_ORDER: list[Provider] = ["esri", "mapbox", "maptiler", "bing"]
 
 # Minimum acceptable tile to count as "healthy". Larger than this is fine.
 MIN_WIDTH_PX = 512
@@ -170,6 +170,27 @@ def _mapbox_url(lat: float, lng: float, zoom: int, w: int, h: int, token: str) -
         "https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/"
         f"{lng:.6f},{lat:.6f},{capped_zoom},0/{capped_w}x{capped_h}@2x"
         f"?access_token={token}&attribution=false&logo=false"
+    )
+
+
+def _bing_url(lat: float, lng: float, zoom: int, w: int, h: int, key: str) -> str:
+    """
+    Bing Maps Static Maps API (Aerial layer). Uses Microsoft's own imagery
+    blended with MAXAR — often sharper or fresher than MapTiler for specific
+    US regions, especially suburban areas. Different source vendor entirely,
+    so adding Bing as a fallback gives the contractor a real second opinion
+    on image quality at any given address.
+
+    Free tier: 125,000 transactions/year, no credit card required.
+    Max image size: 2000x1500 per request.
+    Zoom range: 1-21.
+    """
+    capped_w = min(w, 2000)
+    capped_h = min(h, 1500)
+    capped_zoom = min(zoom, 21)   # Bing max is z21
+    return (
+        f"https://dev.virtualearth.net/REST/v1/Imagery/Map/Aerial/{lat:.6f},{lng:.6f}/"
+        f"{capped_zoom}?mapSize={capped_w},{capped_h}&format=png&key={key}"
     )
 
 
@@ -347,6 +368,11 @@ async def _fetch_one(
         if not key:
             return None
         url = _maptiler_url(lat, lng, zoom, w, h, key)
+    elif provider == "bing":
+        key = settings.BING_MAPS_KEY
+        if not key:
+            return None
+        url = _bing_url(lat, lng, zoom, w, h, key)
     else:
         return None
 
@@ -446,9 +472,14 @@ async def fetch_satellite_image(
 
     async with httpx.AsyncClient() as client:
         for try_zoom in zoom_chain:
-            # Build provider order specific to this zoom level
+            # Build provider order specific to this zoom level.
+            # At high zoom (z21+) prefer MapTiler then Bing then Mapbox before
+            # falling back to Esri. Adding Bing gives the contractor a third
+            # totally different image vendor — sometimes Bing has sharper or
+            # fresher imagery for specific suburban US addresses where MapTiler
+            # doesn't.
             if try_zoom >= 21:
-                order: list[Provider] = ["maptiler", "mapbox", "esri"]
+                order: list[Provider] = ["maptiler", "bing", "mapbox", "esri"]
             else:
                 order = []
             if preferred and preferred in _PROVIDER_ORDER:

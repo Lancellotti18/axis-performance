@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     # fallback path; leaving them empty just means we degrade to Esri-only.
     MAPBOX_ACCESS_TOKEN: str = ""        # get at account.mapbox.com (free tier: 50k tiles/mo)
     MAPTILER_API_KEY: str = ""           # get at cloud.maptiler.com (free tier: 100k tiles/mo)
+    BING_MAPS_KEY: str = ""              # get at bingmapsportal.com (free tier: 125k transactions/yr, no card required)
 
     # AXIS / Blender pipeline
     BLENDER_PATH: str = "blender"
