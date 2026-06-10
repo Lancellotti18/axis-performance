@@ -1,5 +1,5 @@
 """
-Axis Performance — Satellite imagery enhancement (Real-ESRGAN super-resolution).
+Axis Performance — Satellite imagery enhancement (SUPIR super-resolution).
 
 Adds visual sharpness to satellite tiles via AI upscaling. Honest about what
 it is: the upscaled image has plausible-looking detail, NOT additional real
@@ -7,8 +7,10 @@ detail. Use for visualization (sharper edges when tracing facets, cleaner
 PDF cover photos). DON'T use for measurement — the math is still done from
 the original tile's metres-per-pixel.
 
-Provider: Replicate (nightmareai/real-esrgan). Free tier available; paid
-usage is ~$0.0005/image. Requires REPLICATE_API_KEY in settings.
+Provider: Replicate (lucataco/supir, primary; nightmareai/real-esrgan
+fallback). SUPIR is ~$0.05-0.15/image and recovers real detail; Real-ESRGAN
+is ~$0.0005/image and only handles cases where SUPIR fails. Requires
+REPLICATE_API_KEY in settings.
 
 If REPLICATE_API_KEY is unset, the function returns the original image bytes
 unchanged with a 'disabled' status so the UI can show "Sharpen disabled —
@@ -30,21 +32,24 @@ logger = logging.getLogger(__name__)
 
 
 REPLICATE_BASE = "https://api.replicate.com/v1"
-# Clarity-Upscaler — Stable Diffusion-based upscaler with internal tiling.
-# Tuned for satellite imagery: low creativity + high resemblance so it
-# sharpens existing detail instead of hallucinating buildings or trees.
-# Cost: ~$0.02-0.05 per image.
-UPSCALER_MODEL = "philz1337x/clarity-upscaler"
-# Real-ESRGAN fallback — used when clarity-upscaler fails (model unavailable,
+# SUPIR (Scaling Up to Excellence in Practical Image Restoration) — true
+# detail-recovery super-resolution. Unlike clarity-upscaler which does
+# color/HDR enhancement, SUPIR actually recovers real edge and texture
+# detail without hallucinating fake buildings. Based on SDXL + restoration
+# adapters. Slower (~60-90 sec) but much more visible result.
+#
+# Cost: ~$0.05-0.15 per image on Replicate (vs clarity's ~$0.02-0.05).
+# Worth it for the actual detail improvement.
+UPSCALER_MODEL = "lucataco/supir"
+# Real-ESRGAN fallback — used when SUPIR fails (model unavailable,
 # Replicate-side error, etc.). Smaller-input + scale=2 to survive their
 # shared-GPU OOM behavior. ~$0.005/image.
 FALLBACK_MODEL = "nightmareai/real-esrgan"
 FALLBACK_MAX_INPUT_PIXELS = 1_000_000
 FALLBACK_SCALE = 2
 
-# Clarity-Upscaler handles tiling internally so we can send larger inputs.
-# The practical limit is bandwidth + Replicate processing time, not GPU
-# memory. 2M pixels is the Esri tile native size — no resize needed.
+# SUPIR handles tiling internally — can take larger inputs than Real-ESRGAN.
+# We keep the 4M pixel cap to bound network roundtrip + Replicate compute time.
 MAX_INPUT_PIXELS = 4_000_000
 DEFAULT_SCALE = 4
 
@@ -98,14 +103,15 @@ async def upscale_image(
     face_enhance: bool = False,
 ) -> EnhancementResult:
     """
-    Send a satellite tile to Replicate's Real-ESRGAN and return the 4×
-    upscaled version. Total round-trip ~3-8 seconds.
+    Send a satellite tile to Replicate's SUPIR and return the 4× upscaled
+    version. SUPIR round-trip is ~60-120 seconds (SDXL inference); falls back
+    to Real-ESRGAN (~3-8 s) on SUPIR failure.
 
     Args:
         image_bytes: raw image bytes from the imagery service
         media_type: 'image/png' or 'image/jpeg'
         scale: 2 or 4 (4 is much sharper, 2 is faster)
-        face_enhance: usually False for satellite imagery
+        face_enhance: legacy Real-ESRGAN flag — ignored by SUPIR
 
     Returns EnhancementResult with the upscaled image bytes (or 'disabled'
     status if REPLICATE_API_KEY isn't set).
@@ -114,9 +120,8 @@ async def upscale_image(
         return EnhancementResult(
             status=EnhancementStatus.DISABLED,
             error=(
-                "Real-ESRGAN upscaler not configured. Set REPLICATE_API_KEY on "
-                "the backend to enable the Sharpen feature. Free tier available "
-                "at replicate.com."
+                "AI upscaler not configured. Set REPLICATE_API_KEY on the "
+                "backend to enable the Sharpen feature."
             ),
         )
 
@@ -136,43 +141,53 @@ async def upscale_image(
     b64 = base64.b64encode(image_bytes).decode("ascii")
     data_uri = f"data:{media_type};base64,{b64}"
 
-    # Clarity-Upscaler parameters tuned for satellite imagery — bumped to
-    # produce a VISIBLE enhancement while still preventing fake-building
-    # hallucination:
-    #   - dynamic: 6 (moderate creativity — visible HDR-like enhancement
-    #     without inventing structures)
-    #   - resemblance: 1.0 (balanced — close to original but not so
-    #     constrained the model can't sharpen edges)
-    #   - sharpen: 3 (clear post-process edge sharpening)
-    #   - prompt: anchors the model to satellite content
+    # SUPIR parameters tuned for satellite imagery. Different schema than
+    # clarity-upscaler. Key params:
+    #   - upscale: scale factor (2 or 4 — 4 for visible detail)
+    #   - s_cfg: classifier-free guidance scale (3-5 for satellite — lower =
+    #     stays closer to original, higher = more creative)
+    #   - s_stage2: restoration strength (1.0 = full restoration)
+    #   - s_stage1: pre-restoration scaling (-1 = automatic)
+    #   - color_fix_type: "Wavelet" preserves real colors better than "AdaIn"
+    #   - model_select: "v0Q" for quality (vs "v0F" for fast — we want quality)
+    #   - num_inference_steps: 30-50 (more = better but slower)
     input_payload = {
         "image": data_uri,
-        "scale_factor": scale,
-        "dynamic": 6,
-        "resemblance": 1.0,
-        "sharpen": 3,
-        "num_inference_steps": 18,
-        "prompt": "high-resolution aerial satellite photograph, residential property, crisp roof shingles, sharp clear details, professional quality",
-        "negative_prompt": "blurry, low quality, watermark, distorted, hallucinated buildings, fake structures, painted texture, cartoon",
-        "output_format": "png",
+        "upscale": scale,
+        "s_cfg": 3.5,
+        "s_stage1": -1,
+        "s_stage2": 1.0,
+        "s_churn": 5,
+        "s_noise": 1.003,
+        "color_fix_type": "Wavelet",
+        "model_select": "v0Q",
+        "num_inference_steps": 40,
+        "linear_CFG": True,
+        "linear_s_stage2": False,
+        "spt_linear_CFG": 1.0,
+        "spt_linear_s_stage2": 0.0,
+        "prompt": "high-resolution aerial satellite photograph of residential property, crisp roof shingles, sharp tree foliage, clear concrete details, professional quality, photorealistic",
+        "a_prompt": "Cinematic, High Contrast, highly detailed, taken using a Canon EOS R camera, hyper detailed photo - realistic maximum detail, 32k, Color Grading, ultra HD, extreme meticulous detailing, skin pore detailing, hyper sharpness, perfect without deformations",
+        "n_prompt": "painting, oil painting, illustration, drawing, art, sketch, anime, cartoon, CG Style, 3D render, unreal engine, blurring, dirty, messy, worst quality, low quality, frames, watermark, signature, jpeg artifacts, deformed, lowres, over-smooth, hallucinated buildings, fake structures",
     }
     headers = {
         "Authorization": f"Bearer {settings.REPLICATE_API_KEY}",
         "Content-Type": "application/json",
-        # Wait for completion synchronously (Replicate's Prefer header)
-        "Prefer": "wait=60",
+        # SUPIR can take 60-120 sec per image (SDXL inference is slow).
+        # Wait up to 180 sec synchronously before falling back to polling.
+        "Prefer": "wait=180",
     }
 
-    # Primary: clarity-upscaler. Falls back to Real-ESRGAN if version lookup
-    # fails or the prediction errors out — that way the contractor always gets
-    # *some* sharpening rather than the original tile.
+    # Primary: SUPIR. Falls back to Real-ESRGAN if version lookup fails or the
+    # prediction errors out — that way the contractor always gets *some*
+    # sharpening rather than the original tile.
     data, primary_error = await _try_predict(
-        UPSCALER_MODEL, input_payload, headers, "clarity-upscaler",
+        UPSCALER_MODEL, input_payload, headers, "supir",
     )
     if data is None:
         # Fall back to Real-ESRGAN with smaller-input config so it always fits
         # Replicate's shared GPU memory.
-        logger.info("clarity-upscaler failed (%s) — falling back to Real-ESRGAN", primary_error)
+        logger.info("supir failed (%s) — falling back to Real-ESRGAN", primary_error)
         # Resize input further for Real-ESRGAN's tighter memory budget
         re_image_bytes, re_media_type = image_bytes, media_type
         try:
@@ -201,7 +216,7 @@ async def upscale_image(
         if data is None:
             return EnhancementResult(
                 status=EnhancementStatus.FAILED,
-                error=f"Primary (clarity-upscaler) failed: {primary_error}. "
+                error=f"Primary (SUPIR) failed: {primary_error}. "
                       f"Fallback (real-esrgan) also failed: {fallback_error}.",
             )
 
@@ -211,7 +226,7 @@ async def upscale_image(
         # If still processing, poll briefly
         pred_id = data.get("id")
         if pred_id and status in ("starting", "processing"):
-            polled = await _poll_until_done(pred_id, max_wait_sec=60)
+            polled = await _poll_until_done(pred_id, max_wait_sec=180)
             data = polled or data
             status = (data.get("status") or "").lower()
 
@@ -281,7 +296,7 @@ async def _try_predict(
     payload = {"version": version_id, "input": input_payload}
     url = f"{REPLICATE_BASE}/predictions"
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=240) as client:
             r = await client.post(url, headers=headers, json=payload)
             r.raise_for_status()
             return r.json(), None
@@ -303,8 +318,8 @@ async def _fetch_latest_version(model: str) -> str | None:
     Resolve a Replicate model's latest version id.
 
     For models that aren't opted into the /v1/models/{owner}/{name}/predictions
-    shortcut (clarity-upscaler is one), we have to look up the current version
-    before submitting a prediction. Cached in-process so we only fetch once per
+    shortcut (SUPIR is one), we have to look up the current version before
+    submitting a prediction. Cached in-process so we only fetch once per
     backend boot (Replicate versions don't change mid-day).
     """
     if model in _VERSION_CACHE:
