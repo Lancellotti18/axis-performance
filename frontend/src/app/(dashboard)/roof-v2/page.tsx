@@ -29,6 +29,7 @@ import EdgeLabelSuggestions from '@/components/roof-v2/EdgeLabelSuggestions'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
+import ReportsPanel from '@/components/roof-v2/ReportsPanel'
 
 interface Project {
   id: string
@@ -800,6 +801,12 @@ export default function RoofV2Page() {
               {busy ? 'Generating…' : 'Confirm + download PDF report'}
             </button>
           </section>
+
+          {/* APIR — the new 12-page contractor-grade PDF (replaces the
+              8-section ReportLab output above once accuracy is verified). */}
+          {projectId && (
+            <ReportsPanel projectId={projectId} runId={runId ?? undefined} />
+          )}
         </>
       )}
     </div>

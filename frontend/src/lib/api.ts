@@ -107,6 +107,27 @@ export async function apiRequest<T>(
   return res!.json()
 }
 
+/**
+ * Like apiRequest but returns the raw response text (not JSON).
+ * Used by APIR's HTML preview endpoint which serves text/html.
+ */
+export async function apiRequestText(
+  path: string,
+  options?: RequestInit,
+  timeoutMs = 90000,
+): Promise<string> {
+  const fetchOptions: RequestInit = {
+    ...options,
+    headers: await buildAuthHeaders(options),
+  }
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, fetchOptions, timeoutMs)
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(`[HTTP ${res.status}] ${detail.slice(0, 300)}`)
+  }
+  return res.text()
+}
+
 // Projects
 export const api = {
   projects: {
@@ -1089,6 +1110,83 @@ export const api = {
         `/api/v1/renders/${projectId}/generate`,
         { method: 'POST', body: JSON.stringify({ style, time_of_day: timeOfDay, user_context: userContext }) },
         300000,  // 5-min timeout — images generated serially with 10s gaps to respect Gemini rate limits
+      ),
+  },
+
+  // ── APIR (Axis Property Intelligence Report) — 12-page contractor PDF ──
+  // The backend pipeline takes 30-90 sec when vision calls run (siding
+  // height + materials + soffit + pitch from photos), so we set a 3-min
+  // timeout on generate. Preview skips vision and is fast (<5 sec).
+  apir: {
+    /**
+     * Run the full pipeline: extraction + diagrams + PDF + S3 upload +
+     * apir_reports row insert. Returns the download URL.
+     */
+    generate: (payload: {
+      project_id: string
+      run_id?: string
+      report_type?: 'full_exterior' | 'roof_only' | 'siding_only'
+      force_regenerate?: boolean
+    }) =>
+      apiRequest<{
+        report_id: string
+        status: 'draft' | 'final'
+        version: number
+        download_url: string
+        generated_at: string
+        page_count: number
+        scale_confidence: 'high' | 'medium' | 'estimated'
+      }>(`/api/v1/apir/generate`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, 180000),
+
+    /** Every version of every APIR report for a project, newest first. */
+    list: (projectId: string) =>
+      apiRequest<{
+        reports: Array<{
+          id: string
+          version: number
+          status: 'draft' | 'final'
+          pdf_url: string | null
+          pdf_size_kb: number | null
+          scale_confidence: 'high' | 'medium' | 'estimated' | null
+          scale_method: string | null
+          report_type: string | null
+          ai_model_used: string | null
+          page_count: number
+          generated_at: string
+          generated_by: string | null
+          finalized_at: string | null
+        }>
+      }>(`/api/v1/apir/list/${projectId}`),
+
+    /** Lock a draft report — one-way. */
+    finalize: (reportId: string) =>
+      apiRequest<{ ok: boolean; report_id: string; status: 'final' }>(
+        `/api/v1/apir/finalize/${reportId}`,
+        { method: 'POST' },
+      ),
+
+    /**
+     * Build a URL that downloads the PDF. Server returns a 302 redirect
+     * to S3 (prod) or file:// (dev). For dev mode the browser may not
+     * follow file:// — show the URL to the contractor as a fallback.
+     */
+    downloadUrl: (reportId: string) =>
+      `${API_BASE}/api/v1/apir/download/${reportId}`,
+
+    /**
+     * Fetch the 12-page HTML preview (with auth) and return the raw HTML.
+     * Caller wraps it in a Blob and window.open()s it — the new tab
+     * can't carry the JWT header, so we can't just point window.open
+     * at the URL directly.
+     */
+    preview: (projectId: string, runId?: string) =>
+      apiRequestText(
+        `/api/v1/apir/preview/${projectId}${runId ? `?run_id=${runId}` : ''}`,
+        undefined,
+        120000,
       ),
   },
 }
