@@ -12,9 +12,11 @@
 --   3. New company_profile table — contractor branding for the cover page
 --      (logo, license #, contact info). Keyed on auth.users so it's truly
 --      per-contractor and survives a project changing hands later.
---   4. New reports table — versioned, immutable record of every generated
---      PDF. measurements_snapshot is a frozen PropertyMeasurements JSONB so
---      a final report is reproducible even if underlying data changes.
+--   4. New apir_reports table — versioned, immutable record of every
+--      generated PDF. measurements_snapshot is a frozen PropertyMeasurements
+--      JSONB so a final report is reproducible even if underlying data
+--      changes. Named apir_reports (not reports) to avoid collision with
+--      the legacy ReportLab pipeline's existing public.reports table.
 --
 -- All new tables use the established axis_project_owner(project_id) RLS
 -- helper so contractors only see their own jobs.
@@ -101,10 +103,15 @@ COMMENT ON TABLE company_profile IS
   'Logo, license #, contact info, website. Editable from the Settings page.';
 
 -- ─────────────────────────────────────────────────────────────────────────
--- 4. reports — versioned, immutable record of every generated APIR PDF
+-- 4. apir_reports — versioned, immutable record of every generated APIR PDF
+--
+-- Named apir_reports (not reports) because the legacy ReportLab pipeline
+-- already owns a public.reports table for PDF/Excel/CSV download URLs.
+-- Keeping the two separate avoids a name collision and lets the old report
+-- flow keep working while APIR ships in parallel.
 -- ─────────────────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS reports (
+CREATE TABLE IF NOT EXISTS apir_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   run_id UUID REFERENCES roof_measurement_runs(id) ON DELETE SET NULL,
@@ -141,17 +148,17 @@ CREATE TABLE IF NOT EXISTS reports (
   UNIQUE (project_id, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_reports_project ON reports (project_id, version DESC);
-CREATE INDEX IF NOT EXISTS idx_reports_status ON reports (status);
+CREATE INDEX IF NOT EXISTS idx_apir_reports_project ON apir_reports (project_id, version DESC);
+CREATE INDEX IF NOT EXISTS idx_apir_reports_status ON apir_reports (status);
 
-ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE apir_reports ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can CRUD reports for their own projects"
-  ON reports FOR ALL
+CREATE POLICY "Users can CRUD apir reports for their own projects"
+  ON apir_reports FOR ALL
   USING (axis_project_owner(project_id))
   WITH CHECK (axis_project_owner(project_id));
 
-COMMENT ON TABLE reports IS
+COMMENT ON TABLE apir_reports IS
   'Immutable, versioned record of every generated APIR PDF. status=draft '
   'allows the contractor to regenerate; status=final locks the row (no '
   'edits, no regeneration — the PDF is the deliverable). measurements_'
@@ -169,7 +176,7 @@ BEGIN
   IF NEW.version IS NULL OR NEW.version = 0 THEN
     SELECT COALESCE(MAX(version), 0) + 1
       INTO NEW.version
-      FROM reports
+      FROM apir_reports
      WHERE project_id = NEW.project_id;
   END IF;
   RETURN NEW;
@@ -177,7 +184,7 @@ END;
 $$;
 
 CREATE TRIGGER trg_apir_next_report_version
-  BEFORE INSERT ON reports
+  BEFORE INSERT ON apir_reports
   FOR EACH ROW
   EXECUTE FUNCTION apir_next_report_version();
 
@@ -199,6 +206,6 @@ END;
 $$;
 
 CREATE TRIGGER trg_apir_prevent_final_report_edits
-  BEFORE UPDATE ON reports
+  BEFORE UPDATE ON apir_reports
   FOR EACH ROW
   EXECUTE FUNCTION apir_prevent_final_report_edits();
