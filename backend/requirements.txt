@@ -32,3 +32,9 @@ reportlab==4.0.8
 pymupdf==1.23.8
 openpyxl==3.1.2
 beautifulsoup4>=4.12.0
+
+# APIR — Axis Property Intelligence Report (12-page PDF via HTML→PDF)
+# WeasyPrint needs system libs on Linux: libpango-1.0-0 libpangoft2-1.0-0
+# libcairo2 libgdk-pixbuf2.0-0 (Render auto-installs these on Python builds).
+weasyprint>=66.0
+jinja2>=3.1.0
