@@ -520,3 +520,67 @@ class ReportErrorResponse(BaseModel):
     error: ReportErrorCode
     message: str
     details: Optional[dict] = None
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Accuracy diagnostic report (Phase 6) — derived from PropertyMeasurements
+#
+# Computed read-only from the snapshot, not stored — every call to the
+# accuracy endpoint re-derives it. This makes the diagnostic always
+# match the current measurement_snapshot semantics.
+# ─────────────────────────────────────────────────────────────────────────
+
+AccuracyGrade = Literal["A", "B", "C", "D"]
+
+
+class AccuracyItem(BaseModel):
+    """One specific measurement that the contractor should sanity-check."""
+    category: Literal[
+        "scale", "pitch", "wall_height", "soffit", "materials",
+        "window_door", "facet_area",
+    ]
+    target_id: Optional[str] = None     # e.g. "SI-2" or "RF-3"
+    label: str                          # human-readable description
+    confidence: ScaleConfidence         # high / medium / estimated
+    value: Optional[str] = None         # the current measured value
+    recommendation: str                 # what the contractor should do
+    estimated_error_pct: Optional[float] = None  # expected ±%
+
+
+class AccuracyCategoryStat(BaseModel):
+    """Confidence breakdown for one of the categories."""
+    category: Literal[
+        "scale", "pitch", "wall_height", "soffit", "materials",
+        "window_door", "facet_area",
+    ]
+    confidence: ScaleConfidence
+    sample_count: int = 0
+    high_count: int = 0
+    medium_count: int = 0
+    estimated_count: int = 0
+    target_pct_error: float             # APIR's stated target (±%)
+    note: str = ""
+
+
+class AccuracyReport(BaseModel):
+    """
+    The full accuracy diagnostic for one APIR report.
+    Returned by GET /api/v1/apir/accuracy/{report_id}.
+    """
+    report_id: str
+    version: int
+    overall_grade: AccuracyGrade
+    overall_confidence: ScaleConfidence
+    overall_score: float                # 0..1 — used to derive grade
+
+    # Aggregate diagnostics
+    categories: list[AccuracyCategoryStat]
+
+    # Per-item flags (low-confidence, needs verification)
+    flagged_items: list[AccuracyItem]
+
+    # Recommendation summary (1-3 sentences)
+    summary: str
+
+    # Suggested next-action steps (for the UI to render as a checklist)
+    on_site_checks: list[str]

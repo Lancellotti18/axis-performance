@@ -1188,5 +1188,40 @@ export const api = {
         undefined,
         120000,
       ),
+
+    /**
+     * Compute the accuracy diagnostic for a stored report. Returns the
+     * overall grade + per-category confidence + flagged items + on-site
+     * verification checklist. Pure server-side derivation, no AI.
+     */
+    accuracy: (reportId: string) =>
+      apiRequest<{
+        report_id: string
+        version: number
+        overall_grade: 'A' | 'B' | 'C' | 'D'
+        overall_confidence: 'high' | 'medium' | 'estimated'
+        overall_score: number
+        categories: Array<{
+          category: string
+          confidence: 'high' | 'medium' | 'estimated'
+          sample_count: number
+          high_count: number
+          medium_count: number
+          estimated_count: number
+          target_pct_error: number
+          note: string
+        }>
+        flagged_items: Array<{
+          category: string
+          target_id: string | null
+          label: string
+          confidence: 'high' | 'medium' | 'estimated'
+          value: string | null
+          recommendation: string
+          estimated_error_pct: number | null
+        }>
+        summary: string
+        on_site_checks: string[]
+      }>(`/api/v1/apir/accuracy/${reportId}`),
   },
 }

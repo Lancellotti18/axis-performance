@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
+import AccuracyPanel from '@/components/roof-v2/AccuracyPanel'
 
 
 type ReportRow = {
@@ -54,6 +55,7 @@ export default function ReportsPanel({
   const [previewing, setPreviewing] = useState(false)
   const [roofWaste, setRoofWaste] = useState<number>(initialRoofWastePct ?? 12)
   const [sidingWaste, setSidingWaste] = useState<number>(initialSidingWastePct ?? 10)
+  const [expandedReportId, setExpandedReportId] = useState<string | null>(null)
 
   // Load version history on mount + when projectId changes
   const refresh = useCallback(async () => {
@@ -239,45 +241,65 @@ export default function ReportsPanel({
                 </tr>
               </thead>
               <tbody>
-                {reports.map(r => (
-                  <tr key={r.id} className="border-t border-slate-800">
-                    <td className="px-3 py-2 font-mono text-slate-200">v{r.version}</td>
-                    <td className="px-3 py-2">
-                      <StatusBadge status={r.status} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <ConfidenceBadge confidence={r.scale_confidence} />
-                    </td>
-                    <td className="px-3 py-2 text-slate-400">
-                      {new Date(r.generated_at).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-slate-400">
-                      {r.pdf_size_kb ? `${(r.pdf_size_kb / 1024).toFixed(2)} MB` : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <div className="flex justify-end gap-2">
-                        {r.pdf_url && (
-                          <a
-                            href={r.pdf_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
-                          >
-                            Download
-                          </a>
-                        )}
-                        {r.status === 'draft' && (
+                {reports.map(r => {
+                  const isExpanded = expandedReportId === r.id
+                  return (
+                    <FragmentRow key={r.id}>
+                      <tr className="border-t border-slate-800">
+                        <td className="px-3 py-2 font-mono text-slate-200">
                           <button
-                            onClick={() => { void handleFinalize(r.id) }}
-                            className="rounded border border-amber-700 px-2 py-1 text-xs font-medium text-amber-400 hover:bg-amber-900/30"
+                            onClick={() => setExpandedReportId(isExpanded ? null : r.id)}
+                            className="hover:text-emerald-300"
+                            title={isExpanded ? 'Hide accuracy diagnostic' : 'Show accuracy diagnostic'}
                           >
-                            Finalize
+                            {isExpanded ? '▾' : '▸'} v{r.version}
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </td>
+                        <td className="px-3 py-2">
+                          <StatusBadge status={r.status} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <ConfidenceBadge confidence={r.scale_confidence} />
+                        </td>
+                        <td className="px-3 py-2 text-slate-400">
+                          {new Date(r.generated_at).toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2 text-slate-400">
+                          {r.pdf_size_kb ? `${(r.pdf_size_kb / 1024).toFixed(2)} MB` : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex justify-end gap-2">
+                            {r.pdf_url && (
+                              <a
+                                href={r.pdf_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
+                              >
+                                Download
+                              </a>
+                            )}
+                            {r.status === 'draft' && (
+                              <button
+                                onClick={() => { void handleFinalize(r.id) }}
+                                className="rounded border border-amber-700 px-2 py-1 text-xs font-medium text-amber-400 hover:bg-amber-900/30"
+                              >
+                                Finalize
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="border-t border-slate-800 bg-slate-900/30">
+                          <td colSpan={6} className="px-3 py-3">
+                            <AccuracyPanel reportId={r.id} />
+                          </td>
+                        </tr>
+                      )}
+                    </FragmentRow>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -285,6 +307,17 @@ export default function ReportsPanel({
       </div>
     </section>
   )
+}
+
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * React.Fragment alias — needed because TR siblings can't have a
+ * <div> wrapper, but we want a single "logical row" (row + accuracy panel).
+ */
+function FragmentRow({ children }: { children: React.ReactNode }) {
+  return <>{children}</>
 }
 
 

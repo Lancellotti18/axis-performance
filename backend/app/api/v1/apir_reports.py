@@ -25,8 +25,10 @@ from fastapi.responses import RedirectResponse
 from app.core.auth import require_user
 from app.core.supabase import get_supabase
 from app.schemas.apir import (
-    GenerateReportRequest, GenerateReportResponse, ReportErrorResponse,
+    AccuracyReport, GenerateReportRequest, GenerateReportResponse,
+    PropertyMeasurements, ReportErrorResponse,
 )
+from app.services.report.accuracy_report import compute_accuracy_report
 from app.services.report.extraction import build_property_measurements
 from app.services.report.generate_report import (
     generate_html_preview, generate_report,
@@ -242,6 +244,52 @@ async def finalize_report(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Finalize failed: {e}")
     return {"ok": True, "report_id": report_id, "status": "final"}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# GET /accuracy/{report_id}
+# ─────────────────────────────────────────────────────────────────────────
+
+@router.get("/accuracy/{report_id}", response_model=AccuracyReport)
+async def report_accuracy(
+    report_id: str,
+    user: dict = Depends(require_user),
+) -> AccuracyReport:
+    """
+    Computes the accuracy diagnostic for a stored report's
+    measurements_snapshot. Returns per-category confidence breakdown,
+    flagged items, an overall grade (A-D), and an on-site verification
+    checklist. Pure derivation — no AI calls, no state mutation.
+    """
+    db = get_supabase()
+    res = (
+        db.table("apir_reports")
+        .select(
+            "id,project_id,version,status,measurements_snapshot"
+        )
+        .eq("id", report_id)
+        .limit(1)
+        .execute()
+    )
+    rows = getattr(res, "data", None) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Report not found")
+    row = rows[0]
+    _verify_project_owner(db, row["project_id"], user["id"])
+    snapshot = row.get("measurements_snapshot")
+    if not snapshot:
+        raise HTTPException(
+            status_code=410,
+            detail="Report exists but no measurements_snapshot was stored.",
+        )
+    try:
+        measurements = PropertyMeasurements.model_validate(snapshot)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Stored snapshot failed to parse: {e}",
+        )
+    return compute_accuracy_report(measurements, report_id=report_id)
 
 
 # ─────────────────────────────────────────────────────────────────────────
