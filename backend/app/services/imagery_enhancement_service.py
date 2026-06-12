@@ -173,9 +173,10 @@ async def upscale_image(
     headers = {
         "Authorization": f"Bearer {settings.REPLICATE_API_KEY}",
         "Content-Type": "application/json",
-        # SUPIR can take 60-120 sec per image (SDXL inference is slow).
-        # Wait up to 180 sec synchronously before falling back to polling.
-        "Prefer": "wait=180",
+        # Replicate caps Prefer: wait at 60 seconds — anything higher gets
+        # a 422 with "Prefer: wait=x must be between 1 and 60". For longer
+        # waits we rely on _poll_until_done() (max_wait_sec=180 below).
+        "Prefer": "wait=60",
     }
 
     # Primary: SUPIR. Falls back to Real-ESRGAN if version lookup fails or the
