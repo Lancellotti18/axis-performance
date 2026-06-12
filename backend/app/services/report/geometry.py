@@ -301,6 +301,24 @@ def measure_facet_edges(
                 shared_with=shared_with,
             )
         )
+
+    # Hip-facet pattern fix: if a facet has exactly ONE non-shared edge, that
+    # edge is the eave regardless of its on-screen angle. Hip facets are
+    # triangles with two shared diagonal hips and one wall-bearing eave; that
+    # eave is vertical in screen-coords when the wall runs N-S, which would
+    # otherwise get misclassified as a "rake" by the angle heuristic.
+    non_shared = [i for i, e in enumerate(edges) if e.shared_with is None]
+    if len(non_shared) == 1:
+        idx = non_shared[0]
+        original = edges[idx]
+        if original.type != "eave":
+            edges[idx] = RoofEdge(
+                type="eave",
+                length_ft=original.length_ft,
+                pixel_start=original.pixel_start,
+                pixel_end=original.pixel_end,
+                shared_with=None,
+            )
     return edges
 
 

@@ -497,17 +497,34 @@ def _build_siding(
     doors_list: list[Door] = []
     window_groups: list[WindowGroup] = []
 
-    elev_to_dir: dict[str, str] = {"S": "front", "N": "back", "E": "right", "W": "left"}
+    # Map each compass slope direction to the wall(s) that facet contributes
+    # eaves to. Cardinals map 1:1; diagonals (hip facets on a colonial) split
+    # their eave 50/50 between the two adjacent cardinal walls — the physical
+    # eave of a NE-facing hip facet runs along both the N and E corner walls.
+    elev_to_walls: dict[str, list[str]] = {
+        "S":  ["front"],
+        "N":  ["back"],
+        "E":  ["right"],
+        "W":  ["left"],
+        "SE": ["front", "right"],
+        "SW": ["front", "left"],
+        "NE": ["back", "right"],
+        "NW": ["back", "left"],
+    }
 
-    # Aggregate eave length per elevation
+    # Aggregate eave length per elevation. For diagonal slope_directions,
+    # divide the eave length evenly between the two cardinal walls.
     eave_per_elev: dict[str, float] = {"front": 0.0, "back": 0.0, "right": 0.0, "left": 0.0}
     for facet in facets:
-        elev = elev_to_dir.get(facet.slope_direction)
-        if not elev:
+        walls = elev_to_walls.get(facet.slope_direction, [])
+        if not walls:
             continue
         for e in facet.edges:
-            if e.type == "eave":
-                eave_per_elev[elev] += e.length_ft
+            if e.type != "eave":
+                continue
+            share = e.length_ft / len(walls)
+            for wall in walls:
+                eave_per_elev[wall] += share
 
     si_index = 1
     win_index = 1

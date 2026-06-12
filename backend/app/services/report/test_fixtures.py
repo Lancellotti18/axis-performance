@@ -117,3 +117,41 @@ def build_apir_test_property():
     pm.job.scale_method = "estimated"
     pm.job.scale_confidence = "estimated"
     return pm
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Hip-roof fixture — 4 facets with diagonal slope directions (NE/NW/SE/SW)
+#
+# Used by extraction tests to verify the diagonal slope-direction mapping
+# correctly produces 4 siding elevations. The basic APIR_TEST_PROPERTY
+# uses cardinal slope directions only, so it can't catch this regression.
+# ─────────────────────────────────────────────────────────────────────────
+
+# Simple hip roof: square footprint, four triangular hip facets meeting at
+# a single center point. Each facet's eave runs along one wall of the
+# square; each slope direction is one of NE/NW/SE/SW.
+#
+#  y=100 ┌────────────────┐
+#        │ \    HIP-N   / │
+#        │   \        /   │
+#        │HIP-W \   / HIP-E│
+#        │       X        │   (X = center peak)
+#        │   /        \   │
+#        │  /  HIP-S    \ │
+#  y=500 └────────────────┘
+#       x=100             x=500
+APIR_HIP_ROOF_POLYGONS: dict[str, list[PointPx]] = {
+    # NE-facing hip: top-right triangle
+    "RF-NE": [PointPx(x=100, y=100), PointPx(x=500, y=100), PointPx(x=300, y=300)],
+    # SE-facing hip: bottom-right triangle
+    "RF-SE": [PointPx(x=500, y=100), PointPx(x=500, y=500), PointPx(x=300, y=300)],
+    # SW-facing hip: bottom-left triangle
+    "RF-SW": [PointPx(x=500, y=500), PointPx(x=100, y=500), PointPx(x=300, y=300)],
+    # NW-facing hip: top-left triangle
+    "RF-NW": [PointPx(x=100, y=500), PointPx(x=100, y=100), PointPx(x=300, y=300)],
+}
+
+APIR_HIP_FOOTPRINT: list[PointPx] = [
+    PointPx(x=100, y=100), PointPx(x=500, y=100),
+    PointPx(x=500, y=500), PointPx(x=100, y=500),
+]
