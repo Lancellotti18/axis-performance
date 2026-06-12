@@ -29,6 +29,7 @@
  * existing RoofOutlineEditor convention.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { buildEdgeMap, clearEdgeCache, snapToNearestEdge } from '@/lib/edgeSnap'
 
 export type EdgeType =
   | 'eave' | 'rake' | 'ridge' | 'hip' | 'valley'
@@ -119,6 +120,29 @@ function clampFrac(v: number): number {
   return Math.max(0, Math.min(1, v))
 }
 
+/**
+ * Constrain the candidate vertex `to` so that the segment from `from` is at
+ * the nearest multiple of 45° (0/45/90/135/180/225/270/315). Works in pixel
+ * space (using imageW/imageH to convert to/from fractional coords).
+ * Preserves the distance of the original cursor from the anchor.
+ */
+function constrainTo45(from: Pt, to: Pt, imageW: number, imageH: number): Pt {
+  const fromX = from[0] * imageW
+  const fromY = from[1] * imageH
+  const toX = to[0] * imageW
+  const toY = to[1] * imageH
+  const dx = toX - fromX
+  const dy = toY - fromY
+  const dist = Math.hypot(dx, dy)
+  if (dist === 0) return to
+  const angle = Math.atan2(dy, dx)
+  // Round to nearest 45° (π/4 radians)
+  const stepped = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
+  const snappedX = fromX + Math.cos(stepped) * dist
+  const snappedY = fromY + Math.sin(stepped) * dist
+  return [clampFrac(snappedX / imageW), clampFrac(snappedY / imageH)]
+}
+
 export function RoofFacetEditor({
   imageUrl, imageWidthPx, imageHeightPx,
   initialFacets = [], initialEdges = [], onChange,
@@ -132,6 +156,44 @@ export function RoofFacetEditor({
   const [dragVertex, setDragVertex] = useState<{ facetIdx: number; vertexIdx: number } | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<{ facetIdx: number; edgeIdx: number } | null>(null)
   const [imageDims, setImageDims] = useState({ w: imageWidthPx, h: imageHeightPx })
+
+  // Snap-to-edge: when on, vertex placements snap to the nearest high-gradient
+  // pixel within a small radius. Massively improves tracing on blurry imagery.
+  const [snapEnabled, setSnapEnabled] = useState(true)
+  const [snapReady, setSnapReady] = useState(false)
+
+  // Orthogonality snap: when Shift is held during a click, the new vertex is
+  // constrained to a multiple of 45° from the previous one (typical for
+  // residential roofs that are mostly right-angled).
+  const [shiftHeld, setShiftHeld] = useState(false)
+
+  // Build the edge gradient map whenever the imagery changes. Runs once per
+  // tile load (~80–150ms on a 2K tile).
+  useEffect(() => {
+    if (!imageUrl) {
+      setSnapReady(false)
+      clearEdgeCache()
+      return
+    }
+    let cancelled = false
+    setSnapReady(false)
+    buildEdgeMap(imageUrl)
+      .then(() => { if (!cancelled) setSnapReady(true) })
+      .catch(err => { console.warn('edge map build failed:', err); if (!cancelled) setSnapReady(false) })
+    return () => { cancelled = true; clearEdgeCache() }
+  }, [imageUrl])
+
+  // Track Shift for orthogonality constraint
+  useEffect(() => {
+    const onDown = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(true) }
+    const onUp = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(false) }
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    return () => {
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
+    }
+  }, [])
   // Pan + zoom for the canvas. Pure CSS transform on the inner stage — the
   // SVG's getBoundingClientRect() reports the transformed rect so vertex
   // click math (eventToFrac) keeps producing correct image fractions.
@@ -264,8 +326,27 @@ export function RoofFacetEditor({
   const onSvgPointerDown = useCallback((ev: React.PointerEvent<SVGSVGElement>) => {
     if (mode !== 'draw') return
     if (ev.button !== 0) return
-    const pt = eventToFrac(ev)
-    // Close polygon if clicking near first vertex
+    let pt = eventToFrac(ev)
+
+    // 1. Orthogonality snap — if Shift is held and we already have a prior
+    //    vertex, constrain to nearest 0°/45°/90°/135° from it.
+    if (shiftHeld && drawingPoly.length > 0) {
+      const last = drawingPoly[drawingPoly.length - 1]
+      pt = constrainTo45(last, pt, imageDims.w, imageDims.h)
+    }
+
+    // 2. Snap-to-edge — if snap is enabled and the edge map is built, nudge
+    //    the vertex to the strongest nearby gradient (the actual visible edge).
+    if (snapEnabled && snapReady) {
+      const x_px = pt[0] * imageDims.w
+      const y_px = pt[1] * imageDims.h
+      const snapped = snapToNearestEdge(x_px, y_px, 14)
+      if (snapped.snapped) {
+        pt = [snapped.x / imageDims.w, snapped.y / imageDims.h]
+      }
+    }
+
+    // Close polygon if the snapped point is near the first vertex
     if (drawingPoly.length >= 3) {
       const [fx, fy] = drawingPoly[0]
       if (Math.abs(pt[0] - fx) < 0.012 && Math.abs(pt[1] - fy) < 0.018) {
@@ -274,7 +355,7 @@ export function RoofFacetEditor({
       }
     }
     setDrawingPoly(prev => [...prev, pt])
-  }, [mode, drawingPoly, eventToFrac])
+  }, [mode, drawingPoly, eventToFrac, shiftHeld, snapEnabled, snapReady, imageDims])
 
   const finalizeDrawingPoly = useCallback(() => {
     if (drawingPoly.length < 3) {
@@ -513,6 +594,34 @@ export function RoofFacetEditor({
         <span className="text-xs text-slate-400">
           {facets.length} facet{facets.length === 1 ? '' : 's'}
         </span>
+        {/* Snap-to-edge + orthogonality controls (only matter in draw mode) */}
+        {mode === 'draw' && (
+          <>
+            <div className="mx-2 h-5 w-px bg-white/10" />
+            <label className="flex items-center gap-1.5 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={snapEnabled}
+                onChange={e => setSnapEnabled(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800"
+              />
+              Snap to edge
+              {snapEnabled && (
+                <span className={snapReady ? 'text-emerald-400' : 'text-amber-400'}>
+                  {snapReady ? '●' : '◐'}
+                </span>
+              )}
+            </label>
+            <span
+              className={`rounded px-2 py-0.5 text-[10px] ${
+                shiftHeld ? 'bg-blue-500/30 text-blue-200' : 'bg-slate-800 text-slate-500'
+              }`}
+              title="Hold Shift while clicking to constrain new vertex to 45° angles from the previous one"
+            >
+              ⇧ {shiftHeld ? 'ortho ON' : 'ortho (hold ⇧)'}
+            </span>
+          </>
+        )}
         {mode === 'draw' && drawingPoly.length > 0 && (
           <span className="rounded bg-amber-500/20 px-2 py-1 text-xs text-amber-200">
             Drawing — {drawingPoly.length} vertex{drawingPoly.length === 1 ? '' : 'es'}. Click first dot or press Enter to close.
