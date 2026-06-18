@@ -112,6 +112,11 @@ function clampFrac(v: number): number {
   return Math.max(0, Math.min(1, v))
 }
 
+// Magnetic vertex-snap radius in image fractions (~12px on a 1000px display).
+// When the cursor is within this of an existing vertex, the new vertex locks
+// onto it exactly — so adjacent facets share a ridge/valley vertex precisely.
+const VERTEX_SNAP_FRAC = 0.012
+
 /**
  * Constrain the candidate vertex `to` so that the segment from `from` is at
  * the nearest multiple of 45° (0/45/90/135/180/225/270/315). Works in pixel
@@ -147,6 +152,10 @@ export function RoofFacetEditor({
   const [dragVertex, setDragVertex] = useState<{ facetIdx: number; vertexIdx: number } | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<{ facetIdx: number; edgeIdx: number } | null>(null)
   const [imageDims, setImageDims] = useState({ w: imageWidthPx, h: imageHeightPx })
+  // Live cursor position (image fractions) while drawing — drives the
+  // rubber-band preview line + the "where will this click land" preview dot.
+  const [hoverPt, setHoverPt] = useState<Pt | null>(null)
+  const [hoverSnappedVertex, setHoverSnappedVertex] = useState(false)
 
   // Snap-to-edge: when on, vertex placements snap to the nearest high-gradient
   // pixel within a small radius. Massively improves tracing on blurry imagery.
@@ -205,6 +214,76 @@ export function RoofFacetEditor({
     lastOnChangeRef.current = snap
     onChange(facets, edges)
   }, [facets, edges, onChange])
+
+  // ---- Undo / redo ----
+  // Snapshots every facets/edges mutation automatically (draw, delete, drag,
+  // relabel — all of them). A "time-travel" flag prevents undo/redo restores
+  // from being recorded as new history entries.
+  const historyRef = useRef<{ past: string[]; future: string[] }>({ past: [], future: [] })
+  const lastHistSnapRef = useRef<string>('')
+  const timeTravelRef = useRef(false)
+  const [histVersion, setHistVersion] = useState(0)   // forces toolbar re-render
+
+  useEffect(() => {
+    const snap = JSON.stringify({ facets, edges })
+    if (snap === lastHistSnapRef.current) return
+    if (timeTravelRef.current) {
+      timeTravelRef.current = false
+      lastHistSnapRef.current = snap
+      return
+    }
+    if (lastHistSnapRef.current) historyRef.current.past.push(lastHistSnapRef.current)
+    if (historyRef.current.past.length > 100) historyRef.current.past.shift()
+    historyRef.current.future = []
+    lastHistSnapRef.current = snap
+    setHistVersion(v => v + 1)
+  }, [facets, edges])
+
+  const restoreSnapshot = useCallback((raw: string) => {
+    try {
+      const parsed = JSON.parse(raw) as { facets: Facet[]; edges: LabeledEdge[] }
+      timeTravelRef.current = true
+      lastHistSnapRef.current = raw
+      setFacets(parsed.facets)
+      setEdges(parsed.edges)
+      setDrawingPoly([])
+    } catch { /* ignore corrupt snapshot */ }
+  }, [])
+
+  const undo = useCallback(() => {
+    const h = historyRef.current
+    if (!h.past.length) return
+    h.future.push(lastHistSnapRef.current)
+    restoreSnapshot(h.past.pop() as string)
+    setHistVersion(v => v + 1)
+  }, [restoreSnapshot])
+
+  const redo = useCallback(() => {
+    const h = historyRef.current
+    if (!h.future.length) return
+    h.past.push(lastHistSnapRef.current)
+    restoreSnapshot(h.future.pop() as string)
+    setHistVersion(v => v + 1)
+  }, [restoreSnapshot])
+
+  const canUndo = historyRef.current.past.length > 0
+  const canRedo = historyRef.current.future.length > 0
+  void histVersion   // referenced so the linter keeps the re-render trigger
+
+  // Cmd/Ctrl+Z = undo, Cmd/Ctrl+Shift+Z or Ctrl+Y = redo. Global, but ignores
+  // keystrokes while typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (!(e.metaKey || e.ctrlKey)) return
+      const k = e.key.toLowerCase()
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
+      else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [undo, redo])
 
   // ---- Coordinate helpers ----
   const eventToFrac = useCallback((ev: React.PointerEvent | PointerEvent): Pt => {
@@ -376,30 +455,44 @@ export function RoofFacetEditor({
   }, [panning])
 
   // ---- Drawing flow ----
+  // Resolve a raw cursor point into the final vertex position, applying (in
+  // order): orthogonality constraint (Shift), magnetic vertex snap (to any
+  // existing facet vertex — makes shared ridges/valleys trace ONCE and align
+  // perfectly), then edge snap (to the strongest nearby image gradient).
+  // Returns the resolved point + whether it locked onto an existing vertex.
+  const resolvePoint = useCallback((raw: Pt): { pt: Pt; onVertex: boolean } => {
+    let pt = raw
+
+    // 1. Orthogonality (Shift)
+    if (shiftHeld && drawingPoly.length > 0) {
+      pt = constrainTo45(drawingPoly[drawingPoly.length - 1], pt, imageDims.w, imageDims.h)
+    }
+
+    // 2. Magnetic vertex snap — strongest assist for topology correctness.
+    let best: Pt | null = null
+    let bestD = VERTEX_SNAP_FRAC
+    for (const f of facets) {
+      for (const v of f.polygon) {
+        const d = Math.hypot(v[0] - pt[0], v[1] - pt[1])
+        if (d < bestD) { bestD = d; best = v }
+      }
+    }
+    if (best) return { pt: [best[0], best[1]], onVertex: true }
+
+    // 3. Edge snap (gradient)
+    if (snapEnabled && snapReady) {
+      const snapped = snapToNearestEdge(pt[0] * imageDims.w, pt[1] * imageDims.h, 14)
+      if (snapped.snapped) pt = [snapped.x / imageDims.w, snapped.y / imageDims.h]
+    }
+    return { pt, onVertex: false }
+  }, [shiftHeld, drawingPoly, facets, snapEnabled, snapReady, imageDims])
+
   const onSvgPointerDown = useCallback((ev: React.PointerEvent<SVGSVGElement>) => {
     if (mode !== 'draw') return
     if (ev.button !== 0) return
-    let pt = eventToFrac(ev)
+    const { pt } = resolvePoint(eventToFrac(ev))
 
-    // 1. Orthogonality snap — if Shift is held and we already have a prior
-    //    vertex, constrain to nearest 0°/45°/90°/135° from it.
-    if (shiftHeld && drawingPoly.length > 0) {
-      const last = drawingPoly[drawingPoly.length - 1]
-      pt = constrainTo45(last, pt, imageDims.w, imageDims.h)
-    }
-
-    // 2. Snap-to-edge — if snap is enabled and the edge map is built, nudge
-    //    the vertex to the strongest nearby gradient (the actual visible edge).
-    if (snapEnabled && snapReady) {
-      const x_px = pt[0] * imageDims.w
-      const y_px = pt[1] * imageDims.h
-      const snapped = snapToNearestEdge(x_px, y_px, 14)
-      if (snapped.snapped) {
-        pt = [snapped.x / imageDims.w, snapped.y / imageDims.h]
-      }
-    }
-
-    // Close polygon if the snapped point is near the first vertex
+    // Close polygon if the resolved point is near the first vertex
     if (drawingPoly.length >= 3) {
       const [fx, fy] = drawingPoly[0]
       if (Math.abs(pt[0] - fx) < 0.012 && Math.abs(pt[1] - fy) < 0.018) {
@@ -408,7 +501,18 @@ export function RoofFacetEditor({
       }
     }
     setDrawingPoly(prev => [...prev, pt])
-  }, [mode, drawingPoly, eventToFrac, shiftHeld, snapEnabled, snapReady, imageDims])
+  }, [mode, drawingPoly, eventToFrac, resolvePoint])
+
+  // Rubber-band: track the cursor while drawing so we can show the line that
+  // WOULD be drawn + a preview dot that magnetizes to edges/vertices.
+  const onSvgPointerMove = useCallback((ev: React.PointerEvent<SVGSVGElement>) => {
+    if (mode !== 'draw') { if (hoverPt) setHoverPt(null); return }
+    const { pt, onVertex } = resolvePoint(eventToFrac(ev))
+    setHoverPt(pt)
+    setHoverSnappedVertex(onVertex)
+  }, [mode, resolvePoint, eventToFrac, hoverPt])
+
+  const onSvgPointerLeave = useCallback(() => setHoverPt(null), [])
 
   const finalizeDrawingPoly = useCallback(() => {
     if (drawingPoly.length < 3) {
@@ -644,6 +748,20 @@ export function RoofFacetEditor({
           </button>
         ))}
         <div className="mx-2 h-5 w-px bg-white/10" />
+        {/* Undo / redo */}
+        <button
+          onClick={undo}
+          disabled={!canUndo}
+          title="Undo (⌘Z / Ctrl+Z)"
+          className="rounded-md bg-slate-800 px-2 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-30"
+        >↶ Undo</button>
+        <button
+          onClick={redo}
+          disabled={!canRedo}
+          title="Redo (⌘⇧Z / Ctrl+Y)"
+          className="rounded-md bg-slate-800 px-2 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-30"
+        >↷ Redo</button>
+        <div className="mx-2 h-5 w-px bg-white/10" />
         <span className="text-xs text-slate-400">
           {facets.length} facet{facets.length === 1 ? '' : 's'}
         </span>
@@ -752,9 +870,26 @@ export function RoofFacetEditor({
                 ['--axis-zoom' as string]: String(view.scale),
               }}
               onPointerDown={onSvgPointerDown}
+              onPointerMove={onSvgPointerMove}
+              onPointerLeave={onSvgPointerLeave}
               onDoubleClick={() => mode === 'draw' && finalizeDrawingPoly()}
             >
               {facets.map(renderFacetPolygon)}
+
+              {/* Rubber-band: dashed line from the last placed vertex to the
+                  live cursor, so the contractor sees the edge BEFORE clicking. */}
+              {mode === 'draw' && hoverPt && drawingPoly.length > 0 && (
+                <line
+                  x1={drawingPoly[drawingPoly.length - 1][0] * imageDims.w}
+                  y1={drawingPoly[drawingPoly.length - 1][1] * imageDims.h}
+                  x2={hoverPt[0] * imageDims.w}
+                  y2={hoverPt[1] * imageDims.h}
+                  stroke={hoverSnappedVertex ? '#22d3ee' : '#fbbf24'}
+                  strokeWidth={2 / view.scale}
+                  strokeDasharray={`${5 / view.scale} ${4 / view.scale}`}
+                  opacity={0.8}
+                />
+              )}
 
               {/* In-progress polygon */}
               {drawingPoly.length > 0 && (
@@ -779,6 +914,19 @@ export function RoofFacetEditor({
                     />
                   ))}
                 </g>
+              )}
+
+              {/* Preview dot at the resolved cursor position — cyan when it
+                  will magnetize onto an existing vertex (shared edge). */}
+              {mode === 'draw' && hoverPt && (
+                <circle
+                  cx={hoverPt[0] * imageDims.w} cy={hoverPt[1] * imageDims.h}
+                  r={(hoverSnappedVertex ? 8 : 5) / view.scale}
+                  fill={hoverSnappedVertex ? '#22d3ee' : 'rgba(255,255,255,0.5)'}
+                  stroke={hoverSnappedVertex ? '#0891b2' : '#fbbf24'}
+                  strokeWidth={1.5 / view.scale}
+                  pointerEvents="none"
+                />
               )}
             </svg>
           </div>
