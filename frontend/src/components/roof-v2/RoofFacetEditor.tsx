@@ -61,14 +61,6 @@ interface Props {
   initialFacets?: Facet[]
   initialEdges?: LabeledEdge[]
   onChange: (facets: Facet[], edges: LabeledEdge[]) => void
-  // Optional pan-by-metres callback. When provided, the editor shows a small
-  // N/S/E/W keypad in the top-right of the canvas so the contractor can shift
-  // the underlying tile (re-fetch) without leaving the editor. Warning: if
-  // facets have been drawn against the OLD tile they will appear shifted on
-  // the new one — the contractor will need to drag vertices or redraw to
-  // realign.
-  onNudge?: (eastMetres: number, northMetres: number) => void | Promise<void>
-  nudging?: boolean
 }
 
 const PITCH_OPTIONS = ['2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '9/12', '10/12', '12/12']
@@ -146,7 +138,6 @@ function constrainTo45(from: Pt, to: Pt, imageW: number, imageH: number): Pt {
 export function RoofFacetEditor({
   imageUrl, imageWidthPx, imageHeightPx,
   initialFacets = [], initialEdges = [], onChange,
-  onNudge, nudging,
 }: Props) {
   const [facets, setFacets] = useState<Facet[]>(initialFacets)
   const [edges, setEdges] = useState<LabeledEdge[]>(initialEdges)
@@ -270,6 +261,68 @@ export function RoofFacetEditor({
   }, [view.scale, setViewClamped])
 
   const resetView = useCallback(() => setView({ scale: 1, x: 0, y: 0 }), [])
+
+  // Instant pan by pixels (used by the keypad + continuous keyboard pan).
+  // Panning the CSS view never refetches and never misaligns facets — facets
+  // are stored in image-fraction coords tied to THIS tile, so a refetch (the
+  // old keypad behavior) would shift them. CSS pan just moves the camera.
+  const panView = useCallback((dx: number, dy: number) => {
+    setView(prev => (prev.scale <= MIN_SCALE ? prev : { ...prev, x: prev.x + dx, y: prev.y + dy }))
+  }, [])
+
+  // Continuous arrow / WASD pan while held, with acceleration. Skipped while
+  // typing in an input and while a facet is being drawn (arrows free, but we
+  // guard inputs). Only active in select/label modes-agnostic — panning is
+  // always allowed; drawing uses clicks, not arrows.
+  const heldPanKeys = useRef<Set<string>>(new Set())
+  const panHoldStart = useRef<number>(0)
+  const panRaf = useRef<number | null>(null)
+  useEffect(() => {
+    const DIRS: Record<string, [number, number]> = {
+      ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [1, 0], ArrowRight: [-1, 0],
+      w: [0, 1], s: [0, -1], a: [1, 0], d: [-1, 0],
+    }
+    const typing = (t: EventTarget | null) => {
+      const tag = (t as HTMLElement | null)?.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+    }
+    const tick = () => {
+      if (heldPanKeys.current.size === 0) { panRaf.current = null; return }
+      const ms = performance.now() - panHoldStart.current
+      const speed = Math.min(26, 7 + ms / 45)
+      let dx = 0, dy = 0
+      for (const k of heldPanKeys.current) {
+        const v = DIRS[k]; if (v) { dx += v[0]; dy += v[1] }
+      }
+      if (dx || dy) panView(dx * speed, dy * speed)
+      panRaf.current = requestAnimationFrame(tick)
+    }
+    const onDown = (e: KeyboardEvent) => {
+      if (typing(e.target)) return
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key
+      if (!(k in DIRS)) return
+      e.preventDefault()
+      if (heldPanKeys.current.size === 0) panHoldStart.current = performance.now()
+      heldPanKeys.current.add(k)
+      if (panRaf.current == null) panRaf.current = requestAnimationFrame(tick)
+    }
+    const onUp = (e: KeyboardEvent) => {
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key
+      heldPanKeys.current.delete(k)
+    }
+    const onBlur = () => heldPanKeys.current.clear()
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
+      window.removeEventListener('blur', onBlur)
+      if (panRaf.current != null) cancelAnimationFrame(panRaf.current)
+      panRaf.current = null
+      heldPanKeys.current.clear()
+    }
+  }, [panView])
 
   // Spacebar = pan modifier. Don't grab it when the user is typing in an input.
   useEffect(() => {
@@ -730,44 +783,36 @@ export function RoofFacetEditor({
             </svg>
           </div>
 
-          {/* Floating nudge keypad — top-right. Shifts the underlying tile
-              (re-fetch via onNudge callback) so the contractor can center
-              the house in view before drawing facets. Each click = 10 m. */}
-          {onNudge && (
-            <div className="pointer-events-auto absolute right-2 top-2 grid grid-cols-3 gap-0.5 rounded-md border border-white/20 bg-slate-900/85 p-1 shadow-lg backdrop-blur">
-              <div></div>
-              <button
-                onClick={() => void onNudge(0, 10)}
-                disabled={nudging}
-                title="Move view north (up) 10 m"
-                className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
-              >↑</button>
-              <div></div>
-              <button
-                onClick={() => void onNudge(-10, 0)}
-                disabled={nudging}
-                title="Move view west (left) 10 m"
-                className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
-              >←</button>
-              <div className="flex h-8 w-8 items-center justify-center text-[10px] text-slate-500" title="Each arrow click moves the view 10 metres">
-                {nudging ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> : '10m'}
-              </div>
-              <button
-                onClick={() => void onNudge(10, 0)}
-                disabled={nudging}
-                title="Move view east (right) 10 m"
-                className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
-              >→</button>
-              <div></div>
-              <button
-                onClick={() => void onNudge(0, -10)}
-                disabled={nudging}
-                title="Move view south (down) 10 m"
-                className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
-              >↓</button>
-              <div></div>
-            </div>
-          )}
+          {/* Floating pan keypad — top-right. INSTANT CSS pan (no refetch, no
+              facet misalignment). Drag the canvas, scroll to zoom, or use
+              arrow keys / WASD (held = continuous) for the same effect. */}
+          <div className="pointer-events-auto absolute right-2 top-2 grid grid-cols-3 gap-0.5 rounded-md border border-white/20 bg-slate-900/85 p-1 shadow-lg backdrop-blur">
+            <div></div>
+            <button
+              onClick={() => panView(0, 70)}
+              title="Pan up (↑ / W)"
+              className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600"
+            >↑</button>
+            <div></div>
+            <button
+              onClick={() => panView(70, 0)}
+              title="Pan left (← / A)"
+              className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600"
+            >←</button>
+            <div className="flex h-8 w-8 items-center justify-center text-[9px] text-slate-500">pan</div>
+            <button
+              onClick={() => panView(-70, 0)}
+              title="Pan right (→ / D)"
+              className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600"
+            >→</button>
+            <div></div>
+            <button
+              onClick={() => panView(0, -70)}
+              title="Pan down (↓ / S)"
+              className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600"
+            >↓</button>
+            <div></div>
+          </div>
 
           {/* Floating zoom controls */}
           <div className="pointer-events-none absolute bottom-2 right-2 flex flex-col items-end gap-1">

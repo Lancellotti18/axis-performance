@@ -30,6 +30,7 @@ import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
 import ReportsPanel from '@/components/roof-v2/ReportsPanel'
+import PannableImage from '@/components/roof-v2/PannableImage'
 import { enhanceTile } from '@/lib/imageEnhance'
 
 // AI super-resolution (Replicate) is retired from the contractor workflow —
@@ -147,7 +148,6 @@ export default function RoofV2Page() {
   // the user immediately. Sharpening is OPT-IN via a button — the user
   // reported it wasn't adding visible value, so we don't run it automatically.
   const [sharpening, setSharpening] = useState(false)
-  const [nudging, setNudging] = useState(false)
 
   // ── Clarity enhancement (client-side, instant, no hallucination) ──────────
   // Replaces AI sharpen. Boosts local contrast + sharpens edges so roof planes
@@ -203,27 +203,6 @@ export default function RoofV2Page() {
 
   // Revoke any outstanding blob URL on unmount.
   useEffect(() => () => { enhancedRevokeRef.current?.() }, [])
-
-  // Nudge the displayed view by N metres in lat/lng directions. Used by the
-  // N/S/E/W arrow buttons when the geocoded center isn't quite on the house.
-  // 1 degree latitude ≈ 111,320 m; longitude varies with cos(lat).
-  const nudgeImagery = useCallback(async (eastMetres: number, northMetres: number) => {
-    if (!location || !imagery) return
-    setNudging(true)
-    try {
-      const newLat = location.lat + (northMetres / 111320)
-      const newLng = location.lng + (eastMetres / (111320 * Math.cos(location.lat * Math.PI / 180)))
-      const updatedLoc: LocationSelected = { ...location, lat: newLat, lng: newLng }
-      setLocation(updatedLoc)
-      const health = await api.roofing.v2.imageryHealth(newLat, newLng, 22, 2048, 1366) as ImageryPayload
-      // Drop any previous sharpened URL since the view moved
-      setImagery({ ...health, original_url: health.url, display_mode: 'original' })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not re-fetch imagery at new center')
-    } finally {
-      setNudging(false)
-    }
-  }, [location, imagery])
 
   // Optional on-demand sharpening when the contractor explicitly asks for it.
   // Same code path as before but only fires when they click the button.
@@ -651,70 +630,31 @@ export default function RoofV2Page() {
                 </div>
               )}
 
-              {/* Main tile preview with corner keypad overlay for centering */}
+              {/* Instant pan/zoom preview — drag, scroll, arrows/WASD. No
+                  refetch per move (that was the lag). The captured ground area
+                  is set by auto-center / the Center-on-house button. */}
               {imagery.url && imagery.status !== 'unavailable' && (
-                <div className="relative mt-3 overflow-hidden rounded border border-white/10 bg-black">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={imagery.url}
-                    alt="satellite tile preview"
-                    className="block max-h-[500px] w-full object-contain"
-                  />
-                  {/* 4-arrow keypad overlay in top-right corner */}
-                  <div className="absolute right-2 top-2 grid grid-cols-3 gap-0.5 rounded-md border border-white/20 bg-slate-900/85 p-1 shadow-lg backdrop-blur">
-                    <div></div>
-                    <button
-                      onClick={() => nudgeImagery(0, 10)}
-                      disabled={nudging}
-                      title="Move view north (up)"
-                      className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
-                    >↑</button>
-                    <div></div>
-                    <button
-                      onClick={() => nudgeImagery(-10, 0)}
-                      disabled={nudging}
-                      title="Move view west (left)"
-                      className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
-                    >←</button>
-                    <div className="flex h-8 w-8 items-center justify-center text-[10px] text-slate-500" title="Each arrow click moves the view 10 metres">
-                      {nudging ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> : '·'}
+                <div className="mt-3">
+                  <PannableImage src={imagery.url} alt="satellite tile preview">
+                    {/* Center-on-house (re-fetches a roof-framed tile) */}
+                    <div className="absolute left-2 top-2 flex items-center gap-2">
+                      <button
+                        onClick={() => location && void autoCenterOnHouse(location)}
+                        disabled={autoCentering}
+                        title="Use AI to detect the house and re-center + zoom the captured tile on the roof"
+                        className="flex items-center gap-1.5 rounded-md border border-white/20 bg-slate-900/85 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur hover:bg-blue-600 disabled:opacity-50"
+                      >
+                        {autoCentering ? (
+                          <>
+                            <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-transparent" />
+                            Centering…
+                          </>
+                        ) : (
+                          <>🏠 Center on house</>
+                        )}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => nudgeImagery(10, 0)}
-                      disabled={nudging}
-                      title="Move view east (right)"
-                      className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
-                    >→</button>
-                    <div></div>
-                    <button
-                      onClick={() => nudgeImagery(0, -10)}
-                      disabled={nudging}
-                      title="Move view south (down)"
-                      className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600 disabled:opacity-50"
-                    >↓</button>
-                    <div></div>
-                  </div>
-                  {/* Center-on-house button + status (top-left) */}
-                  <div className="absolute left-2 top-2 flex items-center gap-2">
-                    <button
-                      onClick={() => location && void autoCenterOnHouse(location)}
-                      disabled={autoCentering || nudging}
-                      title="Use AI to detect the house and re-center + zoom the view on the roof"
-                      className="flex items-center gap-1.5 rounded-md border border-white/20 bg-slate-900/85 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur hover:bg-blue-600 disabled:opacity-50"
-                    >
-                      {autoCentering ? (
-                        <>
-                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-transparent" />
-                          Centering…
-                        </>
-                      ) : (
-                        <>🏠 Center on house</>
-                      )}
-                    </button>
-                  </div>
-                  <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-[10px] text-white">
-                    Auto-centered on the roof · use arrows to fine-tune (10 m/click)
-                  </div>
+                  </PannableImage>
                 </div>
               )}
 
@@ -788,8 +728,6 @@ export default function RoofV2Page() {
               initialFacets={facets}
               initialEdges={edges}
               onChange={onEditorChange}
-              onNudge={nudgeImagery}
-              nudging={nudging}
             />
           </div>
           <MeasurementsSummary
