@@ -16,7 +16,7 @@
  * Coexists with the legacy /aerial-report page; this is the contractor-
  * facing accuracy-first workflow.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { getUser } from '@/lib/auth'
@@ -30,6 +30,13 @@ import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
 import ReportsPanel from '@/components/roof-v2/ReportsPanel'
+import { enhanceTile } from '@/lib/imageEnhance'
+
+// AI super-resolution (Replicate) is retired from the contractor workflow —
+// it never produced visible benefit and confused users. The real client-side
+// "Clarity" enhancement replaces it. Flip this flag (or set
+// NEXT_PUBLIC_FF_SHARPEN=true) to re-expose the experimental AI sharpen button.
+const FF_AI_SHARPEN = process.env.NEXT_PUBLIC_FF_SHARPEN === 'true'
 
 interface Project {
   id: string
@@ -142,6 +149,61 @@ export default function RoofV2Page() {
   const [sharpening, setSharpening] = useState(false)
   const [nudging, setNudging] = useState(false)
 
+  // ── Clarity enhancement (client-side, instant, no hallucination) ──────────
+  // Replaces AI sharpen. Boosts local contrast + sharpens edges so roof planes
+  // and ridge/valley lines are easier to see and trace. ON by default.
+  const [clarityOn, setClarityOn] = useState(true)
+  const [edgeOverlayOn, setEdgeOverlayOn] = useState(false)
+  const [enhancing, setEnhancing] = useState(false)
+  const enhancedRevokeRef = useRef<null | (() => void)>(null)
+
+  // Re-run enhancement whenever the source tile changes or a toggle flips.
+  // Keyed on original_url (NOT url) so our own setImagery(url=...) doesn't loop.
+  useEffect(() => {
+    const sourceUrl = imagery?.original_url
+    if (!sourceUrl || imagery?.status === 'unavailable') return
+
+    // Toggles both off → show the original, drop any enhanced blob.
+    if (!clarityOn && !edgeOverlayOn) {
+      enhancedRevokeRef.current?.()
+      enhancedRevokeRef.current = null
+      setImagery(prev => (prev && prev.url !== prev.original_url
+        ? { ...prev, url: prev.original_url, display_mode: 'original' }
+        : prev))
+      return
+    }
+
+    let cancelled = false
+    setEnhancing(true)
+    enhanceTile(sourceUrl, {
+      clarity: clarityOn ? 0.65 : 0,
+      sharpness: clarityOn ? 0.45 : 0,
+      contrastStretch: clarityOn ? 0.01 : 0,
+      edgeOverlay: edgeOverlayOn,
+      edgeOverlayOpacity: 0.5,
+    })
+      .then(res => {
+        if (cancelled) { res.revoke(); return }
+        enhancedRevokeRef.current?.()
+        enhancedRevokeRef.current = res.revoke
+        setImagery(prev => (prev ? { ...prev, url: res.url, display_mode: 'sharpened' } : prev))
+      })
+      .catch(err => {
+        // CORS-tainted canvas or load failure → silently keep the original.
+        console.warn('[axis] clarity enhancement failed, using original tile:', err)
+        if (!cancelled) {
+          setImagery(prev => (prev ? { ...prev, url: prev.original_url, display_mode: 'original' } : prev))
+        }
+      })
+      .finally(() => { if (!cancelled) setEnhancing(false) })
+
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagery?.original_url, clarityOn, edgeOverlayOn])
+
+  // Revoke any outstanding blob URL on unmount.
+  useEffect(() => () => { enhancedRevokeRef.current?.() }, [])
+
   // Nudge the displayed view by N metres in lat/lng directions. Used by the
   // N/S/E/W arrow buttons when the geocoded center isn't quite on the house.
   // 1 degree latitude ≈ 111,320 m; longitude varies with cos(lat).
@@ -200,9 +262,35 @@ export default function RoofV2Page() {
     }
   }, [imagery, sharpening])
 
+  // Auto-center: ask Gemini for the subject building's bbox, then re-fetch the
+  // tile centered + zoomed on the roof. One-shot, best-effort — failures just
+  // leave the geocoded framing in place. Also exposed as a manual "Center on
+  // house" button for when the contractor wants to re-run it.
+  const [autoCentering, setAutoCentering] = useState(false)
+  const autoCenterAttempted = useRef(false)
+  const autoCenterOnHouse = useCallback(async (loc: LocationSelected) => {
+    if (!loc || (loc.lat === 0 && loc.lng === 0)) return
+    setAutoCentering(true)
+    try {
+      const det = await api.roofing.v2.detectBuilding(loc.lat, loc.lng, 22, 2048, 1366)
+      if (det.found && det.recenter) {
+        const newLoc: LocationSelected = { ...loc, lat: det.recenter.lat, lng: det.recenter.lng }
+        setLocation(newLoc)
+        const zoom = det.suggested_zoom ?? 22
+        const health = await api.roofing.v2.imageryHealth(newLoc.lat, newLoc.lng, zoom, 2048, 1366) as ImageryPayload
+        setImagery({ ...health, original_url: health.url, url: health.url, display_mode: 'original' })
+      }
+    } catch (err) {
+      console.warn('[axis] auto-center failed (keeping geocoded framing):', err)
+    } finally {
+      setAutoCentering(false)
+    }
+  }, [])
+
   const onLocationSelected = useCallback(async (loc: LocationSelected) => {
     setLocation(loc)
     setStep('imagery')
+    autoCenterAttempted.current = false
     if (loc.lat === 0 && loc.lng === 0) {
       setImagery({ status: 'unavailable', providers_tried: [], warnings: ['Manual address entry — no coordinates available for imagery.'], health_score: 0 })
       return
@@ -211,21 +299,22 @@ export default function RoofV2Page() {
     setError(null)
     try {
       // Zoom 22 + 2048x1366 request → MapTiler @2x retina returns 4096x2732
-      // native pixels at the same ~38m x 25m ground area. That's about 4× more
-      // pixels than the previous 1024x683 setting — real native resolution,
-      // not AI hallucination. Backend falls back z22 -> z21 -> z20 if provider
-      // lacks coverage at that location.
+      // native pixels at the same ~38m x 25m ground area — real native
+      // resolution, not AI hallucination. Backend falls back z22→z21→z20 if
+      // the provider lacks coverage at that location.
       const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22, 2048, 1366) as ImageryPayload
-      // Native resolution from MapTiler @2x retina is already much better than
-      // what AI sharpening was producing. Auto-sharpen is OFF — contractor
-      // can opt-in via 'Try AI sharpening' button on the panel if they want it.
       setImagery({ ...health, original_url: health.url, display_mode: 'original' })
       setBusy(false)
+      // Auto-center on the roof once, in the background, after first paint.
+      if (!autoCenterAttempted.current && health.status !== 'unavailable') {
+        autoCenterAttempted.current = true
+        void autoCenterOnHouse(loc)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Imagery health check failed')
       setBusy(false)
     }
-  }, [])
+  }, [autoCenterOnHouse])
 
   // Create a measurement run + advance to editor. Heavily instrumented so we
   // can see EXACTLY what happens on each click and where it gets stuck if it
@@ -259,7 +348,11 @@ export default function RoofV2Page() {
       const run = await api.roofing.v2.createRun({
         project_id: projectId,
         source: 'aerial_outline',
-        satellite_image_url: imagery.url,
+        // Persist the ORIGINAL provider URL, never the client-side enhanced
+        // blob: URL (blob URLs are session-only and useless server-side for
+        // the report hero image + vision calls). Display uses the enhanced
+        // version; storage + measurement scale use the original.
+        satellite_image_url: imagery.original_url || imagery.url,
         satellite_provider: imagery.provider,
         satellite_zoom: imagery.zoom,
         satellite_lat: imagery.lat,
@@ -482,12 +575,12 @@ export default function RoofV2Page() {
       {step === 'imagery' && (
         <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
           <h2 className="mb-3 text-sm font-semibold">
-            {busy ? 'Loading + sharpening satellite tile…' : 'Satellite imagery health'}
+            {busy ? 'Loading satellite tile…' : 'Satellite imagery'}
           </h2>
           {busy && !imagery && (
             <div className="flex items-center gap-3 rounded bg-slate-900/60 p-3 text-sm text-slate-300">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-              <span>Fetching tile at zoom 22 + running AI 4x upscale… (~10 seconds)</span>
+              <span>Fetching highest-resolution tile (zoom 22 @2x retina)…</span>
             </div>
           )}
           {imagery && (
@@ -517,9 +610,50 @@ export default function RoofV2Page() {
                 </ul>
               )}
 
+              {/* Clarity enhancement controls — replaces AI sharpen. Instant,
+                  client-side, no hallucination. */}
+              {imagery.url && imagery.status !== 'unavailable' && (
+                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
+                  <span className="text-xs font-semibold text-slate-300">Image clarity:</span>
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={clarityOn}
+                      onChange={e => setClarityOn(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800"
+                    />
+                    Enhance (local contrast + sharpen)
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={edgeOverlayOn}
+                      onChange={e => setEdgeOverlayOn(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800"
+                    />
+                    Edge overlay
+                    <span className="text-slate-500" title="Highlights the strongest contrast lines in cyan — helps locate ridges, hips, and valleys">ⓘ</span>
+                  </label>
+                  {enhancing && (
+                    <span className="flex items-center gap-1.5 text-xs text-blue-300">
+                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+                      enhancing…
+                    </span>
+                  )}
+                  {!enhancing && imagery.display_mode === 'sharpened' && (
+                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">
+                      enhanced ✓
+                    </span>
+                  )}
+                  <span className="ml-auto text-[10px] text-slate-500">
+                    Enhancement is visual only — measurements use the original tile scale
+                  </span>
+                </div>
+              )}
+
               {/* Main tile preview with corner keypad overlay for centering */}
               {imagery.url && imagery.status !== 'unavailable' && (
-                <div className="relative mt-4 overflow-hidden rounded border border-white/10 bg-black">
+                <div className="relative mt-3 overflow-hidden rounded border border-white/10 bg-black">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={imagery.url}
@@ -560,70 +694,30 @@ export default function RoofV2Page() {
                     >↓</button>
                     <div></div>
                   </div>
+                  {/* Center-on-house button + status (top-left) */}
+                  <div className="absolute left-2 top-2 flex items-center gap-2">
+                    <button
+                      onClick={() => location && void autoCenterOnHouse(location)}
+                      disabled={autoCentering || nudging}
+                      title="Use AI to detect the house and re-center + zoom the view on the roof"
+                      className="flex items-center gap-1.5 rounded-md border border-white/20 bg-slate-900/85 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur hover:bg-blue-600 disabled:opacity-50"
+                    >
+                      {autoCentering ? (
+                        <>
+                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-transparent" />
+                          Centering…
+                        </>
+                      ) : (
+                        <>🏠 Center on house</>
+                      )}
+                    </button>
+                  </div>
                   <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-[10px] text-white">
-                    Use arrows to center the house · each click = 10 m
+                    Auto-centered on the roof · use arrows to fine-tune (10 m/click)
                   </div>
                 </div>
               )}
 
-              {/* A/B comparison toggle when sharpening succeeded */}
-              {imagery.sharpened_url && imagery.original_url && (
-                <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-3">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs font-semibold text-emerald-200">
-                      Verify sharpening visually — toggle between the two:
-                    </div>
-                    <div className="flex gap-2 text-xs">
-                      <button
-                        onClick={() => setImagery(prev => prev ? ({
-                          ...prev,
-                          url: prev.original_url,
-                          display_mode: 'original',
-                        }) : prev)}
-                        className={`rounded px-3 py-1.5 font-medium transition ${
-                          imagery.display_mode === 'original'
-                            ? 'bg-slate-700 text-white ring-2 ring-blue-400'
-                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                        }`}
-                      >Original</button>
-                      <button
-                        onClick={() => setImagery(prev => prev ? ({
-                          ...prev,
-                          url: prev.sharpened_url,
-                          display_mode: 'sharpened',
-                        }) : prev)}
-                        className={`rounded px-3 py-1.5 font-medium transition ${
-                          imagery.display_mode === 'sharpened'
-                            ? 'bg-emerald-700 text-white ring-2 ring-emerald-400'
-                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                        }`}
-                      >✨ Sharpened</button>
-                    </div>
-                  </div>
-                  {/* Preview the currently-selected tile */}
-                  {imagery.url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={imagery.url}
-                      alt="tile preview"
-                      className="block max-h-[400px] w-full rounded border border-white/10 bg-black object-contain"
-                    />
-                  )}
-                  <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-400">
-                    <a href={imagery.original_url} target="_blank" rel="noreferrer" className="underline hover:text-slate-200">
-                      Open original in new tab ↗
-                    </a>
-                    <span>·</span>
-                    <a href={imagery.sharpened_url} target="_blank" rel="noreferrer" className="underline hover:text-slate-200">
-                      Open sharpened in new tab ↗
-                    </a>
-                    <span>·</span>
-                    <span>
-                      Click both, switch between tabs to A/B compare at full resolution
-                    </span>
-                  </div>
-                </div>
-              )}
               {imagery.url && imagery.status !== 'unavailable' && (
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <button
@@ -640,12 +734,15 @@ export default function RoofV2Page() {
                       <>Open facet editor →</>
                     )}
                   </button>
-                  {!imagery.sharpened_url && (
+                  {/* AI sharpen retired from the workflow — gated behind a flag
+                      for experimentation only. Real clarity enhancement above
+                      replaced it. */}
+                  {FF_AI_SHARPEN && !imagery.sharpened_url && (
                     <button
                       onClick={trySharpening}
                       disabled={sharpening || busy}
                       className="flex items-center gap-2 rounded-md bg-purple-700 px-3 py-2 text-xs text-white transition hover:bg-purple-600 disabled:opacity-50"
-                      title="Optional: try AI sharpening on top of the native @2x retina tile. Takes 15-30 sec."
+                      title="Experimental: AI super-resolution via Replicate. Takes 15-30 sec."
                     >
                       {sharpening ? (
                         <>
@@ -653,7 +750,7 @@ export default function RoofV2Page() {
                           <span>Sharpening…</span>
                         </>
                       ) : (
-                        <>✨ Try AI sharpening (optional)</>
+                        <>✨ AI sharpen (experimental)</>
                       )}
                     </button>
                   )}

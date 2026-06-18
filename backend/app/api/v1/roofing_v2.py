@@ -177,6 +177,108 @@ async def imagery_fetch(
     return result.to_dict(include_bytes=include_bytes)
 
 
+@router.post("/imagery/detect-building")
+async def detect_building(
+    payload: ImageryHealthRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Auto-center helper. Fetches the tile at the requested lat/lng/zoom, asks
+    Gemini Vision for the bounding box of the largest building (the subject
+    property), and returns:
+      * the building bbox + center as image fractions (0..1)
+      * a recommended new lat/lng that puts the building in the frame center
+      * a suggested zoom so the roof fills ~55% of the frame (better tracing)
+
+    The frontend calls this once after the first imagery load and silently
+    re-centers, eliminating the "house is in the corner / I have to nudge 8
+    times" problem. If no building is found we return found=false and the
+    frontend just keeps the geocoded center.
+    """
+    import json as _json
+    import re as _re
+    from app.services.llm import llm_vision
+
+    try:
+        result = await imagery_service.fetch_satellite_image(
+            payload.lat, payload.lng,
+            zoom=payload.zoom, width_px=payload.width_px, height_px=payload.height_px,
+        )
+    except RuntimeError:
+        return {"found": False, "message": "No imagery available to analyze."}
+
+    prompt = """You are analyzing a top-down satellite image to locate the main residential building (the subject property, usually the largest building nearest the image center).
+
+Return ONLY a JSON object with the bounding box of that building as fractions of the image (0.0=left/top, 1.0=right/bottom):
+{
+  "found": true,
+  "x0": 0.30, "y0": 0.25, "x1": 0.70, "y1": 0.65,
+  "confidence": 0.8
+}
+
+x0,y0 is the top-left corner of the building's bounding box; x1,y1 the bottom-right. Include the whole roof (all wings/garage attached to the main house) but exclude detached sheds, driveways, and neighboring houses. If you cannot confidently find a building, return {"found": false}. Respond with the JSON object only."""
+
+    try:
+        text = await llm_vision(
+            result.image_bytes, result.media_type, prompt, max_tokens=300,
+        )
+        text = text.strip()
+        text = _re.sub(r"^```(?:json)?\s*", "", text, flags=_re.MULTILINE)
+        text = _re.sub(r"\s*```\s*$", "", text)
+        a, b = text.find("{"), text.rfind("}")
+        if a < 0 or b < 0:
+            return {"found": False, "message": "Vision returned no JSON."}
+        parsed = _json.loads(text[a:b + 1])
+    except Exception as e:
+        return {"found": False, "message": f"Vision analysis error: {e}"}
+
+    if not parsed.get("found"):
+        return {"found": False, "message": "No building confidently located."}
+
+    try:
+        x0 = max(0.0, min(1.0, float(parsed["x0"])))
+        y0 = max(0.0, min(1.0, float(parsed["y0"])))
+        x1 = max(0.0, min(1.0, float(parsed["x1"])))
+        y1 = max(0.0, min(1.0, float(parsed["y1"])))
+    except (KeyError, TypeError, ValueError):
+        return {"found": False, "message": "Vision bbox was malformed."}
+
+    if x1 <= x0 or y1 <= y0:
+        return {"found": False, "message": "Vision bbox had zero area."}
+
+    cx = (x0 + x1) / 2
+    cy = (y0 + y1) / 2
+
+    # Offset of bbox center from image center, in metres.
+    mpp = result.metres_per_pixel
+    east_m = (cx - 0.5) * payload.width_px * mpp
+    north_m = -(cy - 0.5) * payload.height_px * mpp   # image y grows downward
+
+    new_lat = payload.lat + (north_m / 111320.0)
+    new_lng = payload.lng + (
+        east_m / (111320.0 * math.cos(math.radians(payload.lat)))
+    )
+
+    # Suggest a zoom so the building fills ~55% of the frame. Each +1 zoom
+    # level quadruples the coverage fraction (linear dimensions double).
+    coverage = (x1 - x0) * (y1 - y0)
+    target = 0.55
+    suggested_zoom = payload.zoom
+    if coverage > 0:
+        zoom_delta = round(0.5 * math.log2(target / coverage))
+        suggested_zoom = max(19, min(22, payload.zoom + zoom_delta))
+
+    return {
+        "found": True,
+        "bbox_frac": {"x0": x0, "y0": y0, "x1": x1, "y1": y1},
+        "center_frac": {"x": cx, "y": cy},
+        "recenter": {"lat": new_lat, "lng": new_lng},
+        "coverage_frac": round(coverage, 3),
+        "suggested_zoom": suggested_zoom,
+        "confidence": parsed.get("confidence", 0.7),
+    }
+
+
 # ----------------------------------------------------------------------------
 # Location
 # ----------------------------------------------------------------------------

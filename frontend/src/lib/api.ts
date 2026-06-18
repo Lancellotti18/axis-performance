@@ -528,6 +528,22 @@ export const api = {
             }),
           },
         ),
+      // Auto-center: ask the backend (Gemini Vision) for the subject
+      // building's bounding box, returns a recommended new center + zoom.
+      detectBuilding: (lat: number, lng: number, zoom = 22, width = 2048, height = 1366) =>
+        apiRequest<{
+          found: boolean
+          message?: string
+          bbox_frac?: { x0: number; y0: number; x1: number; y1: number }
+          center_frac?: { x: number; y: number }
+          recenter?: { lat: number; lng: number }
+          coverage_frac?: number
+          suggested_zoom?: number
+          confidence?: number
+        }>(`/api/v1/roofing/v2/imagery/detect-building`, {
+          method: 'POST',
+          body: JSON.stringify({ lat, lng, zoom, width_px: width, height_px: height }),
+        }, 60000),
       locationSearch: (q: string, withGeographies = false) =>
         apiRequest<{
           matches: Array<{
