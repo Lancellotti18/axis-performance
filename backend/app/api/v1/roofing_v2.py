@@ -909,8 +909,13 @@ STEP 3 — RETURN POLYGONS.
 - Only trace facets you can CLEARLY see — skip facets blocked by trees, shadow, or unclear edges
 - If you genuinely cannot identify the building (heavy tree cover, very low res), return facets: []
 
-Return ONLY valid JSON (no prose, no markdown):
+Return ONLY valid JSON (no prose, no markdown). ALWAYS include a top-level
+"reason" string explaining what you saw — especially when facets is empty,
+explain WHY (e.g. "heavy tree canopy obscures the roof", "imagery too low-
+resolution to resolve plane boundaries", "building is at the image edge — not
+centered", "only flat gravel/commercial roof visible, no distinct planes"):
 {
+  "reason": "Clear hip roof centered in frame; traced 4 planes.",
   "facets": [
     {
       "polygon": [[0.30, 0.28], [0.70, 0.28], [0.70, 0.50], [0.30, 0.50]],
@@ -940,11 +945,20 @@ suggestions and trust your high-confidence ones.
         s = _re.sub(r"\s*```\s*$", "", s)
         a, b = s.find("{"), s.rfind("}")
         if a < 0 or b < 0:
-            return {"facets": [], "message": "Vision returned no JSON object."}
+            return {
+                "facets": [],
+                "reason": "The vision model did not return structured data for this tile.",
+                "message": "AI could not analyze this tile. Try re-centering on the house, then re-detect.",
+            }
         parsed = json.loads(s[a:b + 1])
         facets = parsed.get("facets") or []
+        reason = str(parsed.get("reason") or "")[:400]
     except Exception as e:
-        return {"facets": [], "message": f"Vision analysis error: {str(e)[:200]}"}
+        return {
+            "facets": [],
+            "reason": f"Vision analysis error: {str(e)[:160]}",
+            "message": "AI detection hit an error. Re-detect, or draw facets manually.",
+        }
 
     # Sanitize: each facet must have a polygon of >=3 [x,y] pairs in [0,1]
     cleaned: list[dict] = []
@@ -976,8 +990,20 @@ suggestions and trust your high-confidence ones.
             "user_confirmed": False,
         })
 
+    if not cleaned:
+        return {
+            "facets": [],
+            "reason": reason or "The model reported no clearly-distinguishable roof planes.",
+            "message": (
+                "AI found no facets it was confident about. This usually means the roof is "
+                "obscured (trees/shadow) or the house isn't centered. Try 'Center on house' "
+                "and re-detect, or trace facets manually — the snap-to-edge assist makes it fast."
+            ),
+        }
+
     return {
         "facets": cleaned,
+        "reason": reason,
         "message": (
             f"{len(cleaned)} facet(s) suggested by AI vision. Each one must be accepted "
             "individually — and verified for pitch + edge labels — before measurements are valid."

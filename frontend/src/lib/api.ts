@@ -681,6 +681,7 @@ export const api = {
             note: string
           }>
           message: string
+          reason?: string
         }>(`/api/v1/roofing/v2/runs/${runId}/facets/suggest`, {}, 120000),
       upscaleImagery: (imageUrl: string, scale: 2 | 4 = 4) =>
         apiRequest<{

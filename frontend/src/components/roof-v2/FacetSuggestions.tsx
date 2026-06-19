@@ -54,21 +54,36 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [reason, setReason] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [ran, setRan] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
   const [zoomedSuggestion, setZoomedSuggestion] = useState<Suggestion | null>(null)
+
+  // Elapsed-time ticker while detecting — so a cold-started backend (up to ~60s
+  // on Render free tier) never looks frozen.
+  useEffect(() => {
+    if (!loading) { setElapsed(0); return }
+    const t0 = Date.now()
+    const id = setInterval(() => setElapsed(Math.round((Date.now() - t0) / 1000)), 500)
+    return () => clearInterval(id)
+  }, [loading])
 
   const runDetect = useCallback(async () => {
     setLoading(true)
     setError(null)
     setMessage(null)
+    setReason(null)
     try {
       const res = await api.roofing.v2.suggestFacets(runId)
       setSuggestions(res.facets || [])
       setMessage(res.message || null)
+      setReason(res.reason || null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Auto-detect failed')
     } finally {
       setLoading(false)
+      setRan(true)
     }
   }, [runId])
 
@@ -121,8 +136,56 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
         >{loading ? 'Detecting…' : suggestions.length > 0 ? 'Re-detect' : 'Auto-detect facets'}</button>
       </div>
 
-      {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
-      {message && !error && <p className="mt-2 text-xs text-slate-400">{message}</p>}
+      {/* Loading state with elapsed timer + cold-start hint */}
+      {loading && (
+        <div className="mt-3 flex items-center gap-3 rounded-md border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-200">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+          <div>
+            <div>Analyzing the satellite tile with AI vision… {elapsed}s</div>
+            {elapsed >= 8 && (
+              <div className="mt-0.5 text-[10px] text-blue-300/80">
+                First request after the server idles can take up to ~60s (cold start). Hang tight.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {error && !loading && (
+        <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/5 p-3 text-xs text-rose-300">
+          <div className="font-semibold">Auto-detect failed</div>
+          <div className="mt-1 text-rose-200/90">{error}</div>
+          <button onClick={runDetect} className="mt-2 rounded bg-rose-700 px-2.5 py-1 text-xs text-white hover:bg-rose-600">
+            Try again
+          </button>
+        </div>
+      )}
+
+      {/* Rich 0-result state — never just emptiness. Shows the AI's reasoning
+          plus concrete next steps. */}
+      {ran && !loading && !error && suggestions.length === 0 && (
+        <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+          <div className="font-semibold text-amber-200">AI didn&apos;t find facets it was confident about</div>
+          {reason && (
+            <div className="mt-1 text-amber-100/90">
+              <span className="text-amber-300/80">What the AI saw: </span>{reason}
+            </div>
+          )}
+          {message && <div className="mt-1 text-slate-300">{message}</div>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button onClick={runDetect} className="rounded bg-blue-600 px-2.5 py-1 text-white hover:bg-blue-500">
+              Re-detect
+            </button>
+            <span className="flex items-center text-[10px] text-slate-400">
+              …or just trace facets manually in the editor — snap-to-edge makes it quick.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {message && !error && !loading && suggestions.length > 0 && (
+        <p className="mt-2 text-xs text-slate-400">{message}</p>
+      )}
 
       {suggestions.length > 0 && (
         <div className="mt-4">
@@ -212,7 +275,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
         />
       )}
 
-      {!suggestions.length && !loading && !error && (
+      {!ran && !loading && (
         <p className="mt-3 text-xs text-slate-500">
           Click <strong>Auto-detect facets</strong> to have AI propose polygons. You can also draw facets
           manually in the editor at any time.
