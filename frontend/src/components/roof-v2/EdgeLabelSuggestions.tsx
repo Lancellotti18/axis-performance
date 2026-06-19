@@ -15,6 +15,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '@/lib/api'
 import type { Facet, LabeledEdge, EdgeType } from './RoofFacetEditor'
+import EdgeReviewModal from './EdgeReviewModal'
 
 interface Suggestion {
   facet_label: string
@@ -29,6 +30,9 @@ interface Props {
   runId: string
   facets: Facet[]
   edges: LabeledEdge[]
+  imageUrl?: string
+  imageWidthPx?: number
+  imageHeightPx?: number
   onAcceptEdges: (updatedEdges: LabeledEdge[]) => void
 }
 
@@ -43,11 +47,14 @@ const EDGE_COLORS: Record<EdgeType, string> = {
   unlabeled: 'rgba(255,255,255,0.55)',
 }
 
-export function EdgeLabelSuggestions({ runId, facets, edges, onAcceptEdges }: Props) {
+export function EdgeLabelSuggestions({
+  runId, facets, edges, imageUrl, imageWidthPx = 2048, imageHeightPx = 1366, onAcceptEdges,
+}: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reviewing, setReviewing] = useState(false)
 
   const unlabeledEdges = useMemo(
     () => edges.filter(e => e.edgeType === 'unlabeled'),
@@ -169,16 +176,25 @@ export function EdgeLabelSuggestions({ runId, facets, edges, onAcceptEdges }: Pr
 
       {suggestions.length > 0 && (
         <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span className="text-[10px] uppercase tracking-wide text-amber-300">
               {suggestions.length} label{suggestions.length === 1 ? '' : 's'} suggested
             </span>
-            {highConfidenceCount > 0 && (
-              <button
-                onClick={() => acceptAllHighConfidence(0.7)}
-                className="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
-              >Accept all ≥ 70% ({highConfidenceCount})</button>
-            )}
+            <div className="flex gap-2">
+              {imageUrl && (
+                <button
+                  onClick={() => setReviewing(true)}
+                  className="rounded bg-blue-600 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-500"
+                  title="Step through each edge with a zoomed view of the roof"
+                >🔍 Review visually</button>
+              )}
+              {highConfidenceCount > 0 && (
+                <button
+                  onClick={() => acceptAllHighConfidence(0.7)}
+                  className="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
+                >Accept all ≥ 70% ({highConfidenceCount})</button>
+              )}
+            </div>
           </div>
           <ul className="space-y-3">
             {Object.entries(byFacet).map(([facetLabel, sugList]) => (
@@ -246,6 +262,28 @@ export function EdgeLabelSuggestions({ runId, facets, edges, onAcceptEdges }: Pr
           {unlabeledEdges.length} edge{unlabeledEdges.length === 1 ? '' : 's'} need labels.
           Click <strong>Auto-label</strong> to have AI suggest them all at once.
         </p>
+      )}
+
+      {reviewing && imageUrl && (
+        <EdgeReviewModal
+          imageUrl={imageUrl}
+          imageWidthPx={imageWidthPx}
+          imageHeightPx={imageHeightPx}
+          facets={facets}
+          edges={edges}
+          suggestions={suggestions}
+          onApply={(updated) => {
+            onAcceptEdges(updated)
+            // Clear suggestions that are now confirmed in the applied edges.
+            const confirmedKeys = new Set(
+              updated.filter(e => e.userConfirmed).map(e => `${e.facetLabel}:${e.vertexIndexStart}`),
+            )
+            setSuggestions(prev => prev.filter(
+              s => !confirmedKeys.has(`${s.facet_label}:${s.vertex_index_start}`),
+            ))
+          }}
+          onClose={() => setReviewing(false)}
+        />
       )}
     </section>
   )
