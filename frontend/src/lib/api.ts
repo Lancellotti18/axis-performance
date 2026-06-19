@@ -672,6 +672,26 @@ export const api = {
           }>
           message: string
         }>(`/api/v1/roofing/v2/runs/${runId}/penetrations/suggest`),
+      // Flashing Intelligence — deterministic flashing requirements derived
+      // from confirmed facets/edges/penetrations.
+      getFlashing: (runId: string) =>
+        apiRequest<{
+          requirements: Array<{
+            id: string
+            type: 'step' | 'counter' | 'apron' | 'headwall' | 'kickout' | 'valley' | 'chimney' | 'skylight' | 'cricket'
+            measure: 'linear' | 'count'
+            length_ft: number
+            quantity: number
+            pieces: number | null
+            source: string
+            confidence: 'high' | 'medium' | 'estimated'
+            needs_review: boolean
+            location: Record<string, unknown>
+          }>
+          totals: Record<string, number>
+          count: number
+          message: string
+        }>(`/api/v1/roofing/v2/runs/${runId}/flashing`),
       suggestFacets: (runId: string) =>
         apiRequest<{
           facets: Array<{

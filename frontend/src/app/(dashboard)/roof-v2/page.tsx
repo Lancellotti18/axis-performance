@@ -26,6 +26,7 @@ import MeasurementsSummary from '@/components/roof-v2/MeasurementsSummary'
 import PenetrationSuggestions from '@/components/roof-v2/PenetrationSuggestions'
 import FacetSuggestions from '@/components/roof-v2/FacetSuggestions'
 import EdgeLabelSuggestions from '@/components/roof-v2/EdgeLabelSuggestions'
+import FlashingPanel from '@/components/roof-v2/FlashingPanel'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
@@ -771,6 +772,7 @@ export default function RoofV2Page() {
             />
           )}
           <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
+          {runId && <FlashingPanel runId={runId} />}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setStep('siding')}

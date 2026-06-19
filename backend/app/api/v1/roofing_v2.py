@@ -1198,6 +1198,116 @@ async def get_catalog(
     return {"items": rows, "count": len(rows)}
 
 
+@router.get("/runs/{run_id}/flashing")
+async def get_run_flashing(run_id: str, user: dict = Depends(require_user)) -> dict:
+    """
+    Flashing Intelligence — derives every flashing requirement deterministically
+    from the run's confirmed facets, classified edges (wall_intersection,
+    valley), and penetrations (chimney, skylight). No AI: each requirement
+    traces back to a specific edge/penetration so the contractor can see exactly
+    why it was added, then accept or adjust it.
+    """
+    from app.services.flashing_engine import (
+        compute_flashing, FlashingInput, WallEdge, PenetrationItem,
+    )
+
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select("id").eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+
+    facets = db.table("roof_facets").select("*").eq("run_id", run_id).execute().data or []
+    facet_ids = [f["id"] for f in facets]
+    edges: list[dict] = []
+    if facet_ids:
+        edges = db.table("roof_edges").select("*").in_("facet_id", facet_ids).execute().data or []
+    pens = db.table("roof_penetrations").select("*").eq("run_id", run_id).execute().data or []
+
+    def _vtx(poly: Any, idx: Any) -> Optional[tuple[float, float]]:
+        try:
+            p = poly[int(idx)]
+        except (TypeError, ValueError, IndexError):
+            return None
+        try:
+            if isinstance(p, dict):
+                return (float(p["x"]), float(p["y"]))
+            return (float(p[0]), float(p[1]))
+        except (KeyError, TypeError, ValueError, IndexError):
+            return None
+
+    fmap: dict[str, dict] = {}
+    for f in facets:
+        fmap[f["id"]] = {"label": f.get("facet_label") or "RF", "polygon": f.get("polygon") or []}
+
+    # Eave direction per facet (unit vector in image fractions) — disambiguates
+    # sloped (step) vs horizontal (apron) wall-intersection runs.
+    eave_dir: dict[str, tuple[float, float]] = {}
+    for e in edges:
+        if e.get("edge_type") != "eave":
+            continue
+        fid = e.get("facet_id")
+        poly = fmap.get(fid, {}).get("polygon") or []
+        a = _vtx(poly, e.get("vertex_index_start"))
+        b = _vtx(poly, e.get("vertex_index_end"))
+        if a and b and fid not in eave_dir:
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            n = math.hypot(dx, dy)
+            if n > 0:
+                eave_dir[fid] = (dx / n, dy / n)
+
+    wall_edges: list[WallEdge] = []
+    valley_edges: list[WallEdge] = []
+    for e in edges:
+        et = e.get("edge_type")
+        if et not in ("wall_intersection", "valley"):
+            continue
+        fid = e.get("facet_id")
+        fm = fmap.get(fid)
+        if not fm:
+            continue
+        a = _vtx(fm["polygon"], e.get("vertex_index_start"))
+        b = _vtx(fm["polygon"], e.get("vertex_index_end"))
+        if not a or not b:
+            continue
+        we = WallEdge(
+            facet_label=fm["label"],
+            edge_index=int(e.get("vertex_index_start") or 0),
+            edge_type=et,
+            p0=a, p1=b,
+            plan_length_ft=float(e.get("plan_length_ft") or 0.0),
+            slope_adjusted_ft=float(e.get("slope_adjusted_ft") or 0.0),
+            eave_dir=eave_dir.get(fid),
+        )
+        (valley_edges if et == "valley" else wall_edges).append(we)
+
+    pen_items: list[PenetrationItem] = []
+    for p in pens:
+        if p.get("type") in ("chimney", "skylight"):
+            pen_items.append(PenetrationItem(
+                pen_id=str(p.get("id")),
+                type=p["type"],
+                width_in=float(p.get("width_in") or 0.0),
+                height_in=float(p.get("height_in") or 0.0),
+                count=int(p.get("count") or 1),
+            ))
+
+    summary = compute_flashing(FlashingInput(
+        wall_edges=wall_edges, valley_edges=valley_edges, penetrations=pen_items,
+    ))
+    payload = summary.to_dict()
+    payload["message"] = (
+        f"{payload['count']} flashing requirement(s) derived from "
+        f"{len(wall_edges)} roof-to-wall run(s), {len(valley_edges)} valley(s), "
+        f"and {len(pen_items)} penetration(s)."
+    )
+    if not wall_edges and not valley_edges and not pen_items:
+        payload["message"] = (
+            "No flashing conditions found yet. Label any roof-to-wall edges as "
+            "'wall_intersection' and add chimneys/skylights, then re-run."
+        )
+    return payload
+
+
 @router.get("/runs/{run_id}/materials")
 async def get_run_materials(
     run_id: str,
