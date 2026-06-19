@@ -18,11 +18,13 @@
  * Edges are rendered as colored 3D lines on top of the mesh — same color
  * coding as the 2D annotated view (ridges=black, eaves=gold, etc.).
  */
-import { Canvas, useThree } from '@react-three/fiber'
+import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Html, GizmoHelper, GizmoViewport } from '@react-three/drei'
 import * as THREE from 'three'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Facet, LabeledEdge, EdgeType } from './RoofFacetEditor'
+
+type CameraView = 'iso' | 'top' | 'front' | 'back' | 'left' | 'right'
 
 interface Props {
   facets: Facet[]
@@ -226,15 +228,17 @@ function FacetMesh({ mesh, selected, onSelect }: { mesh: FacetMesh3D; selected: 
     <group>
       <mesh
         geometry={geometry}
+        castShadow
+        receiveShadow
         onClick={(ev) => { ev.stopPropagation(); onSelect() }}
       >
         <meshStandardMaterial
           color={mesh.color}
-          metalness={0.2}
-          roughness={0.7}
-          transparent
-          opacity={selected ? 0.95 : 0.7}
+          metalness={0.05}
+          roughness={0.85}
           side={THREE.DoubleSide}
+          emissive={selected ? '#2563eb' : '#000000'}
+          emissiveIntensity={selected ? 0.35 : 0}
         />
       </mesh>
       {/* Edges */}
@@ -303,6 +307,8 @@ function GroupChildrenSlot() {
 
 export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeightPx }: Props) {
   const [selected, setSelected] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const controlsRef = useRef<any>(null)
 
   const meshes = useMemo(() => {
     const ftPerPx = feetPerPixel(lat || 30.27, zoom || 20)
@@ -330,6 +336,57 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
     return [sx / n, maxY / 2, sz / n] as [number, number, number]
   }, [meshes])
 
+  // Model radius (in feet) for framing camera presets — half the largest
+  // horizontal span of the centered model.
+  const modelRadius = useMemo(() => {
+    let maxX = 0, maxZ = 0, maxY = 0
+    for (const m of meshes) {
+      for (let i = 0; i < m.vertices.length; i += 3) {
+        maxX = Math.max(maxX, Math.abs(m.vertices[i] - sceneCenter[0]))
+        maxY = Math.max(maxY, m.vertices[i + 1])
+        maxZ = Math.max(maxZ, Math.abs(m.vertices[i + 2] - sceneCenter[2]))
+      }
+    }
+    return Math.max(12, maxX, maxZ, maxY)
+  }, [meshes, sceneCenter])
+
+  // Apply a camera preset by moving the OrbitControls camera + target. The
+  // model is centered at origin, so all presets target [0,0,0].
+  const applyView = useCallback((view: CameraView) => {
+    const c = controlsRef.current
+    if (!c) return
+    const cam = c.object as THREE.PerspectiveCamera
+    const R = modelRadius
+    const pos: Record<CameraView, [number, number, number]> = {
+      iso:   [R * 1.8, R * 1.7, R * 1.8],
+      top:   [0, R * 3.0, 0.001],
+      front: [0, R * 0.9, R * 2.4],
+      back:  [0, R * 0.9, -R * 2.4],
+      left:  [-R * 2.4, R * 0.9, 0],
+      right: [R * 2.4, R * 0.9, 0],
+    }
+    const p = pos[view]
+    cam.position.set(p[0], p[1], p[2])
+    c.target.set(0, 0, 0)
+    c.update()
+  }, [modelRadius])
+
+  // Keyboard camera presets: 1=iso 2=top 3=front 4=back 5=left 6=right, R=reset
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      const map: Record<string, CameraView> = {
+        '1': 'iso', '2': 'top', '3': 'front', '4': 'back', '5': 'left', '6': 'right',
+        t: 'top', T: 'top', r: 'iso', R: 'iso',
+      }
+      const v = map[e.key]
+      if (v) applyView(v)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [applyView])
+
   if (meshes.length === 0) {
     return (
       <section className="rounded-lg border border-white/10 bg-slate-900/40 p-6 text-center text-sm text-slate-400">
@@ -344,14 +401,27 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
         <div>
           <h3 className="text-sm font-semibold text-slate-100">3D Roof Model</h3>
           <p className="text-xs text-slate-400">
-            Computed from your traced facets + pitches. Rotate (drag) · Zoom (wheel) · Pan (right-drag).
-            Click a facet to see its area + pitch.
+            Computed from your traced facets + pitches. Drag to rotate · wheel to zoom · right-drag to pan.
+            Click a facet for its area + pitch.
           </p>
         </div>
-        <button
-          onClick={() => setSelected(null)}
-          className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600"
-        >Clear selection</button>
+        <div className="flex flex-wrap items-center gap-1">
+          {([
+            ['iso', 'Iso', '1'], ['top', 'Top', '2'], ['front', 'Front', '3'],
+            ['back', 'Back', '4'], ['left', 'Left', '5'], ['right', 'Right', '6'],
+          ] as [CameraView, string, string][]).map(([v, label, key]) => (
+            <button
+              key={v}
+              onClick={() => applyView(v)}
+              title={`${label} view (${key})`}
+              className="rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-200 hover:bg-blue-600"
+            >{label}</button>
+          ))}
+          <button
+            onClick={() => setSelected(null)}
+            className="ml-1 rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-600"
+          >Clear</button>
+        </div>
       </div>
 
       <div className="relative h-[600px] overflow-hidden rounded-lg border border-white/10 bg-gradient-to-b from-slate-800 to-slate-950">
@@ -361,9 +431,26 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
           gl={{ antialias: true, preserveDrawingBuffer: true }}
         >
           <color attach="background" args={['#0f172a']} />
-          <ambientLight intensity={0.5} />
-          <directionalLight position={[80, 120, 60]} intensity={0.9} castShadow />
-          <directionalLight position={[-60, 40, -40]} intensity={0.3} />
+          {/* Sky/ground hemisphere ambient — gives roofs a natural lit-from-
+              above look without washing out form. */}
+          <hemisphereLight args={['#cfe3ff', '#1a2436', 0.85]} />
+          {/* Key sun with crisp shadows */}
+          <directionalLight
+            position={[90, 140, 70]}
+            intensity={1.15}
+            castShadow
+            shadow-mapSize-width={2048}
+            shadow-mapSize-height={2048}
+            shadow-camera-left={-200}
+            shadow-camera-right={200}
+            shadow-camera-top={200}
+            shadow-camera-bottom={-200}
+            shadow-camera-near={1}
+            shadow-camera-far={600}
+            shadow-bias={-0.0004}
+          />
+          {/* Cool fill from the opposite side to keep north slopes readable */}
+          <directionalLight position={[-70, 50, -50]} intensity={0.35} color="#9fb8d8" />
 
           <group position={[-sceneCenter[0], 0, -sceneCenter[2]]}>
             {meshes.map(m => (
@@ -385,10 +472,12 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
           </group>
 
           <OrbitControls
+            ref={controlsRef}
+            makeDefault
             enableDamping
             dampingFactor={0.08}
-            minDistance={20}
-            maxDistance={300}
+            minDistance={10}
+            maxDistance={600}
             target={[0, 0, 0]}
           />
           <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
@@ -406,7 +495,8 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
 
       <div className="mt-2 text-[10px] text-slate-500">
         2.5D computed model — geometry derived from contractor traces + pitches. Not photoreal,
-        not photogrammetry. Edge colors match the legend (ridges black, eaves gold, rakes purple, hips gray, valleys blue).
+        not photogrammetry. Use the view buttons (or keys 1-6) to snap to iso / top / front / back / left / right.
+        Edge colors match the legend (ridges black, eaves gold, rakes purple, hips gray, valleys blue).
       </div>
     </section>
   )
