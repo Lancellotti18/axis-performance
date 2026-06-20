@@ -32,6 +32,7 @@ import GroundPhotoPanel from '@/components/roof-v2/GroundPhotoPanel'
 import CollapsibleSection from '@/components/roof-v2/CollapsibleSection'
 import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
+import SolarAssistPanel from '@/components/roof-v2/SolarAssistPanel'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
@@ -756,10 +757,37 @@ export default function RoofV2Page() {
           />
           <CollapsibleSection
             title="AI assistance"
-            subtitle="Detect facets & edges, penetrations, roof-to-wall flashing, and read pitch/chimneys from ground photos."
-            badge="6 tools"
+            subtitle="Google Solar roof data, detect facets & edges, penetrations, roof-to-wall flashing, and read pitch/chimneys from ground photos."
+            badge="tools"
             defaultOpen
           >
+          {runId && imagery?.lat != null && imagery?.lng != null && (
+            <SolarAssistPanel
+              runId={runId}
+              centerLat={imagery.lat}
+              centerLng={imagery.lng}
+              imageWidthPx={imagery.width_px ?? 2048}
+              imageHeightPx={imagery.height_px ?? 1366}
+              feetPerPixel={imagery.feet_per_pixel ?? 0}
+              existingFacetCount={facets.length}
+              onAddFacets={(newFacets) => {
+                const merged = [...facets, ...newFacets]
+                setFacets(merged)
+                const newEdges: typeof edges = newFacets.flatMap(nf =>
+                  nf.polygon.map((_, i) => ({
+                    facetLabel: nf.label,
+                    vertexIndexStart: i,
+                    vertexIndexEnd: (i + 1) % nf.polygon.length,
+                    edgeType: 'unlabeled' as const,
+                    userConfirmed: false,
+                  })),
+                )
+                const mergedEdges = [...edges, ...newEdges]
+                setEdges(mergedEdges)
+                void persistGeometry(merged, mergedEdges)
+              }}
+            />
+          )}
           <FacetSuggestions
             runId={runId}
             imageUrl={imagery?.url ?? ''}

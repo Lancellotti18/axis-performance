@@ -918,6 +918,31 @@ Pitch guide: 3/12≈14°, 5/12≈23°, 8/12≈34°, 12/12≈45°. If you cannot 
     return {"findings": findings, "message": "Analyzed. Review and apply the findings that look right."}
 
 
+@router.get("/runs/{run_id}/solar")
+async def get_run_solar(run_id: str, user: dict = Depends(require_user)) -> dict:
+    """
+    Google Solar building insights for this run's location — pre-segmented roof
+    planes with MEASURED pitch + azimuth + area (from Google's digital surface
+    model). Inert until GOOGLE_SOLAR_API_KEY is set; returns available=false
+    (with a reason) when the key is missing or Google has no coverage here, so
+    the frontend silently falls back to the satellite-tracing flow.
+    """
+    from app.services import solar_service
+
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select(
+        "satellite_lat, satellite_lng"
+    ).eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    lat = run.data.get("satellite_lat")
+    lng = run.data.get("satellite_lng")
+    if lat is None or lng is None:
+        return {"available": False, "reason": "This run has no coordinates to look up."}
+
+    return await solar_service.get_building_insights(float(lat), float(lng))
+
+
 @router.get("/runs/{run_id}/penetrations/suggest")
 async def suggest_penetrations(
     run_id: str, user: dict = Depends(require_user),

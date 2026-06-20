@@ -719,6 +719,29 @@ export const api = {
           }>
           message: string
         }>(`/api/v1/roofing/v2/runs/${runId}/penetrations/suggest`),
+      // Google Solar building insights — pre-segmented roof planes with
+      // measured pitch/azimuth/area. Inert (available:false) until the backend
+      // GOOGLE_SOLAR_API_KEY is set or where Google has no coverage.
+      getSolar: (runId: string) =>
+        apiRequest<{
+          available: boolean
+          reason?: string
+          imagery_quality?: string
+          imagery_date?: string
+          whole_roof_area_sqft?: number
+          segment_count?: number
+          segments?: Array<{
+            pitch_degrees: number
+            pitch: string
+            azimuth_degrees: number
+            slope_direction: string
+            area_m2: number
+            area_sqft: number
+            center: { lat: number; lng: number }
+            bbox: { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } }
+            height_m: number | null
+          }>
+        }>(`/api/v1/roofing/v2/runs/${runId}/solar`, undefined, 60000),
       // Ground-photo exterior intelligence — Gemini reads pitch/chimney/gable/
       // materials from a contractor-uploaded ground photo to improve the roof.
       analyzeGroundPhoto: (runId: string, photoUrl: string) =>
