@@ -27,6 +27,7 @@ import PenetrationSuggestions from '@/components/roof-v2/PenetrationSuggestions'
 import FacetSuggestions from '@/components/roof-v2/FacetSuggestions'
 import EdgeLabelSuggestions from '@/components/roof-v2/EdgeLabelSuggestions'
 import FlashingPanel from '@/components/roof-v2/FlashingPanel'
+import WallTransitionPanel from '@/components/roof-v2/WallTransitionPanel'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
@@ -772,6 +773,17 @@ export default function RoofV2Page() {
             />
           )}
           <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
+          {runId && (
+            <WallTransitionPanel
+              runId={runId}
+              facets={facets}
+              edges={edges}
+              onApplyEdges={(updated) => {
+                setEdges(updated)
+                void persistGeometry(facets, updated)
+              }}
+            />
+          )}
           {runId && <FlashingPanel runId={runId} />}
           <div className="flex flex-wrap gap-2">
             <button

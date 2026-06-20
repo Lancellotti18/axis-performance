@@ -1163,6 +1163,115 @@ async def suggest_edge_labels(
     }
 
 
+@router.get("/runs/{run_id}/detect-wall-transitions")
+async def detect_wall_transitions(run_id: str, user: dict = Depends(require_user)) -> dict:
+    """
+    AI roof-to-wall transition detection (Phase 2 of flashing intelligence).
+
+    Gemini analyzes the top-down satellite tile and returns the line segments
+    where the roof meets a vertical wall — the conditions that REQUIRE flashing:
+      * Roof-to-wall runs (a slope dies into a taller wall — step/apron flashing)
+      * Dormer sides (a dormer's cheek walls rise out of the main roof)
+
+    Returns segments in image fractions with confidence + reasoning. The
+    frontend matches each accepted segment to the nearest traced facet edge and
+    re-labels it 'wall_intersection', which the flashing engine then consumes.
+    Nothing here writes to the DB — every finding is a reviewable suggestion.
+    """
+    import json as _json
+    import re as _re
+    from app.services.llm import llm_vision
+
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select(
+        "satellite_image_url"
+    ).eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    img_url = run.data.get("satellite_image_url")
+    if not img_url:
+        return {"transitions": [], "reason": "No satellite image attached to this run.", "message": "No imagery."}
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(img_url, follow_redirects=True)
+            r.raise_for_status()
+            img_bytes = r.content
+            mt = (r.headers.get("content-type") or "image/png").split(";")[0].strip()
+            if mt not in ("image/png", "image/jpeg", "image/webp"):
+                mt = "image/png"
+    except Exception as e:
+        return {"transitions": [], "reason": f"Could not download tile: {e}", "message": "Image fetch failed."}
+
+    prompt = """You are a roofing estimator finding ROOF-TO-WALL TRANSITIONS in a top-down satellite image — the places that require flashing.
+
+Look for these conditions and return the line where the roof meets the wall:
+  1. ROOF-TO-WALL: a roof slope runs into a TALLER wall of the same building (e.g. a single-story section meeting a two-story wall, a porch roof meeting the main house). The transition is the line along the base of the taller wall.
+  2. DORMER: a small roofed projection sticking out of the main roof. Its two side ("cheek") walls each create a roof-to-wall transition — return one segment per visible cheek wall.
+
+DO NOT return: ridges, hips, valleys, eaves (gutter edges), rakes (gable edges), or the building's outer perimeter. Those are NOT roof-to-wall transitions.
+
+For each transition return the segment endpoints as [x,y] fractions of the image (0..1, top-left origin), the kind, a confidence 0..1, and a short reason.
+
+Return ONLY JSON. Include a top-level "reason" describing what you saw (especially if you found nothing):
+{
+  "reason": "Found a dormer on the south slope with two cheek walls.",
+  "transitions": [
+    {"p0": [0.42, 0.30], "p1": [0.42, 0.40], "kind": "dormer", "confidence": 0.7, "reason": "Left cheek wall of dormer"}
+  ]
+}
+If there are none, return {"reason": "...", "transitions": []}. Do NOT invent transitions."""
+
+    try:
+        text = await llm_vision(img_bytes, mt, prompt, max_tokens=900)
+        s = (text or "").strip()
+        s = _re.sub(r"^```(?:json)?\s*", "", s, flags=_re.MULTILINE)
+        s = _re.sub(r"\s*```\s*$", "", s)
+        a, b = s.find("{"), s.rfind("}")
+        if a < 0 or b < 0:
+            return {"transitions": [], "reason": "Vision returned no JSON.", "message": "AI could not analyze the tile."}
+        parsed = _json.loads(s[a:b + 1])
+    except Exception as e:
+        return {"transitions": [], "reason": f"Vision error: {str(e)[:160]}", "message": "AI detection errored."}
+
+    cleaned: list[dict] = []
+    for t in parsed.get("transitions") or []:
+        p0 = t.get("p0") or []
+        p1 = t.get("p1") or []
+        if not (isinstance(p0, (list, tuple)) and isinstance(p1, (list, tuple)) and len(p0) >= 2 and len(p1) >= 2):
+            continue
+        try:
+            x0 = max(0.0, min(1.0, float(p0[0]))); y0 = max(0.0, min(1.0, float(p0[1])))
+            x1 = max(0.0, min(1.0, float(p1[0]))); y1 = max(0.0, min(1.0, float(p1[1])))
+        except (TypeError, ValueError):
+            continue
+        if abs(x0 - x1) < 1e-4 and abs(y0 - y1) < 1e-4:
+            continue
+        kind = t.get("kind") if t.get("kind") in ("wall", "dormer") else "wall"
+        cleaned.append({
+            "p0": [x0, y0], "p1": [x1, y1],
+            "kind": kind,
+            "confidence": geo.normalize_confidence(t.get("confidence")),
+            "reason": str(t.get("reason") or "")[:200],
+        })
+
+    reason = str(parsed.get("reason") or "")[:400]
+    if not cleaned:
+        return {
+            "transitions": [],
+            "reason": reason or "No roof-to-wall transitions clearly visible.",
+            "message": "No roof-to-wall transitions found. If the roof has dormers or abuts a taller wall, label those edges manually as 'wall_intersection'.",
+        }
+    return {
+        "transitions": cleaned,
+        "reason": reason,
+        "message": (
+            f"{len(cleaned)} roof-to-wall transition(s) detected. Accept them to label the "
+            "matching roof edges as wall_intersection — flashing is recomputed automatically."
+        ),
+    }
+
+
 # ----------------------------------------------------------------------------
 # Materials
 # ----------------------------------------------------------------------------

@@ -672,6 +672,20 @@ export const api = {
           }>
           message: string
         }>(`/api/v1/roofing/v2/runs/${runId}/penetrations/suggest`),
+      // AI roof-to-wall transition detection — segments where the roof meets a
+      // wall/dormer, used to auto-label wall_intersection edges for flashing.
+      detectWallTransitions: (runId: string) =>
+        apiRequest<{
+          transitions: Array<{
+            p0: [number, number]
+            p1: [number, number]
+            kind: 'wall' | 'dormer'
+            confidence: number
+            reason: string
+          }>
+          reason?: string
+          message: string
+        }>(`/api/v1/roofing/v2/runs/${runId}/detect-wall-transitions`, {}, 120000),
       // Flashing Intelligence — deterministic flashing requirements derived
       // from confirmed facets/edges/penetrations.
       getFlashing: (runId: string) =>
