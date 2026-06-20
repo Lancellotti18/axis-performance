@@ -194,6 +194,29 @@ async def imagery_proxy(url: str = Query(..., min_length=10)):
     )
 
 
+def _enhance_for_vision(img_bytes: bytes, media_type: str) -> tuple[bytes, str]:
+    """
+    Contrast-stretch + sharpen a satellite tile before sending it to the vision
+    model, so roof-plane boundaries are easier to resolve on hazy imagery. Pure
+    Pillow; returns (original_bytes, media_type) unchanged on any failure.
+    """
+    try:
+        import io as _io
+        from PIL import Image, ImageEnhance, ImageOps
+
+        im = Image.open(_io.BytesIO(img_bytes))
+        im = im.convert("RGB")
+        im = ImageOps.autocontrast(im, cutoff=1)        # percentile contrast stretch
+        im = ImageEnhance.Contrast(im).enhance(1.25)
+        im = ImageEnhance.Sharpness(im).enhance(1.8)     # crisper edges
+        out = _io.BytesIO()
+        im.save(out, format="JPEG", quality=90)
+        return out.getvalue(), "image/jpeg"
+    except Exception as e:
+        logger.info("vision pre-enhance failed (%s) — using original", e)
+        return img_bytes, media_type
+
+
 @router.post("/imagery/fetch")
 async def imagery_fetch(
     payload: ImageryHealthRequest,
@@ -1057,8 +1080,13 @@ STEP 3 — RETURN POLYGONS.
 - Trace each facet as a closed polygon (4-8 vertices, do NOT repeat first vertex at end)
 - Coordinates are [x, y] fractions of image width/height (0..1), top-left origin
 - Adjacent facets should SHARE edges (vertex coordinates within ~0.005 of each other)
-- Only trace facets you can CLEARLY see — skip facets blocked by trees, shadow, or unclear edges
-- If you genuinely cannot identify the building (heavy tree cover, very low res), return facets: []
+- ALWAYS return your BEST ATTEMPT at the main building's roof, even when the
+  imagery is hazy or the boundaries aren't crisp. A rough polygon with a LOW
+  confidence (0.3-0.5) is far more useful than nothing — the contractor will
+  refine it. Use confidence to express uncertainty; do NOT use [] to express it.
+- If the whole roof reads as one plane, return that ONE facet. If you can make
+  out a likely ridge, split into 2. Don't hold back waiting for certainty.
+- Return facets: [] ONLY if there is genuinely no building in the frame at all.
 
 Return ONLY valid JSON (no prose, no markdown). ALWAYS include a top-level
 "reason" string explaining what you saw — especially when facets is empty,
@@ -1089,8 +1117,13 @@ and note that you're uncertain — better to be uncertain than wrong. The contra
 suggestions and trust your high-confidence ones.
 """
 
+    # Give the vision model a contrast-boosted, sharpened copy — the same idea
+    # as the client clarity tool — so plane boundaries are easier for it to
+    # resolve on hazy tiles. Falls back to the original on any error.
+    vision_bytes, vision_mt = _enhance_for_vision(img_bytes, mt)
+
     try:
-        text = await llm_vision(img_bytes, mt, prompt, max_tokens=1500)
+        text = await llm_vision(vision_bytes, vision_mt, prompt, max_tokens=1500)
         s = (text or "").strip()
         s = _re.sub(r"^```(?:json)?\s*", "", s, flags=_re.MULTILINE)
         s = _re.sub(r"\s*```\s*$", "", s)
