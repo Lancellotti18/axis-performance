@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { buildEdgeMap, snapToNearestEdge } from '@/lib/edgeSnap'
 import type { Facet } from './RoofFacetEditor'
 
 type Pt = [number, number]
@@ -58,6 +59,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
   const [error, setError] = useState<string | null>(null)
   const [ran, setRan] = useState(false)
   const [elapsed, setElapsed] = useState(0)
+  const [refineOnAccept, setRefineOnAccept] = useState(true)
   const [zoomedSuggestion, setZoomedSuggestion] = useState<Suggestion | null>(null)
 
   // Elapsed-time ticker while detecting — so a cold-started backend (up to ~60s
@@ -87,10 +89,27 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
     }
   }, [runId])
 
-  const accept = useCallback((s: Suggestion, idx: number) => {
+  // Optionally tighten an AI polygon's vertices to the nearest real image
+  // edge. CONSERVATIVE on purpose — a small 8px radius + a strong-gradient
+  // threshold means a vertex only moves when it's already very close to a
+  // crisp edge, so it can never jump to a wrong line (a shadow, a neighbor).
+  const refinePolygon = useCallback(async (poly: [number, number][]): Promise<[number, number][]> => {
+    if (!refineOnAccept || !imageUrl) return poly
+    try {
+      const map = await buildEdgeMap(imageUrl)
+      return poly.map(([fx, fy]) => {
+        const r = snapToNearestEdge(fx * map.width, fy * map.height, 8, 0.16)
+        return (r.snapped ? [r.x / map.width, r.y / map.height] : [fx, fy]) as [number, number]
+      })
+    } catch {
+      return poly   // CORS / not-ready → leave the AI polygon untouched
+    }
+  }, [refineOnAccept, imageUrl])
+
+  const accept = useCallback(async (s: Suggestion, idx: number) => {
     const facet: Facet = {
       label: nextLabel(existingFacets, idx),
-      polygon: s.polygon,
+      polygon: await refinePolygon(s.polygon),
       pitch: s.predicted_pitch || '6/12',
       // Confidence < 0.85 marks this as ai_corrected in the training data trigger
       confidence: 0.7,
@@ -98,25 +117,27 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
     }
     onAccept(facet)
     setSuggestions(prev => prev.filter((_, i) => i !== idx))
-  }, [existingFacets, onAccept])
+  }, [existingFacets, onAccept, refinePolygon])
 
   const reject = useCallback((idx: number) => {
     setSuggestions(prev => prev.filter((_, i) => i !== idx))
   }, [])
 
-  const acceptAll = useCallback(() => {
-    suggestions.forEach((s, i) => {
+  const acceptAll = useCallback(async () => {
+    const current = suggestions
+    for (let i = 0; i < current.length; i++) {
+      const s = current[i]
       const facet: Facet = {
         label: nextLabel(existingFacets, i),
-        polygon: s.polygon,
+        polygon: await refinePolygon(s.polygon),
         pitch: s.predicted_pitch || '6/12',
         confidence: 0.7,
         userConfirmed: true,
       }
       onAccept(facet)
-    })
+    }
     setSuggestions([])
-  }, [suggestions, existingFacets, onAccept])
+  }, [suggestions, existingFacets, onAccept, refinePolygon])
 
   return (
     <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
@@ -189,14 +210,20 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
 
       {suggestions.length > 0 && (
         <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span className="text-[10px] uppercase tracking-wide text-amber-300">
               {suggestions.length} facet{suggestions.length === 1 ? '' : 's'} suggested · click thumbnail to enlarge
             </span>
-            <button
-              onClick={acceptAll}
-              className="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
-            >Accept all</button>
+            <div className="flex items-center gap-2">
+              <label className="flex cursor-pointer items-center gap-1 text-[10px] text-slate-300" title="Tighten each accepted polygon's vertices to the nearest crisp edge (small, safe radius)">
+                <input type="checkbox" checked={refineOnAccept} onChange={e => setRefineOnAccept(e.target.checked)} className="h-3 w-3" />
+                Refine to edges
+              </label>
+              <button
+                onClick={() => void acceptAll()}
+                className="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
+              >Accept all</button>
+            </div>
           </div>
           <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {suggestions.map((s, i) => {
@@ -236,7 +263,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                     </div>
                     <div className="mt-1 flex gap-2">
                       <button
-                        onClick={() => accept(s, i)}
+                        onClick={() => void accept(s, i)}
                         className="rounded bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-500"
                       >Accept</button>
                       <button
@@ -264,7 +291,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
           onClose={() => setZoomedSuggestion(null)}
           onAccept={() => {
             const idx = suggestions.indexOf(zoomedSuggestion)
-            if (idx >= 0) accept(zoomedSuggestion, idx)
+            if (idx >= 0) void accept(zoomedSuggestion, idx)
             setZoomedSuggestion(null)
           }}
           onReject={() => {
