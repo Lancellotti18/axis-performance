@@ -29,6 +29,7 @@ import EdgeLabelSuggestions from '@/components/roof-v2/EdgeLabelSuggestions'
 import FlashingPanel from '@/components/roof-v2/FlashingPanel'
 import WallTransitionPanel from '@/components/roof-v2/WallTransitionPanel'
 import GroundPhotoPanel from '@/components/roof-v2/GroundPhotoPanel'
+import CollapsibleSection from '@/components/roof-v2/CollapsibleSection'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
@@ -739,6 +740,12 @@ export default function RoofV2Page() {
             onConfidenceChange={setConfidence}
             onForceSave={async () => { await persistGeometry(facets, edges) }}
           />
+          <CollapsibleSection
+            title="AI assistance"
+            subtitle="Detect facets & edges, penetrations, roof-to-wall flashing, and read pitch/chimneys from ground photos."
+            badge="6 tools"
+            defaultOpen
+          >
           <FacetSuggestions
             runId={runId}
             imageUrl={imagery?.url ?? ''}
@@ -802,6 +809,7 @@ export default function RoofV2Page() {
             />
           )}
           {runId && <FlashingPanel runId={runId} />}
+          </CollapsibleSection>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setStep('siding')}
