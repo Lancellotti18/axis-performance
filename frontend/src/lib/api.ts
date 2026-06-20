@@ -43,10 +43,56 @@ async function buildAuthHeaders(options?: RequestInit): Promise<Record<string, s
   }
 }
 
+// In-flight request de-duplication. Two identical requests fired before the
+// first resolves (e.g. a double-clicked "Generate Report", or two components
+// requesting the same data on mount) share ONE network call + promise. This
+// prevents duplicate side effects (double PDF generation, double report rows)
+// and saves redundant round-trips. Cleared as soon as the request settles.
+const _inflight = new Map<string, Promise<unknown>>()
+
+// Optional short-TTL cache for idempotent GETs (opt-in via cacheMs). Covers the
+// "re-open the same run" cost without an IndexedDB layer (the browser already
+// HTTP-caches the heavy tile image bytes; this just spares the JSON round-trip).
+const _ttlCache = new Map<string, { at: number; value: unknown }>()
+
 export async function apiRequest<T>(
   path: string,
   options?: RequestInit,
-  timeoutMs = 90000   // 90s — Render free tier cold starts can take 75s
+  timeoutMs = 90000,  // 90s — Render free tier cold starts can take 75s
+  cacheMs = 0,        // >0 → cache this GET response for cacheMs milliseconds
+): Promise<T> {
+  const method = (options?.method || 'GET').toUpperCase()
+  const dedupKey = `${method} ${path} ${typeof options?.body === 'string' ? options.body : ''}`
+
+  // Serve from TTL cache (idempotent GETs only).
+  if (cacheMs > 0 && method === 'GET') {
+    const hit = _ttlCache.get(dedupKey)
+    if (hit && Date.now() - hit.at < cacheMs) return hit.value as T
+  }
+
+  // Share an identical in-flight request instead of issuing a duplicate.
+  const existing = _inflight.get(dedupKey)
+  if (existing) return existing as Promise<T>
+
+  const run = (async (): Promise<T> => {
+    const result = await _doRequest<T>(path, options, timeoutMs)
+    if (cacheMs > 0 && method === 'GET') {
+      _ttlCache.set(dedupKey, { at: Date.now(), value: result })
+    }
+    return result
+  })()
+  _inflight.set(dedupKey, run)
+  try {
+    return await run
+  } finally {
+    _inflight.delete(dedupKey)
+  }
+}
+
+async function _doRequest<T>(
+  path: string,
+  options?: RequestInit,
+  timeoutMs = 90000,
 ): Promise<T> {
   const fetchOptions: RequestInit = {
     ...options,
@@ -514,7 +560,8 @@ export const api = {
           warnings: string[]
           providers_tried: string[]
           cached?: boolean
-        }>(`/api/v1/roofing/v2/imagery/health?lat=${lat}&lng=${lng}&zoom=${zoom}&width_px=${width}&height_px=${height}`),
+        }>(`/api/v1/roofing/v2/imagery/health?lat=${lat}&lng=${lng}&zoom=${zoom}&width_px=${width}&height_px=${height}`,
+          undefined, 90000, 300000),  // cache 5 min — tile health is deterministic per lat/lng/zoom
       imageryFetch: (lat: number, lng: number, opts?: { zoom?: number; width_px?: number; height_px?: number; include_bytes?: boolean }) =>
         apiRequest<Record<string, unknown>>(
           `/api/v1/roofing/v2/imagery/fetch?include_bytes=${opts?.include_bytes ? 'true' : 'false'}`,
