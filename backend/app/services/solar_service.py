@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from typing import Optional
 
 import httpx
@@ -30,6 +31,17 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 SOLAR_BASE = "https://solar.googleapis.com/v1"
+
+# Cost guard: cache each building's insights so we never bill Google twice for
+# the same address. Keyed on rounded lat/lng (~1m precision). 24h TTL —
+# Google's imagery for a building changes on the order of months, so a long
+# cache is safe and keeps spend to ~one call per unique roof per day.
+_CACHE_TTL_SECONDS = 24 * 3600
+_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _cache_key(lat: float, lng: float) -> str:
+    return f"{lat:.5f},{lng:.5f}"
 
 
 def is_enabled() -> bool:
@@ -78,6 +90,12 @@ async def get_building_insights(lat: float, lng: float) -> dict:
     if not is_enabled():
         return {"available": False, "reason": "Google Solar API key not configured."}
 
+    # Cost guard — serve a cached result for this address if we have one.
+    key = _cache_key(lat, lng)
+    hit = _cache.get(key)
+    if hit and (time.time() - hit[0]) < _CACHE_TTL_SECONDS:
+        return {**hit[1], "cached": True}
+
     url = f"{SOLAR_BASE}/buildingInsights:findClosest"
     params = {
         "location.latitude": f"{lat:.7f}",
@@ -88,7 +106,10 @@ async def get_building_insights(lat: float, lng: float) -> dict:
         async with httpx.AsyncClient(timeout=20) as client:
             r = await client.get(url, params=params)
         if r.status_code == 404:
-            return {"available": False, "reason": "No Google Solar coverage at this address (rural or not yet processed)."}
+            # Definitive "no coverage" — cache so we don't re-bill for it.
+            result = {"available": False, "reason": "No Google Solar coverage at this address (rural or not yet processed)."}
+            _cache[key] = (time.time(), result)
+            return result
         r.raise_for_status()
         data = r.json()
     except httpx.HTTPStatusError as e:
@@ -142,7 +163,7 @@ async def get_building_insights(lat: float, lng: float) -> dict:
     if d.get("year"):
         imagery_date = f"{int(d['year']):04d}-{int(d.get('month', 1)):02d}-{int(d.get('day', 1)):02d}"
 
-    return {
+    result = {
         "available": True,
         "imagery_quality": data.get("imageryQuality"),
         "imagery_date": imagery_date,
@@ -152,3 +173,5 @@ async def get_building_insights(lat: float, lng: float) -> dict:
         "segments": segments,
         "segment_count": len(segments),
     }
+    _cache[key] = (time.time(), result)
+    return result

@@ -741,7 +741,8 @@ export const api = {
             bbox: { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } }
             height_m: number | null
           }>
-        }>(`/api/v1/roofing/v2/runs/${runId}/solar`, undefined, 60000),
+          cached?: boolean
+        }>(`/api/v1/roofing/v2/runs/${runId}/solar`, undefined, 60000, 1800000),  // cache 30 min — never re-bill the same run in a session
       // Ground-photo exterior intelligence — Gemini reads pitch/chimney/gable/
       // materials from a contractor-uploaded ground photo to improve the roof.
       analyzeGroundPhoto: (runId: string, photoUrl: string) =>
