@@ -26,6 +26,7 @@
  * metres-per-pixel scale comes from the original tile. This is visualization
  * only, same contract as the old sharpen feature.
  */
+import { proxiedTileUrl } from '@/lib/tileProxy'
 
 export interface EnhanceOptions {
   /** Percentile contrast stretch. 0 disables. Default 0.01 (1%–99%). */
@@ -260,7 +261,9 @@ function loadImage(url: string): Promise<HTMLImageElement> {
     img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
     img.onerror = () => reject(new Error('Could not load image (CORS or network)'))
-    img.src = url
+    // Route provider tiles through the backend proxy so the canvas read isn't
+    // blocked by missing CORS headers (blob:/data: pass through unchanged).
+    img.src = proxiedTileUrl(url)
   })
 }
 

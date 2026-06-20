@@ -16,6 +16,7 @@
  * The gradient map is cached per imageUrl so it only computes once per
  * tile load. ~80–150ms for a 2048×1366 retina tile on modern hardware.
  */
+import { proxiedTileUrl } from '@/lib/tileProxy'
 
 type EdgeMap = {
   url: string
@@ -151,7 +152,9 @@ function loadImageElement(url: string): Promise<HTMLImageElement> {
     img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
     img.onerror = e => reject(e)
-    img.src = url
+    // Provider tiles route through the backend proxy so getImageData isn't
+    // blocked by missing CORS headers; blob:/data: pass through unchanged.
+    img.src = proxiedTileUrl(url)
   })
 }
 

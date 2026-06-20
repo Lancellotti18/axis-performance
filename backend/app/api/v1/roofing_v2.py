@@ -139,6 +139,61 @@ async def upscale_imagery(
     return result.to_dict(include_bytes=False)
 
 
+# Hosts the proxy is allowed to fetch from — satellite tile providers only.
+# An SSRF guard: the endpoint is public (image loads can't carry a JWT) so it
+# must never be usable to reach internal services or arbitrary URLs.
+_PROXY_ALLOWED_HOSTS = (
+    "services.arcgisonline.com",
+    "server.arcgisonline.com",
+    "api.maptiler.com",
+    "api.mapbox.com",
+    "dev.virtualearth.net",
+    "t.ssl.ak.tiles.virtualearth.net",
+)
+
+
+@router.get("/imagery/proxy")
+async def imagery_proxy(url: str = Query(..., min_length=10)):
+    """
+    Same-origin tile proxy. Some providers don't send CORS headers, which makes
+    their tiles unreadable from a <canvas> (tainted-canvas SecurityError) — that
+    silently breaks clarity enhancement, snap-to-edge, and edge refinement.
+    Routing the tile through this endpoint (which returns Access-Control-Allow-
+    Origin: *) makes it canvas-readable.
+
+    Public by design — an <img crossorigin> request can't carry the JWT — but
+    locked to satellite-tile provider hosts only (SSRF guard). Returns the raw
+    image bytes; the browser + our 1h cache keep repeat loads cheap.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in ("http", "https") or not any(
+        host == h or host.endswith("." + h) for h in _PROXY_ALLOWED_HOSTS
+    ):
+        raise HTTPException(status_code=400, detail="URL host not allowed by the tile proxy.")
+
+    try:
+        async with httpx.AsyncClient(timeout=25) as client:
+            r = await client.get(url, follow_redirects=True)
+            r.raise_for_status()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Tile proxy fetch failed: {e}")
+
+    media = (r.headers.get("content-type") or "image/png").split(";")[0].strip()
+    if not media.startswith("image/"):
+        media = "image/png"
+    return Response(
+        content=r.content,
+        media_type=media,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
 @router.post("/imagery/fetch")
 async def imagery_fetch(
     payload: ImageryHealthRequest,
