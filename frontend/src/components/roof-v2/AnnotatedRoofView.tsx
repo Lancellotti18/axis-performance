@@ -69,6 +69,24 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
     if (img.naturalWidth > 0) setImageDims({ w: img.naturalWidth, h: img.naturalHeight })
   }
 
+  // Crop the view to the traced roof (with padding) so the house FILLS the
+  // frame instead of sitting tiny in the middle of a wide tile. Falls back to
+  // the full tile when nothing is traced yet.
+  const cropViewBox = useMemo(() => {
+    const pts = facets.flatMap(f => f.polygon)
+    if (pts.length < 3) return `0 0 ${imageDims.w} ${imageDims.h}`
+    let minX = 1, minY = 1, maxX = 0, maxY = 0
+    for (const [x, y] of pts) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x
+      if (y < minY) minY = y; if (y > maxY) maxY = y
+    }
+    const padX = Math.max((maxX - minX) * 0.18, 0.03)
+    const padY = Math.max((maxY - minY) * 0.18, 0.03)
+    const x0 = Math.max(0, minX - padX), y0 = Math.max(0, minY - padY)
+    const x1 = Math.min(1, maxX + padX), y1 = Math.min(1, maxY + padY)
+    return `${x0 * imageDims.w} ${y0 * imageDims.h} ${(x1 - x0) * imageDims.w} ${(y1 - y0) * imageDims.h}`
+  }, [facets, imageDims])
+
   // Index edges by (facet_label, vertex_index_start) for fast lookup while rendering polygons
   const edgesByFacet = useMemo(() => {
     const m = new Map<string, Map<number, LabeledEdge>>()
@@ -129,20 +147,18 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
       </div>
 
       <div className="relative overflow-hidden rounded-lg border border-white/10 bg-black">
+        {/* Hidden loader just to capture the tile's natural dimensions. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imageUrl}
-          alt="satellite"
-          className="block w-full"
-          onLoad={onImageLoad}
-          draggable={false}
-        />
+        <img src={imageUrl} alt="" className="hidden" onLoad={onImageLoad} />
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${imageDims.w} ${imageDims.h}`}
+          viewBox={cropViewBox}
           preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 h-full w-full"
+          className="block max-h-[560px] w-full"
         >
+          {/* Satellite tile inside the SVG so it crops to the roof with the
+              overlays. */}
+          <image href={imageUrl} x={0} y={0} width={imageDims.w} height={imageDims.h} preserveAspectRatio="none" />
           {/* Facet fills (translucent so satellite shows through) */}
           {facets.map((f, i) => {
             const points = f.polygon.map(([x, y]) => `${x * imageDims.w},${y * imageDims.h}`).join(' ')

@@ -481,8 +481,12 @@ export function RoofFacetEditor({
     }
 
     // 2. Magnetic vertex snap — strongest assist for topology correctness.
+    //    Scale the radius INVERSELY with zoom: when the contractor zooms in to
+    //    work in a tight space, the fraction-space threshold shrinks so it
+    //    stops fighting precise placement near existing vertices.
+    const snapRadius = VERTEX_SNAP_FRAC / Math.max(1, view.scale)
     let best: Pt | null = null
-    let bestD = VERTEX_SNAP_FRAC
+    let bestD = snapRadius
     for (const f of facets) {
       for (const v of f.polygon) {
         const d = Math.hypot(v[0] - pt[0], v[1] - pt[1])
@@ -491,29 +495,33 @@ export function RoofFacetEditor({
     }
     if (best) return { pt: [best[0], best[1]], onVertex: true }
 
-    // 3. Edge snap (gradient)
+    // 3. Edge snap (gradient) — radius also tightens with zoom.
     if (snapEnabled && snapReady) {
-      const snapped = snapToNearestEdge(pt[0] * imageDims.w, pt[1] * imageDims.h, 14)
+      const edgeRadius = Math.max(5, Math.round(14 / Math.max(1, view.scale * 0.6)))
+      const snapped = snapToNearestEdge(pt[0] * imageDims.w, pt[1] * imageDims.h, edgeRadius)
       if (snapped.snapped) pt = [snapped.x / imageDims.w, snapped.y / imageDims.h]
     }
     return { pt, onVertex: false }
-  }, [shiftHeld, drawingPoly, facets, snapEnabled, snapReady, imageDims])
+  }, [shiftHeld, drawingPoly, facets, snapEnabled, snapReady, imageDims, view.scale])
 
   const onSvgPointerDown = useCallback((ev: React.PointerEvent<SVGSVGElement>) => {
     if (mode !== 'draw') return
     if (ev.button !== 0) return
     const { pt } = resolvePoint(eventToFrac(ev))
 
-    // Close polygon if the resolved point is near the first vertex
+    // Close polygon if the resolved point is near the first vertex. Threshold
+    // shrinks with zoom so it doesn't auto-close prematurely in tight spaces.
     if (drawingPoly.length >= 3) {
       const [fx, fy] = drawingPoly[0]
-      if (Math.abs(pt[0] - fx) < 0.012 && Math.abs(pt[1] - fy) < 0.018) {
+      const cx = 0.012 / Math.max(1, view.scale)
+      const cy = 0.018 / Math.max(1, view.scale)
+      if (Math.abs(pt[0] - fx) < cx && Math.abs(pt[1] - fy) < cy) {
         finalizeDrawingPoly()
         return
       }
     }
     setDrawingPoly(prev => [...prev, pt])
-  }, [mode, drawingPoly, eventToFrac, resolvePoint])
+  }, [mode, drawingPoly, eventToFrac, resolvePoint, view.scale])
 
   // Rubber-band: track the cursor while drawing so we can show the line that
   // WOULD be drawn + a preview dot that magnetizes to edges/vertices.
