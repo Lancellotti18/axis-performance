@@ -45,6 +45,7 @@ const ACCEPTED = 'image/jpeg,image/png,image/webp'
 export default function GroundPhotoPanel({ runId, projectId, userId, onApplyPitch, onChimneyAdded }: Props) {
   const [photos, setPhotos] = useState<PhotoEntry[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
 
   const analyze = useCallback(async (url: string) => {
     setPhotos(prev => prev.map(p => p.url === url ? { ...p, status: 'analyzing' } : p))
@@ -119,17 +120,26 @@ export default function GroundPhotoPanel({ runId, projectId, userId, onApplyPitc
             <strong> pitch</strong>, <strong>chimneys</strong>, dormers, gable walls, materials — and you apply the findings.
           </p>
         </div>
-        <button
-          onClick={() => fileRef.current?.click()}
-          className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500"
-        >+ Add photos</button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => cameraRef.current?.click()}
+            className="flex items-center gap-1.5 rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+          >📷 Take photo</button>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500"
+          >Upload</button>
+        </div>
+        {/* Camera capture (mobile opens the rear camera directly) */}
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden
+          onChange={e => { void handleFiles(e.target.files); if (cameraRef.current) cameraRef.current.value = '' }} />
         <input ref={fileRef} type="file" accept={ACCEPTED} multiple hidden
           onChange={e => { void handleFiles(e.target.files); if (fileRef.current) fileRef.current.value = '' }} />
       </div>
 
       {photos.length === 0 && (
         <p className="mt-3 text-xs text-slate-500">
-          No photos yet. A clear shot of a gable end gives the best pitch reading.
+          On your phone, tap <strong>📷 Take photo</strong> to shoot a gable end / chimney right now — a clear gable shot gives the best pitch reading.
         </p>
       )}
 

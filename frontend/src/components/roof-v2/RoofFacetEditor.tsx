@@ -947,16 +947,29 @@ export function RoofFacetEditor({
           {showCoach && (
             <div className="pointer-events-auto absolute left-1/2 top-4 z-30 w-[min(420px,90%)] -translate-x-1/2 rounded-lg border border-blue-400/40 bg-slate-900/95 p-4 shadow-2xl backdrop-blur">
               <div className="mb-2 flex items-center justify-between">
-                <div className="text-sm font-semibold text-white">Drawing a roof facet</div>
+                <div className="text-sm font-semibold text-white">How to trace a roof facet</div>
                 <button onClick={dismissCoach} className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white">✕</button>
               </div>
-              <ul className="space-y-1.5 text-xs text-slate-300">
-                <li className="flex gap-2"><span className="text-blue-400">①</span> Click around a roof plane to drop vertices — each one <strong className="text-white">snaps to the nearest edge</strong> automatically.</li>
-                <li className="flex gap-2"><span className="text-blue-400">②</span> Hold <kbd className="rounded bg-slate-800 px-1">Shift</kbd> for clean 90° corners. Drag empty space to pan, scroll to zoom.</li>
-                <li className="flex gap-2"><span className="text-blue-400">③</span> Click the <strong className="text-white">first dot</strong> (or press <kbd className="rounded bg-slate-800 px-1">Enter</kbd>) to close the facet.</li>
-                <li className="flex gap-2"><span className="text-blue-400">④</span> Made a mistake? <kbd className="rounded bg-slate-800 px-1">⌘Z</kbd> undoes. Or let <strong className="text-white">AI assistance</strong> below propose facets for you.</li>
-              </ul>
-              <button onClick={dismissCoach} className="mt-3 w-full rounded bg-blue-600 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">Got it</button>
+              <ol className="space-y-2 text-xs text-slate-200">
+                <li className="flex gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">1</span>
+                  <span>Click each <strong>corner</strong> of one roof plane. Dots snap to the edges for you.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">2</span>
+                  <span>Click the <strong>first dot again</strong> (or press <kbd className="rounded bg-slate-800 px-1">Enter</kbd>) to finish that facet.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">3</span>
+                  <span>Repeat for each plane, then <strong>label the edges</strong> (ridge, eave, valley…).</span>
+                </li>
+              </ol>
+              <div className="mt-2 rounded bg-slate-800/60 px-2 py-1.5 text-[10px] text-slate-400">
+                <kbd className="rounded bg-slate-700 px-1 text-slate-200">Shift</kbd> square corners ·
+                drag = pan · scroll = zoom · <kbd className="rounded bg-slate-700 px-1 text-slate-200">⌘Z</kbd> undo
+              </div>
+              <button onClick={dismissCoach} className="mt-3 w-full rounded bg-blue-600 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">Got it — let me draw</button>
+              <div className="mt-1 text-center text-[10px] text-slate-500">…or use <strong>AI assistance</strong> below to auto-detect facets.</div>
             </div>
           )}
 
