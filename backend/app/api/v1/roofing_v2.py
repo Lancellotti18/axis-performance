@@ -744,6 +744,96 @@ async def delete_penetration(
     return {"status": "deleted", "id": pid}
 
 
+class GroundPhotoAnalyzeRequest(BaseModel):
+    photo_url: str
+
+
+@router.post("/runs/{run_id}/ground-photos/analyze")
+async def analyze_ground_photo(
+    run_id: str,
+    req: GroundPhotoAnalyzeRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Ground-photo exterior intelligence (Phase 3). A contractor uploads a
+    ground-level photo of the property; Gemini reads the things a top-down
+    satellite tile CANNOT show — true roof pitch from a gable end, chimney
+    presence + relative height, dormers, gable walls, and materials. These
+    findings improve roofing accuracy (pitch drives area + flashing; chimneys
+    add chimney/cricket flashing).
+
+    Returns structured findings the contractor reviews and applies. Writes
+    nothing here — applying a finding (set pitch / add chimney) is a separate,
+    explicit action.
+    """
+    import json as _json
+    import re as _re
+    from app.services.llm import llm_vision
+
+    try:
+        async with httpx.AsyncClient(timeout=25) as client:
+            r = await client.get(req.photo_url, follow_redirects=True)
+            r.raise_for_status()
+            img_bytes = r.content
+            mt = (r.headers.get("content-type") or "image/jpeg").split(";")[0].strip()
+            if mt not in ("image/png", "image/jpeg", "image/webp"):
+                mt = "image/jpeg"
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not fetch the photo: {e}")
+
+    prompt = """You are a roofing estimator analyzing a GROUND-LEVEL photo of a house. Report only what improves a ROOF estimate. Return ONLY JSON:
+{
+  "roof_pitch": "6/12",                  // rise/12 read from a visible gable end or roof slope; "" if not visible
+  "pitch_confidence": "high|medium|low",
+  "pitch_method": "gable_end|slope_angle|not_visible",
+  "chimney": {"present": true, "count": 1, "height": "short|medium|tall", "material": "brick|metal|stucco|unknown"},
+  "skylights": 0,
+  "dormers": 0,
+  "gable_walls_visible": 1,
+  "roof_material": "asphalt_shingles|metal|tile|flat_membrane|wood_shake|slate|unknown",
+  "roof_color": "weathered charcoal gray",
+  "siding_material": "vinyl|hardie|wood|brick|stucco|aluminum|stone|unknown",
+  "stories": 1,
+  "notes": "one short sentence of anything else relevant to flashing or pitch"
+}
+Pitch guide: 3/12≈14°, 5/12≈23°, 8/12≈34°, 12/12≈45°. If you cannot see the roof slope, set roof_pitch to "" and pitch_method to "not_visible". Do not guess a chimney that isn't there."""
+
+    try:
+        text = await llm_vision(img_bytes, mt, prompt, max_tokens=700)
+        s = (text or "").strip()
+        s = _re.sub(r"^```(?:json)?\s*", "", s, flags=_re.MULTILINE)
+        s = _re.sub(r"\s*```\s*$", "", s)
+        a, b = s.find("{"), s.rfind("}")
+        if a < 0 or b < 0:
+            return {"findings": None, "message": "AI could not read this photo. Try a clearer shot of the roofline."}
+        parsed = _json.loads(s[a:b + 1])
+    except Exception as e:
+        return {"findings": None, "message": f"Photo analysis error: {str(e)[:160]}"}
+
+    # Normalize into a stable shape.
+    ch = parsed.get("chimney") or {}
+    findings = {
+        "roof_pitch": str(parsed.get("roof_pitch") or "").strip(),
+        "pitch_confidence": parsed.get("pitch_confidence") if parsed.get("pitch_confidence") in ("high", "medium", "low") else "low",
+        "pitch_method": parsed.get("pitch_method") if parsed.get("pitch_method") in ("gable_end", "slope_angle", "not_visible") else "not_visible",
+        "chimney": {
+            "present": bool(ch.get("present")),
+            "count": int(ch.get("count") or 0),
+            "height": ch.get("height") if ch.get("height") in ("short", "medium", "tall") else "medium",
+            "material": str(ch.get("material") or "unknown"),
+        },
+        "skylights": int(parsed.get("skylights") or 0),
+        "dormers": int(parsed.get("dormers") or 0),
+        "gable_walls_visible": int(parsed.get("gable_walls_visible") or 0),
+        "roof_material": str(parsed.get("roof_material") or "unknown"),
+        "roof_color": str(parsed.get("roof_color") or "")[:80],
+        "siding_material": str(parsed.get("siding_material") or "unknown"),
+        "stories": int(parsed.get("stories") or 1),
+        "notes": str(parsed.get("notes") or "")[:240],
+    }
+    return {"findings": findings, "message": "Analyzed. Review and apply the findings that look right."}
+
+
 @router.get("/runs/{run_id}/penetrations/suggest")
 async def suggest_penetrations(
     run_id: str, user: dict = Depends(require_user),

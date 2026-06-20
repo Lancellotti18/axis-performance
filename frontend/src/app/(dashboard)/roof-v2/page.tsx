@@ -28,6 +28,7 @@ import FacetSuggestions from '@/components/roof-v2/FacetSuggestions'
 import EdgeLabelSuggestions from '@/components/roof-v2/EdgeLabelSuggestions'
 import FlashingPanel from '@/components/roof-v2/FlashingPanel'
 import WallTransitionPanel from '@/components/roof-v2/WallTransitionPanel'
+import GroundPhotoPanel from '@/components/roof-v2/GroundPhotoPanel'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
@@ -773,6 +774,19 @@ export default function RoofV2Page() {
             />
           )}
           <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
+          {runId && projectId && userId && (
+            <GroundPhotoPanel
+              runId={runId}
+              projectId={projectId}
+              userId={userId}
+              onApplyPitch={(pitch) => {
+                const updated = facets.map(f => ({ ...f, pitch }))
+                setFacets(updated)
+                void persistGeometry(updated, edges)
+              }}
+              onChimneyAdded={() => setGeometryStamp(s => s + 1)}
+            />
+          )}
           {runId && (
             <WallTransitionPanel
               runId={runId}

@@ -672,6 +672,29 @@ export const api = {
           }>
           message: string
         }>(`/api/v1/roofing/v2/runs/${runId}/penetrations/suggest`),
+      // Ground-photo exterior intelligence — Gemini reads pitch/chimney/gable/
+      // materials from a contractor-uploaded ground photo to improve the roof.
+      analyzeGroundPhoto: (runId: string, photoUrl: string) =>
+        apiRequest<{
+          findings: null | {
+            roof_pitch: string
+            pitch_confidence: 'high' | 'medium' | 'low'
+            pitch_method: 'gable_end' | 'slope_angle' | 'not_visible'
+            chimney: { present: boolean; count: number; height: 'short' | 'medium' | 'tall'; material: string }
+            skylights: number
+            dormers: number
+            gable_walls_visible: number
+            roof_material: string
+            roof_color: string
+            siding_material: string
+            stories: number
+            notes: string
+          }
+          message: string
+        }>(`/api/v1/roofing/v2/runs/${runId}/ground-photos/analyze`, {
+          method: 'POST',
+          body: JSON.stringify({ photo_url: photoUrl }),
+        }, 120000),
       // AI roof-to-wall transition detection — segments where the roof meets a
       // wall/dormer, used to auto-label wall_intersection edges for flashing.
       detectWallTransitions: (runId: string) =>
