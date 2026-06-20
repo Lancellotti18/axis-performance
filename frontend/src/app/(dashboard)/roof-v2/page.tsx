@@ -462,30 +462,44 @@ export default function RoofV2Page() {
         </p>
       </header>
 
-      {/* Stepper */}
-      <nav className="flex flex-wrap gap-2 text-xs">
-        {(['project', 'location', 'imagery', 'editor', 'siding', 'report'] as Step[]).map((s, i) => {
-          const reached =
-            (s === 'project') ||
-            (s === 'location' && !!projectId) ||
-            (s === 'imagery' && !!location) ||
-            (s === 'editor' && !!imagery && imagery.status !== 'unavailable') ||
-            (s === 'siding' && !!runId) ||
-            (s === 'report' && !!runId && facets.length > 0)
-          return (
-            <button
-              key={s}
-              onClick={() => reached && setStep(s)}
-              disabled={!reached}
-              className={`rounded-full px-3 py-1.5 transition ${
-                step === s ? 'bg-blue-600 text-white'
-                  : reached ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-                  : 'cursor-not-allowed bg-slate-900 text-slate-600'
-              }`}
-            >{i + 1}. {s}</button>
-          )
-        })}
-      </nav>
+      {/* Stepper — sticky so it stays visible while scrolling the editor.
+          Completed steps (before the current one) show a checkmark. */}
+      {(() => {
+        const order: Step[] = ['project', 'location', 'imagery', 'editor', 'siding', 'report']
+        const currentIdx = order.indexOf(step)
+        return (
+          <nav className="sticky top-0 z-20 -mx-6 flex flex-wrap items-center gap-1.5 border-b border-white/10 bg-slate-950/85 px-6 py-2 text-xs backdrop-blur">
+            {order.map((s, i) => {
+              const reached =
+                (s === 'project') ||
+                (s === 'location' && !!projectId) ||
+                (s === 'imagery' && !!location) ||
+                (s === 'editor' && !!imagery && imagery.status !== 'unavailable') ||
+                (s === 'siding' && !!runId) ||
+                (s === 'report' && !!runId && facets.length > 0)
+              const completed = reached && i < currentIdx
+              return (
+                <span key={s} className="flex items-center gap-1.5">
+                  {i > 0 && <span className={`h-px w-4 ${completed || i <= currentIdx ? 'bg-blue-500/50' : 'bg-slate-700'}`} />}
+                  <button
+                    onClick={() => reached && setStep(s)}
+                    disabled={!reached}
+                    className={`flex items-center gap-1 rounded-full px-3 py-1.5 transition ${
+                      step === s ? 'bg-blue-600 text-white'
+                        : completed ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-900/60'
+                        : reached ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                        : 'cursor-not-allowed bg-slate-900 text-slate-600'
+                    }`}
+                  >
+                    <span>{completed ? '✓' : i + 1}.</span>
+                    <span className="capitalize">{s}</span>
+                  </button>
+                </span>
+              )
+            })}
+          </nav>
+        )
+      })()}
 
       {error && (
         <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-200">

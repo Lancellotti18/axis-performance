@@ -157,6 +157,18 @@ export function RoofFacetEditor({
   const [hoverPt, setHoverPt] = useState<Pt | null>(null)
   const [hoverSnappedVertex, setHoverSnappedVertex] = useState(false)
 
+  // First-use coachmark (shown once, dismissed to localStorage).
+  const [showCoach, setShowCoach] = useState(false)
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('axis_editor_coach_v1')) setShowCoach(true)
+    } catch { /* private mode — just skip */ }
+  }, [])
+  const dismissCoach = useCallback(() => {
+    setShowCoach(false)
+    try { localStorage.setItem('axis_editor_coach_v1', '1') } catch { /* ignore */ }
+  }, [])
+
   // Snap-to-edge: when on, vertex placements snap to the nearest high-gradient
   // pixel within a small radius. Massively improves tracing on blurry imagery.
   const [snapEnabled, setSnapEnabled] = useState(true)
@@ -930,6 +942,23 @@ export function RoofFacetEditor({
               )}
             </svg>
           </div>
+
+          {/* First-use coachmark — dismissible tips, shown once. */}
+          {showCoach && (
+            <div className="pointer-events-auto absolute left-1/2 top-4 z-30 w-[min(420px,90%)] -translate-x-1/2 rounded-lg border border-blue-400/40 bg-slate-900/95 p-4 shadow-2xl backdrop-blur">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-sm font-semibold text-white">Drawing a roof facet</div>
+                <button onClick={dismissCoach} className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white">✕</button>
+              </div>
+              <ul className="space-y-1.5 text-xs text-slate-300">
+                <li className="flex gap-2"><span className="text-blue-400">①</span> Click around a roof plane to drop vertices — each one <strong className="text-white">snaps to the nearest edge</strong> automatically.</li>
+                <li className="flex gap-2"><span className="text-blue-400">②</span> Hold <kbd className="rounded bg-slate-800 px-1">Shift</kbd> for clean 90° corners. Drag empty space to pan, scroll to zoom.</li>
+                <li className="flex gap-2"><span className="text-blue-400">③</span> Click the <strong className="text-white">first dot</strong> (or press <kbd className="rounded bg-slate-800 px-1">Enter</kbd>) to close the facet.</li>
+                <li className="flex gap-2"><span className="text-blue-400">④</span> Made a mistake? <kbd className="rounded bg-slate-800 px-1">⌘Z</kbd> undoes. Or let <strong className="text-white">AI assistance</strong> below propose facets for you.</li>
+              </ul>
+              <button onClick={dismissCoach} className="mt-3 w-full rounded bg-blue-600 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">Got it</button>
+            </div>
+          )}
 
           {/* Floating pan keypad — top-right. INSTANT CSS pan (no refetch, no
               facet misalignment). Drag the canvas, scroll to zoom, or use
