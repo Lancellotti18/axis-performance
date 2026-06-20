@@ -159,20 +159,21 @@ export default function RoofV2Page() {
   // Replaces AI sharpen. Boosts local contrast + sharpens edges so roof planes
   // and ridge/valley lines are easier to see and trace. ON by default.
   const [clarityOn, setClarityOn] = useState(true)
-  const [edgeOverlayOn, setEdgeOverlayOn] = useState(false)
   const [enhancing, setEnhancing] = useState(false)
+  const [enhanceError, setEnhanceError] = useState<string | null>(null)
   const enhancedRevokeRef = useRef<null | (() => void)>(null)
 
-  // Re-run enhancement whenever the source tile changes or a toggle flips.
+  // Re-run enhancement whenever the source tile changes or the toggle flips.
   // Keyed on original_url (NOT url) so our own setImagery(url=...) doesn't loop.
   useEffect(() => {
     const sourceUrl = imagery?.original_url
     if (!sourceUrl || imagery?.status === 'unavailable') return
 
-    // Toggles both off → show the original, drop any enhanced blob.
-    if (!clarityOn && !edgeOverlayOn) {
+    // Off → show the original, drop any enhanced blob.
+    if (!clarityOn) {
       enhancedRevokeRef.current?.()
       enhancedRevokeRef.current = null
+      setEnhanceError(null)
       setImagery(prev => (prev && prev.url !== prev.original_url
         ? { ...prev, url: prev.original_url, display_mode: 'original' }
         : prev))
@@ -181,12 +182,16 @@ export default function RoofV2Page() {
 
     let cancelled = false
     setEnhancing(true)
+    setEnhanceError(null)
+    // Strong settings so the difference is OBVIOUS — local-contrast clarity +
+    // detail sharpen + a contrast stretch. This makes plane boundaries and
+    // ridge/valley lines pop on hazy tiles (it can't add detail that wasn't
+    // captured, but it surfaces what IS there).
     enhanceTile(sourceUrl, {
-      clarity: clarityOn ? 0.65 : 0,
-      sharpness: clarityOn ? 0.45 : 0,
-      contrastStretch: clarityOn ? 0.01 : 0,
-      edgeOverlay: edgeOverlayOn,
-      edgeOverlayOpacity: 0.5,
+      clarity: 1.0,
+      sharpness: 0.7,
+      contrastStretch: 0.015,
+      edgeOverlay: false,
     })
       .then(res => {
         if (cancelled) { res.revoke(); return }
@@ -195,9 +200,11 @@ export default function RoofV2Page() {
         setImagery(prev => (prev ? { ...prev, url: res.url, display_mode: 'sharpened' } : prev))
       })
       .catch(err => {
-        // CORS-tainted canvas or load failure → silently keep the original.
+        // Surface the failure instead of silently doing nothing — otherwise
+        // the toggle looks broken.
         console.warn('[axis] clarity enhancement failed, using original tile:', err)
         if (!cancelled) {
+          setEnhanceError('Could not enhance this tile (the image could not be read). Showing the original.')
           setImagery(prev => (prev ? { ...prev, url: prev.original_url, display_mode: 'original' } : prev))
         }
       })
@@ -205,7 +212,7 @@ export default function RoofV2Page() {
 
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imagery?.original_url, clarityOn, edgeOverlayOn])
+  }, [imagery?.original_url, clarityOn])
 
   // Revoke any outstanding blob URL on unmount.
   useEffect(() => () => { enhancedRevokeRef.current?.() }, [])
@@ -609,43 +616,34 @@ export default function RoofV2Page() {
                 </ul>
               )}
 
-              {/* Clarity enhancement controls — replaces AI sharpen. Instant,
-                  client-side, no hallucination. */}
+              {/* Clarity toggle — client-side local-contrast + sharpen so roof
+                  plane boundaries are easier to see. Toggle off to A/B compare. */}
               {imagery.url && imagery.status !== 'unavailable' && (
                 <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
-                  <span className="text-xs font-semibold text-slate-300">Image clarity:</span>
-                  <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-200">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-200">
                     <input
                       type="checkbox"
                       checked={clarityOn}
                       onChange={e => setClarityOn(e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800"
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-800"
                     />
-                    Enhance (local contrast + sharpen)
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={edgeOverlayOn}
-                      onChange={e => setEdgeOverlayOn(e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800"
-                    />
-                    Edge overlay
-                    <span className="text-slate-500" title="Highlights the strongest contrast lines in cyan — helps locate ridges, hips, and valleys">ⓘ</span>
+                    Sharpen image
+                    <span className="font-normal text-slate-500">(toggle off to compare)</span>
                   </label>
                   {enhancing && (
                     <span className="flex items-center gap-1.5 text-xs text-blue-300">
                       <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-                      enhancing…
+                      sharpening…
                     </span>
                   )}
-                  {!enhancing && imagery.display_mode === 'sharpened' && (
-                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">
-                      enhanced ✓
-                    </span>
+                  {!enhancing && clarityOn && imagery.display_mode === 'sharpened' && (
+                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">applied ✓</span>
+                  )}
+                  {enhanceError && (
+                    <span className="text-[10px] text-amber-400">{enhanceError}</span>
                   )}
                   <span className="ml-auto text-[10px] text-slate-500">
-                    Enhancement is visual only — measurements use the original tile scale
+                    Visual only — measurements use the original tile
                   </span>
                 </div>
               )}
