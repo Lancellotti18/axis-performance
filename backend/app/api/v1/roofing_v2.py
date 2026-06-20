@@ -44,7 +44,7 @@ import logging
 import math
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 
@@ -828,14 +828,39 @@ async def delete_penetration(
     return {"status": "deleted", "id": pid}
 
 
-class GroundPhotoAnalyzeRequest(BaseModel):
-    photo_url: str
+def _normalize_image_for_vision(raw: bytes) -> tuple[Optional[bytes], str]:
+    """
+    Accept any common image a contractor's phone produces and return
+    (jpeg_bytes, media_type) ready for the vision model — downscaling huge
+    photos. Returns (None, '') only when the bytes aren't a readable image.
+    """
+    try:
+        import io as _io
+        from PIL import Image
+
+        im = Image.open(_io.BytesIO(raw))
+        im = im.convert("RGB")
+        if max(im.size) > 2048:               # phone photos are huge; shrink for speed
+            im.thumbnail((2048, 2048))
+        out = _io.BytesIO()
+        im.save(out, format="JPEG", quality=88)
+        return out.getvalue(), "image/jpeg"
+    except Exception:
+        # PIL couldn't decode (e.g. HEIC without the plugin). Pass through if
+        # the magic bytes are already a model-supported format.
+        if raw[:3] == b"\xff\xd8\xff":
+            return raw, "image/jpeg"
+        if raw[:8] == b"\x89PNG\r\n\x1a\n":
+            return raw, "image/png"
+        if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+            return raw, "image/webp"
+        return None, ""
 
 
 @router.post("/runs/{run_id}/ground-photos/analyze")
 async def analyze_ground_photo(
     run_id: str,
-    req: GroundPhotoAnalyzeRequest,
+    file: UploadFile = File(...),
     user: dict = Depends(require_user),
 ) -> dict:
     """
@@ -846,24 +871,26 @@ async def analyze_ground_photo(
     findings improve roofing accuracy (pitch drives area + flashing; chimneys
     add chimney/cricket flashing).
 
+    The image is uploaded DIRECTLY (multipart) and analyzed in-memory — no
+    storage round-trip — so it works regardless of bucket config and accepts
+    any common phone image format (JPEG/PNG/WEBP/most others via Pillow).
+
     Returns structured findings the contractor reviews and applies. Writes
-    nothing here — applying a finding (set pitch / add chimney) is a separate,
-    explicit action.
+    nothing — applying a finding (set pitch / add chimney) is a separate action.
     """
     import json as _json
     import re as _re
     from app.services.llm import llm_vision
 
-    try:
-        async with httpx.AsyncClient(timeout=25) as client:
-            r = await client.get(req.photo_url, follow_redirects=True)
-            r.raise_for_status()
-            img_bytes = r.content
-            mt = (r.headers.get("content-type") or "image/jpeg").split(";")[0].strip()
-            if mt not in ("image/png", "image/jpeg", "image/webp"):
-                mt = "image/jpeg"
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not fetch the photo: {e}")
+    raw = await file.read()
+    if not raw or len(raw) < 64:
+        raise HTTPException(status_code=400, detail="The image was empty — try taking the photo again.")
+    img_bytes, mt = _normalize_image_for_vision(raw)
+    if img_bytes is None:
+        raise HTTPException(
+            status_code=400,
+            detail="That image format couldn't be read. Please use a JPG, PNG, or WEBP photo.",
+        )
 
     prompt = """You are a roofing estimator analyzing a GROUND-LEVEL photo of a house. Report only what improves a ROOF estimate. Return ONLY JSON:
 {

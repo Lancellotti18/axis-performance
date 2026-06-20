@@ -755,8 +755,30 @@ export const api = {
         }>(`/api/v1/roofing/v2/runs/${runId}/footprint`, undefined, 60000, 1800000),
       // Ground-photo exterior intelligence — Gemini reads pitch/chimney/gable/
       // materials from a contractor-uploaded ground photo to improve the roof.
-      analyzeGroundPhoto: (runId: string, photoUrl: string) =>
-        apiRequest<{
+      analyzeGroundPhoto: async (runId: string, file: File) => {
+        // Multipart upload — send the image BYTES directly (no storage round-
+        // trip) so it works regardless of bucket config + accepts any phone
+        // image. apiRequest forces JSON, so we hand-roll the multipart fetch.
+        const session = await getCachedSession()
+        const fd = new FormData()
+        fd.append('file', file)
+        const res = await fetchWithTimeout(
+          `${API_BASE}/api/v1/roofing/v2/runs/${runId}/ground-photos/analyze`,
+          {
+            method: 'POST',
+            // No Content-Type — the browser sets the multipart boundary.
+            headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+            body: fd,
+          },
+          120000,
+        )
+        if (!res.ok) {
+          const text = await res.text()
+          let detail = text
+          try { detail = JSON.parse(text).detail ?? text } catch { /* keep raw */ }
+          throw new Error(`[HTTP ${res.status}] ${detail}`)
+        }
+        return res.json() as Promise<{
           findings: null | {
             roof_pitch: string
             pitch_confidence: 'high' | 'medium' | 'low'
@@ -772,10 +794,8 @@ export const api = {
             notes: string
           }
           message: string
-        }>(`/api/v1/roofing/v2/runs/${runId}/ground-photos/analyze`, {
-          method: 'POST',
-          body: JSON.stringify({ photo_url: photoUrl }),
-        }, 120000),
+        }>
+      },
       // AI roof-to-wall transition detection — segments where the roof meets a
       // wall/dormer, used to auto-label wall_intersection edges for flashing.
       detectWallTransitions: (runId: string) =>

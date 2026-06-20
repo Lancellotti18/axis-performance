@@ -823,11 +823,9 @@ export default function RoofV2Page() {
             />
           )}
           <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
-          {runId && projectId && userId && (
+          {runId && (
             <GroundPhotoPanel
               runId={runId}
-              projectId={projectId}
-              userId={userId}
               onApplyPitch={(pitch) => {
                 const updated = facets.map(f => ({ ...f, pitch }))
                 setFacets(updated)

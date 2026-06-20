@@ -18,75 +18,52 @@ import { useCallback, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
-import { supabase } from '@/lib/supabase'
 
 type Findings = NonNullable<Awaited<ReturnType<typeof api.roofing.v2.analyzeGroundPhoto>>['findings']>
 
 interface PhotoEntry {
-  url: string
+  id: string
+  previewUrl: string
   name: string
-  status: 'uploading' | 'analyzing' | 'done' | 'error'
+  status: 'analyzing' | 'done' | 'error'
   findings?: Findings
   error?: string
 }
 
 interface Props {
   runId: string
-  projectId: string
-  userId: string
   /** apply a detected pitch to all facets */
   onApplyPitch?: (pitch: string) => void
   /** notify the editor a chimney was added (so it can refresh penetrations/flashing) */
   onChimneyAdded?: () => void
 }
 
-const ACCEPTED = 'image/jpeg,image/png,image/webp'
-
-export default function GroundPhotoPanel({ runId, projectId, userId, onApplyPitch, onChimneyAdded }: Props) {
+export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }: Props) {
   const [photos, setPhotos] = useState<PhotoEntry[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
-
-  const analyze = useCallback(async (url: string) => {
-    setPhotos(prev => prev.map(p => p.url === url ? { ...p, status: 'analyzing' } : p))
-    try {
-      const res = await api.roofing.v2.analyzeGroundPhoto(runId, url)
-      setPhotos(prev => prev.map(p => p.url === url
-        ? { ...p, status: 'done', findings: res.findings ?? undefined, error: res.findings ? undefined : res.message }
-        : p))
-    } catch (e) {
-      setPhotos(prev => prev.map(p => p.url === url
-        ? { ...p, status: 'error', error: e instanceof Error ? e.message : 'analysis failed' } : p))
-    }
-  }, [runId])
+  const idRef = useRef(0)
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return
     for (const file of Array.from(files)) {
-      if (!ACCEPTED.includes(file.type)) {
-        toast.error(`${file.name}: unsupported type`)
-        continue
-      }
-      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const path = `${userId}/${projectId}/ground-${Date.now()}-${safe}`
-      const entry: PhotoEntry = { url: '', name: file.name, status: 'uploading' }
-      setPhotos(prev => [...prev, entry])
+      const id = `p${idRef.current++}`
+      const previewUrl = URL.createObjectURL(file)
+      setPhotos(prev => [...prev, { id, previewUrl, name: file.name, status: 'analyzing' }])
       try {
-        const { error: upErr } = await supabase.storage.from('exterior-photos').upload(path, file, {
-          cacheControl: '3600', upsert: false, contentType: file.type || 'image/jpeg',
-        })
-        if (upErr) throw upErr
-        const { data: pub } = supabase.storage.from('exterior-photos').getPublicUrl(path)
-        const url = pub.publicUrl
-        setPhotos(prev => prev.map(p => (p === entry || (p.name === file.name && !p.url)) ? { ...p, url } : p))
-        await analyze(url)
+        // Send the image BYTES straight to the backend — no storage round-trip,
+        // so it works regardless of bucket config and accepts any phone format.
+        const res = await api.roofing.v2.analyzeGroundPhoto(runId, file)
+        setPhotos(prev => prev.map(p => p.id === id
+          ? { ...p, status: 'done', findings: res.findings ?? undefined, error: res.findings ? undefined : res.message }
+          : p))
       } catch (e) {
-        const msg = e instanceof Error ? e.message : 'upload failed'
-        setPhotos(prev => prev.map(p => (p === entry || p.name === file.name) ? { ...p, status: 'error', error: msg } : p))
+        const msg = e instanceof Error ? e.message : 'analysis failed'
+        setPhotos(prev => prev.map(p => p.id === id ? { ...p, status: 'error', error: msg } : p))
         toast.error(`${file.name}: ${msg}`)
       }
     }
-  }, [userId, projectId, analyze])
+  }, [runId])
 
   const applyPitch = useCallback((pitch: string) => {
     if (!pitch || !onApplyPitch) return
@@ -130,12 +107,15 @@ export default function GroundPhotoPanel({ runId, projectId, userId, onApplyPitc
             className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500"
           >Upload</button>
         </div>
-        {/* Camera capture (mobile opens the rear camera directly) */}
+        {/* Camera capture (mobile opens the rear camera directly). Accept any
+            image type — the backend normalizes the format. */}
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden
           onChange={e => { void handleFiles(e.target.files); if (cameraRef.current) cameraRef.current.value = '' }} />
-        <input ref={fileRef} type="file" accept={ACCEPTED} multiple hidden
+        <input ref={fileRef} type="file" accept="image/*" multiple hidden
           onChange={e => { void handleFiles(e.target.files); if (fileRef.current) fileRef.current.value = '' }} />
       </div>
+
+      <PhotoGuide />
 
       {photos.length === 0 && (
         <p className="mt-3 text-xs text-slate-500">
@@ -144,18 +124,13 @@ export default function GroundPhotoPanel({ runId, projectId, userId, onApplyPitc
       )}
 
       <ul className="mt-3 space-y-2">
-        {photos.map((p, i) => (
-          <li key={i} className="flex gap-3 rounded-md border border-white/10 p-2">
-            {p.url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={p.url} alt={p.name} className="h-16 w-16 shrink-0 rounded object-cover" />
-            ) : (
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] text-slate-500">…</div>
-            )}
+        {photos.map(p => (
+          <li key={p.id} className="flex gap-3 rounded-md border border-white/10 p-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={p.previewUrl} alt={p.name} className="h-16 w-16 shrink-0 rounded object-cover" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs text-slate-300">{p.name}</div>
-              {p.status === 'uploading' && <div className="text-[11px] text-blue-300">Uploading…</div>}
-              {p.status === 'analyzing' && <div className="text-[11px] text-blue-300">Analyzing with AI…</div>}
+              {p.status === 'analyzing' && <div className="flex items-center gap-1.5 text-[11px] text-blue-300"><span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Analyzing with AI…</div>}
               {p.status === 'error' && <div className="text-[11px] text-rose-400">{p.error}</div>}
               {p.status === 'done' && p.findings && <FindingsView f={p.findings} onApplyPitch={applyPitch} onAddChimney={addChimney} />}
               {p.status === 'done' && !p.findings && <div className="text-[11px] text-amber-400">{p.error || 'No usable findings'}</div>}
@@ -164,6 +139,32 @@ export default function GroundPhotoPanel({ runId, projectId, userId, onApplyPitc
         ))}
       </ul>
     </section>
+  )
+}
+
+/** Optional but recommended photo-taking walkthrough. */
+function PhotoGuide() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-2 rounded-md border border-blue-400/20 bg-blue-500/5">
+      <button onClick={() => setOpen(o => !o)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs">
+        <span className="font-semibold text-blue-200">📸 Recommended photos — how to shoot for the best AI results</span>
+        <span className="text-slate-400">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-blue-400/10 px-3 py-2 text-[11px] text-slate-300">
+          <p className="mb-2 text-slate-400">Optional, but each shot makes the estimate more accurate. Stand back so the whole feature is in frame, hold the phone level, shoot in daylight.</p>
+          <ol className="space-y-1.5">
+            <li><strong className="text-white">1. A gable end (most important).</strong> Stand facing the triangular end wall of the roof, square-on. → gives true <strong>pitch</strong>, which drives roof area + flashing.</li>
+            <li><strong className="text-white">2. Each corner of the house (4 shots).</strong> Step to each corner so two sides of the roof show. → confirms plane count + slope directions.</li>
+            <li><strong className="text-white">3. Any chimney, straight-on.</strong> Include the full height + where it meets the roof. → adds chimney + cricket flashing automatically.</li>
+            <li><strong className="text-white">4. A skylight or dormer, if present.</strong> → adds the right flashing kit.</li>
+            <li><strong className="text-white">5. A close-up of the shingles/roof surface.</strong> → identifies material + color for the report.</li>
+          </ol>
+          <p className="mt-2 text-slate-500">Tip: a clear, square-on gable shot in good light is worth more than ten blurry angles.</p>
+        </div>
+      )}
+    </div>
   )
 }
 
