@@ -30,6 +30,7 @@ import FlashingPanel from '@/components/roof-v2/FlashingPanel'
 import WallTransitionPanel from '@/components/roof-v2/WallTransitionPanel'
 import GroundPhotoPanel from '@/components/roof-v2/GroundPhotoPanel'
 import CollapsibleSection from '@/components/roof-v2/CollapsibleSection'
+import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
@@ -824,6 +825,7 @@ export default function RoofV2Page() {
           )}
           {runId && <FlashingPanel runId={runId} />}
           </CollapsibleSection>
+          {runId && <PreReportChecklist runId={runId} facets={facets} edges={edges} />}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setStep('siding')}
