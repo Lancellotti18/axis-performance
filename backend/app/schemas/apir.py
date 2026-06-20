@@ -415,6 +415,39 @@ class ExtractionMetadata(BaseModel):
 # The root: PropertyMeasurements
 # ─────────────────────────────────────────────────────────────────────────
 
+class FlashingItem(BaseModel):
+    """One derived flashing requirement (mirrors flashing_engine output)."""
+    id: str
+    type: str                          # step|counter|apron|headwall|kickout|valley|chimney|skylight|cricket
+    measure: Literal["linear", "count"]
+    length_ft: float = 0.0
+    quantity: int = 0
+    pieces: Optional[int] = None
+    source: str = ""
+    confidence: ScaleConfidence = "high"
+    needs_review: bool = False
+
+
+class Flashing(BaseModel):
+    """
+    Flashing intelligence rolled into the report. Derived deterministically from
+    the run's confirmed wall_intersection / valley edges + chimney / skylight
+    penetrations (see flashing_engine). Empty when no flashing conditions exist.
+    """
+    requirements: list[FlashingItem] = Field(default_factory=list)
+    step_flashing_ft: float = 0.0
+    counter_flashing_ft: float = 0.0
+    apron_flashing_ft: float = 0.0
+    headwall_flashing_ft: float = 0.0
+    valley_flashing_ft: float = 0.0
+    wall_flashing_ft: float = 0.0
+    kickout_qty: int = 0
+    step_pieces: int = 0
+    chimney_qty: int = 0
+    skylight_qty: int = 0
+    cricket_qty: int = 0
+
+
 class PropertyMeasurements(BaseModel):
     """
     The complete data payload for one APIR report. Built once during vision
@@ -428,6 +461,7 @@ class PropertyMeasurements(BaseModel):
     footprint: Footprint
     soffit: Soffit = Field(default_factory=Soffit)
     features: Features = Field(default_factory=Features)
+    flashing: Flashing = Field(default_factory=Flashing)
     photos: Photos = Field(default_factory=Photos)
     extraction_metadata: ExtractionMetadata
 

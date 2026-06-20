@@ -24,12 +24,12 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.schemas.apir import (
-    ContractorInfo, ExtractionMetadata, Features, Footprint, FootprintSegment,
-    JobMetadata, PitchReading, PointPx, PropertyMeasurements, RoofFacet,
-    RoofLengths, RoofWasteCalculator, RoofWasteRow, ScaleConfidence,
-    ScalingFactor, Photos, Roof, ReportType, Siding, SidingElevation,
-    Soffit, SoffitSegment, Window, WindowGroup, Door, Openings,
-    PitchBreakdownRow,
+    ContractorInfo, ExtractionMetadata, Features, Flashing, FlashingItem,
+    Footprint, FootprintSegment, JobMetadata, PitchReading, PointPx,
+    PropertyMeasurements, RoofFacet, RoofLengths, RoofWasteCalculator,
+    RoofWasteRow, ScaleConfidence, ScalingFactor, Photos, Roof, ReportType,
+    Siding, SidingElevation, Soffit, SoffitSegment, Window, WindowGroup, Door,
+    Openings, PitchBreakdownRow,
 )
 from app.services.report import geometry, vision_prompts
 from app.services.report.scale_calibration import calibrate_scale
@@ -63,6 +63,7 @@ class ExtractionInput:
         roof_waste_pct: int = 12,
         siding_waste_pct: int = 10,
         report_type: ReportType = "full_exterior",
+        flashing: Optional[dict] = None,
     ):
         self.job_row = job_row
         self.contractor_row = contractor_row
@@ -76,6 +77,9 @@ class ExtractionInput:
         self.roof_waste_pct = roof_waste_pct
         self.siding_waste_pct = siding_waste_pct
         self.report_type: ReportType = report_type
+        # Pre-computed flashing summary (flashing_engine.FlashingSummary.to_dict())
+        # assembled by the API layer from the run's DB rows. None when unavailable.
+        self.flashing = flashing
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -139,6 +143,12 @@ async def build_property_measurements(inp: ExtractionInput) -> PropertyMeasureme
     features = _build_features(inp.penetration_counts, inp.feature_polygons)
 
     # 8. Assemble PropertyMeasurements
+    flashing = _build_flashing(inp.flashing)
+    # Fold flashing totals into the roof line lengths so the materials page +
+    # APIR roof tables reflect them too.
+    roof.lengths.flashing_ft = round(flashing.wall_flashing_ft + flashing.counter_flashing_ft, 2)
+    roof.lengths.step_flashing_ft = round(flashing.step_flashing_ft, 2)
+
     return PropertyMeasurements(
         job=_build_job_metadata(inp.job_row, scale, inp.report_type),
         contractor=_build_contractor(inp.contractor_row),
@@ -147,6 +157,7 @@ async def build_property_measurements(inp: ExtractionInput) -> PropertyMeasureme
         footprint=footprint,
         soffit=soffit,
         features=features,
+        flashing=flashing,
         photos=_build_photos(inp.job_row, inp.elevation_photo_bytes),
         extraction_metadata=ExtractionMetadata(
             scaling_factor=scale,
@@ -704,6 +715,43 @@ def _build_siding_waste_table(
 # ─────────────────────────────────────────────────────────────────────────
 # 7. Features assembly
 # ─────────────────────────────────────────────────────────────────────────
+
+def _build_flashing(flashing_dict: Optional[dict]) -> Flashing:
+    """Map a flashing_engine summary dict → the APIR Flashing model."""
+    if not flashing_dict:
+        return Flashing()
+    totals = flashing_dict.get("totals") or {}
+    items: list[FlashingItem] = []
+    for r in flashing_dict.get("requirements") or []:
+        try:
+            items.append(FlashingItem(
+                id=str(r.get("id")),
+                type=str(r.get("type")),
+                measure=r.get("measure", "linear"),
+                length_ft=float(r.get("length_ft") or 0.0),
+                quantity=int(r.get("quantity") or 0),
+                pieces=r.get("pieces"),
+                source=str(r.get("source") or ""),
+                confidence=r.get("confidence", "high"),
+                needs_review=bool(r.get("needs_review")),
+            ))
+        except (TypeError, ValueError):
+            continue
+    return Flashing(
+        requirements=items,
+        step_flashing_ft=float(totals.get("step_flashing_ft") or 0.0),
+        counter_flashing_ft=float(totals.get("counter_flashing_ft") or 0.0),
+        apron_flashing_ft=float(totals.get("apron_flashing_ft") or 0.0),
+        headwall_flashing_ft=float(totals.get("headwall_flashing_ft") or 0.0),
+        valley_flashing_ft=float(totals.get("valley_flashing_ft") or 0.0),
+        wall_flashing_ft=float(totals.get("wall_flashing_ft") or 0.0),
+        kickout_qty=int(totals.get("kickout_qty") or 0),
+        step_pieces=int(totals.get("step_pieces") or 0),
+        chimney_qty=int(totals.get("chimney_qty") or 0),
+        skylight_qty=int(totals.get("skylight_qty") or 0),
+        cricket_qty=int(totals.get("cricket_qty") or 0),
+    )
+
 
 def _build_features(
     penetration_counts: dict[str, int],

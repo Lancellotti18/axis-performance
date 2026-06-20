@@ -110,7 +110,18 @@ async def fetch_extraction_input(
         n = int(row.get("count", 1) or 1)
         penetration_counts[t] = penetration_counts.get(t, 0) + n
 
-    # 8. Build ExtractionInput -------------------------------------------
+    # 8. Flashing intelligence — derive from the same confirmed rows so the
+    #    APIR report's flashing matches the editor + roof-v2 PDF.
+    flashing: Optional[dict] = None
+    try:
+        from app.services.flashing_engine import build_input_from_rows, compute_flashing
+        flashing = compute_flashing(
+            build_input_from_rows(facets_rows, edges_rows, penetrations_rows)
+        ).to_dict()
+    except Exception as e:
+        logger.warning("flashing computation for APIR failed: %s", e)
+
+    # 9. Build ExtractionInput -------------------------------------------
     roof_waste_pct = int(
         run_row.get("waste_pct_default") or 12
     )
@@ -129,6 +140,7 @@ async def fetch_extraction_input(
         roof_waste_pct=roof_waste_pct,
         siding_waste_pct=siding_waste_pct,
         report_type=report_type,  # type: ignore[arg-type]
+        flashing=flashing,
     )
 
 

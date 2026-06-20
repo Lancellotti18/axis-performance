@@ -765,6 +765,27 @@ table.totals td { font-weight: 600; border-top: 1px solid #888; }
     </div>
   </div>
 
+  {# Flashing intelligence — derived from roof-to-wall edges + penetrations #}
+  {% set fl = measurements.flashing %}
+  {% if fl and (fl.requirements | length) > 0 %}
+  <h4 style="font-size: 11px; margin: 14px 0 6px;">Flashing requirements <span class="muted" style="font-weight:400;">(auto-derived — verify flagged items on-site)</span></h4>
+  <table>
+    <thead><tr><th>Flashing type</th><th>Quantity</th><th>Basis</th></tr></thead>
+    <tbody>
+      <tr><td>Step flashing</td><td>{{ fl.step_flashing_ft | linear }} ({{ fl.step_pieces }} pcs)</td><td>Sloped roof-to-wall runs</td></tr>
+      <tr><td>Counter flashing</td><td>{{ fl.counter_flashing_ft | linear }}</td><td>Caps step/apron at the wall</td></tr>
+      <tr><td>Apron / headwall</td><td>{{ (fl.apron_flashing_ft + fl.headwall_flashing_ft) | linear }}</td><td>Horizontal roof-to-wall runs</td></tr>
+      <tr><td>Valley metal</td><td>{{ fl.valley_flashing_ft | linear }}</td><td>Labeled valley edges</td></tr>
+      <tr><td>Kickout flashing</td><td>{{ fl.kickout_qty }} ea</td><td>One per roof-to-wall run base</td></tr>
+      <tr><td>Chimney kits</td><td>{{ fl.chimney_qty }} ea</td><td>Chimney penetrations</td></tr>
+      <tr><td>Skylight kits</td><td>{{ fl.skylight_qty }} ea</td><td>Skylight penetrations</td></tr>
+      {% if fl.cricket_qty > 0 %}
+      <tr><td>Cricket / saddle</td><td>{{ fl.cricket_qty }} ea</td><td>Chimneys wider than 30"</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+  {% endif %}
+
   <div class="disclaimer-box">
     Quantities are estimates based on AI-extracted measurements from satellite imagery and contractor-provided photographs. Verify all measurements and quantities on-site before ordering materials. Waste factor calculations do not include ridge caps, hip caps, or starter shingles for roofing — order these separately based on ridge/hip/eave linear footage above.
   </div>
