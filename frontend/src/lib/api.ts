@@ -743,6 +743,16 @@ export const api = {
           }>
           cached?: boolean
         }>(`/api/v1/roofing/v2/runs/${runId}/solar`, undefined, 60000, 1800000),  // cache 30 min — never re-bill the same run in a session
+      // Building footprint (OpenStreetMap) — free, nationwide rural fallback
+      // when Google Solar has no coverage. Returns the building outline ring.
+      getFootprint: (runId: string) =>
+        apiRequest<{
+          available: boolean
+          reason?: string
+          source?: string
+          ring?: Array<{ lat: number; lng: number }>
+          cached?: boolean
+        }>(`/api/v1/roofing/v2/runs/${runId}/footprint`, undefined, 60000, 1800000),
       // Ground-photo exterior intelligence — Gemini reads pitch/chimney/gable/
       // materials from a contractor-uploaded ground photo to improve the roof.
       analyzeGroundPhoto: (runId: string, photoUrl: string) =>

@@ -53,20 +53,52 @@ function geoToFrac(
   return [clamp01(fx), clamp01(fy)]
 }
 
+type Footprint = Awaited<ReturnType<typeof api.roofing.v2.getFootprint>>
+
 export default function SolarAssistPanel({
   runId, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel, existingFacetCount, onAddFacets,
 }: Props) {
   const [data, setData] = useState<Solar | null>(null)
+  const [footprint, setFootprint] = useState<Footprint | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
-    api.roofing.v2.getSolar(runId)
-      .then(d => { if (!cancelled) setData(d) })
-      .catch(() => { if (!cancelled) setData({ available: false, reason: 'lookup failed' }) })
-      .finally(() => { if (!cancelled) setLoading(false) })
+    ;(async () => {
+      let solar: Solar
+      try {
+        solar = await api.roofing.v2.getSolar(runId)
+      } catch {
+        solar = { available: false, reason: 'lookup failed' }
+      }
+      if (cancelled) return
+      setData(solar)
+      // Fall back to the free OSM building outline when Solar can't help here.
+      if (!solar.available) {
+        try {
+          const fp = await api.roofing.v2.getFootprint(runId)
+          if (!cancelled) setFootprint(fp)
+        } catch { /* footprint is best-effort */ }
+      }
+      if (!cancelled) setLoading(false)
+    })()
     return () => { cancelled = true }
   }, [runId])
+
+  const addFootprint = useCallback((ring: { lat: number; lng: number }[]) => {
+    const poly = ring.map(p =>
+      geoToFrac(p.lat, p.lng, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel),
+    )
+    if (poly.length < 3) return
+    onAddFacets([{
+      label: FACET_LABELS[existingFacetCount] || `F${existingFacetCount + 1}`,
+      polygon: poly,
+      pitch: '6/12',
+      confidence: 0.6,
+      userConfirmed: false,
+    }])
+    toast.success('Added the building outline — split it into roof planes and set pitch (a gable photo gives pitch)')
+  }, [centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel, existingFacetCount, onAddFacets])
 
   const addAll = useCallback((segments: Segment[]) => {
     const facets: Facet[] = segments.map((s, i) => {
@@ -90,20 +122,38 @@ export default function SolarAssistPanel({
   if (loading) {
     return (
       <section className="rounded-lg border border-white/10 bg-slate-900/40 p-3 text-xs text-slate-400">
-        Checking Google Solar coverage…
+        Checking auto-draw coverage…
       </section>
     )
   }
   if (!data) return null
 
-  // Truly inert (no key) → render nothing so it doesn't clutter the editor.
-  if (!data.available && (data.reason || '').toLowerCase().includes('key not configured')) {
-    return null
-  }
+  // Solar unavailable — offer the free OSM building outline if we found one.
   if (!data.available) {
+    if (footprint?.available && footprint.ring && footprint.ring.length >= 3) {
+      return (
+        <section className="rounded-lg border border-blue-400/30 bg-blue-500/5 p-4 text-sm">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-blue-200">Auto-draw: building outline</h3>
+              <p className="text-xs text-slate-400">
+                No Google Solar data here, but we found this building&apos;s outline (OpenStreetMap).
+                Drop it on the tile, then split it into roof planes and set pitch.
+              </p>
+            </div>
+            <button
+              onClick={() => addFootprint(footprint.ring!)}
+              className="shrink-0 rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
+            >Add outline</button>
+          </div>
+        </section>
+      )
+    }
+    // No Solar key AND no footprint → stay invisible so the editor isn't cluttered.
+    if ((data.reason || '').toLowerCase().includes('key not configured')) return null
     return (
       <section className="rounded-lg border border-white/10 bg-slate-900/40 p-3 text-xs text-slate-500">
-        <span className="font-semibold text-slate-300">Google Solar:</span> {data.reason || 'not available for this address.'} — trace facets manually or use auto-detect.
+        No auto-draw data for this address — trace facets manually (snap-to-edge helps) or try auto-detect below.
       </section>
     )
   }

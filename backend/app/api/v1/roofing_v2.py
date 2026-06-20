@@ -943,6 +943,30 @@ async def get_run_solar(run_id: str, user: dict = Depends(require_user)) -> dict
     return await solar_service.get_building_insights(float(lat), float(lng))
 
 
+@router.get("/runs/{run_id}/footprint")
+async def get_run_footprint(run_id: str, user: dict = Depends(require_user)) -> dict:
+    """
+    Building footprint (OpenStreetMap) for this run's location — the rural /
+    no-Solar-coverage fallback. Free, no key. Returns the subject building's
+    outline ring so the frontend can drop it on the tile as a starter facet.
+    available=false (with a reason) when nothing is mapped here.
+    """
+    from app.services import footprint_service
+
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select(
+        "satellite_lat, satellite_lng"
+    ).eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    lat = run.data.get("satellite_lat")
+    lng = run.data.get("satellite_lng")
+    if lat is None or lng is None:
+        return {"available": False, "reason": "This run has no coordinates to look up."}
+
+    return await footprint_service.get_building_footprint(float(lat), float(lng))
+
+
 @router.get("/runs/{run_id}/penetrations/suggest")
 async def suggest_penetrations(
     run_id: str, user: dict = Depends(require_user),
