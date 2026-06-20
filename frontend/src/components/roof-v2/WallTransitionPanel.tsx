@@ -29,7 +29,35 @@ interface Props {
   runId: string
   facets: Facet[]
   edges: LabeledEdge[]
+  imageUrl?: string
+  imageWidthPx?: number
+  imageHeightPx?: number
   onApplyEdges: (updated: LabeledEdge[]) => void
+}
+
+/** Cropped tile thumbnail with the detected transition segment highlighted. */
+function TransitionThumb({
+  imageUrl, imgW, imgH, p0, p1, color,
+}: {
+  imageUrl: string; imgW: number; imgH: number
+  p0: [number, number]; p1: [number, number]; color: string
+}) {
+  const ax = p0[0] * imgW, ay = p0[1] * imgH
+  const bx = p1[0] * imgW, by = p1[1] * imgH
+  const midX = (ax + bx) / 2, midY = (ay + by) / 2
+  const half = Math.max(Math.hypot(bx - ax, by - ay) * 1.2, 70)
+  let x = midX - half, y = midY - half
+  let w = half * 2, h = half * 2
+  if (x < 0) x = 0
+  if (y < 0) y = 0
+  if (x + w > imgW) w = imgW - x
+  if (y + h > imgH) h = imgH - y
+  return (
+    <svg viewBox={`${x} ${y} ${w} ${h}`} className="h-14 w-14 shrink-0 rounded border border-white/10 bg-black">
+      <image href={imageUrl} x={0} y={0} width={imgW} height={imgH} preserveAspectRatio="none" />
+      <line x1={ax} y1={ay} x2={bx} y2={by} stroke={color} strokeWidth={w * 0.04} strokeLinecap="round" opacity={0.95} />
+    </svg>
+  )
 }
 
 type EdgeKey = string   // `${facetLabel}:${vertexIndexStart}`
@@ -72,7 +100,9 @@ function matchEdge(t: Transition, facets: Facet[], edges: LabeledEdge[]): EdgeKe
   return best
 }
 
-export default function WallTransitionPanel({ runId, facets, edges, onApplyEdges }: Props) {
+export default function WallTransitionPanel({
+  runId, facets, edges, imageUrl, imageWidthPx = 2048, imageHeightPx = 1366, onApplyEdges,
+}: Props) {
   const [transitions, setTransitions] = useState<Transition[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [reason, setReason] = useState<string | null>(null)
@@ -151,10 +181,18 @@ export default function WallTransitionPanel({ runId, facets, edges, onApplyEdges
               const matched = matches[i]
               return (
                 <li key={i} className="flex items-center gap-3 rounded-md border border-white/10 p-2">
-                  <span
-                    className="inline-block h-3 w-3 shrink-0 rounded-full"
-                    style={{ background: t.kind === 'dormer' ? '#a855f7' : '#f59e0b' }}
-                  />
+                  {imageUrl ? (
+                    <TransitionThumb
+                      imageUrl={imageUrl} imgW={imageWidthPx} imgH={imageHeightPx}
+                      p0={t.p0} p1={t.p1}
+                      color={t.kind === 'dormer' ? '#a855f7' : '#f59e0b'}
+                    />
+                  ) : (
+                    <span
+                      className="inline-block h-3 w-3 shrink-0 rounded-full"
+                      style={{ background: t.kind === 'dormer' ? '#a855f7' : '#f59e0b' }}
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium capitalize text-slate-100">{t.kind}</span>

@@ -778,6 +778,9 @@ export default function RoofV2Page() {
               runId={runId}
               facets={facets}
               edges={edges}
+              imageUrl={imagery?.original_url || imagery?.url}
+              imageWidthPx={imagery?.width_px ?? 2048}
+              imageHeightPx={imagery?.height_px ?? 1366}
               onApplyEdges={(updated) => {
                 setEdges(updated)
                 void persistGeometry(facets, updated)
