@@ -1495,6 +1495,18 @@ async def get_run_materials(
     penetrations = PenetrationSummary.from_rows(pen_rows)
 
     lines = compute_material_lines(catalog, totals, penetrations, default_waste_pct=waste_pct)
+    # Append priced flashing line items (quantities from the flashing engine).
+    try:
+        from app.services.flashing_engine import build_input_from_rows, compute_flashing
+        from app.services.materials_engine import compute_flashing_material_lines
+        facets_m = db.table("roof_facets").select("*").eq("run_id", run_id).execute().data or []
+        edge_ids = [f["id"] for f in facets_m]
+        edges_m = (db.table("roof_edges").select("*").in_("facet_id", edge_ids).execute().data or []) if edge_ids else []
+        flashing_m = compute_flashing(build_input_from_rows(facets_m, edges_m, pen_rows)).to_dict()
+        lines = lines + compute_flashing_material_lines(catalog, flashing_m, default_waste_pct=waste_pct)
+    except Exception as e:
+        logger.warning("flashing material lines failed for /materials: %s", e)
+
     return {
         "run_id": run_id,
         "waste_pct": waste_pct,
@@ -1577,9 +1589,14 @@ async def get_run_report(run_id: str, user: dict = Depends(require_user)):
     # the report's Flashing section.
     try:
         from app.services.flashing_engine import build_input_from_rows, compute_flashing
+        from app.services.materials_engine import compute_flashing_material_lines
         flashing_summary = compute_flashing(
             build_input_from_rows(facets_res.data or [], edges, pens_res.data or [])
         ).to_dict()
+        # Append priced, orderable flashing line items to the material order.
+        material_lines = material_lines + compute_flashing_material_lines(
+            catalog, flashing_summary, default_waste_pct=default_waste,
+        )
     except Exception as e:
         logger.warning("flashing computation for report failed: %s", e)
         flashing_summary = None

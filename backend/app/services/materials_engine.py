@@ -238,6 +238,93 @@ def _should_include(item: dict, totals: RoofTotals, penetrations: PenetrationSum
 # Public computation
 # ----------------------------------------------------------------------------
 
+# Flashing categories whose QUANTITIES come from the deterministic flashing
+# engine (not the catalog coverage formula). compute_material_lines skips
+# these; compute_flashing_material_lines handles them with catalog pricing.
+FLASHING_DERIVED_CATEGORIES = {
+    "counter_flashing", "apron_flashing", "kickout_flashing",
+    "chimney_flashing_kit", "skylight_flashing_kit", "cricket",
+}
+
+# category → (measure, flashing-totals key)
+_FLASHING_QTY_SOURCE = {
+    "counter_flashing":     ("linear", "counter_flashing_ft"),
+    "apron_flashing":       ("linear", "apron_flashing_ft"),   # + headwall_flashing_ft
+    "kickout_flashing":     ("count", "kickout_qty"),
+    "chimney_flashing_kit": ("count", "chimney_qty"),
+    "skylight_flashing_kit": ("count", "skylight_qty"),
+    "cricket":              ("count", "cricket_qty"),
+}
+
+
+def compute_flashing_material_lines(
+    catalog: list[dict],
+    flashing: dict | None,
+    *,
+    default_waste_pct: int = 12,
+) -> list[MaterialLine]:
+    """
+    Turn the flashing engine's quantities into priced, orderable line items by
+    matching catalog SKUs by category. Linear items (counter / apron) divide
+    by the catalog coverage_value (lf per piece) and take waste; count items
+    (kickout / chimney kit / skylight kit / cricket) are unit-for-unit, no waste.
+
+    Quantities are AUTHORITATIVE from the flashing engine — the catalog only
+    supplies SKU + unit + price. Returns [] when there's no flashing.
+    """
+    if not flashing:
+        return []
+    if default_waste_pct not in STANDARD_WASTE_PCTS:
+        default_waste_pct = 12
+    totals = flashing.get("totals") or {}
+    lines: list[MaterialLine] = []
+    for item in catalog:
+        if not item.get("active", True):
+            continue
+        cat = item.get("category")
+        spec = _FLASHING_QTY_SOURCE.get(cat)
+        if not spec:
+            continue
+        measure, key = spec
+        qty_source = float(totals.get(key) or 0.0)
+        if cat == "apron_flashing":
+            qty_source += float(totals.get("headwall_flashing_ft") or 0.0)
+        if qty_source <= 0:
+            continue
+        cov = float(item.get("coverage_value") or 1.0) or 1.0
+        base_qty = (qty_source / cov) if measure == "linear" else qty_source
+
+        waste_q: dict[int, int] = {}
+        for pct in STANDARD_WASTE_PCTS:
+            if measure == "count":
+                waste_q[pct] = max(1, math.ceil(round(base_qty, 6)))
+            else:
+                waste_q[pct] = max(1, math.ceil(round(base_qty * waste_factor(pct), 6)))
+
+        unit_cost = float(item.get("unit_cost") or 0.0)
+        unit = item.get("unit") or "unit"
+        trace = (
+            f"{qty_source:.1f} lf ÷ {cov:g} lf/{unit} = {base_qty:.2f}"
+            if measure == "linear"
+            else f"{int(qty_source)} {unit}(s) from flashing analysis"
+        )
+        lines.append(MaterialLine(
+            sku=item.get("sku") or "",
+            item_name=item.get("item_name") or "",
+            category=cat,
+            unit=unit,
+            coverage_basis=item.get("coverage_basis") or "per_unit",
+            base_quantity=base_qty,
+            waste_quantities=waste_q,
+            unit_cost=unit_cost,
+            default_waste_pct=default_waste_pct,
+            total_cost_at_default_waste=waste_q[default_waste_pct] * unit_cost,
+            notes=item.get("notes") or "",
+            computation_trace=trace,
+        ))
+    return lines
+
+
 def compute_material_lines(
     catalog: list[dict],
     totals: RoofTotals,
@@ -271,6 +358,10 @@ def compute_material_lines(
     lines: list[MaterialLine] = []
     for item in items:
         category = item.get("category", "misc")
+        # Flashing-derived categories are priced separately from the flashing
+        # engine's authoritative quantities — skip them here.
+        if category in FLASHING_DERIVED_CATEGORIES:
+            continue
         if not _should_include(item, totals, penetrations):
             continue
 

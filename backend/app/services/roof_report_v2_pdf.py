@@ -344,7 +344,11 @@ def _section_4_flashing(
 def _flashing_materials_tail(flow: list, material_lines: list[MaterialLine], styles: dict) -> list:
     flashing_lines = [
         l for l in material_lines
-        if l.category in ("valley_metal", "step_flashing", "drip_edge")
+        if l.category in (
+            "valley_metal", "step_flashing", "drip_edge",
+            "counter_flashing", "apron_flashing", "kickout_flashing",
+            "chimney_flashing_kit", "skylight_flashing_kit", "cricket",
+        )
     ]
 
     if flashing_lines:
