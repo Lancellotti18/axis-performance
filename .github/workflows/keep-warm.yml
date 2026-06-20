@@ -1,0 +1,35 @@
+# Keep the Render free-tier backend warm during business hours so a
+# contractor's FIRST action (auto-detect, generate report, photo analysis)
+# never waits on a 60-75s cold start.
+#
+# Render free tier sleeps after ~15 min idle. We ping /health every 10 min,
+# but only during a generous US business window (12:00-04:00 UTC ≈ 7am-11pm ET)
+# so we don't burn the account's 750 free instance-hours/month keeping it warm
+# overnight when nobody's using it.
+#
+# Override the URL with a repo variable KEEP_WARM_URL if the backend moves.
+name: keep-warm
+
+on:
+  schedule:
+    # every 10 minutes, hours 12-23 and 0-3 UTC, every day
+    - cron: '*/10 0-3,12-23 * * *'
+  workflow_dispatch: {}   # allow manual "Run workflow"
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend /health
+        run: |
+          URL="${{ vars.KEEP_WARM_URL || 'https://build-backend-jcp9.onrender.com' }}/health"
+          echo "Pinging $URL"
+          # Up to 3 tries; a cold start can take ~75s so allow a long max-time.
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "$URL" || echo "000")
+            echo "attempt $i → HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 5
+          done
+          echo "backend did not return 200 after 3 attempts"
+          exit 1
