@@ -685,26 +685,39 @@ export function RoofFacetEditor({
           const color = edgeRec ? EDGE_COLORS[edgeRec.edgeType] : EDGE_COLORS.unlabeled
           const isSel = selectedEdge?.facetIdx === idx && selectedEdge.edgeIdx === i
           return (
-            <line
-              key={i}
-              x1={p1[0] * imageDims.w} y1={p1[1] * imageDims.h}
-              x2={p2[0] * imageDims.w} y2={p2[1] * imageDims.h}
-              stroke={color}
-              strokeWidth={(isSel ? 6 : 4) / view.scale}
-              strokeLinecap="round"
-              style={{ cursor: mode === 'label' || mode === 'select' ? 'pointer' : 'default' }}
-              onClick={(ev) => {
-                if (mode === 'label') {
-                  ev.stopPropagation()
-                  cycleEdgeLabel(idx, i)
-                  setSelectedEdge({ facetIdx: idx, edgeIdx: i })
-                } else if (mode === 'select') {
-                  ev.stopPropagation()
-                  setSelectedEdge({ facetIdx: idx, edgeIdx: i })
-                  setActiveFacetIdx(idx)
-                }
-              }}
-            />
+            <g key={i}>
+              {/* Pulsing white halo so the SELECTED edge is unmistakable —
+                  driven by clicking or hovering its row in the edge list. */}
+              {isSel && (
+                <line
+                  x1={p1[0] * imageDims.w} y1={p1[1] * imageDims.h}
+                  x2={p2[0] * imageDims.w} y2={p2[1] * imageDims.h}
+                  stroke="#ffffff" strokeWidth={12 / view.scale} strokeLinecap="round"
+                  pointerEvents="none"
+                >
+                  <animate attributeName="opacity" values="0.25;0.75;0.25" dur="1.1s" repeatCount="indefinite" />
+                </line>
+              )}
+              <line
+                x1={p1[0] * imageDims.w} y1={p1[1] * imageDims.h}
+                x2={p2[0] * imageDims.w} y2={p2[1] * imageDims.h}
+                stroke={color}
+                strokeWidth={(isSel ? 7 : 4) / view.scale}
+                strokeLinecap="round"
+                style={{ cursor: mode === 'label' || mode === 'select' ? 'pointer' : 'default' }}
+                onClick={(ev) => {
+                  if (mode === 'label') {
+                    ev.stopPropagation()
+                    cycleEdgeLabel(idx, i)
+                    setSelectedEdge({ facetIdx: idx, edgeIdx: i })
+                  } else if (mode === 'select') {
+                    ev.stopPropagation()
+                    setSelectedEdge({ facetIdx: idx, edgeIdx: i })
+                    setActiveFacetIdx(idx)
+                  }
+                }}
+              />
+            </g>
           )
         })}
         {/* Vertices */}
@@ -1079,26 +1092,30 @@ export function RoofFacetEditor({
                     {f.polygon.length} vertices · {labeled}/{facetEdges.length} edges labeled
                   </div>
 
-                  {/* Inline edge label list when this facet is active */}
+                  {/* Inline edge label list when this facet is active.
+                      Hover a row to highlight that exact edge on the canvas. */}
                   {isActive && facetEdges.length > 0 && (
                     <div className="mt-2 border-t border-white/10 pt-2">
-                      <div className="mb-1 text-xs text-slate-400">Edges:</div>
+                      <div className="mb-1 text-xs text-slate-400">Edges — hover to find it on the roof:</div>
                       <ul className="space-y-1">
-                        {facetEdges.map(e => {
+                        {facetEdges.map((e, eIdx) => {
                           const color = EDGE_COLORS[e.edgeType]
+                          const rowSelected = selectedEdge?.facetIdx === i && selectedEdge.edgeIdx === e.vertexIndexStart
+                          const unlabeled = e.edgeType === 'unlabeled'
                           return (
                             <li
                               key={`${e.vertexIndexStart}-${e.vertexIndexEnd}`}
-                              className="flex items-center justify-between gap-2 rounded bg-slate-800/60 px-2 py-1 text-xs"
+                              onMouseEnter={() => setSelectedEdge({ facetIdx: i, edgeIdx: e.vertexIndexStart })}
+                              className={`flex items-center justify-between gap-2 rounded px-2 py-1 text-xs transition ${
+                                rowSelected ? 'bg-slate-700 ring-1 ring-white/40' : 'bg-slate-800/60'
+                              }`}
                             >
                               <span className="flex items-center gap-2">
-                                <span
-                                  className="inline-block h-2 w-3 rounded"
-                                  style={{ background: color }}
-                                />
-                                {e.vertexIndexStart}→{e.vertexIndexEnd}
+                                <span className="inline-block h-3 w-3 rounded-sm" style={{ background: color }} />
+                                <span className="font-medium text-slate-200">Edge {eIdx + 1}</span>
+                                {unlabeled && <span className="text-[10px] text-amber-400">needs label</span>}
                                 {e.sharedWithFacetLabel && (
-                                  <span className="rounded bg-slate-700 px-1 text-[10px] text-slate-300">↔{e.sharedWithFacetLabel}</span>
+                                  <span className="rounded bg-slate-700 px-1 text-[10px] text-slate-300">shared ↔ {e.sharedWithFacetLabel}</span>
                                 )}
                               </span>
                               <select
