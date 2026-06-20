@@ -444,6 +444,12 @@ class UpdateRunRequest(BaseModel):
     stories: Optional[int] = None
     roof_type: Optional[str] = None
     measurement_unverified: Optional[bool] = None
+    # Reference-object scale check results (recorded, surfaced in the APIR
+    # report's scale confidence; does not yet auto-rescale stored measurements).
+    pixels_per_foot: Optional[float] = None
+    scale_method: Optional[str] = None
+    scale_confidence: Optional[str] = None
+    scale_reference_description: Optional[str] = None
 
 
 @router.patch("/runs/{run_id}")

@@ -31,6 +31,7 @@ import WallTransitionPanel from '@/components/roof-v2/WallTransitionPanel'
 import GroundPhotoPanel from '@/components/roof-v2/GroundPhotoPanel'
 import CollapsibleSection from '@/components/roof-v2/CollapsibleSection'
 import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
+import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
@@ -824,6 +825,15 @@ export default function RoofV2Page() {
             />
           )}
           {runId && <FlashingPanel runId={runId} />}
+          {runId && imagery?.url && (
+            <ScaleCheckPanel
+              runId={runId}
+              imageUrl={imagery.original_url || imagery.url}
+              imageWidthPx={imagery.width_px ?? 2048}
+              imageHeightPx={imagery.height_px ?? 1366}
+              feetPerPixel={imagery.feet_per_pixel ?? 0}
+            />
+          )}
           </CollapsibleSection>
           {runId && <PreReportChecklist runId={runId} facets={facets} edges={edges} />}
           <div className="flex flex-wrap gap-2">
