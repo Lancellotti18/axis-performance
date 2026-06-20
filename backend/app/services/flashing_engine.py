@@ -192,6 +192,83 @@ class FlashingSummary:
 # Engine
 # ─────────────────────────────────────────────────────────────────────────
 
+def build_input_from_rows(
+    facets: list[dict], edges: list[dict], penetrations: list[dict],
+) -> FlashingInput:
+    """
+    Map raw Supabase rows (roof_facets / roof_edges / roof_penetrations) into a
+    FlashingInput: resolves each edge's endpoints from its facet polygon and
+    derives each facet's eave direction. Shared by the /flashing endpoint and
+    the report generator so they always agree.
+    """
+    def _vtx(poly, idx):
+        try:
+            p = poly[int(idx)]
+        except (TypeError, ValueError, IndexError):
+            return None
+        try:
+            if isinstance(p, dict):
+                return (float(p["x"]), float(p["y"]))
+            return (float(p[0]), float(p[1]))
+        except (KeyError, TypeError, ValueError, IndexError):
+            return None
+
+    fmap: dict = {}
+    for f in facets:
+        fmap[f.get("id")] = {"label": f.get("facet_label") or "RF", "polygon": f.get("polygon") or []}
+
+    eave_dir: dict = {}
+    for e in edges:
+        if e.get("edge_type") != "eave":
+            continue
+        fid = e.get("facet_id")
+        poly = fmap.get(fid, {}).get("polygon") or []
+        a = _vtx(poly, e.get("vertex_index_start"))
+        b = _vtx(poly, e.get("vertex_index_end"))
+        if a and b and fid not in eave_dir:
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            n = math.hypot(dx, dy)
+            if n > 0:
+                eave_dir[fid] = (dx / n, dy / n)
+
+    wall_edges: list[WallEdge] = []
+    valley_edges: list[WallEdge] = []
+    for e in edges:
+        et = e.get("edge_type")
+        if et not in ("wall_intersection", "valley"):
+            continue
+        fid = e.get("facet_id")
+        fm = fmap.get(fid)
+        if not fm:
+            continue
+        a = _vtx(fm["polygon"], e.get("vertex_index_start"))
+        b = _vtx(fm["polygon"], e.get("vertex_index_end"))
+        if not a or not b:
+            continue
+        we = WallEdge(
+            facet_label=fm["label"],
+            edge_index=int(e.get("vertex_index_start") or 0),
+            edge_type=et, p0=a, p1=b,
+            plan_length_ft=float(e.get("plan_length_ft") or 0.0),
+            slope_adjusted_ft=float(e.get("slope_adjusted_ft") or 0.0),
+            eave_dir=eave_dir.get(fid),
+        )
+        (valley_edges if et == "valley" else wall_edges).append(we)
+
+    pen_items: list[PenetrationItem] = []
+    for p in penetrations:
+        if p.get("type") in ("chimney", "skylight"):
+            pen_items.append(PenetrationItem(
+                pen_id=str(p.get("id")),
+                type=p["type"],
+                width_in=float(p.get("width_in") or 0.0),
+                height_in=float(p.get("height_in") or 0.0),
+                count=int(p.get("count") or 1),
+            ))
+
+    return FlashingInput(wall_edges=wall_edges, valley_edges=valley_edges, penetrations=pen_items)
+
+
 def compute_flashing(inp: FlashingInput) -> FlashingSummary:
     reqs: list[FlashingRequirement] = []
     counter = _Counter()

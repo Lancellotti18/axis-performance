@@ -278,16 +278,52 @@ def _section_3_roof_lines(aggregates: dict, edges: list[dict], styles: dict) -> 
     return flow
 
 
-def _section_4_flashing(aggregates: dict, material_lines: list[MaterialLine], styles: dict) -> list:
+def _section_4_flashing(
+    aggregates: dict, material_lines: list[MaterialLine], styles: dict,
+    flashing: dict | None = None,
+) -> list:
     flow = [_section_header("Flashing Report", 4, styles)]
+
+    # Preferred: the Flashing Intelligence engine output (step / counter /
+    # apron / kickout / valley / chimney / skylight / cricket, all derived
+    # deterministically from labeled edges + penetrations).
+    totals = (flashing or {}).get("totals") or {}
+    if totals:
+        rows = [["Flashing type", "Quantity", "Basis"]]
+        rows.append(["Step flashing", f"{_ft(totals.get('step_flashing_ft', 0))} "
+                     f"({int(totals.get('step_pieces', 0))} pcs)", "Sloped roof-to-wall runs"])
+        rows.append(["Counter flashing", _ft(totals.get("counter_flashing_ft", 0)),
+                     "Caps step/apron at the wall"])
+        apron_hw = (totals.get("apron_flashing_ft", 0) or 0) + (totals.get("headwall_flashing_ft", 0) or 0)
+        rows.append(["Apron / headwall", _ft(apron_hw), "Horizontal roof-to-wall runs"])
+        rows.append(["Valley metal", _ft(totals.get("valley_flashing_ft", 0)), "Labeled valley edges"])
+        rows.append(["Kickout flashing", f"{int(totals.get('kickout_qty', 0))} ea",
+                     "One per roof-to-wall run base"])
+        rows.append(["Chimney kits", f"{int(totals.get('chimney_qty', 0))} ea", "Chimney penetrations"])
+        rows.append(["Skylight kits", f"{int(totals.get('skylight_qty', 0))} ea", "Skylight penetrations"])
+        if totals.get("cricket_qty"):
+            rows.append(["Cricket / saddle", f"{int(totals.get('cricket_qty', 0))} ea",
+                         "Chimneys wider than 30\""])
+        rows.append(["Drip edge", _ft(aggregates.get("perimeter_ft")), "Eaves + rakes"])
+
+        t = Table(rows, colWidths=[1.7 * inch, 1.7 * inch, 3.1 * inch])
+        t.setStyle(_table_style())
+        flow.append(t)
+
+        reqs = (flashing or {}).get("requirements") or []
+        review = [r for r in reqs if r.get("needs_review")]
+        if review:
+            flow.append(Spacer(1, 6))
+            flow.append(Paragraph(
+                f"{len(review)} flashing item(s) flagged for on-site verification "
+                "(orientation or penetration size estimated from imagery).",
+                styles["small"] if "small" in styles else styles["body"],
+            ))
+        return _flashing_materials_tail(flow, material_lines, styles)
+
+    # Fallback (legacy): no engine output supplied.
     valley_lf = aggregates.get("valleys_ft") or 0
     wall_lf = aggregates.get("wall_intersection_ft") or 0
-
-    # Pull flashing line items if present
-    flashing_lines = [
-        l for l in material_lines
-        if l.category in ("valley_metal", "step_flashing", "drip_edge")
-    ]
     rows = [["Type", "Linear Feet", "Computed?", "Notes"]]
     rows.append(["Valley metal", _ft(valley_lf), "Yes (auto)", "Computed from labeled valley edges"])
     rows.append(["Step flashing", _ft(wall_lf), "Yes if walls labeled",
@@ -302,6 +338,14 @@ def _section_4_flashing(aggregates: dict, material_lines: list[MaterialLine], st
     t = Table(rows, colWidths=[1.6 * inch, 1.4 * inch, 1.2 * inch, 2.3 * inch])
     t.setStyle(_table_style())
     flow.append(t)
+    return _flashing_materials_tail(flow, material_lines, styles)
+
+
+def _flashing_materials_tail(flow: list, material_lines: list[MaterialLine], styles: dict) -> list:
+    flashing_lines = [
+        l for l in material_lines
+        if l.category in ("valley_metal", "step_flashing", "drip_edge")
+    ]
 
     if flashing_lines:
         flow.append(Spacer(1, 8))
@@ -564,6 +608,7 @@ def generate_v2_report(
     penetrations: list[dict],
     material_lines: list[MaterialLine],
     siding_measurements: list[dict],
+    flashing: dict | None = None,
 ) -> bytes:
     """Render the full 8-section PDF and return bytes."""
     buf = io.BytesIO()
@@ -584,7 +629,7 @@ def generate_v2_report(
     story.append(PageBreak())
     story.extend(_section_3_roof_lines(aggregates, edges, styles))
     story.append(Spacer(1, 10))
-    story.extend(_section_4_flashing(aggregates, material_lines, styles))
+    story.extend(_section_4_flashing(aggregates, material_lines, styles, flashing))
     story.append(PageBreak())
     story.extend(_section_5_penetrations(penetrations, styles))
     story.append(Spacer(1, 10))
