@@ -669,6 +669,54 @@ async def put_edges(
 # Recompute aggregates
 # ----------------------------------------------------------------------------
 
+def _measurement_confidence(run_id: str, facets: list[dict], edges: list[dict]) -> float:
+    """
+    Real composite confidence in 0..1 — reflects how COMPLETE and well-grounded
+    the measurement inputs are (the actual drivers of accuracy), not an averaged
+    placeholder. Every component is something the contractor can raise.
+    """
+    if not facets:
+        return 0.0
+
+    # 1. Edges labeled (45%). Unlabeled edges are dropped from ridge cap, drip
+    #    edge, and flashing — the biggest source of missing/!inaccurate footage.
+    total_edges = len(edges)
+    labeled = sum(1 for e in edges if (e.get("edge_type") or "unlabeled") != "unlabeled")
+    edge_score = (labeled / total_edges) if total_edges else 0.0
+
+    # 2. Pitch set (25%). A roof can legitimately be 6/12, but ALL facets at the
+    #    exact default strongly implies pitch was never confirmed.
+    all_default = all((f.get("pitch") or "6/12") == "6/12" for f in facets)
+    pitch_score = 0.5 if all_default else 1.0
+
+    # 3. Scale grounded (20%). Reference-object > web_mercator > estimated.
+    scale_score = 0.85   # default: web-mercator tile scale (good)
+    try:
+        db = get_supabase()
+        run = db.table("roof_measurement_runs").select(
+            "scale_method, scale_confidence"
+        ).eq("id", run_id).single().execute()
+        method = (run.data or {}).get("scale_method")
+        sconf = (run.data or {}).get("scale_confidence")
+        if method == "reference_object" or sconf == "high":
+            scale_score = 1.0
+        elif method == "estimated" or sconf == "estimated":
+            scale_score = 0.6
+    except Exception:
+        pass
+
+    # 4. Facets present + well-formed (10%).
+    facet_score = 1.0 if all(len(f.get("polygon") or []) >= 3 for f in facets) else 0.7
+
+    composite = (
+        0.45 * edge_score
+        + 0.25 * pitch_score
+        + 0.20 * scale_score
+        + 0.10 * facet_score
+    )
+    return max(0.0, min(1.0, composite))
+
+
 def _aggregate_run(run_id: str) -> dict:
     """
     Pull the run's facets + edges and recompute all whole-roof totals. Writes
@@ -743,17 +791,15 @@ def _aggregate_run(run_id: str) -> dict:
     complexity = geo.complexity_score(len(facets), valleys_ft, hips_ft, variance)
     waste_rec = geo.recommended_waste_pct(complexity)
 
-    # Confidence: average of facet confidences, weighted by area
-    if facets:
-        total_a = sum((f.get("true_area_sqft") or 0) for f in facets)
-        if total_a > 0:
-            conf = sum(
-                (f.get("confidence") or 0) * (f.get("true_area_sqft") or 0) for f in facets
-            ) / total_a
-        else:
-            conf = sum((f.get("confidence") or 0) for f in facets) / len(facets)
-    else:
-        conf = 0.0
+    # Measurement confidence — a REAL composite of the things that actually
+    # drive accuracy, not an averaged placeholder. Each component is something
+    # the contractor can improve (and the pre-report checklist nudges them to):
+    #   • edges labeled   (45%) — unlabeled edges are excluded from ridge/drip/
+    #                              flashing, the biggest source of missing footage
+    #   • pitch set       (25%) — drives area + flashing; all-default ⇒ unconfirmed
+    #   • scale grounded  (20%) — reference-object/web-mercator vs estimated
+    #   • facets present  (10%)
+    conf = _measurement_confidence(run_id, facets, edges)
 
     aggregates = {
         "total_plan_sqft": total_plan,

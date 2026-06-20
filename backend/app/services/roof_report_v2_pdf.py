@@ -560,8 +560,12 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict) -> list:
         styles["body"],
     ))
     flow.append(Paragraph(
-        "Confidence is the area-weighted average of per-facet confidences, "
-        "normalized to a 0–100 scale across all measurement sources.",
+        "Confidence reflects how complete and well-grounded the measurement "
+        "inputs are — weighted across: edges labeled (ridge/hip/valley/eave/"
+        "rake/wall), roof pitch confirmed, scale source (reference object &gt; "
+        "satellite tile &gt; estimated), and facet geometry. It is a measure of "
+        "input completeness, not a guarantee of absolute accuracy — verify "
+        "on-site before ordering.",
         styles["muted"],
     ))
     flow.append(Spacer(1, 6))
