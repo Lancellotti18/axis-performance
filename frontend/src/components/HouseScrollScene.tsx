@@ -106,23 +106,30 @@ export default function HouseScrollScene({
     }
     if (!frame) return
 
-    const dpr = window.devicePixelRatio || 1
+    // Render the backing store at full device resolution (capped at 2× — the
+    // source frames are 1920×1080, so there's no detail to gain beyond that and
+    // a 3× buffer just costs performance). Setting canvas.width resets the
+    // transform + smoothing flags, so we (re)apply them on every resize.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const w = canvas.clientWidth
     const h = canvas.clientHeight
-    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-      canvas.width = w * dpr
-      canvas.height = h * dpr
-      ctx.scale(dpr, dpr)
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr)
+      canvas.height = Math.round(h * dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
 
-    // object-fit: cover behavior — scale to fill, crop the long side
+    // object-fit: cover — scale to fill, crop the long side. Round the draw rect
+    // to whole device pixels so the image isn't resampled across a sub-pixel
+    // boundary (a real, if subtle, source of softness).
     const fw = frame.naturalWidth
     const fh = frame.naturalHeight
     const scale = Math.max(w / fw, h / fh)
-    const dw = fw * scale
-    const dh = fh * scale
-    const dx = (w - dw) / 2
-    const dy = (h - dh) / 2
+    const dw = Math.ceil(fw * scale)
+    const dh = Math.ceil(fh * scale)
+    const dx = Math.round((w - dw) / 2)
+    const dy = Math.round((h - dh) / 2)
+    ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
     ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, w, h)
@@ -222,30 +229,37 @@ export default function HouseScrollScene({
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full"
-          style={{ display: 'block' }}
+          style={{
+            display: 'block',
+            // Light, GPU-cheap perceptual sharpening — counters the softness
+            // from upscaling/JPEG so the house reads crisp without artifacts.
+            filter: 'contrast(1.06) saturate(1.07) brightness(1.02)',
+          }}
           aria-hidden
         />
 
-        {/* Premium ambient lighting — subtle vignette + glow gradients */}
+        {/* Premium ambient lighting — a gentle vignette ONLY at the far corners,
+            so the house stays crisp and clean (no fog over the subject). */}
         <div
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              'radial-gradient(ellipse 80% 70% at 50% 50%, transparent 0%, transparent 55%, rgba(2,6,18,0.55) 100%)',
+              'radial-gradient(ellipse 90% 80% at 50% 50%, transparent 0%, transparent 72%, rgba(2,6,18,0.34) 100%)',
           }}
         />
         {/* Top + bottom edge fades blending the canvas into the dark page chrome */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[#02060f] via-[#02060f]/60 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#02060f] via-[#02060f]/60 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#02060f] via-[#02060f]/40 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#02060f] via-[#02060f]/40 to-transparent" />
 
-        {/* Brand glow accents — faint floating blue orbs for depth */}
+        {/* Brand glow accents — kept faint + pushed to the corners so they add
+            depth without hazing the subject. */}
         <div
-          className="pointer-events-none absolute -top-32 -left-32 w-[640px] h-[640px] rounded-full opacity-40 blur-3xl"
-          style={{ background: 'radial-gradient(circle, rgba(74,144,226,0.35), transparent 60%)' }}
+          className="pointer-events-none absolute -top-40 -left-40 w-[560px] h-[560px] rounded-full opacity-20 blur-3xl"
+          style={{ background: 'radial-gradient(circle, rgba(74,144,226,0.28), transparent 60%)' }}
         />
         <div
-          className="pointer-events-none absolute -bottom-32 -right-32 w-[640px] h-[640px] rounded-full opacity-30 blur-3xl"
-          style={{ background: 'radial-gradient(circle, rgba(120,180,255,0.28), transparent 60%)' }}
+          className="pointer-events-none absolute -bottom-40 -right-40 w-[560px] h-[560px] rounded-full opacity-[0.14] blur-3xl"
+          style={{ background: 'radial-gradient(circle, rgba(120,180,255,0.22), transparent 60%)' }}
         />
 
         {/* Initial-load curtain — only while the first frame is being fetched */}
