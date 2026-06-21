@@ -25,6 +25,7 @@ interface PhotoEntry {
   id: string
   previewUrl: string
   name: string
+  isPdf: boolean
   status: 'analyzing' | 'done' | 'error'
   findings?: Findings
   error?: string
@@ -48,8 +49,9 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
     if (!files || files.length === 0) return
     for (const file of Array.from(files)) {
       const id = `p${idRef.current++}`
-      const previewUrl = URL.createObjectURL(file)
-      setPhotos(prev => [...prev, { id, previewUrl, name: file.name, status: 'analyzing' }])
+      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+      const previewUrl = isPdf ? '' : URL.createObjectURL(file)
+      setPhotos(prev => [...prev, { id, previewUrl, name: file.name, isPdf, status: 'analyzing' }])
       try {
         // Send the image BYTES straight to the backend — no storage round-trip,
         // so it works regardless of bucket config and accepts any phone format.
@@ -93,7 +95,7 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
         <div>
           <h3 className="text-sm font-semibold text-slate-100">Ground-photo intelligence</h3>
           <p className="text-xs text-slate-400">
-            Upload ground-level photos. AI reads what the satellite can&apos;t — roof
+            Upload ground-level photos <strong>or a PDF</strong>. AI reads what the satellite can&apos;t — roof
             <strong> pitch</strong>, <strong>chimneys</strong>, dormers, gable walls, materials — and you apply the findings.
           </p>
         </div>
@@ -111,7 +113,7 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
             image type — the backend normalizes the format. */}
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden
           onChange={e => { void handleFiles(e.target.files); if (cameraRef.current) cameraRef.current.value = '' }} />
-        <input ref={fileRef} type="file" accept="image/*" multiple hidden
+        <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple hidden
           onChange={e => { void handleFiles(e.target.files); if (fileRef.current) fileRef.current.value = '' }} />
       </div>
 
@@ -126,8 +128,15 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
       <ul className="mt-3 space-y-2">
         {photos.map(p => (
           <li key={p.id} className="flex gap-3 rounded-md border border-white/10 p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={p.previewUrl} alt={p.name} className="h-16 w-16 shrink-0 rounded object-cover" />
+            {p.isPdf ? (
+              <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded bg-rose-500/15 text-rose-300">
+                <span className="text-lg leading-none">📄</span>
+                <span className="mt-0.5 text-[9px] font-semibold">PDF</span>
+              </div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={p.previewUrl} alt={p.name} className="h-16 w-16 shrink-0 rounded object-cover" />
+            )}
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs text-slate-300">{p.name}</div>
               {p.status === 'analyzing' && <div className="flex items-center gap-1.5 text-[11px] text-blue-300"><span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Analyzing with AI…</div>}
@@ -162,6 +171,7 @@ function PhotoGuide() {
             <li><strong className="text-white">5. A close-up of the shingles/roof surface.</strong> → identifies material + color for the report.</li>
           </ol>
           <p className="mt-2 text-slate-500">Tip: a clear, square-on gable shot in good light is worth more than ten blurry angles.</p>
+          <p className="mt-1 text-slate-500">Uploading a <strong>PDF</strong>? Its first page is read as an image — put the most useful photo on page 1.</p>
         </div>
       )}
     </div>

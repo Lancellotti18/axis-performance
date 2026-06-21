@@ -876,10 +876,26 @@ async def delete_penetration(
 
 def _normalize_image_for_vision(raw: bytes) -> tuple[Optional[bytes], str]:
     """
-    Accept any common image a contractor's phone produces and return
-    (jpeg_bytes, media_type) ready for the vision model — downscaling huge
-    photos. Returns (None, '') only when the bytes aren't a readable image.
+    Accept any common image a contractor's phone produces — plus a PDF (e.g. an
+    inspection export or a photo saved as PDF) — and return (jpeg_bytes,
+    media_type) ready for the vision model, downscaling huge photos. Returns
+    (None, '') only when the bytes aren't a readable image/PDF.
     """
+    # PDF → rasterize the FIRST page to an image, then fall through to the
+    # normal image pipeline. (Ground-photo PDFs are typically a single photo.)
+    if raw[:5] == b"%PDF-":
+        try:
+            import fitz  # PyMuPDF (already a dependency)
+            doc = fitz.open(stream=raw, filetype="pdf")
+            if doc.page_count == 0:
+                return None, ""
+            page = doc.load_page(0)
+            pix = page.get_pixmap(matrix=fitz.Matrix(200 / 72, 200 / 72))  # ~200 DPI
+            raw = pix.tobytes("png")
+            doc.close()
+        except Exception:
+            return None, ""
+
     try:
         import io as _io
         from PIL import Image
@@ -943,7 +959,7 @@ async def analyze_ground_photo(
     if img_bytes is None:
         raise HTTPException(
             status_code=400,
-            detail="That image format couldn't be read. Please use a JPG, PNG, or WEBP photo.",
+            detail="That file couldn't be read. Please use a photo (JPG, PNG, HEIC, WEBP) or a PDF.",
         )
 
     prompt = """You are a roofing estimator analyzing a GROUND-LEVEL photo of a house. Report only what improves a ROOF estimate. Return ONLY JSON:
