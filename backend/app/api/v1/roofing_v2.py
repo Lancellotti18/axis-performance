@@ -1849,7 +1849,7 @@ class SidingMeasurementIn(BaseModel):
     elevation: Literal["front", "rear", "left", "right", "other"]
     photo_url: Optional[str] = None
     reference_object: Optional[Literal[
-        "standard_door_80", "garage_door_84", "window_36", "custom",
+        "standard_door_80", "garage_door_84", "garage_door_w_16", "window_36", "custom",
     ]] = None
     reference_height_in: Optional[float] = None
     reference_pixel_h: Optional[float] = None
@@ -1889,6 +1889,8 @@ async def add_siding_measurement(
         ref_in = 80.0
     elif payload.reference_object == "garage_door_84":
         ref_in = 84.0
+    elif payload.reference_object == "garage_door_w_16":
+        ref_in = 192.0
     elif payload.reference_object == "window_36":
         ref_in = 36.0
 

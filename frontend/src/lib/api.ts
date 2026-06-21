@@ -939,7 +939,7 @@ export const api = {
         project_id: string
         elevation: 'front' | 'rear' | 'left' | 'right' | 'other'
         photo_url?: string
-        reference_object?: 'standard_door_80' | 'garage_door_84' | 'window_36' | 'custom'
+        reference_object?: 'standard_door_80' | 'garage_door_84' | 'garage_door_w_16' | 'window_36' | 'custom'
         reference_height_in?: number
         reference_pixel_h?: number
         region_polygon: [number, number][]
