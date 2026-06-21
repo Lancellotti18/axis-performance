@@ -48,6 +48,17 @@ const EDGE_COLORS: Record<EdgeType, string> = {
 
 const FACET_COLORS = ['#3b82f6', '#a855f7', '#22c55e', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16']
 
+// Eave sits one story above the ground so the roof rests on real walls instead
+// of floating. (Visual only — does not affect any measurement.)
+const EAVE_HEIGHT = 10
+// Vertices within this many feet of each other are treated as the SAME point —
+// used to weld shared ridge/hip/valley vertices so adjacent facets connect, and
+// to tell perimeter edges (one facet → gets a wall) from interior edges (two).
+const POS_TOL = 0.75
+function posKey(x: number, z: number): string {
+  return `${Math.round(x / POS_TOL)}|${Math.round(z / POS_TOL)}`
+}
+
 // Web Mercator metres-per-pixel
 const ESRI_MPP_Z0 = 156543.03392
 function feetPerPixel(lat: number, zoom: number): number {
@@ -150,13 +161,14 @@ function buildFacetMesh(
     uphill = [-uphill[0], -uphill[1]]
   }
 
-  // 4. Compute Z for each vertex
+  // 4. Compute height for each vertex. The eave rides at EAVE_HEIGHT (top of the
+  //    walls) and the plane rises from there along the uphill direction.
   const tan = tanPitch(facet.pitch)
   const verts3D: Array<[number, number, number]> = poly2D.map(p => {
     const fromEave: V2 = sub(p, eP1)
     const distAlongUphill = dot(fromEave, uphill)
-    const z = Math.max(0, distAlongUphill) * tan
-    return [p[0], z, p[1]]    // Three.js: y is up; ground plane is xz
+    const y = EAVE_HEIGHT + Math.max(0, distAlongUphill) * tan
+    return [p[0], y, p[1]]    // Three.js: y is up; ground plane is xz
   })
 
   // Centroid in 3D
@@ -213,6 +225,94 @@ function buildFacetMesh(
     centroid3D: [cx, cy, cz],
     edgesIn3D,
   }
+}
+
+/**
+ * Weld shared vertices so adjacent facets MEET. Each facet computed its own
+ * vertex heights from its own eave, so a shared ridge gets two slightly (or very)
+ * different heights — that's the gap the contractor sees. We snap every vertex
+ * at the same ground position to the HIGHEST height computed there: eave corners
+ * stay at EAVE_HEIGHT, ridge/hip corners rise to the true peak, and the planes
+ * close up into one connected roof. Mutates meshes in place (they're rebuilt on
+ * every facet change).
+ */
+function weldRoof(meshes: FacetMesh3D[]): void {
+  const maxH = new Map<string, number>()
+  for (const m of meshes) {
+    const count = m.vertices.length / 3 - 1   // last vertex is the centroid
+    for (let i = 0; i < count; i++) {
+      const k = posKey(m.vertices[i * 3], m.vertices[i * 3 + 2])
+      const y = m.vertices[i * 3 + 1]
+      const cur = maxH.get(k)
+      if (cur === undefined || y > cur) maxH.set(k, y)
+    }
+  }
+  for (const m of meshes) {
+    const count = m.vertices.length / 3 - 1
+    let cy = 0
+    for (let i = 0; i < count; i++) {
+      const h = maxH.get(posKey(m.vertices[i * 3], m.vertices[i * 3 + 2]))
+      if (h !== undefined) m.vertices[i * 3 + 1] = h
+      cy += m.vertices[i * 3 + 1]
+    }
+    cy /= count
+    m.vertices[count * 3 + 1] = cy            // re-center the centroid vertex
+    m.centroid3D = [m.centroid3D[0], cy, m.centroid3D[2]]
+    for (let i = 0; i < count; i++) {         // re-sync edge endpoints to welded heights
+      const b = (i + 1) % count
+      m.edgesIn3D[i].from = [m.vertices[i * 3], m.vertices[i * 3 + 1], m.vertices[i * 3 + 2]]
+      m.edgesIn3D[i].to = [m.vertices[b * 3], m.vertices[b * 3 + 1], m.vertices[b * 3 + 2]]
+    }
+  }
+}
+
+/**
+ * Build wall geometry by extruding every PERIMETER edge (one that belongs to a
+ * single facet — eaves and rakes) straight down to the ground. Interior edges
+ * (ridges/hips/valleys, shared by two facets) get no wall. This closes the
+ * building envelope so the model reads as a house, not floating planes.
+ * Returns packed xyz triangle positions (computeVertexNormals handles lighting).
+ */
+function buildWalls(meshes: FacetMesh3D[]): Float32Array {
+  const count = new Map<string, number>()
+  const data = new Map<string, { a: [number, number, number]; b: [number, number, number] }>()
+  for (const m of meshes) {
+    const n = m.vertices.length / 3 - 1
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n
+      const a: [number, number, number] = [m.vertices[i * 3], m.vertices[i * 3 + 1], m.vertices[i * 3 + 2]]
+      const b: [number, number, number] = [m.vertices[j * 3], m.vertices[j * 3 + 1], m.vertices[j * 3 + 2]]
+      const ka = posKey(a[0], a[2]), kb = posKey(b[0], b[2])
+      if (ka === kb) continue
+      const key = ka < kb ? `${ka}~${kb}` : `${kb}~${ka}`
+      count.set(key, (count.get(key) || 0) + 1)
+      if (!data.has(key)) data.set(key, { a, b })
+    }
+  }
+  const tris: number[] = []
+  for (const [key, c] of count) {
+    if (c !== 1) continue                     // shared → interior, no wall
+    const { a, b } = data.get(key)!
+    const aB: [number, number, number] = [a[0], 0, a[2]]
+    const bB: [number, number, number] = [b[0], 0, b[2]]
+    // two triangles forming the wall quad (top edge a→b, bottom edge aB→bB)
+    tris.push(...a, ...b, ...bB, ...a, ...bB, ...aB)
+  }
+  return new Float32Array(tris)
+}
+
+function Walls({ positions }: { positions: Float32Array }) {
+  const geometry = useMemo(() => {
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    g.computeVertexNormals()
+    return g
+  }, [positions])
+  return (
+    <mesh geometry={geometry} castShadow receiveShadow>
+      <meshStandardMaterial color="#e2e8f0" roughness={0.9} metalness={0.02} side={THREE.DoubleSide} />
+    </mesh>
+  )
 }
 
 function FacetMesh({ mesh, selected, onSelect }: { mesh: FacetMesh3D; selected: boolean; onSelect: () => void }) {
@@ -317,8 +417,13 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
       const m = buildFacetMesh(facets[i], edges, ftPerPx, imageWidthPx, imageHeightPx, i)
       if (m) out.push(m)
     }
+    weldRoof(out)           // snap shared vertices so the facets connect
     return out
   }, [facets, edges, lat, zoom, imageWidthPx, imageHeightPx])
+
+  // Wall geometry (perimeter edges extruded to the ground) — built after welding
+  // so the wall tops sit exactly under the roof eaves/rakes.
+  const wallPositions = useMemo(() => buildWalls(meshes), [meshes])
 
   // Compute scene center for camera + group offset
   const sceneCenter = useMemo(() => {
@@ -461,6 +566,9 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
                 onSelect={() => setSelected(s => s === m.label ? null : m.label)}
               />
             ))}
+
+            {/* House walls — perimeter edges extruded to the ground */}
+            {wallPositions.length > 0 && <Walls positions={wallPositions} />}
 
             {/* Ground reference plane */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow>
