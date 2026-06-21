@@ -112,11 +112,13 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
             className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500"
           >Upload</button>
         </div>
-        {/* Camera capture (mobile opens the rear camera directly). Accept any
-            image type — the backend normalizes the format. */}
-        <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden
+        {/* Camera capture (mobile opens the rear camera directly). HEIC/HEIF
+            extensions are listed EXPLICITLY — some file pickers don't match
+            iPhone .heic files to the generic image/* type. The backend
+            normalizes every format (incl. HEIC + PDF). */}
+        <input ref={cameraRef} type="file" accept="image/*,.heic,.heif,.HEIC,.HEIF" capture="environment" hidden
           onChange={e => { void handleFiles(e.target.files); if (cameraRef.current) cameraRef.current.value = '' }} />
-        <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple hidden
+        <input ref={fileRef} type="file" accept="image/*,.heic,.heif,.HEIC,.HEIF,application/pdf,.pdf" multiple hidden
           onChange={e => { void handleFiles(e.target.files); if (fileRef.current) fileRef.current.value = '' }} />
       </div>
 
@@ -208,7 +210,7 @@ function FindingsView({
             <button onClick={() => onApplyPitch(f.roof_pitch)}
               className="rounded bg-emerald-700 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-600">Apply to facets</button>
           </>
-        ) : <span className="text-slate-500">Pitch not visible in this photo</span>}
+        ) : <span className="text-amber-300/80">No clear roof slope here — for pitch, shoot a <strong>gable end</strong> (the triangular end wall) square-on.</span>}
       </div>
       {f.chimney.present && (
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">

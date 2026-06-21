@@ -960,7 +960,8 @@ _GROUND_PHOTO_PROMPT = """You are a roofing estimator analyzing a GROUND-LEVEL p
   "stories": 1,
   "notes": "one short sentence of anything else relevant to flashing or pitch"
 }
-Pitch guide: 3/12≈14°, 5/12≈23°, 8/12≈34°, 12/12≈45°. If you cannot see the roof slope, set roof_pitch to "" and pitch_method to "not_visible". Do not guess a chimney that isn't there."""
+Pitch guide: 3/12≈14°, 5/12≈23°, 8/12≈34°, 12/12≈45°.
+ALWAYS give your BEST ESTIMATE of roof_pitch from ANY visible cue — a gable end, a roof slope, an eave-to-ridge line, even the angle of a shadow or the rake board. Use pitch_confidence "low" when you are unsure rather than refusing. Most residential roofs are between 4/12 and 9/12, so default toward that range when only weak cues are visible. Only set roof_pitch to "" if there is genuinely NO roof visible in the image at all (e.g. a close-up of a wall or a document). Do not invent a chimney that isn't there."""
 
 
 def _parse_ground_findings(text: str) -> tuple[Optional[dict], str]:
@@ -1039,10 +1040,17 @@ async def analyze_ground_photo(
         raise HTTPException(status_code=400, detail="The file was empty — try uploading again.")
     images, truncated = _normalize_to_images(raw)
     if not images:
-        raise HTTPException(
-            status_code=400,
-            detail="That file couldn't be read. Please use a photo (JPG, PNG, HEIC, WEBP) or a PDF.",
+        # Targeted HEIC message (ISO-BMFF 'ftyp' box with a heic/heif brand) so a
+        # decode failure is never a mystery.
+        is_heic = len(raw) > 12 and raw[4:8] == b"ftyp" and any(
+            b in raw[8:32] for b in (b"heic", b"heix", b"heif", b"mif1", b"msf1", b"hevc")
         )
+        detail = (
+            "This HEIC photo couldn't be processed on the server — please export it as JPG and try again."
+            if is_heic else
+            "That file couldn't be read. Please use a photo (JPG, PNG, HEIC, WEBP) or a PDF."
+        )
+        raise HTTPException(status_code=400, detail=detail)
 
     # Analyze every page concurrently, bounded so we don't hammer the LLM.
     sem = asyncio.Semaphore(4)
