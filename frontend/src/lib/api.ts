@@ -778,21 +778,24 @@ export const api = {
           try { detail = JSON.parse(text).detail ?? text } catch { /* keep raw */ }
           throw new Error(`[HTTP ${res.status}] ${detail}`)
         }
+        type GroundFindings = {
+          roof_pitch: string
+          pitch_confidence: 'high' | 'medium' | 'low'
+          pitch_method: 'gable_end' | 'slope_angle' | 'not_visible'
+          chimney: { present: boolean; count: number; height: 'short' | 'medium' | 'tall'; material: string }
+          skylights: number
+          dormers: number
+          gable_walls_visible: number
+          roof_material: string
+          roof_color: string
+          siding_material: string
+          stories: number
+          notes: string
+        }
         return res.json() as Promise<{
-          findings: null | {
-            roof_pitch: string
-            pitch_confidence: 'high' | 'medium' | 'low'
-            pitch_method: 'gable_end' | 'slope_angle' | 'not_visible'
-            chimney: { present: boolean; count: number; height: 'short' | 'medium' | 'tall'; material: string }
-            skylights: number
-            dormers: number
-            gable_walls_visible: number
-            roof_material: string
-            roof_color: string
-            siding_material: string
-            stories: number
-            notes: string
-          }
+          // One entry per page (a single image → one entry; a PDF → one per page)
+          results: Array<{ page: number; findings: GroundFindings | null; message: string }>
+          findings: GroundFindings | null   // convenience alias for the first usable page
           message: string
         }>
       },

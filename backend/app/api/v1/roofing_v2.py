@@ -874,28 +874,15 @@ async def delete_penetration(
     return {"status": "deleted", "id": pid}
 
 
+_GROUND_PHOTO_MAX_PAGES = 12  # cap PDF pages analyzed to bound cost/time
+
+
 def _normalize_image_for_vision(raw: bytes) -> tuple[Optional[bytes], str]:
     """
-    Accept any common image a contractor's phone produces — plus a PDF (e.g. an
-    inspection export or a photo saved as PDF) — and return (jpeg_bytes,
-    media_type) ready for the vision model, downscaling huge photos. Returns
-    (None, '') only when the bytes aren't a readable image/PDF.
+    Accept any common image a contractor's phone produces and return
+    (jpeg_bytes, media_type) ready for the vision model, downscaling huge photos.
+    Returns (None, '') only when the bytes aren't a readable image.
     """
-    # PDF → rasterize the FIRST page to an image, then fall through to the
-    # normal image pipeline. (Ground-photo PDFs are typically a single photo.)
-    if raw[:5] == b"%PDF-":
-        try:
-            import fitz  # PyMuPDF (already a dependency)
-            doc = fitz.open(stream=raw, filetype="pdf")
-            if doc.page_count == 0:
-                return None, ""
-            page = doc.load_page(0)
-            pix = page.get_pixmap(matrix=fitz.Matrix(200 / 72, 200 / 72))  # ~200 DPI
-            raw = pix.tobytes("png")
-            doc.close()
-        except Exception:
-            return None, ""
-
     try:
         import io as _io
         from PIL import Image
@@ -927,42 +914,38 @@ def _normalize_image_for_vision(raw: bytes) -> tuple[Optional[bytes], str]:
         return None, ""
 
 
-@router.post("/runs/{run_id}/ground-photos/analyze")
-async def analyze_ground_photo(
-    run_id: str,
-    file: UploadFile = File(...),
-    user: dict = Depends(require_user),
-) -> dict:
+def _normalize_to_images(raw: bytes) -> tuple[list[tuple[bytes, str]], bool]:
     """
-    Ground-photo exterior intelligence (Phase 3). A contractor uploads a
-    ground-level photo of the property; Gemini reads the things a top-down
-    satellite tile CANNOT show — true roof pitch from a gable end, chimney
-    presence + relative height, dormers, gable walls, and materials. These
-    findings improve roofing accuracy (pitch drives area + flashing; chimneys
-    add chimney/cricket flashing).
+    Expand an upload into a list of analyzable images.
 
-    The image is uploaded DIRECTLY (multipart) and analyzed in-memory — no
-    storage round-trip — so it works regardless of bucket config and accepts
-    any common phone image format (JPEG/PNG/WEBP/most others via Pillow).
+    • PDF  → one image PER PAGE (rasterized via PyMuPDF at ~200 DPI), capped at
+             _GROUND_PHOTO_MAX_PAGES.
+    • image → a single-element list.
 
-    Returns structured findings the contractor reviews and applies. Writes
-    nothing — applying a finding (set pitch / add chimney) is a separate action.
+    Returns (images, truncated) where `truncated` is True if a PDF had more
+    pages than the cap. Empty list = nothing readable.
     """
-    import json as _json
-    import re as _re
-    from app.services.llm import llm_vision
+    if raw[:5] == b"%PDF-":
+        try:
+            import fitz  # PyMuPDF (already a dependency)
+            doc = fitz.open(stream=raw, filetype="pdf")
+            total = doc.page_count
+            images: list[tuple[bytes, str]] = []
+            for i in range(min(total, _GROUND_PHOTO_MAX_PAGES)):
+                pix = doc.load_page(i).get_pixmap(matrix=fitz.Matrix(200 / 72, 200 / 72))
+                norm, mt = _normalize_image_for_vision(pix.tobytes("png"))
+                if norm is not None:
+                    images.append((norm, mt))
+            doc.close()
+            return images, total > _GROUND_PHOTO_MAX_PAGES
+        except Exception:
+            return [], False
 
-    raw = await file.read()
-    if not raw or len(raw) < 64:
-        raise HTTPException(status_code=400, detail="The image was empty — try taking the photo again.")
-    img_bytes, mt = _normalize_image_for_vision(raw)
-    if img_bytes is None:
-        raise HTTPException(
-            status_code=400,
-            detail="That file couldn't be read. Please use a photo (JPG, PNG, HEIC, WEBP) or a PDF.",
-        )
+    norm, mt = _normalize_image_for_vision(raw)
+    return ([(norm, mt)] if norm is not None else []), False
 
-    prompt = """You are a roofing estimator analyzing a GROUND-LEVEL photo of a house. Report only what improves a ROOF estimate. Return ONLY JSON:
+
+_GROUND_PHOTO_PROMPT = """You are a roofing estimator analyzing a GROUND-LEVEL photo of a house. Report only what improves a ROOF estimate. Return ONLY JSON:
 {
   "roof_pitch": "6/12",                  // rise/12 read from a visible gable end or roof slope; "" if not visible
   "pitch_confidence": "high|medium|low",
@@ -979,19 +962,23 @@ async def analyze_ground_photo(
 }
 Pitch guide: 3/12≈14°, 5/12≈23°, 8/12≈34°, 12/12≈45°. If you cannot see the roof slope, set roof_pitch to "" and pitch_method to "not_visible". Do not guess a chimney that isn't there."""
 
+
+def _parse_ground_findings(text: str) -> tuple[Optional[dict], str]:
+    """Parse + normalize one vision response into (findings|None, message)."""
+    import json as _json
+    import re as _re
+
+    s = (text or "").strip()
+    s = _re.sub(r"^```(?:json)?\s*", "", s, flags=_re.MULTILINE)
+    s = _re.sub(r"\s*```\s*$", "", s)
+    a, b = s.find("{"), s.rfind("}")
+    if a < 0 or b < 0:
+        return None, "AI could not read this image. Try a clearer shot of the roofline."
     try:
-        text = await llm_vision(img_bytes, mt, prompt, max_tokens=700)
-        s = (text or "").strip()
-        s = _re.sub(r"^```(?:json)?\s*", "", s, flags=_re.MULTILINE)
-        s = _re.sub(r"\s*```\s*$", "", s)
-        a, b = s.find("{"), s.rfind("}")
-        if a < 0 or b < 0:
-            return {"findings": None, "message": "AI could not read this photo. Try a clearer shot of the roofline."}
         parsed = _json.loads(s[a:b + 1])
     except Exception as e:
-        return {"findings": None, "message": f"Photo analysis error: {str(e)[:160]}"}
+        return None, f"Could not parse analysis: {str(e)[:120]}"
 
-    # Normalize into a stable shape.
     ch = parsed.get("chimney") or {}
     findings = {
         "roof_pitch": str(parsed.get("roof_pitch") or "").strip(),
@@ -1012,7 +999,73 @@ Pitch guide: 3/12≈14°, 5/12≈23°, 8/12≈34°, 12/12≈45°. If you cannot 
         "stories": int(parsed.get("stories") or 1),
         "notes": str(parsed.get("notes") or "")[:240],
     }
-    return {"findings": findings, "message": "Analyzed. Review and apply the findings that look right."}
+    return findings, "Analyzed. Review and apply the findings that look right."
+
+
+async def _analyze_ground_image(img_bytes: bytes, mt: str) -> tuple[Optional[dict], str]:
+    """Run one image through the vision model + parser."""
+    from app.services.llm import llm_vision
+    try:
+        text = await llm_vision(img_bytes, mt, _GROUND_PHOTO_PROMPT, max_tokens=700)
+    except Exception as e:
+        return None, f"Photo analysis error: {str(e)[:160]}"
+    return _parse_ground_findings(text)
+
+
+@router.post("/runs/{run_id}/ground-photos/analyze")
+async def analyze_ground_photo(
+    run_id: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Ground-photo exterior intelligence (Phase 3). A contractor uploads a
+    ground-level photo (or a PDF) of the property; Gemini reads the things a
+    top-down satellite tile CANNOT show — true roof pitch from a gable end,
+    chimney presence + relative height, dormers, gable walls, and materials.
+
+    The file is uploaded DIRECTLY (multipart) and analyzed in-memory — no
+    storage round-trip — so it works regardless of bucket config and accepts any
+    common phone image format (JPEG/PNG/WEBP/HEIC) plus PDFs. A PDF is analyzed
+    PAGE BY PAGE (each page = its own finding), capped at _GROUND_PHOTO_MAX_PAGES.
+
+    Returns {results: [{page, findings, message}], ...}. Writes nothing —
+    applying a finding (set pitch / add chimney) is a separate action.
+    """
+    import asyncio
+
+    raw = await file.read()
+    if not raw or len(raw) < 64:
+        raise HTTPException(status_code=400, detail="The file was empty — try uploading again.")
+    images, truncated = _normalize_to_images(raw)
+    if not images:
+        raise HTTPException(
+            status_code=400,
+            detail="That file couldn't be read. Please use a photo (JPG, PNG, HEIC, WEBP) or a PDF.",
+        )
+
+    # Analyze every page concurrently, bounded so we don't hammer the LLM.
+    sem = asyncio.Semaphore(4)
+
+    async def run_one(idx: int, img: tuple[bytes, str]) -> dict:
+        async with sem:
+            findings, message = await _analyze_ground_image(img[0], img[1])
+            return {"page": idx + 1, "findings": findings, "message": message}
+
+    results = await asyncio.gather(*(run_one(i, im) for i, im in enumerate(images)))
+
+    n = len(results)
+    usable = sum(1 for r in results if r["findings"])
+    if n == 1:
+        message = results[0]["message"]
+    else:
+        message = f"Analyzed {n} pages — {usable} with usable findings."
+        if truncated:
+            message += f" (first {_GROUND_PHOTO_MAX_PAGES} pages only)"
+
+    # `findings` kept as a convenience alias for the first usable page.
+    first = next((r["findings"] for r in results if r["findings"]), None)
+    return {"results": results, "findings": first, "message": message}
 
 
 @router.get("/runs/{run_id}/solar")

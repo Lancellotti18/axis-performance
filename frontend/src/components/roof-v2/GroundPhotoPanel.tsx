@@ -20,6 +20,7 @@ import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 
 type Findings = NonNullable<Awaited<ReturnType<typeof api.roofing.v2.analyzeGroundPhoto>>['findings']>
+type PageResult = { page: number; findings: Findings | null; message: string }
 
 interface PhotoEntry {
   id: string
@@ -27,7 +28,7 @@ interface PhotoEntry {
   name: string
   isPdf: boolean
   status: 'analyzing' | 'done' | 'error'
-  findings?: Findings
+  results?: PageResult[]
   error?: string
 }
 
@@ -56,8 +57,10 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
         // Send the image BYTES straight to the backend — no storage round-trip,
         // so it works regardless of bucket config and accepts any phone format.
         const res = await api.roofing.v2.analyzeGroundPhoto(runId, file)
+        const results = res.results ?? (res.findings ? [{ page: 1, findings: res.findings, message: res.message }] : [])
+        const anyUsable = results.some(r => r.findings)
         setPhotos(prev => prev.map(p => p.id === id
-          ? { ...p, status: 'done', findings: res.findings ?? undefined, error: res.findings ? undefined : res.message }
+          ? { ...p, status: 'done', results, error: anyUsable ? undefined : res.message }
           : p))
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'analysis failed'
@@ -141,8 +144,22 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
               <div className="truncate text-xs text-slate-300">{p.name}</div>
               {p.status === 'analyzing' && <div className="flex items-center gap-1.5 text-[11px] text-blue-300"><span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Analyzing with AI…</div>}
               {p.status === 'error' && <div className="text-[11px] text-rose-400">{p.error}</div>}
-              {p.status === 'done' && p.findings && <FindingsView f={p.findings} onApplyPitch={applyPitch} onAddChimney={addChimney} />}
-              {p.status === 'done' && !p.findings && <div className="text-[11px] text-amber-400">{p.error || 'No usable findings'}</div>}
+              {p.status === 'done' && p.results && p.results.length > 0 ? (
+                <div className="space-y-1.5">
+                  {p.results.map(r => (
+                    <div key={r.page}>
+                      {p.results!.length > 1 && (
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Page {r.page}</div>
+                      )}
+                      {r.findings
+                        ? <FindingsView f={r.findings} onApplyPitch={applyPitch} onAddChimney={addChimney} />
+                        : <div className="text-[11px] text-amber-400">{r.message || 'No usable findings'}</div>}
+                    </div>
+                  ))}
+                </div>
+              ) : p.status === 'done' && (
+                <div className="text-[11px] text-amber-400">{p.error || 'No usable findings'}</div>
+              )}
             </div>
           </li>
         ))}
@@ -171,7 +188,7 @@ function PhotoGuide() {
             <li><strong className="text-white">5. A close-up of the shingles/roof surface.</strong> → identifies material + color for the report.</li>
           </ol>
           <p className="mt-2 text-slate-500">Tip: a clear, square-on gable shot in good light is worth more than ten blurry angles.</p>
-          <p className="mt-1 text-slate-500">Uploading a <strong>PDF</strong>? Its first page is read as an image — put the most useful photo on page 1.</p>
+          <p className="mt-1 text-slate-500">Uploading a <strong>PDF</strong>? Every page is read as a separate photo (up to 12) — each page gets its own findings.</p>
         </div>
       )}
     </div>
