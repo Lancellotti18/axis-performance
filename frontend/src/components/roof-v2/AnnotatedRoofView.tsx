@@ -72,9 +72,9 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
   // Crop the view to the traced roof (with padding) so the house FILLS the
   // frame instead of sitting tiny in the middle of a wide tile. Falls back to
   // the full tile when nothing is traced yet.
-  const cropViewBox = useMemo(() => {
+  const crop = useMemo(() => {
     const pts = facets.flatMap(f => f.polygon)
-    if (pts.length < 3) return `0 0 ${imageDims.w} ${imageDims.h}`
+    if (pts.length < 3) return { viewBox: `0 0 ${imageDims.w} ${imageDims.h}`, u: 1, vx: 0, vy: 0, vw: imageDims.w, vh: imageDims.h }
     let minX = 1, minY = 1, maxX = 0, maxY = 0
     for (const [x, y] of pts) {
       if (x < minX) minX = x; if (x > maxX) maxX = x
@@ -84,8 +84,18 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
     const padY = Math.max((maxY - minY) * 0.18, 0.03)
     const x0 = Math.max(0, minX - padX), y0 = Math.max(0, minY - padY)
     const x1 = Math.min(1, maxX + padX), y1 = Math.min(1, maxY + padY)
-    return `${x0 * imageDims.w} ${y0 * imageDims.h} ${(x1 - x0) * imageDims.w} ${(y1 - y0) * imageDims.h}`
+    // u = fraction of the image width that is visible. Multiply all label/stroke
+    // sizes by u so they stay a CONSTANT on-screen size when cropped/zoomed —
+    // otherwise fixed pixel sizes blow up + overlap in a tight crop.
+    return {
+      viewBox: `${x0 * imageDims.w} ${y0 * imageDims.h} ${(x1 - x0) * imageDims.w} ${(y1 - y0) * imageDims.h}`,
+      u: Math.max(0.12, x1 - x0),
+      vx: x0 * imageDims.w, vy: y0 * imageDims.h,
+      vw: (x1 - x0) * imageDims.w, vh: (y1 - y0) * imageDims.h,
+    }
   }, [facets, imageDims])
+  const cropViewBox = crop.viewBox
+  const u = crop.u
 
   // Index edges by (facet_label, vertex_index_start) for fast lookup while rendering polygons
   const edgesByFacet = useMemo(() => {
@@ -170,21 +180,21 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
                 {showAreas && (
                   <g>
                     <rect
-                      x={cx - 48} y={cy - 16}
-                      width={96} height={32}
-                      fill="rgba(15, 23, 42, 0.85)"
-                      stroke="#3b82f6" strokeWidth={1.5}
-                      rx={4}
+                      x={cx - 46 * u} y={cy - 15 * u}
+                      width={92 * u} height={30 * u}
+                      fill="rgba(15, 23, 42, 0.82)"
+                      stroke="#3b82f6" strokeWidth={1.2 * u}
+                      rx={4 * u}
                     />
                     <text
-                      x={cx} y={cy - 2}
+                      x={cx} y={cy - 3 * u}
                       textAnchor="middle" dominantBaseline="middle"
-                      fill="white" fontSize={11} fontWeight={700}
-                    >Facet {f.label}</text>
+                      fill="white" fontSize={10.5 * u} fontWeight={700}
+                    >{f.label}</text>
                     <text
-                      x={cx} y={cy + 11}
+                      x={cx} y={cy + 8 * u}
                       textAnchor="middle" dominantBaseline="middle"
-                      fill="#cbd5e1" fontSize={9}
+                      fill="#cbd5e1" fontSize={8.5 * u}
                     >{f.pitch}</text>
                   </g>
                 )}
@@ -211,18 +221,18 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
               const label = e ? EDGE_LABELS[e.edgeType] : '?'
               return (
                 <g key={`${f.label}-${i}`}>
-                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={4} strokeLinecap="round" />
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={2.4 * u} strokeLinecap="round" />
                   {showLabels && e && e.edgeType !== 'unlabeled' && (
                     <g transform={`translate(${mx}, ${my}) rotate(${textAngle})`}>
                       <rect
-                        x={-22} y={-18} width={44} height={14} rx={3}
+                        x={-20 * u} y={-17 * u} width={40 * u} height={13 * u} rx={3 * u}
                         fill="rgba(255,255,255,0.92)"
-                        stroke={color} strokeWidth={1}
+                        stroke={color} strokeWidth={0.8 * u}
                       />
                       <text
-                        x={0} y={-11}
+                        x={0} y={-10.5 * u}
                         textAnchor="middle" dominantBaseline="middle"
-                        fill={color} fontSize={9} fontWeight={700}
+                        fill={color} fontSize={8 * u} fontWeight={700}
                       >{label}</text>
                     </g>
                   )}
@@ -231,9 +241,9 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
             })
           })}
 
-          {/* Compass */}
+          {/* Compass — anchored to the top-right of the VISIBLE crop, scaled by u */}
           {showCompass && (
-            <g transform={`translate(${imageDims.w - 60}, 60)`}>
+            <g transform={`translate(${crop.vx + crop.vw - 46 * u}, ${crop.vy + 46 * u}) scale(${u})`}>
               <circle r={32} fill="rgba(15, 23, 42, 0.85)" stroke="#475569" strokeWidth={2} />
               <text x={0} y={-8} textAnchor="middle" fill="#fbbf24" fontSize={14} fontWeight={700}>N</text>
               <line x1={0} y1={-2} x2={0} y2={24} stroke="#fbbf24" strokeWidth={2.5} />

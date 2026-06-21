@@ -322,7 +322,15 @@ async def html_preview(
             download_photo_bytes=False,  # preview skips vision calls for speed
         )
         measurements = await build_property_measurements(extraction_input)
+        html = generate_html_preview(measurements)
     except RuntimeError as e:
         raise _runtime_error_to_http(e)
-    html = generate_html_preview(measurements)
+    except Exception as e:
+        # Surface the real cause instead of an opaque 500 so preview failures
+        # are diagnosable (was previously a silent "doesn't work").
+        logger.exception("APIR preview failed")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "EXTRACTION_FAILED", "message": f"Preview failed: {e}"},
+        )
     return HTMLResponse(content=html)

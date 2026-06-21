@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { getUser } from '@/lib/auth'
 import LocationPicker, { type LocationSelected } from '@/components/roof-v2/LocationPicker'
@@ -34,7 +35,8 @@ import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
 import SolarAssistPanel from '@/components/roof-v2/SolarAssistPanel'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
-import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
+// RoofViewer3D temporarily disabled (geometry rebuild) — re-enable in REPORT step.
+// import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
 import ReportsPanel from '@/components/roof-v2/ReportsPanel'
 import PannableImage from '@/components/roof-v2/PannableImage'
@@ -261,20 +263,27 @@ export default function RoofV2Page() {
   // house" button for when the contractor wants to re-run it.
   const [autoCentering, setAutoCentering] = useState(false)
   const autoCenterAttempted = useRef(false)
-  const autoCenterOnHouse = useCallback(async (loc: LocationSelected) => {
+  const autoCenterOnHouse = useCallback(async (loc: LocationSelected, manual = false) => {
     if (!loc || (loc.lat === 0 && loc.lng === 0)) return
     setAutoCentering(true)
     try {
-      const det = await api.roofing.v2.detectBuilding(loc.lat, loc.lng, 22, 2048, 1366)
+      // Detect at a WIDE zoom (20) so the whole building + surroundings are in
+      // frame — at z22 the roof fills the tile and there's nothing to locate
+      // against, so detection silently no-op'd ("button does nothing").
+      const det = await api.roofing.v2.detectBuilding(loc.lat, loc.lng, 20, 2048, 1366)
       if (det.found && det.recenter) {
         const newLoc: LocationSelected = { ...loc, lat: det.recenter.lat, lng: det.recenter.lng }
         setLocation(newLoc)
-        const zoom = det.suggested_zoom ?? 22
+        const zoom = det.suggested_zoom ?? 21
         const health = await api.roofing.v2.imageryHealth(newLoc.lat, newLoc.lng, zoom, 2048, 1366) as ImageryPayload
         setImagery({ ...health, original_url: health.url, url: health.url, display_mode: 'original' })
+        if (manual) toast.success('Centered + zoomed on the house')
+      } else if (manual) {
+        toast('Couldn’t find the building automatically — keeping the current view.', { icon: '🛈' })
       }
     } catch (err) {
       console.warn('[axis] auto-center failed (keeping geocoded framing):', err)
+      if (manual) toast.error('Auto-center failed — keeping the current view.')
     } finally {
       setAutoCentering(false)
     }
@@ -658,7 +667,7 @@ export default function RoofV2Page() {
                     {/* Center-on-house (re-fetches a roof-framed tile) */}
                     <div className="absolute left-2 top-2 flex items-center gap-2">
                       <button
-                        onClick={() => location && void autoCenterOnHouse(location)}
+                        onClick={() => location && void autoCenterOnHouse(location, true)}
                         disabled={autoCentering}
                         title="Use AI to detect the house and re-center + zoom the captured tile on the roof"
                         className="flex items-center gap-1.5 rounded-md border border-white/20 bg-slate-900/85 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur hover:bg-blue-600 disabled:opacity-50"
@@ -897,7 +906,8 @@ export default function RoofV2Page() {
             edges={edges}
           />
 
-          {/* 3D viewer */}
+          {/* 3D viewer — temporarily hidden (geometry rebuild in progress).
+              Component kept; re-enable when the connected-mesh version is ready.
           <RoofViewer3D
             facets={facets}
             edges={edges}
@@ -905,7 +915,7 @@ export default function RoofV2Page() {
             zoom={imagery.zoom ?? 20}
             imageWidthPx={imagery.width_px ?? 2048}
             imageHeightPx={imagery.height_px ?? 1366}
-          />
+          /> */}
 
           <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
             <h2 className="mb-3 text-sm font-semibold">Confirm + download</h2>

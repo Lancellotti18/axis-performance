@@ -884,6 +884,14 @@ def _normalize_image_for_vision(raw: bytes) -> tuple[Optional[bytes], str]:
         import io as _io
         from PIL import Image
 
+        # Register HEIC/HEIF support so iPhone photos (the default phone format)
+        # decode. Best-effort — JPEG/PNG/WEBP still work if this isn't installed.
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except Exception:
+            pass
+
         im = Image.open(_io.BytesIO(raw))
         im = im.convert("RGB")
         if max(im.size) > 2048:               # phone photos are huge; shrink for speed

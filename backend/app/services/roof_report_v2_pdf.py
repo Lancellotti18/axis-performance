@@ -581,20 +581,6 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict) -> list:
         for w in run.get("warnings") or []:
             flow.append(Paragraph(f"• {w}", styles["muted"]))
 
-    flow.append(Spacer(1, 10))
-    flow.append(Paragraph(
-        "<b>What this report does not include</b><br/>"
-        "• Siding/soffit/fascia measurements from satellite imagery (not "
-        "physically possible from top-down tiles).<br/>"
-        "• Counter or apron flashing footage (requires inspector "
-        "measurement against masonry).<br/>"
-        "• Automated penetration counts (AI may suggest; contractor must "
-        "confirm).<br/>"
-        "• HOVER-style photorealistic remodel previews (requires multi-"
-        "angle photo capture — not yet available in Axis).",
-        styles["body"],
-    ))
-
     flow.append(Spacer(1, 8))
     flow.append(Paragraph(
         "Axis Performance — generated %s" % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
