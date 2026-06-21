@@ -15,7 +15,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { motion, useInView } from 'framer-motion'
 import { useRef, useEffect } from 'react'
-import HouseScrollScene from '@/components/HouseScrollScene'
+import HeroImageScene from '@/components/HeroImageScene'
 
 // ─── Scroll progress phases ─────────────────────────────────────────────────
 // Each phase = (start, end) in 0..1 progress. Used to fade overlay cards
@@ -216,8 +216,8 @@ export default function HomePage() {
       <Nav />
 
       {/* ─── HERO: scroll-driven 3D house frame sequence ─────────────────── */}
-      <HouseScrollScene
-        totalFrames={128}
+      <HeroImageScene
+        image="/hero/house-hero.jpg"
         trackHeightVh={500}
         onProgress={setProgress}
       >
@@ -345,7 +345,7 @@ export default function HomePage() {
             )
           })}
         </div>
-      </HouseScrollScene>
+      </HeroImageScene>
 
       {/* ─── Capabilities (below the cinematic hero) ─────────────────────── */}
       <section className="relative px-6 md:px-10 py-32 md:py-40">
