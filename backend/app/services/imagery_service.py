@@ -173,6 +173,40 @@ def _mapbox_url(lat: float, lng: float, zoom: int, w: int, h: int, token: str) -
     )
 
 
+# Logical web-mercator width cap + max zoom per provider. Used to recover the
+# LOGICAL image dimensions from the decoded (possibly @2x) image so that
+# width_px × feet_per_pixel == true ground width for every consumer.
+_PROVIDER_LOGICAL_CAP = {"esri": None, "mapbox": 1280, "maptiler": 2048, "bing": 2000}
+_PROVIDER_MAX_ZOOM = {"esri": 23, "mapbox": 22, "maptiler": 22, "bing": 21}
+
+
+def _logical_scale(
+    provider: str, lat: float, zoom: int, requested_w: int, actual_w: int, actual_h: int,
+) -> tuple[int, int, float, float]:
+    """
+    Return (width_px, height_px, metres_per_pixel, feet_per_pixel) describing the
+    image at LOGICAL web-mercator scale.
+
+    The static-map providers we use render '@2x' (retina): the DECODED image has
+    ~2× the pixels of the logical tile, while feet_per_pixel(zoom) is per LOGICAL
+    pixel. Previously we stored width_px = decoded size with feet_per_pixel =
+    logical — so width_px × feet_per_pixel was ~2× the true ground width, which
+    DOUBLED every linear measurement (4× area) and made the scale check read wildly
+    off. We instead report the logical dimensions (decoded ÷ retina) with the
+    logical scale, keeping width_px × feet_per_pixel == true ground width. The
+    contractor still sees the full-resolution @2x image (everything is drawn in
+    image fractions, so display is unaffected).
+    """
+    eff_zoom = min(zoom, _PROVIDER_MAX_ZOOM.get(provider, 22))
+    cap = _PROVIDER_LOGICAL_CAP.get(provider)
+    logical_req = min(requested_w, cap) if cap else requested_w
+    # retina = decoded ÷ logical, self-correcting (≈1 for 1x providers, ≈2 for @2x)
+    retina = max(1, round(actual_w / logical_req)) if logical_req else 1
+    w_log = max(1, round(actual_w / retina))
+    h_log = max(1, round(actual_h / retina))
+    return w_log, h_log, metres_per_pixel(lat, eff_zoom), feet_per_pixel(lat, eff_zoom)
+
+
 def _bing_url(lat: float, lng: float, zoom: int, w: int, h: int, key: str) -> str:
     """
     Bing Maps Static Maps API (Aerial layer). Uses Microsoft's own imagery
@@ -383,12 +417,13 @@ async def _fetch_one(
             actual_w, actual_h, _ = _decode_image_size(cached.bytes)
         except ValueError:
             actual_w, actual_h = w, h
+        w_log, h_log, _mpp, _fpp = _logical_scale(provider, lat, zoom, w, actual_w, actual_h)
         return ImageryResult(
             provider=provider, url=url,
             image_bytes=cached.bytes, media_type=cached.media_type,
-            width_px=actual_w, height_px=actual_h, zoom=zoom, lat=lat, lng=lng,
-            metres_per_pixel=metres_per_pixel(lat, zoom),
-            feet_per_pixel=feet_per_pixel(lat, zoom),
+            width_px=w_log, height_px=h_log, zoom=zoom, lat=lat, lng=lng,
+            metres_per_pixel=_mpp,
+            feet_per_pixel=_fpp,
             health_score=cached.health,
             warnings=list(cached.warnings),
             providers_tried=[provider],
@@ -414,12 +449,13 @@ async def _fetch_one(
                 warnings=warnings, fetched_at=time.time(),
             )
             _cache_put(cache_key, entry)
+            w_log, h_log, _mpp, _fpp = _logical_scale(provider, lat, zoom, w, actual_w, actual_h)
             return ImageryResult(
                 provider=provider, url=url,
                 image_bytes=data, media_type=media,
-                width_px=actual_w, height_px=actual_h, zoom=zoom, lat=lat, lng=lng,
-                metres_per_pixel=metres_per_pixel(lat, zoom),
-                feet_per_pixel=feet_per_pixel(lat, zoom),
+                width_px=w_log, height_px=h_log, zoom=zoom, lat=lat, lng=lng,
+                metres_per_pixel=_mpp,
+                feet_per_pixel=_fpp,
                 health_score=health,
                 warnings=warnings,
                 providers_tried=[provider],
