@@ -81,6 +81,16 @@ interface ImageryPayload {
 
 type Step = 'project' | 'location' | 'imagery' | 'editor' | 'siding' | 'report'
 
+// Friendly stepper labels (the Step values stay the same for all the logic).
+const STEP_LABELS: Record<Step, string> = {
+  project: 'Project',
+  location: 'Address',
+  imagery: 'Locate roof',
+  editor: 'Measure roof',
+  siding: 'Siding',
+  report: 'Report',
+}
+
 export default function RoofV2Page() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
@@ -511,7 +521,7 @@ export default function RoofV2Page() {
                     }`}
                   >
                     <span>{completed ? '✓' : i + 1}.</span>
-                    <span className="capitalize">{s}</span>
+                    <span>{STEP_LABELS[s]}</span>
                   </button>
                 </span>
               )
@@ -764,10 +774,37 @@ export default function RoofV2Page() {
             onConfidenceChange={setConfidence}
             onForceSave={async () => { await persistGeometry(facets, edges) }}
           />
+          {/* Guided workflow — recommended top-to-bottom order. The editor above
+              is always your manual canvas; reject any AI suggestion and draw by hand. */}
+          <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3 text-xs text-blue-200">
+            <strong>Guided steps</strong> — work top to bottom for the best accuracy. The{' '}
+            <strong>editor above is always your manual fallback</strong>: reject any AI suggestion
+            and draw the facet by hand with all the same measurements.
+          </div>
+
           <CollapsibleSection
-            title="AI assistance"
-            subtitle="Google Solar roof data, detect facets & edges, penetrations, roof-to-wall flashing, and read pitch/chimneys from ground photos."
-            badge="tools"
+            title="① Ground photos — start here"
+            subtitle="Reads pitch, chimneys/skylights, dormers, roof shape & materials. Feeds pitch + a count check into auto-detect below — so do this first."
+            badge="step 1"
+            defaultOpen
+          >
+          {runId && (
+            <GroundPhotoPanel
+              runId={runId}
+              onApplyPitch={(pitch) => {
+                const updated = facets.map(f => ({ ...f, pitch }))
+                setFacets(updated)
+                void persistGeometry(updated, edges)
+              }}
+              onChimneyAdded={() => setGeometryStamp(s => s + 1)}
+            />
+          )}
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="② Auto-detect the roof"
+            subtitle="Google Solar (measured pitch) + AI tracing propose facets. Accept the good ones; reject the rest and draw them by hand in the editor above. The scale check confirms the measurements are trustworthy."
+            badge="step 2"
             defaultOpen
           >
           {runId && imagery?.lat != null && imagery?.lng != null && (
@@ -817,6 +854,22 @@ export default function RoofV2Page() {
               void persistGeometry(merged, mergedEdges)
             }}
           />
+          {runId && imagery?.url && (
+            <ScaleCheckPanel
+              runId={runId}
+              imageUrl={imagery.original_url || imagery.url}
+              imageWidthPx={imagery.width_px ?? 2048}
+              imageHeightPx={imagery.height_px ?? 1366}
+              feetPerPixel={imagery.feet_per_pixel ?? 0}
+            />
+          )}
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="③ Label edges + penetrations"
+            subtitle="Label eaves / rakes / ridges / valleys and add chimneys, skylights, vents. These drive flashing and the final report."
+            badge="step 3"
+          >
           {facets.length > 0 && (
             <EdgeLabelSuggestions
               runId={runId}
@@ -832,17 +885,13 @@ export default function RoofV2Page() {
             />
           )}
           <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
-          {runId && (
-            <GroundPhotoPanel
-              runId={runId}
-              onApplyPitch={(pitch) => {
-                const updated = facets.map(f => ({ ...f, pitch }))
-                setFacets(updated)
-                void persistGeometry(updated, edges)
-              }}
-              onChimneyAdded={() => setGeometryStamp(s => s + 1)}
-            />
-          )}
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="④ Flashing"
+            subtitle="Roof-to-wall transitions (corroborated by your ground photos) + chimney/skylight flashing, computed from the labeled edges above."
+            badge="step 4"
+          >
           {runId && (
             <WallTransitionPanel
               runId={runId}
@@ -858,15 +907,6 @@ export default function RoofV2Page() {
             />
           )}
           {runId && <FlashingPanel runId={runId} />}
-          {runId && imagery?.url && (
-            <ScaleCheckPanel
-              runId={runId}
-              imageUrl={imagery.original_url || imagery.url}
-              imageWidthPx={imagery.width_px ?? 2048}
-              imageHeightPx={imagery.height_px ?? 1366}
-              feetPerPixel={imagery.feet_per_pixel ?? 0}
-            />
-          )}
           </CollapsibleSection>
           {runId && <PreReportChecklist runId={runId} facets={facets} edges={edges} />}
           <div className="flex flex-wrap gap-2">
