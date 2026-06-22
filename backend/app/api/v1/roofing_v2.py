@@ -956,6 +956,7 @@ _GROUND_PHOTO_PROMPT = """You are a roofing estimator analyzing a GROUND-LEVEL p
   "chimney": {"present": true, "count": 1, "height": "short|medium|tall", "material": "brick|metal|stucco|unknown"},
   "skylights": 0,
   "dormers": 0,
+  "wall_abutment": {"present": false, "note": ""},   // TRUE if a roof slope dies into a TALLER wall of the same house (e.g. a porch/garage/single-story roof meeting a two-story wall). This needs step/apron flashing. Note where you see it.
   "gable_walls_visible": 1,
   "roof_material": "asphalt_shingles|metal|tile|flat_membrane|wood_shake|slate|unknown",
   "roof_color": "weathered charcoal gray",
@@ -984,6 +985,7 @@ def _parse_ground_findings(text: str) -> tuple[Optional[dict], str]:
         return None, f"Could not parse analysis: {str(e)[:120]}"
 
     ch = parsed.get("chimney") or {}
+    wa = parsed.get("wall_abutment") or {}
     findings = {
         "roof_pitch": str(parsed.get("roof_pitch") or "").strip(),
         "pitch_confidence": parsed.get("pitch_confidence") if parsed.get("pitch_confidence") in ("high", "medium", "low") else "low",
@@ -997,6 +999,10 @@ def _parse_ground_findings(text: str) -> tuple[Optional[dict], str]:
         },
         "skylights": int(parsed.get("skylights") or 0),
         "dormers": int(parsed.get("dormers") or 0),
+        "wall_abutment": {
+            "present": bool(wa.get("present")),
+            "note": str(wa.get("note") or "")[:160],
+        },
         "gable_walls_visible": int(parsed.get("gable_walls_visible") or 0),
         "roof_material": str(parsed.get("roof_material") or "unknown"),
         "roof_color": str(parsed.get("roof_color") or "")[:80],
@@ -1463,6 +1469,36 @@ def _solar_segments_as_fractions(
     return out
 
 
+def _vegetation_fraction(im, polygon: list) -> float:
+    """Fraction of a polygon's bounding-box pixels that read as GREEN vegetation
+    (bushes / trees / lawn). Roofs are gray/brown; vegetation has green clearly
+    dominant. Uses Excess-Green (2G−R−B) on a small sampling grid — cheap and
+    robust. `im` is a PIL RGB image of the full tile; polygon is in fractions."""
+    try:
+        W, H = im.size
+        xs = [p[0] for p in polygon]
+        ys = [p[1] for p in polygon]
+        x0, x1 = int(min(xs) * W), int(max(xs) * W)
+        y0, y1 = int(min(ys) * H), int(max(ys) * H)
+        if x1 - x0 < 2 or y1 - y0 < 2:
+            return 0.0
+        px = im.load()
+        nx = min(24, x1 - x0)
+        ny = min(24, y1 - y0)
+        veg = total = 0
+        for i in range(nx):
+            for j in range(ny):
+                x = x0 + (i * (x1 - x0)) // nx
+                y = y0 + (j * (y1 - y0)) // ny
+                r, g, b = px[x, y][:3]
+                total += 1
+                if (2 * g - r - b) > 30 and g > r and g > b:
+                    veg += 1
+        return veg / total if total else 0.0
+    except Exception:
+        return 0.0
+
+
 def _signed_area(poly: list) -> float:
     """Shoelace signed area of a polygon (image-fraction coords)."""
     a = 0.0
@@ -1818,10 +1854,20 @@ suggestions and trust your high-confidence ones.
         gx0, gy0 = bbox["x0"] - 0.12 * bw, bbox["y0"] - 0.12 * bh
         gx1, gy1 = bbox["x1"] + 0.12 * bw, bbox["y1"] + 0.12 * bh
 
+    # Load the ORIGINAL tile once for the vegetation guard (best-effort).
+    veg_im = None
+    try:
+        import io as _io
+        from PIL import Image as _Image
+        veg_im = _Image.open(_io.BytesIO(img_bytes)).convert("RGB")
+    except Exception:
+        veg_im = None
+
     # Sanitize: each facet must have a polygon of >=3 [x,y] pairs in [0,1]
     cleaned: list[dict] = []
     dropped_off_building = 0
     dropped_strips = 0
+    dropped_vegetation = 0
     for f in facets:
         poly = f.get("polygon") or []
         if not isinstance(poly, list) or len(poly) < 3:
@@ -1862,6 +1908,11 @@ suggestions and trust your high-confidence ones.
             dropped_strips += 1
             continue
 
+        # Reject vegetation — a roof is gray/brown, a bush/tree/lawn is green.
+        if veg_im is not None and _vegetation_fraction(veg_im, valid) > 0.45:
+            dropped_vegetation += 1
+            continue
+
         # Seed pitch from the best available source instead of blindly defaulting.
         pitch, pitch_source = _resolve_pitch(solar_pitch, ground_findings, f.get("predicted_pitch"))
         cleaned.append({
@@ -1882,6 +1933,8 @@ suggestions and trust your high-confidence ones.
         drop_notes.append(f"{dropped_off_building} off-building (road/neighbor)")
     if dropped_strips:
         drop_notes.append(f"{dropped_strips} road-like strip(s)")
+    if dropped_vegetation:
+        drop_notes.append(f"{dropped_vegetation} on vegetation (bushes/trees)")
     drop_suffix = f" Filtered out {', '.join(drop_notes)}." if drop_notes else ""
 
     # LAYER with Google Solar: keep AI shapes where Solar confirms a plane (with

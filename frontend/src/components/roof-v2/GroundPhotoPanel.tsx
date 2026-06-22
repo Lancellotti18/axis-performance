@@ -312,6 +312,13 @@ function FindingsView({
           side (&quot;cheek&quot;) edges as <strong>wall intersection</strong> so flashing picks them up.
         </div>
       )}
+      {f.wall_abutment?.present && (
+        <div className="rounded bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200/90">
+          🧱 Roof meets a taller wall → needs <strong>step/apron flashing</strong>. In the editor,
+          label that roof-to-wall edge as <strong>wall intersection</strong> so flashing includes it.
+          {f.wall_abutment.note ? <span className="text-amber-200/60"> ({f.wall_abutment.note})</span> : null}
+        </div>
+      )}
       <div className="text-[10px] text-slate-500">
         {f.gable_walls_visible > 0 && `${f.gable_walls_visible} gable wall(s) · `}
         {f.roof_material !== 'unknown' && `${f.roof_material.replace('_', ' ')}${f.roof_color ? ` (${f.roof_color})` : ''} · `}

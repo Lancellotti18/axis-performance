@@ -786,6 +786,7 @@ export const api = {
           chimney: { present: boolean; count: number; height: 'short' | 'medium' | 'tall'; material: string }
           skylights: number
           dormers: number
+          wall_abutment?: { present: boolean; note: string }
           gable_walls_visible: number
           roof_material: string
           roof_color: string
