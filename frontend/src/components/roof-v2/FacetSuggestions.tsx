@@ -36,6 +36,7 @@ interface Suggestion {
 // looks different from a real ground-photo read.
 function pitchSourceMeta(src?: string): { label: string; color: string } {
   switch (src) {
+    case 'solar_measured': return { label: 'measured by Google Solar ✓', color: 'text-emerald-400' }
     case 'ground_photo': return { label: 'from ground photo ✓', color: 'text-emerald-400' }
     case 'ai_satellite': return { label: 'AI from satellite — verify', color: 'text-slate-400' }
     default: return { label: 'default — set this!', color: 'text-amber-400' }

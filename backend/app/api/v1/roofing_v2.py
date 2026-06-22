@@ -1362,15 +1362,34 @@ def _center_crop(
         return img_bytes, (0.0, 0.0, 1.0, 1.0)
 
 
-def _resolve_pitch(ground: Optional[dict], ai_pitch) -> tuple[str, str]:
+def _dominant_solar_pitch(segments: list[dict]) -> Optional[str]:
+    """Area-weighted majority pitch across Google Solar roof segments. Most homes
+    are a single pitch; weighting by area keeps a small dormer plane from
+    outvoting the main roof. Returns None if no segment carries a pitch."""
+    by_pitch: dict[str, float] = {}
+    for s in segments:
+        p = str(s.get("pitch") or "").strip()
+        if not p:
+            continue
+        by_pitch[p] = by_pitch.get(p, 0.0) + float(s.get("area_sqft") or 0.0)
+    if not by_pitch:
+        return None
+    return max(by_pitch.items(), key=lambda kv: kv[1])[0]
+
+
+def _resolve_pitch(solar_pitch: Optional[str], ground: Optional[dict], ai_pitch) -> tuple[str, str]:
     """Pick the best pitch + its provenance, killing the silent 6/12 default.
 
-    Precedence: a confident GROUND-PHOTO read (measured off a gable end) beats
-    the satellite AI's foreshortened guess, which beats the bare default. The
-    AI's own '6/12' is treated as 'default' because the detection prompt returns
-    6/12 precisely when it is UNSURE — so it must be flagged for the contractor,
-    not trusted. Returns (pitch_string, source) where source is one of
-    'ground_photo' | 'ai_satellite' | 'default'."""
+    Precedence: Google Solar's MEASURED pitch (Google's own photogrammetry) >
+    a confident GROUND-PHOTO read (off a gable end) > the satellite AI's
+    foreshortened guess > the bare default. The AI's own '6/12' is treated as
+    'default' because the detection prompt returns 6/12 precisely when it is
+    UNSURE — so it must be flagged for the contractor, not trusted. Returns
+    (pitch_string, source) with source one of
+    'solar_measured' | 'ground_photo' | 'ai_satellite' | 'default'."""
+    sp = str(solar_pitch or "").strip()
+    if sp:
+        return sp, "solar_measured"
     if ground:
         gp = str(ground.get("roof_pitch") or "").strip()
         if gp and ground.get("pitch_confidence") in ("high", "medium"):
@@ -1394,7 +1413,7 @@ async def suggest_facets(
     """
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
-        "satellite_image_url, satellite_zoom, ground_findings"
+        "satellite_image_url, satellite_zoom, satellite_lat, satellite_lng, ground_findings"
     ).eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
@@ -1402,6 +1421,21 @@ async def suggest_facets(
     if not img_url:
         return {"facets": [], "message": "No satellite image attached to this run."}
     ground_findings = run.data.get("ground_findings") or None
+
+    # Google Solar gives MEASURED pitch (Google's photogrammetry) — the best
+    # pitch source we have. Pull the area-weighted dominant pitch to seed facets.
+    # Cached + best-effort: a miss or no coverage just falls through to the
+    # ground-photo / AI / default ladder.
+    solar_pitch: Optional[str] = None
+    s_lat, s_lng = run.data.get("satellite_lat"), run.data.get("satellite_lng")
+    if s_lat is not None and s_lng is not None:
+        try:
+            from app.services import solar_service
+            solar = await solar_service.get_building_insights(float(s_lat), float(s_lng))
+            if solar.get("available"):
+                solar_pitch = _dominant_solar_pitch(solar.get("segments") or [])
+        except Exception as e:
+            logger.info("solar pitch lookup failed for run %s: %s", run_id, e)
 
     from app.services.llm import llm_vision
     import httpx, json, re as _re
@@ -1608,7 +1642,7 @@ suggestions and trust your high-confidence ones.
             continue
 
         # Seed pitch from the best available source instead of blindly defaulting.
-        pitch, pitch_source = _resolve_pitch(ground_findings, f.get("predicted_pitch"))
+        pitch, pitch_source = _resolve_pitch(solar_pitch, ground_findings, f.get("predicted_pitch"))
         cleaned.append({
             "polygon": valid,
             "confidence": geo.normalize_confidence(f.get("confidence")),
