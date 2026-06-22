@@ -112,8 +112,14 @@ export default function ReportsPanel({
         { id: toastId },
       )
       await refresh()
-      // Open the PDF immediately
-      if (res.download_url) window.open(res.download_url, '_blank', 'noopener,noreferrer')
+      // Open the PDF immediately — but only if it's a real web URL. When object
+      // storage isn't configured the backend returns a file:// path the browser
+      // can't open; surface that clearly instead of silently doing nothing.
+      if (res.download_url && /^https?:\/\//i.test(res.download_url)) {
+        window.open(res.download_url, '_blank', 'noopener,noreferrer')
+      } else if (res.download_url) {
+        toast.error('Report generated, but file storage isn’t configured on the server yet, so it can’t be downloaded. (Needs S3/R2 or Supabase storage.)', { id: toastId, duration: 8000 })
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Generate failed'
       toast.error(msg, { id: toastId })

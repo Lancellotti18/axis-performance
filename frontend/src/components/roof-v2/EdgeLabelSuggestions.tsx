@@ -162,6 +162,11 @@ export function EdgeLabelSuggestions({
         <button
           onClick={runSuggest}
           disabled={loading || unlabeledEdges.length === 0}
+          title={
+            edges.length === 0 ? 'Accept or draw a facet first (step ②) — edges are created from facets.'
+              : unlabeledEdges.length === 0 ? 'Every edge already has a label.'
+              : `Suggest a type for ${unlabeledEdges.length} unlabeled edge(s).`
+          }
           className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
         >
           {loading ? 'Analyzing…'
@@ -173,6 +178,15 @@ export function EdgeLabelSuggestions({
 
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
       {message && !error && <p className="mt-2 text-xs text-slate-400">{message}</p>}
+
+      {/* Explain a disabled button instead of looking broken. */}
+      {!loading && unlabeledEdges.length === 0 && (
+        <p className="mt-2 text-xs text-slate-500">
+          {edges.length === 0
+            ? 'No edges to label yet — accept or draw a facet first (step ②). Edges are created automatically from each facet.'
+            : 'All edges are labeled ✓ — nothing to auto-label. Move on to flashing.'}
+        </p>
+      )}
 
       {suggestions.length > 0 && (
         <div className="mt-4">

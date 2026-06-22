@@ -2229,9 +2229,8 @@ async def suggest_edge_labels(
                 t = (text or "").strip()
                 t = _re.sub(r"^```(?:json)?\s*", "", t, flags=_re.MULTILINE)
                 t = _re.sub(r"\s*```\s*$", "", t)
-                a, b = t.find("{"), t.rfind("}")
-                if a >= 0 and b >= 0:
-                    parsed = _json.loads(t[a:b + 1])
+                parsed = _loads_tolerant(t)
+                if parsed is not None:
                     for v in parsed.get("labels") or []:
                         key = (v.get("facet_label"), int(v.get("vertex_index_start") or -1))
                         vision_suggestions_by_edge[key] = {
@@ -2483,8 +2482,11 @@ async def get_run_flashing(run_id: str, user: dict = Depends(require_user)) -> d
     n_conditions = len(inp.wall_edges) + len(inp.valley_edges) + len(inp.penetrations)
     if n_conditions == 0:
         payload["message"] = (
-            "No flashing conditions found yet. Label any roof-to-wall edges as "
-            "'wall_intersection' and add chimneys/skylights, then re-run."
+            "No flashing yet — flashing is built from what you mark on the roof, so add the "
+            "conditions first: (1) upload a ground photo of any chimney/skylight and tap "
+            "'Add' — that flows in automatically; (2) for a roof meeting a taller wall or a "
+            "dormer, use the roof-to-wall panel above to label that edge as 'wall intersection'. "
+            "Then this updates instantly."
         )
     else:
         payload["message"] = (

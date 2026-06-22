@@ -250,27 +250,55 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
   )
 }
 
-/** Optional but recommended photo-taking walkthrough. */
+/** Contractor photo playbook — exactly what to shoot, how many, and the angle. */
 function PhotoGuide() {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   return (
     <div className="mt-2 rounded-md border border-blue-400/20 bg-blue-500/5">
       <button onClick={() => setOpen(o => !o)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs">
-        <span className="font-semibold text-blue-200">📸 Recommended photos — how to shoot for the best AI results</span>
+        <span className="font-semibold text-blue-200">📸 Photo playbook — exactly what to shoot for an accurate estimate</span>
         <span className="text-slate-400">{open ? 'Hide' : 'Show'}</span>
       </button>
       {open && (
-        <div className="border-t border-blue-400/10 px-3 py-2 text-[11px] text-slate-300">
-          <p className="mb-2 text-slate-400">Optional, but each shot makes the estimate more accurate. Stand back so the whole feature is in frame, hold the phone level, shoot in daylight.</p>
-          <ol className="space-y-1.5">
-            <li><strong className="text-white">1. A gable end (most important).</strong> Stand facing the triangular end wall of the roof, square-on. → gives true <strong>pitch</strong>, which drives roof area + flashing.</li>
-            <li><strong className="text-white">2. Each corner of the house (4 shots).</strong> Step to each corner so two sides of the roof show. → confirms plane count + slope directions.</li>
-            <li><strong className="text-white">3. Any chimney, straight-on.</strong> Include the full height + where it meets the roof. → adds chimney + cricket flashing automatically.</li>
-            <li><strong className="text-white">4. A skylight or dormer, if present.</strong> → adds the right flashing kit.</li>
-            <li><strong className="text-white">5. A close-up of the shingles/roof surface.</strong> → identifies material + color for the report.</li>
+        <div className="space-y-3 border-t border-blue-400/10 px-3 py-2.5 text-[11px] text-slate-300">
+          <div className="rounded bg-slate-900/50 p-2">
+            <div className="font-semibold text-blue-200">The 30-second walk-around (6–8 photos)</div>
+            <p className="mt-0.5 text-slate-400">Walk the perimeter once. Shoot in daylight, hold the phone level (landscape), and stand back far enough that the <em>whole</em> feature is in frame. More clear photos = more accurate — but a few good ones beat a dozen blurry ones.</p>
+          </div>
+
+          <ol className="space-y-2">
+            <li>
+              <div className="font-semibold text-white">1 · Gable end — square-on <span className="text-emerald-300">(most important — 1–2 shots)</span></div>
+              <div className="text-slate-400">Face the <strong>triangular end wall</strong> dead-on, not at an angle. This is the single best shot for <strong>pitch</strong>, which drives roof area, squares, and flashing. If the house has gable ends at both ends, shoot both.</div>
+            </li>
+            <li>
+              <div className="font-semibold text-white">2 · The four corners <span className="text-slate-400">(4 shots)</span></div>
+              <div className="text-slate-400">Stand at each corner of the house so <strong>two roof sides show at once</strong>. Confirms how many planes there are and which way they face — the count sanity-check in auto-detect uses this.</div>
+            </li>
+            <li>
+              <div className="font-semibold text-white">3 · Every chimney — straight-on <span className="text-purple-300">(1 per chimney)</span></div>
+              <div className="text-slate-400">Get the <strong>full height</strong> and the line <strong>where it meets the roof</strong>. → one-tap chimney + cricket flashing.</div>
+            </li>
+            <li>
+              <div className="font-semibold text-white">4 · Skylights, dormers, and roof-to-wall spots <span className="text-amber-300">(as needed)</span></div>
+              <div className="text-slate-400">Any <strong>dormer</strong>, <strong>skylight</strong>, or place a <strong>lower roof runs into a taller wall</strong> (porch/garage meeting a 2-story wall). → these become your step-flashing edges to confirm.</div>
+            </li>
+            <li>
+              <div className="font-semibold text-white">5 · A shingle close-up <span className="text-slate-400">(1 shot)</span></div>
+              <div className="text-slate-400">Stand ~3 ft from a roof edge or a ground-level sample. → identifies material + color for the report.</div>
+            </li>
           </ol>
-          <p className="mt-2 text-slate-500">Tip: a clear, square-on gable shot in good light is worth more than ten blurry angles.</p>
-          <p className="mt-1 text-slate-500">Uploading a <strong>PDF</strong>? Every page is read as a separate photo (up to 12) — each page gets its own findings.</p>
+
+          <div className="rounded border border-amber-400/20 bg-amber-500/5 p-2 text-amber-200/90">
+            <div className="font-semibold">Angle cheatsheet</div>
+            <ul className="mt-0.5 list-disc space-y-0.5 pl-4">
+              <li><strong>Pitch</strong> → shoot the gable end perfectly side-on (you should see the roof slope as a clean triangle).</li>
+              <li><strong>Flashing</strong> → include both the feature AND the roof line it touches in the same frame.</li>
+              <li>Avoid: steep up-angles, backlight/sun behind the house, and zoom (walk closer instead).</li>
+            </ul>
+          </div>
+
+          <p className="text-slate-500">Formats: JPG/PNG/HEIC, or a <strong>PDF</strong> (each page is read as its own photo, up to 12). You can also tap <strong>📷 Take photo</strong> on your phone to shoot right now.</p>
         </div>
       )}
     </div>

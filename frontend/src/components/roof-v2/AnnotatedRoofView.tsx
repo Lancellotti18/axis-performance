@@ -164,7 +164,7 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
           ref={svgRef}
           viewBox={cropViewBox}
           preserveAspectRatio="xMidYMid meet"
-          className="block max-h-[560px] w-full"
+          className="block max-h-[82vh] min-h-[480px] w-full"
         >
           {/* Satellite tile inside the SVG so it crops to the roof with the
               overlays. */}

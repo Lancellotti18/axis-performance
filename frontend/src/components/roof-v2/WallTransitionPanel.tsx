@@ -180,7 +180,15 @@ export default function WallTransitionPanel({
   useEffect(() => {
     let cancelled = false
     api.roofing.v2.getGroundFindings(runId)
-      .then(r => { if (!cancelled) setGround(r.findings) })
+      .then(r => {
+        if (cancelled) return
+        setGround(r.findings)
+        // Ground photo is the PRIMARY source — if it saw a wall/dormer, open the
+        // candidate edges automatically so the contractor just taps to confirm.
+        if (r.findings?.wall_abutment?.present || (r.findings?.dormers ?? 0) > 0) {
+          setShowCandidates(true)
+        }
+      })
       .catch(() => { /* best-effort */ })
     return () => { cancelled = true }
   }, [runId])
@@ -234,19 +242,23 @@ export default function WallTransitionPanel({
 
   return (
     <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-100">Roof-to-wall transitions</h3>
-          <p className="text-xs text-slate-400">
-            AI finds where the roof meets a wall or dormer. Accepting labels the matching edge as
-            <strong> wall_intersection</strong> — flashing is then derived automatically.
-          </p>
-        </div>
+      <div>
+        <h3 className="text-sm font-semibold text-slate-100">Roof-to-wall transitions</h3>
+        <p className="text-xs text-slate-400">
+          Where the roof meets a wall or dormer (step flashing). Your <strong>ground photos</strong> are
+          the primary source — they detect the condition, then you confirm the edge with one tap below.
+        </p>
+      </div>
+
+      {/* Satellite vision is the FALLBACK (less accurate from a top-down tile) —
+          only useful when there's no ground photo. */}
+      <div className="mt-2 flex items-center gap-2">
         <button
           onClick={detect}
           disabled={loading}
-          className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
-        >{loading ? 'Detecting…' : ran ? 'Re-detect' : 'Detect transitions'}</button>
+          className="rounded border border-white/15 bg-slate-800 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+        >{loading ? 'Detecting…' : ran ? 'Re-detect from satellite' : 'Detect from satellite (fallback)'}</button>
+        <span className="text-[10px] text-slate-500">Use only if you have no ground photo</span>
       </div>
 
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
