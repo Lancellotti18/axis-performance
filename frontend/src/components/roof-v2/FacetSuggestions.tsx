@@ -27,7 +27,29 @@ interface Suggestion {
   polygon: Pt[]
   confidence: number
   predicted_pitch: string
+  facet_type?: string
   note: string
+}
+
+// Turn the backend's facet_type code into a human label + emoji so the
+// contractor can see at a glance WHAT plane the AI thinks it traced.
+const FACET_TYPE_LABELS: Record<string, string> = {
+  'gable-front': '🏠 Gable · front slope',
+  'gable-rear': '🏠 Gable · rear slope',
+  'hip-front': '⛰️ Hip · front slope',
+  'hip-rear': '⛰️ Hip · rear slope',
+  'hip-left': '⛰️ Hip · left slope',
+  'hip-right': '⛰️ Hip · right slope',
+  'garage': '🚗 Garage slope',
+  'dormer': '🪟 Dormer',
+  'flat': '▭ Flat / low-slope',
+  'shed': '📐 Shed (single slope)',
+  'other': '🔷 Roof plane',
+}
+
+function prettyFacetType(t?: string): string {
+  if (!t) return '🔷 Roof plane'
+  return FACET_TYPE_LABELS[t.toLowerCase()] || `🔷 ${t}`
 }
 
 interface Props {
@@ -245,7 +267,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                     onClick={() => setZoomedSuggestion(s)}
                   />
                   <div className="flex flex-1 flex-col gap-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span
                         className="inline-flex h-6 w-6 items-center justify-center rounded text-xs font-bold text-white"
                         style={{ background: facetColor }}
@@ -253,11 +275,16 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                       <strong className="text-slate-100">
                         Facet {nextLabel(existingFacets, i)}
                       </strong>
+                      <span className="rounded bg-slate-700/70 px-1.5 py-0.5 text-[10px] text-slate-200">
+                        {prettyFacetType(s.facet_type)}
+                      </span>
                       <span className={`text-xs ${confColor}`}>
                         {(s.confidence * 100).toFixed(0)}% confident
                       </span>
                     </div>
-                    <div className="text-xs text-slate-400">{s.note || '—'}</div>
+                    <div className="text-xs text-slate-400">
+                      <span className="text-slate-500">Why: </span>{s.note || '—'}
+                    </div>
                     <div className="text-[10px] text-slate-500">
                       Pitch guess: {s.predicted_pitch || '6/12'} · {s.polygon.length} vertices
                     </div>
@@ -442,9 +469,11 @@ function ZoomModal({
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-slate-900 p-4 text-sm">
           <div>
             <div className="font-semibold text-slate-100">
-              AI suggested facet — {(suggestion.confidence * 100).toFixed(0)}% confidence
+              {prettyFacetType(suggestion.facet_type)} — {(suggestion.confidence * 100).toFixed(0)}% confidence
             </div>
-            <div className="mt-1 text-xs text-slate-400">{suggestion.note || '—'}</div>
+            <div className="mt-1 text-xs text-slate-400">
+              <span className="text-slate-500">Why: </span>{suggestion.note || '—'}
+            </div>
             <div className="text-[10px] text-slate-500">
               Pitch guess: {suggestion.predicted_pitch || '6/12'} · {suggestion.polygon.length} vertices
             </div>

@@ -1229,12 +1229,14 @@ async def _locate_building_bbox(img_bytes: bytes, media_type: str) -> Optional[d
     from app.services.llm import llm_vision
     import json as _json, re as _re
 
-    prompt = """You are analyzing a top-down satellite image to locate the main residential building (the subject property, usually the largest building nearest the image center).
+    prompt = """You are analyzing a top-down satellite image to locate ONE specific building: the SUBJECT property.
 
-Return ONLY a JSON object with the bounding box of that building as fractions of the image (0.0=left/top, 1.0=right/bottom):
+CRITICAL — the image is geocoded so the subject building is the one the IMAGE CENTER (0.5, 0.5) falls on, or the building CLOSEST to the center if the center lands on a yard/driveway. Larger or brighter buildings off to the sides are NEIGHBORS — do NOT pick them just because they are bigger. Anchor on the center.
+
+Return ONLY a JSON object with the bounding box of the SUBJECT building as fractions of the image (0.0=left/top, 1.0=right/bottom):
 { "found": true, "x0": 0.30, "y0": 0.25, "x1": 0.70, "y1": 0.65, "confidence": 0.8 }
 
-x0,y0 is the top-left corner of the building's bounding box; x1,y1 the bottom-right. Include the WHOLE roof (all wings + any attached garage) but EXCLUDE detached sheds, driveways, lawns, pools, and neighboring houses. If you cannot confidently find a building, return {"found": false}. Respond with the JSON object only."""
+x0,y0 is the top-left corner of the building's bounding box; x1,y1 the bottom-right. Include the WHOLE roof of the subject (all wings + any attached garage) but EXCLUDE detached sheds, driveways, roads, lawns, pools, and neighboring houses. If you cannot confidently find a building near the center, return {"found": false}. Respond with the JSON object only."""
 
     try:
         text = await llm_vision(img_bytes, media_type, prompt, max_tokens=300)
@@ -1390,10 +1392,23 @@ centered", "only flat gravel/commercial roof visible, no distinct planes"):
       "polygon": [[0.30, 0.28], [0.70, 0.28], [0.70, 0.50], [0.30, 0.50]],
       "confidence": 0.78,
       "predicted_pitch": "6/12",
+      "facet_type": "hip-front",
       "note": "Front-facing main facet, eave visible along bottom"
     }
   ]
 }
+
+"facet_type" MUST be one of these exact strings — it tells the contractor what
+kind of plane you traced and is shown next to each suggestion:
+  - "gable-front" / "gable-rear": a slope of a simple two-sided (gable) roof
+  - "hip-front" / "hip-rear" / "hip-left" / "hip-right": a slope of a four-sided hip roof
+  - "garage": a slope belonging to an attached garage wing
+  - "dormer": a small projecting dormer roof
+  - "flat": a low-slope / flat commercial-style plane
+  - "shed": a single-slope (lean-to) plane
+  - "other": a roof plane that fits none of the above
+"note" MUST briefly justify WHY this is a roof plane and not ground (e.g. "shingle
+texture + eave shadow along the south edge; meets ridge at top"). Keep it concise.
 
 Guidance for predicted_pitch: estimate from shadow direction and visible roof slope.
 - Flat or barely sloped (commercial): "2/12" to "3/12"
@@ -1448,8 +1463,21 @@ suggestions and trust your high-confidence ones.
             "message": "AI detection hit an error. Re-detect, or draw facets manually.",
         }
 
+    # Geometric guards. When we localized the subject building, reject any
+    # suggested plane whose centroid lands well outside it — that's a road, a
+    # neighbor, or the driveway that slipped into the crop margin. Always reject
+    # long, thin road-like strips by aspect ratio. The halo (30% of bbox size)
+    # tolerates eaves/overhangs and an attached garage wing the localizer may
+    # have under-boxed.
+    if bbox:
+        bw, bh = (bbox["x1"] - bbox["x0"]), (bbox["y1"] - bbox["y0"])
+        gx0, gy0 = bbox["x0"] - 0.30 * bw, bbox["y0"] - 0.30 * bh
+        gx1, gy1 = bbox["x1"] + 0.30 * bw, bbox["y1"] + 0.30 * bh
+
     # Sanitize: each facet must have a polygon of >=3 [x,y] pairs in [0,1]
     cleaned: list[dict] = []
+    dropped_off_building = 0
+    dropped_strips = 0
     for f in facets:
         poly = f.get("polygon") or []
         if not isinstance(poly, list) or len(poly) < 3:
@@ -1474,23 +1502,50 @@ suggestions and trust your high-confidence ones.
             valid.append([fx, fy])
         if not ok or len(valid) < 3:
             continue
+
+        # Reject planes whose centroid is off the subject building.
+        cx = sum(p[0] for p in valid) / len(valid)
+        cy = sum(p[1] for p in valid) / len(valid)
+        if bbox and not (gx0 <= cx <= gx1 and gy0 <= cy <= gy1):
+            dropped_off_building += 1
+            continue
+
+        # Reject long, thin strips — driveways/roads, not roof planes.
+        pxs, pys = [p[0] for p in valid], [p[1] for p in valid]
+        long_side = max(max(pxs) - min(pxs), max(pys) - min(pys))
+        short_side = min(max(pxs) - min(pxs), max(pys) - min(pys))
+        if short_side > 0 and long_side / short_side > 7.0:
+            dropped_strips += 1
+            continue
+
         cleaned.append({
             "polygon": valid,
             "confidence": geo.normalize_confidence(f.get("confidence")),
             "predicted_pitch": str(f.get("predicted_pitch") or "6/12"),
+            "facet_type": str(f.get("facet_type") or "other").strip().lower()[:20],
             "note": str(f.get("note") or "")[:250],
             "ai_suggested": True,
             "user_confirmed": False,
         })
+
+    # Surface what the guards removed so the contractor understands the result.
+    drop_notes = []
+    if dropped_off_building:
+        drop_notes.append(f"{dropped_off_building} off-building (road/neighbor)")
+    if dropped_strips:
+        drop_notes.append(f"{dropped_strips} road-like strip(s)")
+    drop_suffix = f" Filtered out {', '.join(drop_notes)}." if drop_notes else ""
 
     if not cleaned:
         return {
             "facets": [],
             "reason": reason or "The model reported no clearly-distinguishable roof planes.",
             "message": (
-                "AI found no facets it was confident about. This usually means the roof is "
-                "obscured (trees/shadow) or the house isn't centered. Try 'Center on house' "
-                "and re-detect, or trace facets manually — the snap-to-edge assist makes it fast."
+                "AI found no facets on the subject building it was confident about."
+                + drop_suffix
+                + " This usually means the roof is obscured (trees/shadow) or the house "
+                "isn't centered. Try 'Center on house' and re-detect, or trace facets "
+                "manually — the snap-to-edge assist makes it fast."
             ),
         }
 
@@ -1498,8 +1553,8 @@ suggestions and trust your high-confidence ones.
         "facets": cleaned,
         "reason": reason,
         "message": (
-            f"{len(cleaned)} facet(s) suggested by AI vision. Each one must be accepted "
-            "individually — and verified for pitch + edge labels — before measurements are valid."
+            f"{len(cleaned)} facet(s) suggested by AI vision.{drop_suffix} Each one must be "
+            "accepted individually — and verified for pitch + edge labels — before measurements are valid."
         ),
     }
 
