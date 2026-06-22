@@ -23,6 +23,37 @@ logger = logging.getLogger(__name__)
 
 DEV_UPLOAD_DIR = "/tmp/apir_uploads"
 
+# Reuse the existing private bucket the rest of the app already uses, under an
+# apir-reports/ prefix — so APIR needs no new bucket/infra to work in prod.
+SUPABASE_REPORT_BUCKET = "blueprints"
+_SIGNED_URL_TTL_SECONDS = 31_536_000   # 1 year
+
+
+def _upload_to_supabase(pdf_bytes: bytes, key: str, filename: str) -> str:
+    """Upload the PDF to Supabase Storage and return a long-lived signed URL.
+    Raises on any failure so the caller can fall back."""
+    from app.core.supabase import get_supabase
+
+    bucket = get_supabase().storage.from_(SUPABASE_REPORT_BUCKET)
+    # upsert so re-generating the same version overwrites instead of erroring.
+    bucket.upload(
+        key,
+        pdf_bytes,
+        {"content-type": "application/pdf", "upsert": "true"},
+    )
+    signed = bucket.create_signed_url(key, _SIGNED_URL_TTL_SECONDS)
+    url = None
+    if isinstance(signed, dict):
+        url = (signed.get("signedURL") or signed.get("signedUrl")
+               or signed.get("signed_url") or signed.get("url"))
+    if not url:
+        raise RuntimeError(f"Supabase returned no signed URL: {signed!r}")
+    # Some client versions return a path-relative URL — make it absolute.
+    if url.startswith("/"):
+        url = settings.SUPABASE_URL.rstrip("/") + url
+    logger.info("uploaded APIR PDF to Supabase Storage %s (%s bytes)", key, len(pdf_bytes))
+    return url
+
 
 def _safe_address_slug(address: str) -> str:
     """Turn '11318 Sword Road' → '11318_Sword_Road' for filenames."""
@@ -59,14 +90,19 @@ def upload_pdf(
     """
     key = f"apir-reports/{project_id}/v{version}/{filename}"
 
-    # Dev fallback — write locally so the rest of the pipeline works
+    # When S3/R2 isn't configured, store in Supabase Storage — already set up for
+    # the app, so APIR works in production with no extra infra. Returns a real
+    # https signed URL the contractor's browser can open. Local /tmp is only a
+    # last-resort fallback if Supabase itself is unreachable.
     if not settings.AWS_ACCESS_KEY_ID:
-        path = pathlib.Path(DEV_UPLOAD_DIR) / key
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(pdf_bytes)
-        url = f"file://{path}"
-        logger.info("dev mode — wrote PDF locally: %s (%s bytes)", url, len(pdf_bytes))
-        return url
+        try:
+            return _upload_to_supabase(pdf_bytes, key, filename)
+        except Exception as e:
+            logger.warning("APIR Supabase Storage upload failed (%s) — using local /tmp fallback", e)
+            path = pathlib.Path(DEV_UPLOAD_DIR) / key
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(pdf_bytes)
+            return f"file://{path}"
 
     # Prod path — boto3 to S3 / R2 / S3-compatible
     import boto3
