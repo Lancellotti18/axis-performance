@@ -1060,24 +1060,38 @@ _PITCH_CONF_RANK = {"high": 3, "medium": 2, "low": 1}
 
 
 def _consolidate_ground_findings(results: list[dict]) -> Optional[dict]:
-    """Pick the single best findings object across all analyzed pages to persist
-    on the run. 'Best' = a non-empty roof_pitch with the highest pitch_confidence
-    (a gable-end read beats a vague slope read). Returns None if no page produced
-    a usable pitch — we only persist something the pitch resolver can actually
-    use downstream."""
-    best = None
-    best_rank = 0
-    for r in results:
-        fnd = r.get("findings")
-        if not fnd:
-            continue
-        pitch = str(fnd.get("roof_pitch") or "").strip()
-        if not pitch:
-            continue
-        rank = _PITCH_CONF_RANK.get(fnd.get("pitch_confidence"), 0)
-        if rank > best_rank:
-            best, best_rank = fnd, rank
-    return best
+    """Merge the findings across all analyzed photos/pages into ONE artifact to
+    persist on the run. Takes the best-confidence PITCH read, but UNION-merges the
+    flashing-relevant signals (chimney, skylights, dormers, wall_abutment) and the
+    roof shape across every page — so a photo that shows a chimney or a roof-to-
+    wall abutment but no clear pitch still contributes. (The old version dropped
+    any page without a pitch, which silently lost those flashing conditions.)"""
+    fs = [r.get("findings") for r in results if r.get("findings")]
+    if not fs:
+        return None
+
+    pitched = [f for f in fs if str(f.get("roof_pitch") or "").strip()]
+    base = dict(max(pitched, key=lambda f: _PITCH_CONF_RANK.get(f.get("pitch_confidence"), 0))
+                if pitched else fs[0])
+
+    base["dormers"] = max((int(f.get("dormers") or 0) for f in fs), default=0)
+    base["skylights"] = max((int(f.get("skylights") or 0) for f in fs), default=0)
+
+    if any((f.get("chimney") or {}).get("present") for f in fs):
+        ch_count = max((int((f.get("chimney") or {}).get("count") or 0) for f in fs), default=1)
+        base["chimney"] = {**(base.get("chimney") or {}), "present": True, "count": max(ch_count, 1)}
+
+    if any((f.get("wall_abutment") or {}).get("present") for f in fs):
+        note = next(((f.get("wall_abutment") or {}).get("note")
+                     for f in fs if (f.get("wall_abutment") or {}).get("present")), "")
+        base["wall_abutment"] = {"present": True, "note": note or ""}
+
+    shape = next((f.get("roof_shape") for f in fs
+                  if f.get("roof_shape") and f.get("roof_shape") != "unknown"), None)
+    if shape:
+        base["roof_shape"] = shape
+
+    return base
 
 
 async def _analyze_ground_image(img_bytes: bytes, mt: str) -> tuple[Optional[dict], str]:
