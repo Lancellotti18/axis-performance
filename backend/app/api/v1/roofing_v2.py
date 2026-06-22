@@ -1217,6 +1217,87 @@ before it enters the material order. Coordinates are image fractions 0..1 (top-l
 # Phase 2.5 — AI-assisted suggestions on top of the manual editors
 # ----------------------------------------------------------------------------
 
+async def _locate_building_bbox(img_bytes: bytes, media_type: str) -> Optional[dict]:
+    """Ask vision for the subject building's bounding box as image fractions
+    {x0,y0,x1,y1}, or None if it can't confidently find one.
+
+    Run BEFORE facet detection so we can crop the tile tight on the subject
+    house: on a wide or off-center tile the facet model otherwise traces the
+    driveway or a neighbor's roof, because a prompt that merely says "ignore
+    neighbors" can't compete with what's physically in frame. Same prompt the
+    auto-center helper (/imagery/detect-building) already uses."""
+    from app.services.llm import llm_vision
+    import json as _json, re as _re
+
+    prompt = """You are analyzing a top-down satellite image to locate the main residential building (the subject property, usually the largest building nearest the image center).
+
+Return ONLY a JSON object with the bounding box of that building as fractions of the image (0.0=left/top, 1.0=right/bottom):
+{ "found": true, "x0": 0.30, "y0": 0.25, "x1": 0.70, "y1": 0.65, "confidence": 0.8 }
+
+x0,y0 is the top-left corner of the building's bounding box; x1,y1 the bottom-right. Include the WHOLE roof (all wings + any attached garage) but EXCLUDE detached sheds, driveways, lawns, pools, and neighboring houses. If you cannot confidently find a building, return {"found": false}. Respond with the JSON object only."""
+
+    try:
+        text = await llm_vision(img_bytes, media_type, prompt, max_tokens=300)
+        text = (text or "").strip()
+        text = _re.sub(r"^```(?:json)?\s*", "", text, flags=_re.MULTILINE)
+        text = _re.sub(r"\s*```\s*$", "", text)
+        a, b = text.find("{"), text.rfind("}")
+        if a < 0 or b < 0:
+            return None
+        parsed = _json.loads(text[a:b + 1])
+    except Exception as e:
+        logger.warning("facet pre-localize (bbox) failed: %s", e)
+        return None
+
+    if not parsed.get("found"):
+        return None
+    try:
+        x0 = max(0.0, min(1.0, float(parsed["x0"])))
+        y0 = max(0.0, min(1.0, float(parsed["y0"])))
+        x1 = max(0.0, min(1.0, float(parsed["x1"])))
+        y1 = max(0.0, min(1.0, float(parsed["y1"])))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
+
+
+def _crop_to_bbox(
+    img_bytes: bytes, bbox: dict, margin: float = 0.18,
+) -> tuple[bytes, tuple[float, float, float, float]]:
+    """Crop the tile to `bbox` expanded by `margin` of the bbox size on each
+    side (so eaves/overhangs aren't clipped), and return the cropped PNG bytes
+    plus the crop window in ORIGINAL-tile fractions (cx0,cy0,cx1,cy1).
+
+    Callers map facet polygons — detected in crop space — back to full-tile
+    fractions with that window, since the editor overlays on the full tile.
+    On any failure (or a degenerate sliver crop) returns the original bytes and
+    the identity window (0,0,1,1) so detection still runs on the whole tile."""
+    try:
+        import io as _io
+        from PIL import Image
+
+        im = Image.open(_io.BytesIO(img_bytes)).convert("RGB")
+        W, H = im.size
+        bw = bbox["x1"] - bbox["x0"]
+        bh = bbox["y1"] - bbox["y0"]
+        cx0 = max(0.0, bbox["x0"] - margin * bw)
+        cy0 = max(0.0, bbox["y0"] - margin * bh)
+        cx1 = min(1.0, bbox["x1"] + margin * bw)
+        cy1 = min(1.0, bbox["y1"] + margin * bh)
+        left, top, right, bottom = int(cx0 * W), int(cy0 * H), int(cx1 * W), int(cy1 * H)
+        if right - left < 32 or bottom - top < 32:
+            return img_bytes, (0.0, 0.0, 1.0, 1.0)
+        crop = im.crop((left, top, right, bottom))
+        buf = _io.BytesIO()
+        crop.save(buf, format="PNG")
+        return buf.getvalue(), (cx0, cy0, cx1, cy1)
+    except Exception as e:
+        logger.info("facet crop-to-bbox failed (%s) — using full tile", e)
+        return img_bytes, (0.0, 0.0, 1.0, 1.0)
+
+
 @router.get("/runs/{run_id}/facets/suggest")
 async def suggest_facets(
     run_id: str, user: dict = Depends(require_user),
@@ -1326,10 +1407,24 @@ and note that you're uncertain — better to be uncertain than wrong. The contra
 suggestions and trust your high-confidence ones.
 """
 
+    # FIRST localize the subject building and crop the tile tight on it. On a
+    # wide / off-center tile this is what stops the model from tracing the
+    # driveway or a neighbor's roof: those features are literally cropped out of
+    # frame. crop_win is the crop rectangle in full-tile fractions; we map the
+    # returned polygons back through it below. If localization fails we crop
+    # nothing (identity window) and detect on the whole tile as before.
+    bbox = await _locate_building_bbox(img_bytes, mt)
+    if bbox:
+        detect_bytes, crop_win = _crop_to_bbox(img_bytes, bbox)
+    else:
+        detect_bytes, crop_win = img_bytes, (0.0, 0.0, 1.0, 1.0)
+    cwx0, cwy0, cwx1, cwy1 = crop_win
+    cw_w, cw_h = (cwx1 - cwx0), (cwy1 - cwy0)
+
     # Give the vision model a contrast-boosted, sharpened copy — the same idea
     # as the client clarity tool — so plane boundaries are easier for it to
     # resolve on hazy tiles. Falls back to the original on any error.
-    vision_bytes, vision_mt = _enhance_for_vision(img_bytes, mt)
+    vision_bytes, vision_mt = _enhance_for_vision(detect_bytes, mt)
 
     try:
         text = await llm_vision(vision_bytes, vision_mt, prompt, max_tokens=2048)
@@ -1371,7 +1466,12 @@ suggestions and trust your high-confidence ones.
             except (TypeError, ValueError):
                 ok = False
                 break
-            valid.append([x, y])
+            # Model coords are fractions of the CROPPED image — map them back
+            # onto the full tile so the editor overlay lines up. Identity
+            # mapping when no crop was applied (crop_win == 0,0,1,1).
+            fx = max(0.0, min(1.0, cwx0 + x * cw_w))
+            fy = max(0.0, min(1.0, cwy0 + y * cw_h))
+            valid.append([fx, fy])
         if not ok or len(valid) < 3:
             continue
         cleaned.append({
