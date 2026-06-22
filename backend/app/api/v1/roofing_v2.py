@@ -1455,6 +1455,70 @@ def _solar_segments_as_fractions(
     return out
 
 
+def _signed_area(poly: list) -> float:
+    """Shoelace signed area of a polygon (image-fraction coords)."""
+    a = 0.0
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i][0], poly[i][1]
+        x2, y2 = poly[(i + 1) % n][0], poly[(i + 1) % n][1]
+        a += x1 * y2 - x2 * y1
+    return a * 0.5
+
+
+def _oriented_positive(poly: list) -> list:
+    """Return the polygon wound so its signed area is positive — the convention
+    the clipper's inside-test assumes for a convex clip region."""
+    return poly if _signed_area(poly) >= 0 else list(reversed(poly))
+
+
+def _clip_polygon(subject: list, clip: list) -> list:
+    """Sutherland–Hodgman: clip `subject` by the CONVEX `clip` polygon (wound
+    positive). Returns the intersection polygon (possibly empty)."""
+    def inside(p, a, b):
+        return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) >= 0
+
+    def isect(s, e, a, b):
+        x1, y1 = s; x2, y2 = e; x3, y3 = a; x4, y4 = b
+        den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+        if abs(den) < 1e-12:
+            return e
+        t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den
+        return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)]
+
+    output = list(subject)
+    n = len(clip)
+    for i in range(n):
+        a, b = clip[i], clip[(i + 1) % n]
+        inp, output = output, []
+        if not inp:
+            break
+        s = inp[-1]
+        for e in inp:
+            if inside(e, a, b):
+                if not inside(s, a, b):
+                    output.append(isect(s, e, a, b))
+                output.append(e)
+            elif inside(s, a, b):
+                output.append(isect(s, e, a, b))
+            s = e
+    return output
+
+
+def _coverage(ai_poly: list, seg_rect_ccw: list) -> float:
+    """Fraction of the AI polygon's area that lies inside a Solar segment rect —
+    i.e. 'how much of this traced plane belongs to that Solar plane'. Robust to a
+    small traced polygon sitting inside a larger Solar bbox (which a raw IoU would
+    score low)."""
+    area_a = abs(_signed_area(ai_poly))
+    if area_a < 1e-9:
+        return 0.0
+    clipped = _clip_polygon(ai_poly, seg_rect_ccw)
+    if len(clipped) < 3:
+        return 0.0
+    return abs(_signed_area(clipped)) / area_a
+
+
 def _layer_with_solar(ai_facets: list[dict], segs: list[dict]) -> list[dict]:
     """Reconcile AI-traced polygons with Google Solar's measured planes — the
     most beneficial combination of the two sources:
@@ -1467,26 +1531,26 @@ def _layer_with_solar(ai_facets: list[dict], segs: list[dict]) -> list[dict]:
         neighbor / shadow). Keep it but FLAG it and cap its confidence so it
         sorts last — Solar acts as the validator that kills hallucinations.
     """
-    used: set[int] = set()
+    MATCH_THRESHOLD = 0.5      # ≥50% of the AI polygon must lie in the Solar plane
+    seg_rects_ccw = [_oriented_positive(s["rect"]) for s in segs]
+    seg_got = [False] * len(segs)
     result: list[dict] = []
 
-    for seg in segs:
-        bx0, by0, bx1, by1 = seg["bbox"]
-        scx, scy = seg["center"]
-        best_i, best_d = None, 1e9
-        for i, fct in enumerate(ai_facets):
-            if i in used:
-                continue
-            cx, cy = geo.polygon_centroid(fct["polygon"])
-            if bx0 <= cx <= bx1 and by0 <= cy <= by1:
-                d = (cx - scx) ** 2 + (cy - scy) ** 2
-                if d < best_d:
-                    best_d, best_i = d, i
+    # Assign each AI polygon to the Solar plane that covers the MOST of it
+    # (overlap, not just centroid). A plane can legitimately receive more than one
+    # traced sub-plane; planes that receive none are emitted as rectangles below.
+    for fct in ai_facets:
+        best_j, best_cov = None, 0.0
+        for j, rect in enumerate(seg_rects_ccw):
+            cov = _coverage(fct["polygon"], rect)
+            if cov > best_cov:
+                best_cov, best_j = cov, j
 
-        if best_i is not None:
-            used.add(best_i)
-            f = dict(ai_facets[best_i])
-            if seg["pitch"]:
+        if best_j is not None and best_cov >= MATCH_THRESHOLD:
+            seg = segs[best_j]
+            seg_got[best_j] = True
+            f = dict(fct)
+            if seg["pitch"]:               # per-facet pitch: THIS plane's measured pitch
                 f["predicted_pitch"] = seg["pitch"]
                 f["pitch_source"] = "solar_measured"
             f["solar_confirmed"] = True
@@ -1495,30 +1559,34 @@ def _layer_with_solar(ai_facets: list[dict], segs: list[dict]) -> list[dict]:
                          + f.get("note", "")).strip()
             result.append(f)
         else:
-            # Solar found a plane the AI didn't — keep it as a rectangle.
-            result.append({
-                "polygon": seg["rect"],
-                "confidence": 0.8,
-                "predicted_pitch": seg["pitch"] or "6/12",
-                "pitch_source": "solar_measured" if seg["pitch"] else "default",
-                "facet_type": "other",
-                "note": (f"Google Solar plane ({seg['slope_direction']}, "
-                         f"~{round(seg['area_sqft'])} ft²) — drag the corners to the real roof edges."),
-                "ai_suggested": True,
-                "user_confirmed": False,
-                "solar_confirmed": True,
-            })
+            # No Solar plane covers this polygon — probable false positive.
+            f = dict(fct)
+            f["solar_confirmed"] = False
+            # Don't claim a Solar-measured pitch on a plane Solar didn't confirm.
+            if f.get("pitch_source") == "solar_measured":
+                f["pitch_source"] = "ai_satellite"
+            f["confidence"] = min(f.get("confidence", 0.5), 0.45)
+            f["note"] = ("⚠ Not in Google Solar data — verify this is a real roof plane "
+                         "(could be a neighbor, shadow, or ground). " + f.get("note", "")).strip()
+            result.append(f)
 
-    # AI polygons Solar never confirmed — flag as probable false positives.
-    for i, fct in enumerate(ai_facets):
-        if i in used:
+    # Solar planes no AI polygon covered → keep as rectangles so we never lose a
+    # real plane (or its measured pitch + area).
+    for j, seg in enumerate(segs):
+        if seg_got[j]:
             continue
-        f = dict(fct)
-        f["solar_confirmed"] = False
-        f["confidence"] = min(f.get("confidence", 0.5), 0.45)
-        f["note"] = ("⚠ Not in Google Solar data — verify this is a real roof plane "
-                     "(could be a neighbor, shadow, or ground). " + f.get("note", "")).strip()
-        result.append(f)
+        result.append({
+            "polygon": seg["rect"],
+            "confidence": 0.8,
+            "predicted_pitch": seg["pitch"] or "6/12",
+            "pitch_source": "solar_measured" if seg["pitch"] else "default",
+            "facet_type": "other",
+            "note": (f"Google Solar plane ({seg['slope_direction']}, "
+                     f"~{round(seg['area_sqft'])} ft²) — drag the corners to the real roof edges."),
+            "ai_suggested": True,
+            "user_confirmed": False,
+            "solar_confirmed": True,
+        })
 
     return result
 
