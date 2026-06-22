@@ -29,6 +29,7 @@ interface Suggestion {
   predicted_pitch: string
   pitch_source?: string
   facet_type?: string
+  solar_confirmed?: boolean
   note: string
 }
 
@@ -101,6 +102,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
   const [reason, setReason] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [ran, setRan] = useState(false)
+  const [solarUsed, setSolarUsed] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [refineOnAccept, setRefineOnAccept] = useState(true)
   const [zoomedSuggestion, setZoomedSuggestion] = useState<Suggestion | null>(null)
@@ -122,6 +124,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
     try {
       const res = await api.roofing.v2.suggestFacets(runId)
       setSuggestions(res.facets || [])
+      setSolarUsed(!!res.solar_used)
       setMessage(res.message || null)
       setReason(res.reason || null)
     } catch (err) {
@@ -307,6 +310,17 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                       <span className="rounded bg-slate-700/70 px-1.5 py-0.5 text-[10px] text-slate-200">
                         {prettyFacetType(s.facet_type)}
                       </span>
+                      {s.solar_confirmed ? (
+                        <span
+                          className="rounded bg-emerald-600/25 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300"
+                          title="Google Solar confirms a real roof plane here, with measured pitch. This is a trustworthy facet."
+                        >✓ Google Solar</span>
+                      ) : solarUsed ? (
+                        <span
+                          className="rounded bg-amber-600/25 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300"
+                          title="Google Solar did NOT find a roof plane here — this AI guess may be a neighbor, shadow, or the ground. Check it carefully."
+                        >⚠ not in Solar</span>
+                      ) : null}
                       <span
                         className={`text-xs ${conf.color}`}
                         title="The AI's own self-rating — not a measured accuracy. Always confirm the polygon is on the right house."

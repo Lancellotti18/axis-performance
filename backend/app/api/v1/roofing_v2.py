@@ -1400,6 +1400,129 @@ def _resolve_pitch(solar_pitch: Optional[str], ground: Optional[dict], ai_pitch)
     return "6/12", "default"
 
 
+def _geo_to_frac(lat: float, lng: float, c_lat: float, c_lng: float, mpp: float,
+                 w_px: int = 2048, h_px: int = 1366) -> list[float]:
+    """Geographic point → image fraction, in the SAME basis the measurement
+    pipeline uses (tile center + metres_per_pixel × logical dims). Mirrors the
+    frontend SolarAssistPanel.geoToFrac so Solar rectangles land where the panel
+    draws them."""
+    ground_w = (w_px * mpp) or 1.0
+    ground_h = (h_px * mpp) or 1.0
+    east_m = (lng - c_lng) * 111320.0 * math.cos(math.radians(c_lat))
+    north_m = (lat - c_lat) * 111320.0
+    fx = 0.5 + east_m / ground_w
+    fy = 0.5 - north_m / ground_h           # north (higher lat) = up
+    return [max(0.0, min(1.0, fx)), max(0.0, min(1.0, fy))]
+
+
+def _solar_segments_as_fractions(
+    solar: dict, c_lat: float, c_lng: float, zoom: int,
+) -> list[dict]:
+    """Convert Google Solar segments into image-fraction rectangles + centers so
+    they can be matched against AI-traced polygons. Returns [] on any problem."""
+    segs = solar.get("segments") or []
+    if not segs:
+        return []
+    mpp = geo.metres_per_pixel(c_lat, zoom)
+    out: list[dict] = []
+    for s in segs:
+        bbox = s.get("bbox") or {}
+        sw, ne = bbox.get("sw"), bbox.get("ne")
+        ctr = s.get("center") or {}
+        if not sw or not ne:
+            continue
+        try:
+            nw_f = _geo_to_frac(ne["lat"], sw["lng"], c_lat, c_lng, mpp)
+            ne_f = _geo_to_frac(ne["lat"], ne["lng"], c_lat, c_lng, mpp)
+            se_f = _geo_to_frac(sw["lat"], ne["lng"], c_lat, c_lng, mpp)
+            sw_f = _geo_to_frac(sw["lat"], sw["lng"], c_lat, c_lng, mpp)
+            cx = (ctr.get("lng"), ctr.get("lat"))
+            center_f = (_geo_to_frac(cx[1], cx[0], c_lat, c_lng, mpp)
+                        if cx[0] is not None and cx[1] is not None
+                        else [(nw_f[0] + se_f[0]) / 2, (nw_f[1] + se_f[1]) / 2])
+        except (KeyError, TypeError, ValueError):
+            continue
+        xs = [nw_f[0], ne_f[0], se_f[0], sw_f[0]]
+        ys = [nw_f[1], ne_f[1], se_f[1], sw_f[1]]
+        out.append({
+            "rect": [nw_f, ne_f, se_f, sw_f],
+            "bbox": (min(xs), min(ys), max(xs), max(ys)),
+            "center": center_f,
+            "pitch": str(s.get("pitch") or "").strip(),
+            "area_sqft": float(s.get("area_sqft") or 0.0),
+            "slope_direction": str(s.get("slope_direction") or ""),
+        })
+    return out
+
+
+def _layer_with_solar(ai_facets: list[dict], segs: list[dict]) -> list[dict]:
+    """Reconcile AI-traced polygons with Google Solar's measured planes — the
+    most beneficial combination of the two sources:
+
+      * Solar plane WITH a matching AI polygon → keep the AI SHAPE, stamp it with
+        Solar's MEASURED pitch, mark solar_confirmed (best of both).
+      * Solar plane the AI MISSED → keep Solar's rectangle so the plane (and its
+        area) is never lost; the contractor drags it to shape.
+      * AI polygon matching NO Solar plane → likely a false positive (driveway /
+        neighbor / shadow). Keep it but FLAG it and cap its confidence so it
+        sorts last — Solar acts as the validator that kills hallucinations.
+    """
+    used: set[int] = set()
+    result: list[dict] = []
+
+    for seg in segs:
+        bx0, by0, bx1, by1 = seg["bbox"]
+        scx, scy = seg["center"]
+        best_i, best_d = None, 1e9
+        for i, fct in enumerate(ai_facets):
+            if i in used:
+                continue
+            cx, cy = geo.polygon_centroid(fct["polygon"])
+            if bx0 <= cx <= bx1 and by0 <= cy <= by1:
+                d = (cx - scx) ** 2 + (cy - scy) ** 2
+                if d < best_d:
+                    best_d, best_i = d, i
+
+        if best_i is not None:
+            used.add(best_i)
+            f = dict(ai_facets[best_i])
+            if seg["pitch"]:
+                f["predicted_pitch"] = seg["pitch"]
+                f["pitch_source"] = "solar_measured"
+            f["solar_confirmed"] = True
+            f["confidence"] = max(f.get("confidence", 0.7), 0.85)
+            f["note"] = ("Shape AI-traced; plane + pitch confirmed by Google Solar. "
+                         + f.get("note", "")).strip()
+            result.append(f)
+        else:
+            # Solar found a plane the AI didn't — keep it as a rectangle.
+            result.append({
+                "polygon": seg["rect"],
+                "confidence": 0.8,
+                "predicted_pitch": seg["pitch"] or "6/12",
+                "pitch_source": "solar_measured" if seg["pitch"] else "default",
+                "facet_type": "other",
+                "note": (f"Google Solar plane ({seg['slope_direction']}, "
+                         f"~{round(seg['area_sqft'])} ft²) — drag the corners to the real roof edges."),
+                "ai_suggested": True,
+                "user_confirmed": False,
+                "solar_confirmed": True,
+            })
+
+    # AI polygons Solar never confirmed — flag as probable false positives.
+    for i, fct in enumerate(ai_facets):
+        if i in used:
+            continue
+        f = dict(fct)
+        f["solar_confirmed"] = False
+        f["confidence"] = min(f.get("confidence", 0.5), 0.45)
+        f["note"] = ("⚠ Not in Google Solar data — verify this is a real roof plane "
+                     "(could be a neighbor, shadow, or ground). " + f.get("note", "")).strip()
+        result.append(f)
+
+    return result
+
+
 @router.get("/runs/{run_id}/facets/suggest")
 async def suggest_facets(
     run_id: str, user: dict = Depends(require_user),
@@ -1427,15 +1550,19 @@ async def suggest_facets(
     # Cached + best-effort: a miss or no coverage just falls through to the
     # ground-photo / AI / default ladder.
     solar_pitch: Optional[str] = None
+    solar_segs: list[dict] = []
     s_lat, s_lng = run.data.get("satellite_lat"), run.data.get("satellite_lng")
+    s_zoom = run.data.get("satellite_zoom") or 20
     if s_lat is not None and s_lng is not None:
         try:
             from app.services import solar_service
             solar = await solar_service.get_building_insights(float(s_lat), float(s_lng))
             if solar.get("available"):
                 solar_pitch = _dominant_solar_pitch(solar.get("segments") or [])
+                solar_segs = _solar_segments_as_fractions(
+                    solar, float(s_lat), float(s_lng), int(s_zoom))
         except Exception as e:
-            logger.info("solar pitch lookup failed for run %s: %s", run_id, e)
+            logger.info("solar lookup failed for run %s: %s", run_id, e)
 
     from app.services.llm import llm_vision
     import httpx, json, re as _re
@@ -1564,6 +1691,10 @@ suggestions and trust your high-confidence ones.
     # resolve on hazy tiles. Falls back to the original on any error.
     vision_bytes, vision_mt = _enhance_for_vision(detect_bytes, mt)
 
+    # AI tracing failures set facets=[] and a reason but DON'T return — if Google
+    # Solar has planes for this address we still want to hand those back below.
+    facets: list = []
+    reason = ""
     try:
         text = await llm_vision(vision_bytes, vision_mt, prompt, max_tokens=2048)
         s = (text or "").strip()
@@ -1571,20 +1702,13 @@ suggestions and trust your high-confidence ones.
         s = _re.sub(r"\s*```\s*$", "", s)
         a, b = s.find("{"), s.rfind("}")
         if a < 0 or b < 0:
-            return {
-                "facets": [],
-                "reason": "The vision model did not return structured data for this tile.",
-                "message": "AI could not analyze this tile. Try re-centering on the house, then re-detect.",
-            }
-        parsed = json.loads(s[a:b + 1])
-        facets = parsed.get("facets") or []
-        reason = str(parsed.get("reason") or "")[:400]
+            reason = "The vision model did not return structured data for this tile."
+        else:
+            parsed = json.loads(s[a:b + 1])
+            facets = parsed.get("facets") or []
+            reason = str(parsed.get("reason") or "")[:400]
     except Exception as e:
-        return {
-            "facets": [],
-            "reason": f"Vision analysis error: {str(e)[:160]}",
-            "message": "AI detection hit an error. Re-detect, or draw facets manually.",
-        }
+        reason = f"Vision analysis error: {str(e)[:160]}"
 
     # Geometric guards. When we localized the subject building, reject any
     # suggested plane whose centroid lands well outside it — that's a road, a
@@ -1652,6 +1776,7 @@ suggestions and trust your high-confidence ones.
             "note": str(f.get("note") or "")[:250],
             "ai_suggested": True,
             "user_confirmed": False,
+            "solar_confirmed": False,
         })
 
     # Surface what the guards removed so the contractor understands the result.
@@ -1662,9 +1787,18 @@ suggestions and trust your high-confidence ones.
         drop_notes.append(f"{dropped_strips} road-like strip(s)")
     drop_suffix = f" Filtered out {', '.join(drop_notes)}." if drop_notes else ""
 
+    # LAYER with Google Solar: keep AI shapes where Solar confirms a plane (with
+    # measured pitch), add Solar planes the AI missed, and flag AI polygons Solar
+    # never confirmed. Runs even when the AI found nothing, so a Solar-covered
+    # address still gets real planes back.
+    solar_used = bool(solar_segs)
+    if solar_segs:
+        cleaned = _layer_with_solar(cleaned, solar_segs)
+
     if not cleaned:
         return {
             "facets": [],
+            "solar_used": solar_used,
             "reason": reason or "The model reported no clearly-distinguishable roof planes.",
             "message": (
                 "AI found no facets on the subject building it was confident about."
@@ -1675,13 +1809,19 @@ suggestions and trust your high-confidence ones.
             ),
         }
 
+    n_confirmed = sum(1 for f in cleaned if f.get("solar_confirmed"))
+    if solar_used:
+        lead = (f"{len(cleaned)} facet(s) — {n_confirmed} confirmed by Google Solar "
+                "(measured pitch), the rest AI-traced. Solar-confirmed planes are the "
+                "trustworthy ones; flagged planes need a look.")
+    else:
+        lead = (f"{len(cleaned)} facet(s) suggested by AI vision.{drop_suffix} "
+                "No Google Solar coverage here — verify each one.")
     return {
         "facets": cleaned,
+        "solar_used": solar_used,
         "reason": reason,
-        "message": (
-            f"{len(cleaned)} facet(s) suggested by AI vision.{drop_suffix} Each one must be "
-            "accepted individually — and verified for pitch + edge labels — before measurements are valid."
-        ),
+        "message": lead + " Accept each individually and verify pitch + edge labels before measurements are valid.",
     }
 
 

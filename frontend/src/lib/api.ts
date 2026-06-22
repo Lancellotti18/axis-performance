@@ -841,8 +841,10 @@ export const api = {
             predicted_pitch: string
             pitch_source?: string
             facet_type?: string
+            solar_confirmed?: boolean
             note: string
           }>
+          solar_used?: boolean
           message: string
           reason?: string
         }>(`/api/v1/roofing/v2/runs/${runId}/facets/suggest`, {}, 120000),
