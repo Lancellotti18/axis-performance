@@ -219,6 +219,49 @@ def _enhance_for_vision(img_bytes: bytes, media_type: str) -> tuple[bytes, str]:
         return img_bytes, media_type
 
 
+def _loads_tolerant(text: Optional[str]) -> Optional[dict]:
+    """Best-effort extraction of a JSON object from an LLM response. Vision
+    models occasionally emit slightly-broken JSON — trailing commas, a stray
+    control char inside a string, or truncated output. Strict json.loads then
+    surfaces 'Expecting , delimiter'. This tries a series of cheap repairs and
+    returns the parsed dict, or None if nothing salvages it."""
+    import json as _json
+    import re as _re
+
+    if not text:
+        return None
+    s = text.strip()
+    s = _re.sub(r"^```(?:json)?\s*", "", s, flags=_re.MULTILINE)
+    s = _re.sub(r"\s*```\s*$", "", s)
+    a, b = s.find("{"), s.rfind("}")
+    if a < 0:
+        return None
+    body = s[a:b + 1] if b > a else s[a:]
+
+    def _balance(t: str) -> str:
+        t = t.rstrip().rstrip(",")
+        nb = t.count("[") - t.count("]")
+        nc = t.count("{") - t.count("}")
+        return t + ("]" * max(0, nb)) + ("}" * max(0, nc))
+
+    no_ctrl = _re.sub(r"[\x00-\x1f]", " ", body)              # strip raw control chars
+    no_trailing = _re.sub(r",\s*([}\]])", r"\1", no_ctrl)     # kill trailing commas
+    # Insert missing commas between adjacent objects/arrays — the classic
+    # "Expecting ',' delimiter" cause when a model forgets a separator.
+    commas = _re.sub(r"(\})\s*(\{)", r"\1,\2", no_trailing)
+    commas = _re.sub(r"(\])\s*(\[)", r"\1,\2", commas)
+    candidates = [body, no_ctrl, no_trailing, commas, _balance(no_trailing),
+                  _re.sub(r",\s*([}\]])", r"\1", _balance(commas))]
+    for c in candidates:
+        try:
+            obj = _json.loads(c)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            continue
+    return None
+
+
 @router.post("/imagery/fetch")
 async def imagery_fetch(
     payload: ImageryHealthRequest,
@@ -1844,14 +1887,10 @@ suggestions and trust your high-confidence ones.
     reason = ""
     try:
         text = await llm_vision(vision_bytes, vision_mt, prompt, max_tokens=2048)
-        s = (text or "").strip()
-        s = _re.sub(r"^```(?:json)?\s*", "", s, flags=_re.MULTILINE)
-        s = _re.sub(r"\s*```\s*$", "", s)
-        a, b = s.find("{"), s.rfind("}")
-        if a < 0 or b < 0:
+        parsed = _loads_tolerant(text)
+        if parsed is None:
             reason = "The vision model did not return structured data for this tile."
         else:
-            parsed = json.loads(s[a:b + 1])
             facets = parsed.get("facets") or []
             reason = str(parsed.get("reason") or "")[:400]
     except Exception as e:
@@ -2321,14 +2360,10 @@ Return ONLY JSON. Include a top-level "reason" describing what you saw (especial
 If there are none, return {"reason": "...", "transitions": []}. Do NOT invent transitions."""
 
     try:
-        text = await llm_vision(img_bytes, mt, prompt, max_tokens=900)
-        s = (text or "").strip()
-        s = _re.sub(r"^```(?:json)?\s*", "", s, flags=_re.MULTILINE)
-        s = _re.sub(r"\s*```\s*$", "", s)
-        a, b = s.find("{"), s.rfind("}")
-        if a < 0 or b < 0:
-            return {"transitions": [], "reason": "Vision returned no JSON.", "message": "AI could not analyze the tile."}
-        parsed = _json.loads(s[a:b + 1])
+        text = await llm_vision(img_bytes, mt, prompt, max_tokens=1500)
+        parsed = _loads_tolerant(text)
+        if parsed is None:
+            return {"transitions": [], "reason": "Vision returned no usable JSON.", "message": "AI could not analyze the tile — re-detect, or label wall edges manually."}
     except Exception as e:
         return {"transitions": [], "reason": f"Vision error: {str(e)[:160]}", "message": "AI detection errored."}
 
