@@ -1588,7 +1588,12 @@ def _layer_with_solar(ai_facets: list[dict], segs: list[dict]) -> list[dict]:
             "solar_confirmed": True,
         })
 
-    return result
+    # When Solar confirms real planes, DROP the unconfirmed AI guesses entirely —
+    # those are the driveway / bushes / neighbor that the contractor keeps having
+    # to reject. Show ONLY the actual roof. Keep the flagged guesses only if Solar
+    # confirmed nothing, so a no-coverage roof still returns something to refine.
+    confirmed = [f for f in result if f.get("solar_confirmed")]
+    return confirmed if confirmed else result
 
 
 @router.get("/runs/{run_id}/facets/suggest")
@@ -1750,7 +1755,7 @@ suggestions and trust your high-confidence ones.
     if bbox:
         detect_bytes, crop_win = _crop_to_bbox(img_bytes, bbox)
     else:
-        detect_bytes, crop_win = _center_crop(img_bytes, frac=0.6)
+        detect_bytes, crop_win = _center_crop(img_bytes, frac=0.5)
     cwx0, cwy0, cwx1, cwy1 = crop_win
     cw_w, cw_h = (cwx1 - cwx0), (cwy1 - cwy0)
 
@@ -1786,8 +1791,8 @@ suggestions and trust your high-confidence ones.
     # have under-boxed.
     if bbox:
         bw, bh = (bbox["x1"] - bbox["x0"]), (bbox["y1"] - bbox["y0"])
-        gx0, gy0 = bbox["x0"] - 0.30 * bw, bbox["y0"] - 0.30 * bh
-        gx1, gy1 = bbox["x1"] + 0.30 * bw, bbox["y1"] + 0.30 * bh
+        gx0, gy0 = bbox["x0"] - 0.12 * bw, bbox["y0"] - 0.12 * bh
+        gx1, gy1 = bbox["x1"] + 0.12 * bw, bbox["y1"] + 0.12 * bh
 
     # Sanitize: each facet must have a polygon of >=3 [x,y] pairs in [0,1]
     cleaned: list[dict] = []
@@ -1877,14 +1882,13 @@ suggestions and trust your high-confidence ones.
             ),
         }
 
-    n_confirmed = sum(1 for f in cleaned if f.get("solar_confirmed"))
     if solar_used:
-        lead = (f"{len(cleaned)} facet(s) — {n_confirmed} confirmed by Google Solar "
-                "(measured pitch), the rest AI-traced. Solar-confirmed planes are the "
-                "trustworthy ones; flagged planes need a look.")
+        lead = (f"{len(cleaned)} roof plane(s) from Google Solar with MEASURED pitch. "
+                "Off-roof AI guesses (driveway / bushes / neighbor) were filtered out — "
+                "drag any rectangle's corners to the exact roof edges.")
     else:
         lead = (f"{len(cleaned)} facet(s) suggested by AI vision.{drop_suffix} "
-                "No Google Solar coverage here — verify each one.")
+                "No Google Solar coverage here — verify each one carefully.")
     return {
         "facets": cleaned,
         "solar_used": solar_used,
@@ -2124,6 +2128,35 @@ async def suggest_edge_labels(
     }
 
 
+async def _fetch_run_tile(img_url: Optional[str], run_data: dict) -> tuple[Optional[bytes], str]:
+    """Get the run's satellite tile bytes robustly: try the stored URL first (it
+    can be a stale or expiring upscale/sharpen URL — the cause of the dreaded
+    'could not be downloaded'), then REGENERATE fresh imagery from the run's
+    lat/lng/zoom. Returns (bytes, media_type) or (None, '')."""
+    import httpx as _httpx
+    if img_url:
+        try:
+            async with _httpx.AsyncClient(timeout=20) as client:
+                r = await client.get(img_url, follow_redirects=True)
+                r.raise_for_status()
+                mt = (r.headers.get("content-type") or "image/png").split(";")[0].strip()
+                if mt not in ("image/png", "image/jpeg", "image/webp"):
+                    mt = "image/png"
+                return r.content, mt
+        except Exception as e:
+            logger.info("run tile URL download failed (%s) — regenerating from lat/lng", e)
+    lat, lng = run_data.get("satellite_lat"), run_data.get("satellite_lng")
+    zoom = run_data.get("satellite_zoom") or 20
+    if lat is None or lng is None:
+        return None, ""
+    try:
+        result = await imagery_service.fetch_satellite_image(float(lat), float(lng), zoom=int(zoom))
+        return result.image_bytes, result.media_type
+    except Exception as e:
+        logger.warning("run tile regeneration failed: %s", e)
+        return None, ""
+
+
 @router.get("/runs/{run_id}/detect-wall-transitions")
 async def detect_wall_transitions(run_id: str, user: dict = Depends(require_user)) -> dict:
     """
@@ -2145,24 +2178,18 @@ async def detect_wall_transitions(run_id: str, user: dict = Depends(require_user
 
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
-        "satellite_image_url"
+        "satellite_image_url, satellite_lat, satellite_lng, satellite_zoom"
     ).eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
-    img_url = run.data.get("satellite_image_url")
-    if not img_url:
-        return {"transitions": [], "reason": "No satellite image attached to this run.", "message": "No imagery."}
 
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.get(img_url, follow_redirects=True)
-            r.raise_for_status()
-            img_bytes = r.content
-            mt = (r.headers.get("content-type") or "image/png").split(";")[0].strip()
-            if mt not in ("image/png", "image/jpeg", "image/webp"):
-                mt = "image/png"
-    except Exception as e:
-        return {"transitions": [], "reason": f"Could not download tile: {e}", "message": "Image fetch failed."}
+    img_bytes, mt = await _fetch_run_tile(run.data.get("satellite_image_url"), run.data)
+    if img_bytes is None:
+        return {
+            "transitions": [],
+            "reason": "Could not load the satellite tile (stored URL failed and no coordinates to regenerate from).",
+            "message": "Image fetch failed — re-open the run's imagery, then try again.",
+        }
 
     prompt = """You are a roofing estimator finding ROOF-TO-WALL TRANSITIONS in a top-down satellite image — the places that require flashing.
 
