@@ -15,9 +15,12 @@ Usage:
 import asyncio
 import base64
 import json
+import logging
 import os
 import re
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from app.core.config import settings
 
@@ -202,6 +205,39 @@ def _gemini_client():
     return genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
+class _EmptyGeminiResponse(Exception):
+    """A Gemini candidate finished with no usable text — e.g. the model spent
+    the whole budget thinking (finish_reason=MAX_TOKENS) or was safety-filtered.
+    This is NOT a transport error, so the model-chain loops below must treat it
+    like a retryable error and fall through to the NEXT model: a no-thinking
+    2.0 model reliably answers these bounded JSON tasks. Returning the empty ""
+    instead (the old behavior) short-circuited the whole fallback chain and
+    surfaced as 'the vision model did not return structured data'."""
+
+
+def _gemini_text_or_raise(response, model: str) -> str:
+    """Pull text out of a google-genai response, or raise _EmptyGeminiResponse
+    annotated with finish_reason. `response.text` is None/empty whenever the
+    candidate has no text part, so we never want to return it blindly."""
+    text = None
+    try:
+        text = response.text
+    except Exception:
+        text = None  # SDK raises on some blocked/empty candidates
+    if text and text.strip():
+        return text
+    reason = "unknown"
+    try:
+        cand = (getattr(response, "candidates", None) or [None])[0]
+        fr = getattr(cand, "finish_reason", None)
+        if fr is not None:
+            reason = str(fr)
+    except Exception:
+        pass
+    logger.warning("Gemini %s returned empty text (finish_reason=%s)", model, reason)
+    raise _EmptyGeminiResponse(f"empty response from {model} (finish_reason={reason})")
+
+
 async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> str:
     from google import genai
     from google.genai import types
@@ -218,7 +254,7 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
             contents=full_prompt,
             config=types.GenerateContentConfig(**cfg_kwargs),
         )
-        return response.text
+        return _gemini_text_or_raise(response, model)
 
     # (key × model) matrix. For each key, walk the model chain; on
     # retryable errors (quota / 404 / 503) rotate to the next model,
@@ -234,6 +270,12 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
                     return await asyncio.wait_for(asyncio.to_thread(_run, key, model), timeout=130)
                 except Exception as e:
                     last_err = e
+                    # An empty candidate (model thought itself out of budget, or
+                    # safety-filtered) is NOT a transport error but we still want
+                    # the next model in the chain — a no-thinking 2.0 model
+                    # answers these reliably. No backoff: it's not rate-limiting.
+                    if isinstance(e, _EmptyGeminiResponse):
+                        continue
                     if _is_gemini_retryable(str(e)):
                         await asyncio.sleep(0.6 if pass_idx == 0 else 2.0)
                         continue
@@ -273,7 +315,7 @@ async def _gemini_vision(
             ],
             config=types.GenerateContentConfig(**cfg_kwargs),
         )
-        return response.text
+        return _gemini_text_or_raise(response, model)
 
     keys = _gemini_keys()
     models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
@@ -285,6 +327,12 @@ async def _gemini_vision(
                     return await asyncio.wait_for(asyncio.to_thread(_run, key, model), timeout=130)
                 except Exception as e:
                     last_err = e
+                    # An empty candidate (model thought itself out of budget, or
+                    # safety-filtered) is NOT a transport error but we still want
+                    # the next model in the chain — a no-thinking 2.0 model
+                    # answers these reliably. No backoff: it's not rate-limiting.
+                    if isinstance(e, _EmptyGeminiResponse):
+                        continue
                     if _is_gemini_retryable(str(e)):
                         await asyncio.sleep(0.6 if pass_idx == 0 else 2.0)
                         continue
