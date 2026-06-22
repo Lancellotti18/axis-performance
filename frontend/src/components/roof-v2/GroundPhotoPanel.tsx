@@ -22,6 +22,18 @@ import { api } from '@/lib/api'
 type Findings = NonNullable<Awaited<ReturnType<typeof api.roofing.v2.analyzeGroundPhoto>>['findings']>
 type PageResult = { page: number; findings: Findings | null; message: string }
 
+/** Convert an iPhone HEIC/HEIF file to a JPEG File in the browser. heic2any is
+ *  loaded lazily so it only downloads when a HEIC is actually picked. */
+async function heicToJpeg(file: File): Promise<File> {
+  const heic2any = (await import('heic2any')).default as (opts: {
+    blob: Blob; toType?: string; quality?: number
+  }) => Promise<Blob | Blob[]>
+  const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 })
+  const blob = Array.isArray(out) ? out[0] : out
+  const name = file.name.replace(/\.(heic|heif)$/i, '.jpg')
+  return new File([blob], name || 'photo.jpg', { type: 'image/jpeg' })
+}
+
 interface PhotoEntry {
   id: string
   previewUrl: string
@@ -48,14 +60,27 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return
-    for (const file of Array.from(files)) {
+    for (const original of Array.from(files)) {
       const id = `p${idRef.current++}`
-      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
-      const previewUrl = isPdf ? '' : URL.createObjectURL(file)
-      setPhotos(prev => [...prev, { id, previewUrl, name: file.name, isPdf, status: 'analyzing' }])
+      const isPdf = original.type === 'application/pdf' || /\.pdf$/i.test(original.name)
+      const isHeic = !isPdf && (/^image\/hei[cf]$/i.test(original.type) || /\.(heic|heif)$/i.test(original.name))
+      setPhotos(prev => [...prev, { id, previewUrl: '', name: original.name, isPdf, status: 'analyzing' }])
       try {
-        // Send the image BYTES straight to the backend — no storage round-trip,
-        // so it works regardless of bucket config and accepts any phone format.
+        // iPhone HEIC isn't decodable server-side reliably, so convert it to JPEG
+        // RIGHT HERE in the browser before upload. Bulletproof + no server dep.
+        let file = original
+        if (isHeic) {
+          try {
+            file = await heicToJpeg(original)
+          } catch {
+            throw new Error('Could not convert this HEIC photo — please export it as JPG and retry.')
+          }
+        }
+        // Now we have a viewable image (or PDF) — set the preview.
+        const previewUrl = isPdf ? '' : URL.createObjectURL(file)
+        setPhotos(prev => prev.map(p => p.id === id ? { ...p, previewUrl } : p))
+
+        // Send the bytes straight to the backend — no storage round-trip.
         const res = await api.roofing.v2.analyzeGroundPhoto(runId, file)
         const results = res.results ?? (res.findings ? [{ page: 1, findings: res.findings, message: res.message }] : [])
         const anyUsable = results.some(r => r.findings)
@@ -65,7 +90,7 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'analysis failed'
         setPhotos(prev => prev.map(p => p.id === id ? { ...p, status: 'error', error: msg } : p))
-        toast.error(`${file.name}: ${msg}`)
+        toast.error(`${original.name}: ${msg}`)
       }
     }
   }, [runId])
@@ -138,9 +163,11 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
                 <span className="text-lg leading-none">📄</span>
                 <span className="mt-0.5 text-[9px] font-semibold">PDF</span>
               </div>
-            ) : (
+            ) : p.previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={p.previewUrl} alt={p.name} className="h-16 w-16 shrink-0 rounded object-cover" />
+            ) : (
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] text-slate-500">…</div>
             )}
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs text-slate-300">{p.name}</div>
