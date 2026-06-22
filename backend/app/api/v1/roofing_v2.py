@@ -1148,6 +1148,20 @@ async def get_run_solar(run_id: str, user: dict = Depends(require_user)) -> dict
     return await solar_service.get_building_insights(float(lat), float(lng))
 
 
+@router.get("/runs/{run_id}/ground-findings")
+async def get_run_ground_findings(run_id: str, user: dict = Depends(require_user)) -> dict:
+    """Return the consolidated ground-photo findings persisted on the run (pitch,
+    chimney, dormers, wall_abutment, roof_shape, …) so other panels — e.g. the
+    flashing-edge suggester — can corroborate against what the photos saw."""
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select(
+        "ground_findings"
+    ).eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    return {"findings": run.data.get("ground_findings")}
+
+
 @router.get("/runs/{run_id}/footprint")
 async def get_run_footprint(run_id: str, user: dict = Depends(require_user)) -> dict:
     """

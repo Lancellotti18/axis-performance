@@ -743,6 +743,19 @@ export const api = {
           }>
           cached?: boolean
         }>(`/api/v1/roofing/v2/runs/${runId}/solar`, undefined, 60000, 1800000),  // cache 30 min — never re-bill the same run in a session
+      // Consolidated ground-photo findings persisted on the run (pitch, chimney,
+      // dormers, wall_abutment, roof_shape) — used to corroborate flashing edges.
+      getGroundFindings: (runId: string) =>
+        apiRequest<{
+          findings: {
+            roof_pitch?: string
+            roof_shape?: string
+            chimney?: { present: boolean; count: number }
+            skylights?: number
+            dormers?: number
+            wall_abutment?: { present: boolean; note: string }
+          } | null
+        }>(`/api/v1/roofing/v2/runs/${runId}/ground-findings`),
       // Building footprint (OpenStreetMap) — free, nationwide rural fallback
       // when Google Solar has no coverage. Returns the building outline ring.
       getFootprint: (runId: string) =>
