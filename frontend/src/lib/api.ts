@@ -782,6 +782,7 @@ export const api = {
           roof_pitch: string
           pitch_confidence: 'high' | 'medium' | 'low'
           pitch_method: 'gable_end' | 'slope_angle' | 'not_visible'
+          roof_shape?: 'gable' | 'hip' | 'complex' | 'flat' | 'shed' | 'unknown'
           chimney: { present: boolean; count: number; height: 'short' | 'medium' | 'tall'; material: string }
           skylights: number
           dormers: number
@@ -845,6 +846,12 @@ export const api = {
             note: string
           }>
           solar_used?: boolean
+          count_check?: {
+            shape: string
+            expected: number
+            detected: number
+            note: string
+          } | null
           message: string
           reason?: string
         }>(`/api/v1/roofing/v2/runs/${runId}/facets/suggest`, {}, 120000),

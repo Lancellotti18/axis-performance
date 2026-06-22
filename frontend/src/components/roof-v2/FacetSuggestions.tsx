@@ -38,6 +38,7 @@ interface Suggestion {
 function pitchSourceMeta(src?: string): { label: string; color: string } {
   switch (src) {
     case 'solar_measured': return { label: 'measured by Google Solar ✓', color: 'text-emerald-400' }
+    case 'solar_direction': return { label: 'Solar pitch (same-facing plane)', color: 'text-emerald-300/80' }
     case 'ground_photo': return { label: 'from ground photo ✓', color: 'text-emerald-400' }
     case 'ai_satellite': return { label: 'AI from satellite — verify', color: 'text-slate-400' }
     default: return { label: 'default — set this!', color: 'text-amber-400' }
@@ -103,6 +104,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
   const [error, setError] = useState<string | null>(null)
   const [ran, setRan] = useState(false)
   const [solarUsed, setSolarUsed] = useState(false)
+  const [countCheck, setCountCheck] = useState<{ note: string } | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [refineOnAccept, setRefineOnAccept] = useState(true)
   const [zoomedSuggestion, setZoomedSuggestion] = useState<Suggestion | null>(null)
@@ -125,6 +127,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
       const res = await api.roofing.v2.suggestFacets(runId)
       setSuggestions(res.facets || [])
       setSolarUsed(!!res.solar_used)
+      setCountCheck(res.count_check ? { note: res.count_check.note } : null)
       setMessage(res.message || null)
       setReason(res.reason || null)
     } catch (err) {
@@ -227,6 +230,13 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Cross-check vs the ground photo's read of the roof shape. */}
+      {countCheck && !loading && !error && (
+        <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 text-[11px] text-amber-200">
+          🔎 <strong>Count check:</strong> {countCheck.note}
         </div>
       )}
 

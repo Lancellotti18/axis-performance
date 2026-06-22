@@ -952,6 +952,7 @@ _GROUND_PHOTO_PROMPT = """You are a roofing estimator analyzing a GROUND-LEVEL p
   "roof_pitch": "6/12",                  // rise/12 read from a visible gable end or roof slope; "" if not visible
   "pitch_confidence": "high|medium|low",
   "pitch_method": "gable_end|slope_angle|not_visible",
+  "roof_shape": "gable|hip|complex|flat|shed|unknown",  // overall roof form visible in this photo: gable=2 main slopes meeting at a ridge with triangular end walls; hip=4 slopes, no gable end walls; complex=multiple wings/intersecting roofs; flat=low-slope; shed=single slope. "unknown" if you can't tell.
   "chimney": {"present": true, "count": 1, "height": "short|medium|tall", "material": "brick|metal|stucco|unknown"},
   "skylights": 0,
   "dormers": 0,
@@ -987,6 +988,7 @@ def _parse_ground_findings(text: str) -> tuple[Optional[dict], str]:
         "roof_pitch": str(parsed.get("roof_pitch") or "").strip(),
         "pitch_confidence": parsed.get("pitch_confidence") if parsed.get("pitch_confidence") in ("high", "medium", "low") else "low",
         "pitch_method": parsed.get("pitch_method") if parsed.get("pitch_method") in ("gable_end", "slope_angle", "not_visible") else "not_visible",
+        "roof_shape": parsed.get("roof_shape") if parsed.get("roof_shape") in ("gable", "hip", "complex", "flat", "shed", "unknown") else "unknown",
         "chimney": {
             "present": bool(ch.get("present")),
             "count": int(ch.get("count") or 0),
@@ -1377,6 +1379,12 @@ def _dominant_solar_pitch(segments: list[dict]) -> Optional[str]:
     return max(by_pitch.items(), key=lambda kv: kv[1])[0]
 
 
+def _expected_facets_from_shape(shape: Optional[str]) -> Optional[int]:
+    """Rough expected plane count from a ground-photo roof shape, for the sanity
+    check. 'complex'/'unknown' return None — too variable to assert a count."""
+    return {"gable": 2, "hip": 4, "shed": 1, "flat": 1}.get((shape or "").strip().lower())
+
+
 def _resolve_pitch(solar_pitch: Optional[str], ground: Optional[dict], ai_pitch) -> tuple[str, str]:
     """Pick the best pitch + its provenance, killing the silent 6/12 default.
 
@@ -1536,6 +1544,16 @@ def _layer_with_solar(ai_facets: list[dict], segs: list[dict]) -> list[dict]:
     seg_got = [False] * len(segs)
     result: list[dict] = []
 
+    # Compass-direction → measured pitch, for facets that DON'T cleanly overlap a
+    # Solar plane: if Solar has a plane facing the same way, borrow its measured
+    # pitch (area-weighted winner per direction). This is the direction-matched
+    # pitch fallback — better than a guess when overlap matching comes up empty.
+    dir_pitch: dict[str, tuple[str, float]] = {}
+    for s in segs:
+        d, p = (s.get("slope_direction") or "").strip(), (s.get("pitch") or "").strip()
+        if d and p and (d not in dir_pitch or s.get("area_sqft", 0.0) > dir_pitch[d][1]):
+            dir_pitch[d] = (p, float(s.get("area_sqft") or 0.0))
+
     # Assign each AI polygon to the Solar plane that covers the MOST of it
     # (overlap, not just centroid). A plane can legitimately receive more than one
     # traced sub-plane; planes that receive none are emitted as rectangles below.
@@ -1562,8 +1580,14 @@ def _layer_with_solar(ai_facets: list[dict], segs: list[dict]) -> list[dict]:
             # No Solar plane covers this polygon — probable false positive.
             f = dict(fct)
             f["solar_confirmed"] = False
-            # Don't claim a Solar-measured pitch on a plane Solar didn't confirm.
-            if f.get("pitch_source") == "solar_measured":
+            # Direction-matched pitch fallback: if Solar has a plane facing the
+            # same compass direction, use its MEASURED pitch instead of a guess.
+            fdir = geo.compass_direction(geo.longest_edge_orientation_deg(fct["polygon"]))
+            if fdir and fdir in dir_pitch:
+                f["predicted_pitch"] = dir_pitch[fdir][0]
+                f["pitch_source"] = "solar_direction"
+            elif f.get("pitch_source") == "solar_measured":
+                # Don't claim a Solar-measured pitch on a plane Solar didn't confirm.
                 f["pitch_source"] = "ai_satellite"
             f["confidence"] = min(f.get("confidence", 0.5), 0.45)
             f["note"] = ("⚠ Not in Google Solar data — verify this is a real roof plane "
@@ -1868,6 +1892,24 @@ suggestions and trust your high-confidence ones.
     if solar_segs:
         cleaned = _layer_with_solar(cleaned, solar_segs)
 
+    # Cross-check the plane count against the ground photo's read of the roof
+    # shape (gable≈2, hip≈4, …). A big mismatch usually means over/under-
+    # segmentation or planes landing on the wrong building — surface it, never
+    # auto-act on it.
+    count_check = None
+    gshape = (ground_findings or {}).get("roof_shape") if ground_findings else None
+    expected = _expected_facets_from_shape(gshape)
+    if expected is not None and cleaned:
+        detected = len(cleaned)
+        if detected > expected + 1 or detected < max(1, expected - 1):
+            count_check = {
+                "shape": gshape,
+                "expected": expected,
+                "detected": detected,
+                "note": (f"Your ground photo looks like a {gshape} roof (~{expected} planes), "
+                         f"but {detected} were detected. Double-check for extra/missing planes."),
+            }
+
     if not cleaned:
         return {
             "facets": [],
@@ -1892,6 +1934,7 @@ suggestions and trust your high-confidence ones.
     return {
         "facets": cleaned,
         "solar_used": solar_used,
+        "count_check": count_check,
         "reason": reason,
         "message": lead + " Accept each individually and verify pitch + edge labels before measurements are valid.",
     }
