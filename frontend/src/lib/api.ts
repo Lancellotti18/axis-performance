@@ -839,11 +839,22 @@ export const api = {
             polygon: [number, number][]
             confidence: number
             predicted_pitch: string
+            facet_type?: string
             note: string
           }>
           message: string
           reason?: string
         }>(`/api/v1/roofing/v2/runs/${runId}/facets/suggest`, {}, 120000),
+      // Record AI facet suggestions the contractor REJECTED, as negative training
+      // data. Fire-and-forget — must never block the editor flow.
+      recordFacetRejections: (
+        runId: string,
+        rejections: Array<{ polygon: [number, number][]; facet_type?: string; ai_confidence?: number }>,
+      ) =>
+        apiRequest<{ recorded: number; message?: string }>(
+          `/api/v1/roofing/v2/runs/${runId}/facets/rejections`,
+          { method: 'POST', body: JSON.stringify({ rejections }) },
+        ),
       upscaleImagery: (imageUrl: string, scale: 2 | 4 = 4) =>
         apiRequest<{
           status: 'disabled' | 'completed' | 'failed'

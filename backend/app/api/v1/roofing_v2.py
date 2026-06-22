@@ -1300,6 +1300,31 @@ def _crop_to_bbox(
         return img_bytes, (0.0, 0.0, 1.0, 1.0)
 
 
+def _center_crop(
+    img_bytes: bytes, frac: float = 0.6,
+) -> tuple[bytes, tuple[float, float, float, float]]:
+    """Crop the central `frac` of the tile. The run's tile is geocoded on the
+    subject address, so the subject building is at the image center — when
+    building localization is unavailable OR untrustworthy (it boxed a neighbor),
+    a centered crop still drops the roads and neighboring houses at the tile
+    edges and keeps the model on the subject. Returns (png_bytes, crop_window)."""
+    try:
+        import io as _io
+        from PIL import Image
+
+        im = Image.open(_io.BytesIO(img_bytes)).convert("RGB")
+        W, H = im.size
+        m = (1.0 - frac) / 2.0
+        cx0, cy0, cx1, cy1 = m, m, 1.0 - m, 1.0 - m
+        crop = im.crop((int(cx0 * W), int(cy0 * H), int(cx1 * W), int(cy1 * H)))
+        buf = _io.BytesIO()
+        crop.save(buf, format="PNG")
+        return buf.getvalue(), (cx0, cy0, cx1, cy1)
+    except Exception as e:
+        logger.info("facet center-crop failed (%s) — using full tile", e)
+        return img_bytes, (0.0, 0.0, 1.0, 1.0)
+
+
 @router.get("/runs/{run_id}/facets/suggest")
 async def suggest_facets(
     run_id: str, user: dict = Depends(require_user),
@@ -1429,10 +1454,17 @@ suggestions and trust your high-confidence ones.
     # returned polygons back through it below. If localization fails we crop
     # nothing (identity window) and detect on the whole tile as before.
     bbox = await _locate_building_bbox(img_bytes, mt)
+    # The tile is geocoded on the SUBJECT address, so the subject building sits at
+    # the image center. If the localizer's box doesn't actually contain the center
+    # (0.5, 0.5), it locked onto a neighbor — discard it and fall back to a
+    # centered crop rather than confidently cropping (and tracing) the wrong house.
+    if bbox and not (bbox["x0"] <= 0.5 <= bbox["x1"] and bbox["y0"] <= 0.5 <= bbox["y1"]):
+        logger.info("facet localize bbox %s excludes tile center — likely a neighbor; using centered crop", bbox)
+        bbox = None
     if bbox:
         detect_bytes, crop_win = _crop_to_bbox(img_bytes, bbox)
     else:
-        detect_bytes, crop_win = img_bytes, (0.0, 0.0, 1.0, 1.0)
+        detect_bytes, crop_win = _center_crop(img_bytes, frac=0.6)
     cwx0, cwy0, cwx1, cwy1 = crop_win
     cw_w, cw_h = (cwx1 - cwx0), (cwy1 - cwy0)
 
@@ -1557,6 +1589,85 @@ suggestions and trust your high-confidence ones.
             "accepted individually — and verified for pitch + edge labels — before measurements are valid."
         ),
     }
+
+
+class RejectedFacet(BaseModel):
+    polygon: list[list[float]] = Field(..., min_length=3)
+    facet_type: Optional[str] = None
+    ai_confidence: Optional[float] = None
+
+
+class FacetRejectionsRequest(BaseModel):
+    rejections: list[RejectedFacet]
+
+
+@router.post("/runs/{run_id}/facets/rejections")
+async def record_facet_rejections(
+    run_id: str, req: FacetRejectionsRequest, user: dict = Depends(require_user),
+) -> dict:
+    """Capture AI facet suggestions the contractor REJECTED as negative training
+    examples — the high-value signal the confirm-only triggers miss.
+
+    A confirmed facet already becomes a positive example via the roof_facets
+    trigger. But a rejection ("the AI drew a polygon on the driveway / the
+    neighbor's roof and a human said NO") is never persisted today, so the model
+    can't learn from its false positives — exactly the failure the contractor
+    keeps seeing. We store each rejected polygon in training_examples with
+    capture_source='ai_rejected' so the future segmentation model learns what is
+    NOT a roof plane. Accepts (and accept-then-edit) are captured on save, not
+    here, to avoid duplicate rows."""
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select(
+        "satellite_image_url, satellite_lat, satellite_lng, satellite_zoom, satellite_provider"
+    ).eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    img_url = run.data.get("satellite_image_url")
+    if not img_url:
+        return {"recorded": 0, "message": "No satellite image on this run — nothing to record."}
+
+    rows: list[dict] = []
+    for r in req.rejections:
+        # Clamp coords defensively; skip anything not a real polygon.
+        poly = [[max(0.0, min(1.0, float(p[0]))), max(0.0, min(1.0, float(p[1])))]
+                for p in r.polygon if isinstance(p, (list, tuple)) and len(p) >= 2]
+        if len(poly) < 3:
+            continue
+        rows.append({
+            "user_id": user["id"],
+            "source_table": "roof_facets",
+            "source_id": None,        # never saved — NULLs are distinct in the unique index
+            "task_type": "roof_facet_polygon",
+            "image_url": img_url,
+            "image_width_px": 2048,
+            "image_height_px": 1366,
+            "geo_lat": run.data.get("satellite_lat"),
+            "geo_lng": run.data.get("satellite_lng"),
+            "satellite_zoom": run.data.get("satellite_zoom"),
+            "satellite_provider": run.data.get("satellite_provider"),
+            "annotation": {
+                "polygon": poly,
+                "facet_type": (r.facet_type or "other"),
+                "ai_confidence": r.ai_confidence,
+                "label": "negative",
+                "verdict": "rejected",
+            },
+            "capture_source": "ai_rejected",
+            "quality_tier": "unverified",
+            "contractor_confidence": r.ai_confidence,
+        })
+
+    recorded = 0
+    if rows:
+        try:
+            ins = db.table("training_examples").insert(rows).execute()
+            recorded = len(ins.data or [])
+        except Exception as e:
+            # Never let training capture break the contractor's flow.
+            logger.warning("facet rejection capture failed: %s", e)
+            return {"recorded": 0, "message": "Could not record rejection (logged)."}
+
+    return {"recorded": recorded}
 
 
 class EdgeLabelSuggestRequest(BaseModel):

@@ -52,6 +52,15 @@ function prettyFacetType(t?: string): string {
   return FACET_TYPE_LABELS[t.toLowerCase()] || `🔷 ${t}`
 }
 
+// HONEST confidence. The model's number is a self-rating, NOT measured accuracy —
+// showing "90% confident" makes contractors trust a guess that may be on the
+// neighbor's roof. Present it as a qualitative band that always says "verify".
+function confidenceBand(c: number): { label: string; color: string } {
+  if (c >= 0.75) return { label: 'AI: looks clear — verify', color: 'text-emerald-300' }
+  if (c >= 0.5) return { label: 'AI: likely — verify', color: 'text-amber-300' }
+  return { label: 'AI: unsure — check carefully', color: 'text-rose-300' }
+}
+
 interface Props {
   runId: string
   imageUrl: string
@@ -142,8 +151,19 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
   }, [existingFacets, onAccept, refinePolygon])
 
   const reject = useCallback((idx: number) => {
+    const s = suggestions[idx]
+    if (s) {
+      // Capture the rejection as a NEGATIVE training example — "AI proposed this
+      // polygon, a human said it is NOT a roof plane". Fire-and-forget: training
+      // capture must never block or error the contractor's flow.
+      void api.roofing.v2
+        .recordFacetRejections(runId, [
+          { polygon: s.polygon, facet_type: s.facet_type, ai_confidence: s.confidence },
+        ])
+        .catch(() => { /* swallow — best-effort */ })
+    }
     setSuggestions(prev => prev.filter((_, i) => i !== idx))
-  }, [])
+  }, [suggestions, runId])
 
   const acceptAll = useCallback(async () => {
     const current = suggestions
@@ -249,10 +269,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
           </div>
           <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {suggestions.map((s, i) => {
-              const confColor =
-                s.confidence >= 0.75 ? 'text-emerald-300'
-                : s.confidence >= 0.5 ? 'text-amber-300'
-                : 'text-rose-300'
+              const conf = confidenceBand(s.confidence)
               const facetColor = hueByIndex(existingFacets.length + i)
               return (
                 <li
@@ -278,8 +295,11 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                       <span className="rounded bg-slate-700/70 px-1.5 py-0.5 text-[10px] text-slate-200">
                         {prettyFacetType(s.facet_type)}
                       </span>
-                      <span className={`text-xs ${confColor}`}>
-                        {(s.confidence * 100).toFixed(0)}% confident
+                      <span
+                        className={`text-xs ${conf.color}`}
+                        title="The AI's own self-rating — not a measured accuracy. Always confirm the polygon is on the right house."
+                      >
+                        {conf.label}
                       </span>
                     </div>
                     <div className="text-xs text-slate-400">
@@ -469,7 +489,10 @@ function ZoomModal({
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-slate-900 p-4 text-sm">
           <div>
             <div className="font-semibold text-slate-100">
-              {prettyFacetType(suggestion.facet_type)} — {(suggestion.confidence * 100).toFixed(0)}% confidence
+              {prettyFacetType(suggestion.facet_type)}
+              <span className={`ml-2 text-xs font-normal ${confidenceBand(suggestion.confidence).color}`}>
+                {confidenceBand(suggestion.confidence).label}
+              </span>
             </div>
             <div className="mt-1 text-xs text-slate-400">
               <span className="text-slate-500">Why: </span>{suggestion.note || '—'}
