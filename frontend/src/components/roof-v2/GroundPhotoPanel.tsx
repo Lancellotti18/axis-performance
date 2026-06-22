@@ -22,16 +22,48 @@ import { api } from '@/lib/api'
 type Findings = NonNullable<Awaited<ReturnType<typeof api.roofing.v2.analyzeGroundPhoto>>['findings']>
 type PageResult = { page: number; findings: Findings | null; message: string }
 
-/** Convert an iPhone HEIC/HEIF file to a JPEG File in the browser. heic2any is
- *  loaded lazily so it only downloads when a HEIC is actually picked. */
+const jpgName = (n: string) => n.replace(/\.(heic|heif)$/i, '.jpg') || 'photo.jpg'
+
+/** Try the BROWSER's native decoder (Safari/macOS decodes HEIC; many others
+ *  don't). Loads the file into an <img>, draws to a canvas, exports JPEG.
+ *  Resolves null if the browser can't decode it — caller then falls back. */
+function tryNativeHeicDecode(file: File): Promise<File | null> {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        if (!img.naturalWidth) { URL.revokeObjectURL(url); return resolve(null) }
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { URL.revokeObjectURL(url); return resolve(null) }
+        ctx.drawImage(img, 0, 0)
+        canvas.toBlob(blob => {
+          URL.revokeObjectURL(url)
+          resolve(blob ? new File([blob], jpgName(file.name), { type: 'image/jpeg' }) : null)
+        }, 'image/jpeg', 0.9)
+      } catch { URL.revokeObjectURL(url); resolve(null) }
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
+    img.src = url
+  })
+}
+
+/** Convert an iPhone HEIC/HEIF file to a JPEG File in the browser:
+ *  native decoder first (most reliable where supported), then the heic2any
+ *  WASM fallback. heic2any is lazy-loaded so it only downloads when needed. */
 async function heicToJpeg(file: File): Promise<File> {
+  const native = await tryNativeHeicDecode(file)
+  if (native) return native
+
   const heic2any = (await import('heic2any')).default as (opts: {
     blob: Blob; toType?: string; quality?: number
   }) => Promise<Blob | Blob[]>
   const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 })
   const blob = Array.isArray(out) ? out[0] : out
-  const name = file.name.replace(/\.(heic|heif)$/i, '.jpg')
-  return new File([blob], name || 'photo.jpg', { type: 'image/jpeg' })
+  return new File([blob], jpgName(file.name), { type: 'image/jpeg' })
 }
 
 interface PhotoEntry {
@@ -72,8 +104,13 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
         if (isHeic) {
           try {
             file = await heicToJpeg(original)
-          } catch {
-            throw new Error('Could not convert this HEIC photo — please export it as JPG and retry.')
+          } catch (err) {
+            const why = err instanceof Error ? err.message : 'unknown error'
+            throw new Error(
+              `Couldn't read this HEIC (${why}). Easiest fix: on iPhone set ` +
+              `Settings → Camera → Formats → "Most Compatible" (shoots JPG), or ` +
+              `share/export the photo as JPG and upload that.`,
+            )
           }
         }
         // Now we have a viewable image (or PDF) — set the preview.
