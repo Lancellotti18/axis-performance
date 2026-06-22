@@ -200,18 +200,19 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
     <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">Auto-detect facets</h3>
+          <h3 className="text-sm font-semibold text-slate-100">Auto-detect roof</h3>
           <p className="text-xs text-slate-400">
-            AI proposes roof facet polygons from the satellite tile.
-            <strong> Accept each one individually</strong> — accepted polygons drop into the editor
-            where you can drag vertices to perfect them.
+            One click combines <strong>Google Solar</strong> (measured pitch + planes) with
+            <strong> AI tracing</strong> (refined shapes). Solar-confirmed planes are marked ✓;
+            unconfirmed guesses are flagged. <strong>Accept each one individually</strong> — accepted
+            polygons drop into the editor where you can drag vertices to perfect them.
           </p>
         </div>
         <button
           onClick={runDetect}
           disabled={loading}
           className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
-        >{loading ? 'Detecting…' : suggestions.length > 0 ? 'Re-detect' : 'Auto-detect facets'}</button>
+        >{loading ? 'Detecting…' : suggestions.length > 0 ? 'Re-detect' : 'Auto-detect roof'}</button>
       </div>
 
       {/* Loading state with elapsed timer + cold-start hint */}

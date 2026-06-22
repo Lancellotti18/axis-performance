@@ -21,7 +21,6 @@ import { api } from '@/lib/api'
 import type { Facet } from './RoofFacetEditor'
 
 type Solar = Awaited<ReturnType<typeof api.roofing.v2.getSolar>>
-type Segment = NonNullable<Solar['segments']>[number]
 
 interface Props {
   runId: string
@@ -100,25 +99,6 @@ export default function SolarAssistPanel({
     toast.success('Added the building outline — split it into roof planes and set pitch (a gable photo gives pitch)')
   }, [centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel, existingFacetCount, onAddFacets])
 
-  const addAll = useCallback((segments: Segment[]) => {
-    const facets: Facet[] = segments.map((s, i) => {
-      const { sw, ne } = s.bbox
-      const nw = geoToFrac(ne.lat, sw.lng, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel)
-      const neF = geoToFrac(ne.lat, ne.lng, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel)
-      const seF = geoToFrac(sw.lat, ne.lng, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel)
-      const swF = geoToFrac(sw.lat, sw.lng, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel)
-      return {
-        label: FACET_LABELS[existingFacetCount + i] || `F${existingFacetCount + i + 1}`,
-        polygon: [nw, neF, seF, swF],
-        pitch: s.pitch || '6/12',
-        confidence: 0.7,
-        userConfirmed: false,
-      }
-    })
-    onAddFacets(facets)
-    toast.success(`Added ${facets.length} roof plane${facets.length === 1 ? '' : 's'} — refine the shapes, pitch is pre-filled`)
-  }, [centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel, existingFacetCount, onAddFacets])
-
   if (loading) {
     return (
       <section className="rounded-lg border border-white/10 bg-slate-900/40 p-3 text-xs text-slate-400">
@@ -161,22 +141,14 @@ export default function SolarAssistPanel({
   const segs = data.segments || []
   return (
     <section className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-4 text-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-semibold text-emerald-200">Google Solar roof data</h3>
-          <p className="text-xs text-slate-400">
-            Google pre-segmented this roof into <strong>{data.segment_count}</strong> plane{data.segment_count === 1 ? '' : 's'}
-            {data.whole_roof_area_sqft ? <> · ~{Math.round(data.whole_roof_area_sqft).toLocaleString()} ft² total</> : null}
-            {data.imagery_quality ? <> · {data.imagery_quality.toLowerCase()} quality</> : null}.
-            Pitch is <strong>measured</strong>, not guessed.
-          </p>
-        </div>
-        {segs.length > 0 && (
-          <button
-            onClick={() => addAll(segs)}
-            className="shrink-0 rounded bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
-          >Add {segs.length} as facets</button>
-        )}
+      <div>
+        <h3 className="text-sm font-semibold text-emerald-200">Google Solar roof data ✓</h3>
+        <p className="text-xs text-slate-400">
+          Google pre-segmented this roof into <strong>{data.segment_count}</strong> plane{data.segment_count === 1 ? '' : 's'}
+          {data.whole_roof_area_sqft ? <> · ~{Math.round(data.whole_roof_area_sqft).toLocaleString()} ft² total</> : null}
+          {data.imagery_quality ? <> · {data.imagery_quality.toLowerCase()} quality</> : null}.
+          Pitch is <strong>measured</strong>, not guessed — these planes are folded in automatically when you click <strong>Auto-detect roof</strong> below.
+        </p>
       </div>
 
       {segs.length > 0 && (
@@ -188,9 +160,6 @@ export default function SolarAssistPanel({
           ))}
         </ul>
       )}
-      <div className="mt-2 text-[10px] text-slate-500">
-        Added planes are rectangles from Google&apos;s bounding boxes — drag the vertices to match the exact roof shape. Pitch + direction are already correct.
-      </div>
     </section>
   )
 }

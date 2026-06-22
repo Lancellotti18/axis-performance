@@ -130,7 +130,7 @@ async def list_examples(
             raise HTTPException(status_code=422, detail="Unknown quality_tier.")
         q = q.eq("quality_tier", quality_tier)
     if capture_source:
-        if capture_source not in ("organic", "labeling_mode", "ai_corrected"):
+        if capture_source not in ("organic", "labeling_mode", "ai_corrected", "ai_rejected"):
             raise HTTPException(status_code=422, detail="Unknown capture_source.")
         q = q.eq("capture_source", capture_source)
     q = q.range(offset, offset + limit - 1)
@@ -321,6 +321,10 @@ async def export_coco(
         "expert_verified": ("expert_verified",),
     }[min_quality]
     q = q.in_("quality_tier", list(tiers_allowed))
+    # ai_rejected rows are NEGATIVES (a human said "not a roof plane") — they must
+    # NEVER enter the COCO positives, or the model learns the driveway IS a roof.
+    # They're emitted separately below as axis_hard_negatives.
+    q = q.neq("capture_source", "ai_rejected")
     q = q.limit(limit)
     res = q.execute()
     rows = res.data or []
@@ -401,6 +405,45 @@ async def export_coco(
             "axis_quality_tier": row.get("quality_tier"),
         })
 
+    # Hard negatives: AI polygons a contractor REJECTED ("not a roof plane").
+    # Emitted under a non-standard key so a training run can penalize predictions
+    # there (or simply review them) without polluting the positive annotations.
+    hard_negatives: list[dict] = []
+    if task_type == "roof_facet_polygon":
+        neg_rows = (
+            db.table("training_examples").select("*")
+            .eq("task_type", task_type)
+            .eq("capture_source", "ai_rejected")
+            .limit(limit).execute().data or []
+        )
+        for row in neg_rows:
+            img_url = row.get("image_url")
+            poly = (row.get("annotation") or {}).get("polygon")
+            if not img_url or not poly or len(poly) < 3:
+                continue
+            if img_url not in seen_image_ids:
+                seen_image_ids[img_url] = len(images) + 1
+                images.append({
+                    "id": seen_image_ids[img_url],
+                    "file_name": img_url.split("/")[-1] or f"img_{seen_image_ids[img_url]}.jpg",
+                    "axis_image_url": img_url,
+                    "width": int(row.get("image_width_px") or 2048),
+                    "height": int(row.get("image_height_px") or 1366),
+                })
+            try:
+                seg, bbox, area = _polygon_to_coco_segmentation(
+                    poly, int(row.get("image_width_px") or 2048),
+                    int(row.get("image_height_px") or 1366), True)
+            except Exception:
+                continue
+            hard_negatives.append({
+                "image_id": seen_image_ids[img_url],
+                "segmentation": [seg],
+                "bbox": bbox,
+                "area": round(area, 2),
+                "axis_example_id": row.get("id"),
+            })
+
     coco: dict[str, Any] = {
         "info": {
             "description": f"Axis Performance training set — {task_type}",
@@ -412,11 +455,13 @@ async def export_coco(
             "min_quality_tier": min_quality,
             "example_count": len(annotations),
             "image_count": len(images),
+            "hard_negative_count": len(hard_negatives),
         },
         "licenses": [{"id": 1, "name": "Axis Performance Proprietary", "url": ""}],
         "images": images,
         "categories": COCO_CATEGORIES.get(task_type, []),
         "annotations": annotations,
+        "axis_hard_negatives": hard_negatives,
     }
 
     body = json.dumps(coco, separators=(",", ":")).encode("utf-8")
