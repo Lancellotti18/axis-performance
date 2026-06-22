@@ -154,6 +154,22 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
     }
   }, [runId, onChimneyAdded])
 
+  const addSkylight = useCallback(async (count: number) => {
+    try {
+      for (let i = 0; i < Math.max(1, count); i++) {
+        await api.roofing.v2.addPenetration(runId, {
+          type: 'skylight', count: 1, width_in: 24, height_in: 36,
+          ai_suggested: true, user_confirmed: true,
+          notes: 'Added from ground-photo analysis',
+        })
+      }
+      toast.success(`Added ${Math.max(1, count)} skylight — re-run flashing to include it`)
+      onChimneyAdded?.()   // generic "penetration added — refresh flashing" hook
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not add skylight')
+    }
+  }, [runId, onChimneyAdded])
+
   return (
     <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
       <div className="flex items-start justify-between gap-2">
@@ -218,7 +234,7 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Page {r.page}</div>
                       )}
                       {r.findings
-                        ? <FindingsView f={r.findings} onApplyPitch={applyPitch} onAddChimney={addChimney} />
+                        ? <FindingsView f={r.findings} onApplyPitch={applyPitch} onAddChimney={addChimney} onAddSkylight={addSkylight} />
                         : <div className="text-[11px] text-amber-400">{r.message || 'No usable findings'}</div>}
                     </div>
                   ))}
@@ -262,8 +278,8 @@ function PhotoGuide() {
 }
 
 function FindingsView({
-  f, onApplyPitch, onAddChimney,
-}: { f: Findings; onApplyPitch: (p: string) => void; onAddChimney: (n: number) => void }) {
+  f, onApplyPitch, onAddChimney, onAddSkylight,
+}: { f: Findings; onApplyPitch: (p: string) => void; onAddChimney: (n: number) => void; onAddSkylight: (n: number) => void }) {
   const confColor = f.pitch_confidence === 'high' ? 'text-emerald-300' : f.pitch_confidence === 'medium' ? 'text-amber-300' : 'text-rose-300'
   return (
     <div className="mt-1 space-y-1">
@@ -278,15 +294,26 @@ function FindingsView({
       </div>
       {f.chimney.present && (
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
-          <span>Chimney ×{f.chimney.count || 1} · {f.chimney.height} · {f.chimney.material}</span>
+          <span>🧱 Chimney ×{f.chimney.count || 1} · {f.chimney.height} · {f.chimney.material} <span className="text-slate-500">→ chimney + cricket flashing</span></span>
           <button onClick={() => onAddChimney(f.chimney.count || 1)}
             className="rounded bg-purple-700 px-2 py-0.5 text-[10px] text-white hover:bg-purple-600">Add chimney</button>
         </div>
       )}
+      {f.skylights > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+          <span>🔲 Skylight ×{f.skylights} <span className="text-slate-500">→ skylight flashing kit</span></span>
+          <button onClick={() => onAddSkylight(f.skylights)}
+            className="rounded bg-purple-700 px-2 py-0.5 text-[10px] text-white hover:bg-purple-600">Add skylight</button>
+        </div>
+      )}
+      {f.dormers > 0 && (
+        <div className="rounded bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200/90">
+          🏠 {f.dormers} dormer(s) → needs step flashing. In the editor, label each dormer&apos;s
+          side (&quot;cheek&quot;) edges as <strong>wall intersection</strong> so flashing picks them up.
+        </div>
+      )}
       <div className="text-[10px] text-slate-500">
-        {f.dormers > 0 && `${f.dormers} dormer(s) · `}
         {f.gable_walls_visible > 0 && `${f.gable_walls_visible} gable wall(s) · `}
-        {f.skylights > 0 && `${f.skylights} skylight(s) · `}
         {f.roof_material !== 'unknown' && `${f.roof_material.replace('_', ' ')}${f.roof_color ? ` (${f.roof_color})` : ''} · `}
         {f.stories} stor{f.stories === 1 ? 'y' : 'ies'}
       </div>
