@@ -210,10 +210,13 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
 
     def _run(api_key: str, model: str):
         client = genai.Client(api_key=api_key)
+        cfg_kwargs: dict = {"max_output_tokens": max_tokens}
+        if "2.5" in model:
+            cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
         response = client.models.generate_content(
             model=model,
             contents=full_prompt,
-            config=types.GenerateContentConfig(max_output_tokens=max_tokens),
+            config=types.GenerateContentConfig(**cfg_kwargs),
         )
         return response.text
 
@@ -254,13 +257,21 @@ async def _gemini_vision(
 
     def _run(api_key: str, model: str):
         client = genai.Client(api_key=api_key)
+        cfg_kwargs: dict = {"max_output_tokens": max_tokens}
+        # gemini-2.5 models "think" by default, billed against the SAME output
+        # budget — on a long prompt that can consume the entire budget and return
+        # EMPTY text (the "did not return structured data" failure). These are
+        # bounded JSON-extraction tasks, so disable thinking and let every token
+        # go to the answer. (2.0 models have no thinking config — leave them be.)
+        if "2.5" in model:
+            cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
         response = client.models.generate_content(
             model=model,
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=media_type),
                 full_prompt,
             ],
-            config=types.GenerateContentConfig(max_output_tokens=max_tokens),
+            config=types.GenerateContentConfig(**cfg_kwargs),
         )
         return response.text
 

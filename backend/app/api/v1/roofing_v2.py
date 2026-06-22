@@ -206,6 +206,8 @@ def _enhance_for_vision(img_bytes: bytes, media_type: str) -> tuple[bytes, str]:
 
         im = Image.open(_io.BytesIO(img_bytes))
         im = im.convert("RGB")
+        if max(im.size) > 2048:        # @2x tiles can be 4096px — lighten the payload
+            im.thumbnail((2048, 2048))
         im = ImageOps.autocontrast(im, cutoff=1)        # percentile contrast stretch
         im = ImageEnhance.Contrast(im).enhance(1.25)
         im = ImageEnhance.Sharpness(im).enhance(1.8)     # crisper edges
@@ -1330,7 +1332,7 @@ suggestions and trust your high-confidence ones.
     vision_bytes, vision_mt = _enhance_for_vision(img_bytes, mt)
 
     try:
-        text = await llm_vision(vision_bytes, vision_mt, prompt, max_tokens=1500)
+        text = await llm_vision(vision_bytes, vision_mt, prompt, max_tokens=2048)
         s = (text or "").strip()
         s = _re.sub(r"^```(?:json)?\s*", "", s, flags=_re.MULTILINE)
         s = _re.sub(r"\s*```\s*$", "", s)
