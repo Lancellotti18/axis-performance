@@ -112,11 +112,11 @@ function Capability({
       initial={{ opacity: 0, y: 30 }}
       animate={inView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      className="relative rounded-2xl p-7 md:p-9 backdrop-blur-xl group hover:bg-white/[0.04] transition-colors"
+      className="group relative rounded-3xl p-8 md:p-10 backdrop-blur-xl transition-transform duration-300 hover:-translate-y-1"
       style={{
-        background: 'linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
+        background: 'linear-gradient(145deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012))',
+        border: '1px solid rgba(255,255,255,0.10)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 20px 50px -28px rgba(0,0,0,0.55)',
       }}
     >
       <div
@@ -124,10 +124,10 @@ function Capability({
       >
         {num}
       </div>
-      <h3 className="text-xl md:text-2xl font-semibold text-white mb-3 tracking-tight">
+      <h3 className="text-2xl md:text-[26px] font-semibold text-white mb-3.5 tracking-tight leading-tight">
         {title}
       </h3>
-      <p className="text-white/55 text-sm md:text-[15px] leading-relaxed font-light">
+      <p className="text-white/60 text-[15px] md:text-base leading-relaxed font-light">
         {body}
       </p>
       {/* subtle hover glow */}
@@ -140,6 +140,61 @@ function Capability({
     </motion.div>
   )
 }
+
+// ─── Roofing feature card (large, premium) ─────────────────────────────────
+function RoofCard({
+  icon, title, body, delay = 0,
+}: { icon: React.ReactNode; title: string; body: string; delay?: number }) {
+  const ref = useRef(null)
+  const inView = useInView(ref, { once: true, margin: '-80px' })
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 32 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.7, delay, ease: [0.22, 1, 0.36, 1] }}
+      className="group relative overflow-hidden rounded-3xl p-8 md:p-10 backdrop-blur-xl transition-transform duration-300 hover:-translate-y-1.5"
+      style={{
+        background: 'linear-gradient(150deg, rgba(255,255,255,0.055), rgba(255,255,255,0.015))',
+        border: '1px solid rgba(255,255,255,0.10)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 24px 60px -28px rgba(0,0,0,0.6)',
+      }}
+    >
+      <div
+        className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl text-blue-200"
+        style={{
+          background: 'linear-gradient(160deg, rgba(59,130,246,0.30), rgba(59,130,246,0.05))',
+          border: '1px solid rgba(96,165,250,0.32)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18)',
+        }}
+      >
+        {icon}
+      </div>
+      <h3 className="mb-3 text-2xl md:text-[27px] font-semibold tracking-tight text-white leading-tight">
+        {title}
+      </h3>
+      <p className="text-[15px] md:text-base leading-relaxed text-white/60 font-light">
+        {body}
+      </p>
+      <div
+        className="pointer-events-none absolute -inset-px rounded-3xl opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+        style={{ background: 'radial-gradient(ellipse at top left, rgba(96,165,250,0.14), transparent 62%)' }}
+      />
+    </motion.div>
+  )
+}
+
+// minimal, consistent line icons (24px, currentColor)
+const ic = (d: React.ReactNode) => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+)
+const ICON_SATELLITE = ic(<><circle cx="12" cy="12" r="3.2" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" /></>)
+const ICON_AI = ic(<><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5 10.1 7.6z" /><path d="M18.5 3.5l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5L16.4 5.6l1.5-.6z" /></>)
+const ICON_CAMERA = ic(<><path d="M3 8.5A2 2 0 015 6.5h1.6L8 4.5h8l1.4 2H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><circle cx="12" cy="12.5" r="3.3" /></>)
+const ICON_SHIELD = ic(<><path d="M12 3l7 3v5c0 4.4-3 7.7-7 9-4-1.3-7-4.6-7-9V6z" /><path d="M12 8.5l-1.5 3.5h3L12 15.5" /></>)
+const ICON_BOX = ic(<><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></>)
+const ICON_DOC = ic(<><path d="M14 3H7a1 1 0 00-1 1v16a1 1 0 001 1h11a1 1 0 001-1V8z" /><path d="M14 3v5h5M9 13h6M9 17h5" /></>)
 
 // ─── Nav (glassmorphism, dark) ──────────────────────────────────────────────
 function Nav() {
@@ -347,6 +402,98 @@ export default function HomePage() {
         </div>
       </HeroImageScene>
 
+      {/* ─── Roofing intelligence showcase (featured) ────────────────────── */}
+      <section className="relative overflow-hidden px-6 py-32 md:px-10 md:py-44">
+        {/* ambient brand glow */}
+        <div className="pointer-events-none absolute inset-0">
+          <div
+            className="absolute left-1/2 top-10 h-[560px] w-[900px] -translate-x-1/2 rounded-full opacity-[0.18] blur-3xl"
+            style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.45), transparent 60%)' }}
+          />
+        </div>
+
+        <div className="relative mx-auto max-w-6xl">
+          <FadeIn>
+            <div className="mb-16 text-center md:mb-20">
+              <div className="mb-5 inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-blue-300/90">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
+                Roofing Intelligence
+              </div>
+              <h2 className="mx-auto max-w-3xl font-display text-4xl font-bold leading-[1.05] tracking-tight text-white md:text-6xl">
+                Measure any roof in minutes —
+                <br />
+                <span
+                  className="bg-clip-text text-transparent"
+                  style={{ backgroundImage: 'linear-gradient(180deg, #BFE6FF 0%, #4A90E2 100%)' }}
+                >
+                  not a day on a ladder.
+                </span>
+              </h2>
+              <p className="mx-auto mt-6 max-w-2xl text-base font-light leading-relaxed text-white/60 md:text-lg">
+                Axis turns aerial imagery and a few ground photos into a complete, orderable
+                roofing estimate — measurements, materials, flashing, and a client-ready report.
+                No drone. No per-report invoice.
+              </p>
+            </div>
+          </FadeIn>
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <RoofCard
+              icon={ICON_SATELLITE}
+              delay={0.02}
+              title="Satellite roof measurement"
+              body="Trace any roof on high-resolution aerial imagery and get square footage, pitch, ridges, hips, valleys, eaves, and rakes — accurate to the foot, without ever leaving the truck."
+            />
+            <RoofCard
+              icon={ICON_AI}
+              delay={0.06}
+              title="AI facet & edge detection"
+              body="Vision AI proposes the roof planes and edge types for you to confirm — and where Google Solar has coverage, it pulls in measured pitch and plane geometry automatically."
+            />
+            <RoofCard
+              icon={ICON_CAMERA}
+              delay={0.10}
+              title="Ground-photo intelligence"
+              body="Snap a few shots from the driveway. AI reads what the satellite can't — true pitch from a gable end, chimneys, dormers, skylights, and roofing material — straight from your phone."
+            />
+            <RoofCard
+              icon={ICON_SHIELD}
+              delay={0.14}
+              title="Flashing intelligence"
+              body="Step, counter, apron, valley, headwall, and chimney flashing are derived from the confirmed geometry — quantified in linear feet and priced as orderable SKUs, nothing missed."
+            />
+            <RoofCard
+              icon={ICON_BOX}
+              delay={0.18}
+              title="Instant material takeoff"
+              body="Shingles, underlayment, ridge cap, starter, drip edge, ice-and-water — quantified with the right waste factors and ready to drop straight onto a supplier order."
+            />
+            <RoofCard
+              icon={ICON_DOC}
+              delay={0.22}
+              title="Client-ready property reports"
+              body="Deliver a branded, EagleView-class PDF — facet diagrams, full measurements, materials, and confidence — to your customer in minutes, for a fraction of the cost."
+            />
+          </div>
+
+          <FadeIn delay={0.15}>
+            <div className="mt-14 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+              <Link
+                href="/register"
+                className="rounded-xl px-8 py-4 text-sm font-semibold text-white transition-all hover:scale-[1.02]"
+                style={{
+                  background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)',
+                  boxShadow: '0 8px 28px rgba(59,130,246,0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
+                }}
+              >
+                Measure your first roof free
+              </Link>
+              <span className="text-sm font-light text-white/45">No credit card · ready in under two minutes</span>
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
       {/* ─── Capabilities (below the cinematic hero) ─────────────────────── */}
       <section className="relative px-6 md:px-10 py-32 md:py-40">
         {/* Faint grid background */}
@@ -374,7 +521,7 @@ export default function HomePage() {
             </div>
           </FadeIn>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Capability
               num="01"
               title="Blueprint analysis"
