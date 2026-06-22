@@ -839,6 +839,7 @@ export const api = {
             polygon: [number, number][]
             confidence: number
             predicted_pitch: string
+            pitch_source?: string
             facet_type?: string
             note: string
           }>

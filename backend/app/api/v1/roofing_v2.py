@@ -1005,6 +1005,30 @@ def _parse_ground_findings(text: str) -> tuple[Optional[dict], str]:
     return findings, "Analyzed. Review and apply the findings that look right."
 
 
+_PITCH_CONF_RANK = {"high": 3, "medium": 2, "low": 1}
+
+
+def _consolidate_ground_findings(results: list[dict]) -> Optional[dict]:
+    """Pick the single best findings object across all analyzed pages to persist
+    on the run. 'Best' = a non-empty roof_pitch with the highest pitch_confidence
+    (a gable-end read beats a vague slope read). Returns None if no page produced
+    a usable pitch — we only persist something the pitch resolver can actually
+    use downstream."""
+    best = None
+    best_rank = 0
+    for r in results:
+        fnd = r.get("findings")
+        if not fnd:
+            continue
+        pitch = str(fnd.get("roof_pitch") or "").strip()
+        if not pitch:
+            continue
+        rank = _PITCH_CONF_RANK.get(fnd.get("pitch_confidence"), 0)
+        if rank > best_rank:
+            best, best_rank = fnd, rank
+    return best
+
+
 async def _analyze_ground_image(img_bytes: bytes, mt: str) -> tuple[Optional[dict], str]:
     """Run one image through the vision model + parser."""
     from app.services.llm import llm_vision
@@ -1075,6 +1099,19 @@ async def analyze_ground_photo(
 
     # `findings` kept as a convenience alias for the first usable page.
     first = next((r["findings"] for r in results if r["findings"]), None)
+
+    # Persist the best pitch read on the run so facet detection (and flashing /
+    # materials later) can seed from it instead of defaulting to 6/12. Best-effort
+    # — a storage hiccup must never fail the analysis the contractor just ran.
+    consolidated = _consolidate_ground_findings(results)
+    if consolidated is not None:
+        try:
+            get_supabase().table("roof_measurement_runs").update(
+                {"ground_findings": consolidated}
+            ).eq("id", run_id).execute()
+        except Exception as e:
+            logger.warning("could not persist ground_findings on run %s: %s", run_id, e)
+
     return {"results": results, "findings": first, "message": message}
 
 
@@ -1325,6 +1362,25 @@ def _center_crop(
         return img_bytes, (0.0, 0.0, 1.0, 1.0)
 
 
+def _resolve_pitch(ground: Optional[dict], ai_pitch) -> tuple[str, str]:
+    """Pick the best pitch + its provenance, killing the silent 6/12 default.
+
+    Precedence: a confident GROUND-PHOTO read (measured off a gable end) beats
+    the satellite AI's foreshortened guess, which beats the bare default. The
+    AI's own '6/12' is treated as 'default' because the detection prompt returns
+    6/12 precisely when it is UNSURE — so it must be flagged for the contractor,
+    not trusted. Returns (pitch_string, source) where source is one of
+    'ground_photo' | 'ai_satellite' | 'default'."""
+    if ground:
+        gp = str(ground.get("roof_pitch") or "").strip()
+        if gp and ground.get("pitch_confidence") in ("high", "medium"):
+            return gp, "ground_photo"
+    ai = str(ai_pitch or "").strip()
+    if ai and ai != "6/12":
+        return ai, "ai_satellite"
+    return "6/12", "default"
+
+
 @router.get("/runs/{run_id}/facets/suggest")
 async def suggest_facets(
     run_id: str, user: dict = Depends(require_user),
@@ -1338,13 +1394,14 @@ async def suggest_facets(
     """
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
-        "satellite_image_url, satellite_zoom"
+        "satellite_image_url, satellite_zoom, ground_findings"
     ).eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
     img_url = run.data.get("satellite_image_url")
     if not img_url:
         return {"facets": [], "message": "No satellite image attached to this run."}
+    ground_findings = run.data.get("ground_findings") or None
 
     from app.services.llm import llm_vision
     import httpx, json, re as _re
@@ -1550,10 +1607,13 @@ suggestions and trust your high-confidence ones.
             dropped_strips += 1
             continue
 
+        # Seed pitch from the best available source instead of blindly defaulting.
+        pitch, pitch_source = _resolve_pitch(ground_findings, f.get("predicted_pitch"))
         cleaned.append({
             "polygon": valid,
             "confidence": geo.normalize_confidence(f.get("confidence")),
-            "predicted_pitch": str(f.get("predicted_pitch") or "6/12"),
+            "predicted_pitch": pitch,
+            "pitch_source": pitch_source,
             "facet_type": str(f.get("facet_type") or "other").strip().lower()[:20],
             "note": str(f.get("note") or "")[:250],
             "ai_suggested": True,

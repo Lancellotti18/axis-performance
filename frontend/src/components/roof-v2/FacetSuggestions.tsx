@@ -27,8 +27,19 @@ interface Suggestion {
   polygon: Pt[]
   confidence: number
   predicted_pitch: string
+  pitch_source?: string
   facet_type?: string
   note: string
+}
+
+// Show WHERE the pitch came from so a defaulted 6/12 (the silent area-killer)
+// looks different from a real ground-photo read.
+function pitchSourceMeta(src?: string): { label: string; color: string } {
+  switch (src) {
+    case 'ground_photo': return { label: 'from ground photo ✓', color: 'text-emerald-400' }
+    case 'ai_satellite': return { label: 'AI from satellite — verify', color: 'text-slate-400' }
+    default: return { label: 'default — set this!', color: 'text-amber-400' }
+  }
 }
 
 // Turn the backend's facet_type code into a human label + emoji so the
@@ -306,7 +317,10 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                       <span className="text-slate-500">Why: </span>{s.note || '—'}
                     </div>
                     <div className="text-[10px] text-slate-500">
-                      Pitch guess: {s.predicted_pitch || '6/12'} · {s.polygon.length} vertices
+                      Pitch: {s.predicted_pitch || '6/12'}{' '}
+                      <span className={pitchSourceMeta(s.pitch_source).color}>
+                        ({pitchSourceMeta(s.pitch_source).label})
+                      </span>{' '}· {s.polygon.length} vertices
                     </div>
                     <div className="mt-1 flex gap-2">
                       <button
@@ -498,7 +512,10 @@ function ZoomModal({
               <span className="text-slate-500">Why: </span>{suggestion.note || '—'}
             </div>
             <div className="text-[10px] text-slate-500">
-              Pitch guess: {suggestion.predicted_pitch || '6/12'} · {suggestion.polygon.length} vertices
+              Pitch: {suggestion.predicted_pitch || '6/12'}{' '}
+              <span className={pitchSourceMeta(suggestion.pitch_source).color}>
+                ({pitchSourceMeta(suggestion.pitch_source).label})
+              </span>{' '}· {suggestion.polygon.length} vertices
             </div>
           </div>
           <div className="flex gap-2">
