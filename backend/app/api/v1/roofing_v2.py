@@ -1236,7 +1236,17 @@ async def set_subject_point(
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
     point = {"x": round(req.x, 4), "y": round(req.y, 4)}
-    db.table("roof_measurement_runs").update({"subject_point": point}).eq("id", run_id).execute()
+    try:
+        db.table("roof_measurement_runs").update({"subject_point": point}).eq("id", run_id).execute()
+    except Exception as e:
+        msg = str(e)
+        if "subject_point" in msg or "column" in msg.lower() or "schema cache" in msg.lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Run the migration 20260625_run_subject_point.sql (adds the subject_point column) before saving your house location.",
+            )
+        logger.warning("set_subject_point failed: %s", e)
+        raise HTTPException(status_code=500, detail="Could not save the house location.")
     return {"ok": True, "subject_point": point}
 
 
