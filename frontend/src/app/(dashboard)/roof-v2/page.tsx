@@ -917,6 +917,16 @@ export default function RoofV2Page() {
       {/* SIDING step */}
       {step === 'siding' && projectId && (
         <section className="space-y-4">
+          <div className="rounded-lg border border-white/10 bg-slate-900/50 p-3 text-xs text-slate-300">
+            <span className="mr-2 rounded-full bg-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-200">Optional</span>
+            <strong>Siding</strong> measures exterior wall square footage from elevation photos — for
+            quoting <strong>siding replacement, house-wrap, or exterior paint</strong>, or insurance/exterior
+            scopes. Skip it if this job is roof-only.
+            <button
+              onClick={() => setStep('report')}
+              className="ml-2 underline hover:text-white"
+            >Skip to report →</button>
+          </div>
           <SidingMeasurementTool projectId={projectId} />
           <button
             onClick={() => setStep('report')}
