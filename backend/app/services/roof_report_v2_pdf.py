@@ -83,6 +83,97 @@ def _currency(value: float | int | None) -> str:
     return f"${float(value):,.2f}"
 
 
+def _load_font(bold: bool = False, size: int = 30):
+    from PIL import ImageFont
+    for p in (
+        f"/usr/share/fonts/truetype/dejavu/DejaVuSans{'-Bold' if bold else ''}.ttf",
+        f"/usr/share/fonts/dejavu/DejaVuSans{'-Bold' if bold else ''}.ttf",
+    ):
+        try:
+            return ImageFont.truetype(p, size)
+        except Exception:
+            continue
+    try:
+        return ImageFont.load_default()
+    except Exception:
+        return None
+
+
+def _centered_lines(draw, cx, cy, lines, font, fontb) -> None:
+    sized = []
+    for i, txt in enumerate(lines):
+        fnt = fontb if i == 0 else font
+        try:
+            b = draw.textbbox((0, 0), txt, font=fnt)
+            w, h = b[2] - b[0], b[3] - b[1]
+        except Exception:
+            w, h = len(txt) * 10, 18
+        sized.append((txt, fnt, w, h))
+    total = sum(h for *_, h in sized) + 5 * (len(sized) - 1)
+    y = cy - total / 2
+    for txt, fnt, w, h in sized:
+        # white halo for legibility over fills
+        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            draw.text((cx - w / 2 + dx, y + dy), txt, fill=(255, 255, 255), font=fnt)
+        draw.text((cx - w / 2, y), txt, fill=(17, 24, 39), font=fnt)
+        y += h + 5
+
+
+def _render_facet_diagram(facets: list[dict]) -> bytes | None:
+    """Draw the traced facets to scale on a clean canvas, labeled with each
+    facet's area + pitch — the EagleView/Hover-style roof diagram, built ONLY
+    from real traced polygons. Returns PNG bytes or None."""
+    try:
+        from PIL import Image, ImageDraw
+
+        polys = [(i, f) for i, f in enumerate(facets)
+                 if f.get("polygon") and len(f.get("polygon") or []) >= 3]
+        if not polys:
+            return None
+        W, H = 1700, 1150
+        img = Image.new("RGB", (W, H), (255, 255, 255))
+        d = ImageDraw.Draw(img, "RGBA")
+
+        xs = [p[0] for _, f in polys for p in f["polygon"]]
+        ys = [p[1] for _, f in polys for p in f["polygon"]]
+        minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+        spanx, spany = (maxx - minx) or 1e-6, (maxy - miny) or 1e-6
+        pad = 0.08
+        minx -= spanx * pad; maxx += spanx * pad
+        miny -= spany * pad; maxy += spany * pad
+        spanx, spany = maxx - minx, maxy - miny
+        margin = 70
+        scale = min((W - 2 * margin) / spanx, (H - 2 * margin) / spany)
+        offx = (W - spanx * scale) / 2 - minx * scale
+        offy = (H - spany * scale) / 2 - miny * scale
+
+        def topx(p):
+            return (offx + p[0] * scale, offy + p[1] * scale)
+
+        palette = [(59, 130, 246), (168, 85, 247), (34, 197, 94), (245, 158, 11),
+                   (236, 72, 153), (6, 182, 212), (132, 204, 22)]
+        font, fontb = _load_font(False, 30), _load_font(True, 34)
+
+        for idx, (i, f) in enumerate(polys):
+            pts = [topx(p) for p in f["polygon"]]
+            c = palette[idx % len(palette)]
+            d.polygon(pts, fill=(c[0], c[1], c[2], 55))
+            d.line(pts + [pts[0]], fill=(c[0], c[1], c[2], 255), width=4)
+            cx = sum(x for x, _ in pts) / len(pts)
+            cy = sum(y for _, y in pts) / len(pts)
+            label = f.get("facet_label") or f"RF-{i + 1}"
+            area = f.get("true_area_sqft") or f.get("plan_area_sqft") or 0
+            pitch = f.get("pitch") or ""
+            _centered_lines(d, cx, cy, [str(label), f"{round(float(area))} ft²", str(pitch)], font, fontb)
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception as e:
+        logger.warning("facet diagram render failed: %s", e)
+        return None
+
+
 def _section_header(text: str, n: int, styles: dict) -> Paragraph:
     return Paragraph(f"<font color='#1e40af'><b>Section {n}.</b></font> &nbsp; {text}", styles["h2"])
 
@@ -190,6 +281,16 @@ def _section_1_executive(
 
 def _section_2_roof_summary(aggregates: dict, facets: list[dict], styles: dict) -> list:
     flow = [_section_header("Roof Summary", 2, styles)]
+
+    # Roof diagram — facets drawn to scale + labeled (area / pitch).
+    diagram = _render_facet_diagram(facets)
+    if diagram:
+        flow.append(Image(io.BytesIO(diagram), width=7.0 * inch, height=4.73 * inch))
+        flow.append(Paragraph(
+            "Roof facets drawn to scale, labeled with area and pitch. Built from your traced polygons.",
+            styles.get("small") or styles["muted"]))
+        flow.append(Spacer(1, 10))
+
     rows = [
         ["Metric", "Value", "Method"],
         ["Total roof area (true)", _sqft(aggregates.get("total_roof_sqft")),
