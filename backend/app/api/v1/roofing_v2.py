@@ -1416,6 +1416,21 @@ def _crop_to_bbox(
         return img_bytes, (0.0, 0.0, 1.0, 1.0)
 
 
+def _point_in_poly(pt: tuple, poly: list) -> bool:
+    """Ray-casting point-in-polygon (image-fraction coords)."""
+    x, y = pt
+    inside = False
+    n = len(poly)
+    j = n - 1
+    for i in range(n):
+        xi, yi = poly[i][0], poly[i][1]
+        xj, yj = poly[j][0], poly[j][1]
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-12) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
 def _expand_polygon(poly: list, factor: float) -> list:
     """Scale a polygon outward from its centroid (eave/overhang margin)."""
     cx = sum(p[0] for p in poly) / len(poly)
@@ -1954,6 +1969,20 @@ suggestions and trust your high-confidence ones.
         except Exception as e:
             logger.info("footprint mask fetch failed: %s", e)
 
+    # SAFETY: the tile is geocoded on the subject, so the subject building must
+    # sit at/near the image center. If the building outline does NOT cover the
+    # center, it's either mis-registered to the tile or it's a neighbor/shed —
+    # masking to it would black out the real house. Refuse to mask in that case.
+    if building_polys:
+        center_covered = any(
+            _point_in_poly((0.5, 0.5), _expand_polygon(p, 1.30))
+            for p in building_polys if len(p) >= 3
+        )
+        if not center_covered:
+            logger.info("facet mask: %s outline does NOT cover tile center — skipping mask", mask_source)
+            building_polys = []
+            mask_source = f"{mask_source}_off_center→skipped"
+
     if building_polys:
         detect_bytes, crop_win = _mask_and_crop(img_bytes, building_polys, margin=0.15)
     else:
@@ -2115,13 +2144,14 @@ suggestions and trust your high-confidence ones.
         return {
             "facets": [],
             "solar_used": solar_used,
+            "mask_source": mask_source,
             "reason": reason or "The model reported no clearly-distinguishable roof planes.",
             "message": (
                 "AI found no facets on the subject building it was confident about."
                 + drop_suffix
                 + " This usually means the roof is obscured (trees/shadow) or the house "
-                "isn't centered. Try 'Center on house' and re-detect, or trace facets "
-                "manually — the snap-to-edge assist makes it fast."
+                "isn't centered, or trace facets manually — the snap-to-edge assist makes it fast."
+                + f" [detect: {mask_source}]"
             ),
         }
 
@@ -2136,8 +2166,9 @@ suggestions and trust your high-confidence ones.
         "facets": cleaned,
         "solar_used": solar_used,
         "count_check": count_check,
+        "mask_source": mask_source,
         "reason": reason,
-        "message": lead + " Accept each individually and verify pitch + edge labels before measurements are valid.",
+        "message": lead + f" Accept each individually and verify pitch + edge labels before measurements are valid. [detect: {mask_source}]",
     }
 
 
