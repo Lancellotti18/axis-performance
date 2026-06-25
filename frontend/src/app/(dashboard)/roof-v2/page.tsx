@@ -938,9 +938,9 @@ export default function RoofV2Page() {
       {/* REPORT step */}
       {step === 'report' && runId && imagery && (
         <>
-          {/* EagleView-style annotated 2D */}
+          {/* EagleView-style annotated 2D — use the full-res original tile */}
           <AnnotatedRoofView
-            imageUrl={imagery.url ?? ''}
+            imageUrl={imagery.original_url || imagery.url || ''}
             imageWidthPx={imagery.width_px ?? 2048}
             imageHeightPx={imagery.height_px ?? 1366}
             facets={facets}
