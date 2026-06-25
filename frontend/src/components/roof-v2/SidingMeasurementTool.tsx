@@ -272,6 +272,9 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
         </span>
       </div>
 
+      <SidingGuide />
+      {phase !== 'upload' && <SidingStepHint phase={phase} />}
+
       {/* Phase pills */}
       <div className="flex flex-wrap gap-2 text-xs">
         {(['upload', 'scale', 'trace', 'review'] as Phase[]).map((p, i) => {
@@ -476,6 +479,55 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
       )}
 
       {error && <p className="text-xs text-rose-400">{error}</p>}
+    </div>
+  )
+}
+
+/** Upfront playbook so the tool isn't a mystery — what it does, the 4 steps,
+ *  how many photos, and how to shoot them. Mirrors the roof photo playbook. */
+function SidingGuide() {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="rounded-md border border-blue-400/20 bg-blue-500/5">
+      <button onClick={() => setOpen(o => !o)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs">
+        <span className="font-semibold text-blue-200">📐 How siding measurement works — read first</span>
+        <span className="text-slate-400">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="space-y-2.5 border-t border-blue-400/10 px-3 py-2.5 text-[11px] text-slate-300">
+          <p className="text-slate-400">
+            A satellite tile can&apos;t measure walls, so siding is measured from a <strong>straight-on
+            ground photo</strong> of each wall. You give it scale with a known-size object, trace the wall,
+            and it computes the square footage. <strong>Do one wall at a time</strong> and repeat for each side.
+          </p>
+          <ol className="space-y-1.5">
+            <li><strong className="text-white">1 · Upload</strong> a square-on photo of one wall (front, back, left, or right). Keep a <strong>door, garage door, or window fully in frame</strong> — that&apos;s your scale reference.</li>
+            <li><strong className="text-white">2 · Scale</strong> — pick what the reference is (e.g. standard door = 80″), then click its two ends on the photo (top &amp; bottom of the door). This tells the tool how big a pixel is.</li>
+            <li><strong className="text-white">3 · Trace</strong> the siding area — click around the wall; trace <strong>around big windows/garage doors</strong> to leave them out. Drag any point to adjust.</li>
+            <li><strong className="text-white">4 · Review &amp; save</strong> — set the elevation + material, check the ft², and save. Then upload the next wall.</li>
+          </ol>
+          <div className="rounded border border-amber-400/20 bg-amber-500/5 p-2 text-amber-200/90">
+            <strong>For the best accuracy:</strong> stand back and square-on (not at an angle), shoot in daylight,
+            and pick the <em>biggest</em> reference object in frame (a garage door beats a window) — bigger reference = less scale error.
+          </div>
+          <p className="text-slate-500">A typical house = <strong>4 walls = 4 photos</strong>. One-story ranch may only need the visible faces; skip walls with no siding.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** A one-line "you are here" banner for the current phase. */
+function SidingStepHint({ phase }: { phase: Phase }) {
+  const hint =
+    phase === 'scale' ? 'Step 2 of 4 — set the scale: choose your reference object, then click its two ends on the photo.'
+      : phase === 'trace' ? 'Step 3 of 4 — trace the wall: click around the siding; trace around windows/garage to exclude them.'
+      : phase === 'review' ? 'Step 4 of 4 — review & save: set elevation + material, then save and move to the next wall.'
+      : ''
+  if (!hint) return null
+  return (
+    <div className="rounded-md border border-blue-400/20 bg-blue-500/5 px-3 py-1.5 text-[11px] font-medium text-blue-200">
+      {hint}
     </div>
   )
 }
