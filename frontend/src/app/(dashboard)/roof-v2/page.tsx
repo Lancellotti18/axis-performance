@@ -272,7 +272,7 @@ export default function RoofV2Page() {
   // tile centered + zoomed on the roof. One-shot, best-effort — failures just
   // leave the geocoded framing in place. Also exposed as a manual "Center on
   // house" button for when the contractor wants to re-run it.
-  const [autoCentering, setAutoCentering] = useState(false)
+  const [, setAutoCentering] = useState(false)   // kept for background auto-frame; manual button removed
   const autoCenterAttempted = useRef(false)
   const autoCenterOnHouse = useCallback(async (loc: LocationSelected, manual = false) => {
     if (!loc || (loc.lat === 0 && loc.lng === 0)) return
@@ -614,9 +614,11 @@ export default function RoofV2Page() {
             <>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <Stat
-                  label="Zoom (requested 22)"
-                  value={imagery.zoom != null ? `z${imagery.zoom}` : '—'}
-                  color={imagery.zoom === 22 ? 'text-emerald-300' : imagery.zoom && imagery.zoom < 22 ? 'text-amber-300' : undefined}
+                  label="Zoom level"
+                  value={imagery.zoom != null
+                    ? (imagery.zoom >= 22 ? `z${imagery.zoom}` : `z${imagery.zoom} (max here)`)
+                    : '—'}
+                  color={imagery.zoom != null && imagery.zoom >= 22 ? 'text-emerald-300' : imagery.zoom != null && imagery.zoom < 22 ? 'text-amber-300' : undefined}
                 />
                 <Stat label="Status" value={imagery.status} color={
                   imagery.status === 'ok' ? 'text-emerald-300'
@@ -669,31 +671,11 @@ export default function RoofV2Page() {
                 </div>
               )}
 
-              {/* Instant pan/zoom preview — drag, scroll, arrows/WASD. No
-                  refetch per move (that was the lag). The captured ground area
-                  is set by auto-center / the Center-on-house button. */}
+              {/* Instant pan/zoom preview — drag, scroll, arrows/WASD. You pick
+                  the exact roof with "Tap your house" in the next step. */}
               {imagery.url && imagery.status !== 'unavailable' && (
                 <div className="mt-3">
-                  <PannableImage src={imagery.url} alt="satellite tile preview">
-                    {/* Center-on-house (re-fetches a roof-framed tile) */}
-                    <div className="absolute left-2 top-2 flex items-center gap-2">
-                      <button
-                        onClick={() => location && void autoCenterOnHouse(location, true)}
-                        disabled={autoCentering}
-                        title="Use AI to detect the house and re-center + zoom the captured tile on the roof"
-                        className="flex items-center gap-1.5 rounded-md border border-white/20 bg-slate-900/85 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur hover:bg-blue-600 disabled:opacity-50"
-                      >
-                        {autoCentering ? (
-                          <>
-                            <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-transparent" />
-                            Centering…
-                          </>
-                        ) : (
-                          <>🏠 Center on house</>
-                        )}
-                      </button>
-                    </div>
-                  </PannableImage>
+                  <PannableImage src={imagery.url} alt="satellite tile preview" />
                 </div>
               )}
 
@@ -798,9 +780,12 @@ export default function RoofV2Page() {
             <GroundPhotoPanel
               runId={runId}
               onApplyPitch={(pitch) => {
+                if (facets.length === 0) return false
                 const updated = facets.map(f => ({ ...f, pitch }))
                 setFacets(updated)
+                setGeometryStamp(s => s + 1)   // force MeasurementsSummary to recompute
                 void persistGeometry(updated, edges)
+                return true
               }}
               onChimneyAdded={() => setGeometryStamp(s => s + 1)}
             />

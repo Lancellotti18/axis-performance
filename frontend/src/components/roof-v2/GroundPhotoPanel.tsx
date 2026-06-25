@@ -78,8 +78,8 @@ interface PhotoEntry {
 
 interface Props {
   runId: string
-  /** apply a detected pitch to all facets */
-  onApplyPitch?: (pitch: string) => void
+  /** apply a detected pitch to all facets; returns true if any facet was updated */
+  onApplyPitch?: (pitch: string) => boolean
   /** notify the editor a chimney was added (so it can refresh penetrations/flashing) */
   onChimneyAdded?: () => void
 }
@@ -134,8 +134,9 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
 
   const applyPitch = useCallback((pitch: string) => {
     if (!pitch || !onApplyPitch) return
-    onApplyPitch(pitch)
-    toast.success(`Applied ${pitch} pitch to all facets`)
+    const applied = onApplyPitch(pitch)
+    if (applied) toast.success(`Applied ${pitch} pitch to every facet — areas recomputed`)
+    else toast.error('No facets yet — auto-detect or draw your roof first, then apply pitch.')
   }, [onApplyPitch])
 
   const addChimney = useCallback(async (count: number) => {
@@ -314,9 +315,18 @@ function FindingsView({
       <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
         {f.roof_pitch ? (
           <>
-            <span>Pitch <strong className="text-white">{f.roof_pitch}</strong> <span className={confColor}>({f.pitch_confidence})</span></span>
+            <span>
+              Pitch <strong className="text-white">{f.roof_pitch}</strong>{' '}
+              <span
+                className={confColor}
+                title="How sure the AI is about the pitch read — not measured accuracy. A square-on shot of a gable END (the triangular wall) reads 'high'. 'Medium' is usable; verify it or re-shoot the gable straight-on for 'high'."
+              >({f.pitch_confidence})</span>
+            </span>
             <button onClick={() => onApplyPitch(f.roof_pitch)}
               className="rounded bg-emerald-700 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-600">Apply to facets</button>
+            {f.pitch_confidence !== 'high' && (
+              <span className="text-[10px] text-slate-500">↳ for &quot;high&quot;, shoot the gable end square-on</span>
+            )}
           </>
         ) : <span className="text-amber-300/80">No clear roof slope here — for pitch, shoot a <strong>gable end</strong> (the triangular end wall) square-on.</span>}
       </div>

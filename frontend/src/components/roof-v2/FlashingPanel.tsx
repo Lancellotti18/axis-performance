@@ -168,10 +168,22 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
       )}
 
       {ran && !loading && reqs.length === 0 && !error && (
-        <p className="mt-3 text-xs text-slate-500">
-          No flashing conditions yet. Label roof-to-wall edges as <strong>wall_intersection</strong> and add
-          chimneys/skylights in the editor, then re-analyze.
-        </p>
+        <div className="mt-3 rounded-md border border-amber-400/20 bg-amber-500/5 p-3 text-xs text-amber-100/90">
+          <p>
+            <strong>No flashing conditions yet</strong> — flashing is built from what&apos;s on the roof.
+            Add the conditions, then it fills in automatically:
+          </p>
+          <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-slate-300">
+            <li><strong>Chimney / skylight</strong> → upload a ground photo and tap <em>Add</em> (step ①) — flows in automatically.</li>
+            <li><strong>Roof meets a taller wall, or a dormer</strong> → label that roof edge as <em>wall intersection</em>.</li>
+          </ul>
+          <button
+            onClick={() => {
+              document.getElementById('roof-to-wall-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }}
+            className="mt-2 rounded bg-amber-600/90 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+          >Label roof-to-wall edges →</button>
+        </div>
       )}
     </section>
   )

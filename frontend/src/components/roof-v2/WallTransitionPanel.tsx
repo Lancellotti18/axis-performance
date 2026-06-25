@@ -241,7 +241,7 @@ export default function WallTransitionPanel({
   }, [matches, edges, onApplyEdges])
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
+    <section id="roof-to-wall-panel" className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm scroll-mt-16">
       <div>
         <h3 className="text-sm font-semibold text-slate-100">Roof-to-wall transitions</h3>
         <p className="text-xs text-slate-400">
