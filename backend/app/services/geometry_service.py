@@ -460,6 +460,76 @@ def _segments_overlap(
     return (close(a1, b1) and close(a2, b2)) or (close(a1, b2) and close(a2, b1))
 
 
+def _interior_angle_deg(prev, v, nxt) -> float:
+    ax, ay = prev[0] - v[0], prev[1] - v[1]
+    bx, by = nxt[0] - v[0], nxt[1] - v[1]
+    da, db = math.hypot(ax, ay), math.hypot(bx, by)
+    if da == 0 or db == 0:
+        return 0.0
+    cosv = max(-1.0, min(1.0, (ax * bx + ay * by) / (da * db)))
+    return math.degrees(math.acos(cosv))
+
+
+def _angle_sum_at(facets: list[dict], pt, eps: float = 0.012) -> float:
+    """Sum of the interior angles of every facet that touches `pt`. A convex roof
+    corner sums to <~180°; a CONCAVE (inside) corner — where the roof wraps around,
+    e.g. an L/T-shaped roof's valley — sums to >~200°. Rotation-invariant."""
+    total = 0.0
+    for f in facets:
+        poly = f.get("polygon") or []
+        n = len(poly)
+        for k in range(n):
+            v = poly[k]
+            if abs(v[0] - pt[0]) <= eps and abs(v[1] - pt[1]) <= eps:
+                total += _interior_angle_deg(poly[(k - 1) % n], v, poly[(k + 1) % n])
+    return total
+
+
+def _line_angle_diff(a_deg: float, b_deg: float) -> float:
+    d = abs(a_deg - b_deg) % 180.0
+    return min(d, 180.0 - d)   # 0..90
+
+
+def _longest_edge_angle_deg(poly: list) -> float | None:
+    """Angle of the polygon's longest edge in STANDARD math convention
+    (atan2(dy, dx)) so it's comparable to a raw edge angle. (Distinct from
+    longest_edge_orientation_deg, which returns a compass bearing.)"""
+    n = len(poly)
+    if n < 2:
+        return None
+    best, bdx, bdy = -1.0, 0.0, 0.0
+    for i in range(n):
+        x1, y1 = poly[i][0], poly[i][1]
+        x2, y2 = poly[(i + 1) % n][0], poly[(i + 1) % n][1]
+        dx, dy = x2 - x1, y2 - y1
+        L = dx * dx + dy * dy
+        if L > best:
+            best, bdx, bdy = L, dx, dy
+    return math.degrees(math.atan2(bdy, bdx))
+
+
+def _classify_shared_edge(p1, p2, this_poly: list, facets: list[dict]) -> tuple[str, float]:
+    """Classify a shared edge as ridge / hip / valley from 2D geometry.
+      - VALLEY: an endpoint is a concave (inside) roof corner — water collects.
+      - RIDGE vs HIP: a ridge runs PARALLEL to the facet's eave (the long edge);
+        a hip cuts diagonally toward an eave corner.
+    Returns (edge_type, confidence). Conservative confidence — contractor verifies."""
+    # Valley first: concavity is the most reliable rotation-invariant signal.
+    if max(_angle_sum_at(facets, p1), _angle_sum_at(facets, p2)) > 200.0:
+        return "valley", 0.6
+
+    eave = _longest_edge_angle_deg(this_poly)
+    edge_deg = math.degrees(math.atan2(p2[1] - p1[1], p2[0] - p1[0]))
+    if eave is not None:
+        rel = _line_angle_diff(edge_deg, eave)   # 0 = parallel to eave, 90 = perpendicular
+        if rel < 28.0:
+            return "ridge", 0.6        # parallel to the eave → ridge line
+        return "hip", 0.55             # diagonal across the roof → hip
+    # No eave reference — fall back to image-horizontal heuristic.
+    near_h = abs(p2[1] - p1[1]) < 0.30 * abs(p2[0] - p1[0]) if (p2[0] - p1[0]) else False
+    return ("ridge", 0.45) if near_h else ("hip", 0.45)
+
+
 def auto_suggest_edge_types(
     facets: list[dict],   # each: {label, polygon, pitch_degrees}
 ) -> list[dict]:
@@ -505,7 +575,6 @@ def auto_suggest_edge_types(
             p2 = poly[(vi + 1) % n]
 
             shared_with: str | None = None
-            shared_pitch_match = False
             for j, other in enumerate(facets):
                 if j == i:
                     continue
@@ -518,16 +587,15 @@ def auto_suggest_edge_types(
                     q2 = opoly[(vj + 1) % m]
                     if _segments_overlap(p1, p2, q1, q2):
                         shared_with = other.get("label")
-                        a = f.get("pitch_degrees")
-                        b = other.get("pitch_degrees")
-                        if a is not None and b is not None:
-                            shared_pitch_match = abs(a - b) < 1.0
                         break
                 if shared_with:
                     break
 
             if shared_with:
-                edge_type: EdgeType = "ridge" if shared_pitch_match else "hip"
+                # Classify by GEOMETRY (orientation + concavity), NOT pitch
+                # equality — Solar gives facets similar pitch, which used to make
+                # every shared edge a "ridge". Valleys are now detected too.
+                edge_type, _conf = _classify_shared_edge(p1, p2, poly, facets)
             else:
                 # Heuristic: classify by edge orientation in image space.
                 dx = p2[0] - p1[0]
