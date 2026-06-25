@@ -869,6 +869,13 @@ export const api = {
           message: string
           reason?: string
         }>(`/api/v1/roofing/v2/runs/${runId}/facets/suggest`, {}, 120000),
+      // Save the contractor's "tap your house" point (image fractions 0..1) so
+      // facet auto-detect locks onto the right building regardless of geocode.
+      setSubjectPoint: (runId: string, x: number, y: number) =>
+        apiRequest<{ ok: boolean; subject_point: { x: number; y: number } }>(
+          `/api/v1/roofing/v2/runs/${runId}/subject-point`,
+          { method: 'POST', body: JSON.stringify({ x, y }) },
+        ),
       // Record AI facet suggestions the contractor REJECTED, as negative training
       // data. Fire-and-forget — must never block the editor flow.
       recordFacetRejections: (

@@ -34,6 +34,7 @@ import CollapsibleSection from '@/components/roof-v2/CollapsibleSection'
 import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
 import SolarAssistPanel from '@/components/roof-v2/SolarAssistPanel'
+import HousePicker from '@/components/roof-v2/HousePicker'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 // RoofViewer3D temporarily disabled (geometry rebuild) — re-enable in REPORT step.
 // import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
@@ -774,6 +775,11 @@ export default function RoofV2Page() {
             onConfidenceChange={setConfidence}
             onForceSave={async () => { await persistGeometry(facets, edges) }}
           />
+          {/* Tap your house FIRST so auto-detect locks onto the right building. */}
+          {imagery?.url && (
+            <HousePicker runId={runId} imageUrl={imagery.url} />
+          )}
+
           {/* Guided workflow — recommended top-to-bottom order. The editor above
               is always your manual canvas; reject any AI suggestion and draw by hand. */}
           <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3 text-xs text-blue-200">

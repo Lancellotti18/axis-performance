@@ -1219,6 +1219,27 @@ async def get_run_ground_findings(run_id: str, user: dict = Depends(require_user
     return {"findings": run.data.get("ground_findings")}
 
 
+class SubjectPointRequest(BaseModel):
+    x: float = Field(..., ge=0.0, le=1.0)
+    y: float = Field(..., ge=0.0, le=1.0)
+
+
+@router.post("/runs/{run_id}/subject-point")
+async def set_subject_point(
+    run_id: str, req: SubjectPointRequest, user: dict = Depends(require_user),
+) -> dict:
+    """Record the contractor's 'tap your house' point (image fractions 0..1) on
+    the run. Facet auto-detect anchors its mask/crop on this so it locks onto the
+    right building regardless of geocode offset."""
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select("id").eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    point = {"x": round(req.x, 4), "y": round(req.y, 4)}
+    db.table("roof_measurement_runs").update({"subject_point": point}).eq("id", run_id).execute()
+    return {"ok": True, "subject_point": point}
+
+
 @router.get("/runs/{run_id}/footprint")
 async def get_run_footprint(run_id: str, user: dict = Depends(require_user)) -> dict:
     """
@@ -1476,6 +1497,35 @@ def _mask_and_crop(
         return buf.getvalue(), (cx0, cy0, cx1, cy1)
     except Exception as e:
         logger.info("facet mask-and-crop failed (%s) — using full tile", e)
+        return img_bytes, (0.0, 0.0, 1.0, 1.0)
+
+
+def _crop_around_point(
+    img_bytes: bytes, anchor: tuple, frac: float = 0.5,
+) -> tuple[bytes, tuple[float, float, float, float]]:
+    """Crop a window of size `frac` of the tile centered on `anchor` (the
+    contractor's tap on their house, in image fractions). The window is shifted
+    to stay in-bounds while keeping its size. Returns (png_bytes, crop_window)."""
+    try:
+        import io as _io
+        from PIL import Image
+
+        im = Image.open(_io.BytesIO(img_bytes)).convert("RGB")
+        W, H = im.size
+        ax, ay = anchor
+        half = frac / 2.0
+        cx0, cy0, cx1, cy1 = ax - half, ay - half, ax + half, ay + half
+        if cx0 < 0: cx1 -= cx0; cx0 = 0.0
+        if cy0 < 0: cy1 -= cy0; cy0 = 0.0
+        if cx1 > 1: cx0 -= (cx1 - 1); cx1 = 1.0
+        if cy1 > 1: cy0 -= (cy1 - 1); cy1 = 1.0
+        cx0, cy0 = max(0.0, cx0), max(0.0, cy0)
+        crop = im.crop((int(cx0 * W), int(cy0 * H), int(cx1 * W), int(cy1 * H)))
+        buf = _io.BytesIO()
+        crop.save(buf, format="PNG")
+        return buf.getvalue(), (cx0, cy0, cx1, cy1)
+    except Exception as e:
+        logger.info("crop-around-point failed (%s) — using full tile", e)
         return img_bytes, (0.0, 0.0, 1.0, 1.0)
 
 
@@ -1803,7 +1853,7 @@ async def suggest_facets(
     """
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
-        "satellite_image_url, satellite_zoom, satellite_lat, satellite_lng, ground_findings"
+        "satellite_image_url, satellite_zoom, satellite_lat, satellite_lng, ground_findings, subject_point"
     ).eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
@@ -1948,6 +1998,16 @@ suggestions and trust your high-confidence ones.
     #   1. Google Solar roof planes (already computed above), else
     #   2. the OSM building footprint (free, nationwide, no key).
     # Everything outside is painted black, then we crop to it.
+    # ANCHOR = where the contractor TAPPED their house (image fractions). The
+    # geocode can be offset to the street, so the tap is the reliable "this is my
+    # house" signal. Defaults to tile center if they didn't tap.
+    _tap = run.data.get("subject_point") or {}
+    try:
+        anchor = (float(_tap.get("x", 0.5)), float(_tap.get("y", 0.5)))
+    except (TypeError, ValueError):
+        anchor = (0.5, 0.5)
+    tapped = bool(_tap.get("x") is not None)
+
     building_polys: list = []
     mask_source = "none"
     bbox = None   # set only in the no-geometry fallback; the centroid guard keys off it
@@ -1969,34 +2029,29 @@ suggestions and trust your high-confidence ones.
         except Exception as e:
             logger.info("footprint mask fetch failed: %s", e)
 
-    # SAFETY: the tile is geocoded on the subject, so the subject building must
-    # sit at/near the image center. If the building outline does NOT cover the
-    # center, it's either mis-registered to the tile or it's a neighbor/shed —
-    # masking to it would black out the real house. Refuse to mask in that case.
+    # SAFETY: only mask to a building outline if it actually covers the ANCHOR
+    # (the tapped house, or center). If it doesn't, the outline is mis-registered
+    # or it's a neighbor — masking would black out the real house, so we crop
+    # around the anchor instead.
     if building_polys:
-        center_covered = any(
-            _point_in_poly((0.5, 0.5), _expand_polygon(p, 1.30))
+        anchor_covered = any(
+            _point_in_poly(anchor, _expand_polygon(p, 1.30))
             for p in building_polys if len(p) >= 3
         )
-        if not center_covered:
-            logger.info("facet mask: %s outline does NOT cover tile center — skipping mask", mask_source)
+        if not anchor_covered:
+            logger.info("facet mask: %s outline does NOT cover anchor %s — cropping around anchor", mask_source, anchor)
             building_polys = []
-            mask_source = f"{mask_source}_off_center→skipped"
+            mask_source = f"{mask_source}_off_anchor→crop"
 
     if building_polys:
         detect_bytes, crop_win = _mask_and_crop(img_bytes, building_polys, margin=0.15)
     else:
-        # No building geometry anywhere — fall back to the vision localizer, and
-        # if its box doesn't even contain the geocoded center, a centered crop.
-        bbox = await _locate_building_bbox(img_bytes, mt)
-        if bbox and not (bbox["x0"] <= 0.5 <= bbox["x1"] and bbox["y0"] <= 0.5 <= bbox["y1"]):
-            logger.info("facet localize bbox %s excludes tile center — likely a neighbor; using centered crop", bbox)
-            bbox = None
-        if bbox:
-            detect_bytes, crop_win = _crop_to_bbox(img_bytes, bbox)
-        else:
-            detect_bytes, crop_win = _center_crop(img_bytes, frac=0.5)
-    logger.info("facet detect mask_source=%s crop_win=%s", mask_source, crop_win)
+        # Crop a tight window around the tapped house (or center). Reliable and
+        # cheap — no fragile georegistration or extra vision call.
+        detect_bytes, crop_win = _crop_around_point(img_bytes, anchor, frac=0.5)
+        if mask_source == "none":
+            mask_source = "tap_crop" if tapped else "center_crop"
+    logger.info("facet detect mask_source=%s tapped=%s anchor=%s crop_win=%s", mask_source, tapped, anchor, crop_win)
     cwx0, cwy0, cwx1, cwy1 = crop_win
     cw_w, cw_h = (cwx1 - cwx0), (cwy1 - cwy0)
 
