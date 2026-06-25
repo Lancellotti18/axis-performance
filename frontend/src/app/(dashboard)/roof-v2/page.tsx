@@ -39,7 +39,6 @@ import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 // RoofViewer3D temporarily disabled (geometry rebuild) — re-enable in REPORT step.
 // import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
-import ReportsPanel from '@/components/roof-v2/ReportsPanel'
 import PannableImage from '@/components/roof-v2/PannableImage'
 import { enhanceTile } from '@/lib/imageEnhance'
 
@@ -967,9 +966,10 @@ export default function RoofV2Page() {
               <Stat label="Imagery" value={`${Math.round((imagery?.health_score ?? 0) * 100)}%`} />
             </div>
             <p className="mt-3 text-xs text-slate-400">
-              Confirming locks the measurement run and generates a contractor-grade PDF report
-              with all 8 sections. You can return and edit later — a confirmed run becomes
-              unconfirmed if you change facets or edges.
+              Generates the contractor-grade PDF — cover, <strong>to-scale roof diagram</strong>, roof
+              summary &amp; per-facet table, roof-line lengths, flashing &amp; penetrations, materials
+              takeoff, waste calculator, siding (if measured), and methodology. Every number is pulled
+              from your traced roof — nothing estimated or fabricated. You can return and edit later.
             </p>
             <button
               onClick={confirmAndDownload}
@@ -979,12 +979,6 @@ export default function RoofV2Page() {
               {busy ? 'Generating…' : 'Confirm + download PDF report'}
             </button>
           </section>
-
-          {/* APIR — the new 12-page contractor-grade PDF (replaces the
-              8-section ReportLab output above once accuracy is verified). */}
-          {projectId && (
-            <ReportsPanel projectId={projectId} runId={runId ?? undefined} />
-          )}
         </>
       )}
     </div>
