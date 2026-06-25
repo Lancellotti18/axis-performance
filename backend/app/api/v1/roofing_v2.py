@@ -1416,6 +1416,54 @@ def _crop_to_bbox(
         return img_bytes, (0.0, 0.0, 1.0, 1.0)
 
 
+def _expand_polygon(poly: list, factor: float) -> list:
+    """Scale a polygon outward from its centroid (eave/overhang margin)."""
+    cx = sum(p[0] for p in poly) / len(poly)
+    cy = sum(p[1] for p in poly) / len(poly)
+    return [[cx + (p[0] - cx) * factor, cy + (p[1] - cy) * factor] for p in poly]
+
+
+def _mask_and_crop(
+    img_bytes: bytes, polygons: list, margin: float = 0.15,
+) -> tuple[bytes, tuple[float, float, float, float]]:
+    """Black out every pixel OUTSIDE the subject building polygon(s), then crop to
+    their bounding box. This is the hard stop on the wrong-house problem: the
+    vision model literally cannot trace a neighbor, driveway, or yard because
+    they're painted black. `polygons` are in image fractions (Solar planes or the
+    OSM footprint). Returns (png_bytes, crop_window_fractions); degrades to the
+    full tile on any failure."""
+    try:
+        import io as _io
+        from PIL import Image, ImageDraw
+
+        im = Image.open(_io.BytesIO(img_bytes)).convert("RGB")
+        W, H = im.size
+        expanded = [_expand_polygon(p, 1.0 + margin) for p in polygons if len(p) >= 3]
+        if not expanded:
+            return img_bytes, (0.0, 0.0, 1.0, 1.0)
+
+        mask = Image.new("L", (W, H), 0)
+        draw = ImageDraw.Draw(mask)
+        for poly in expanded:
+            pts = [(max(0.0, min(1.0, x)) * W, max(0.0, min(1.0, y)) * H) for x, y in poly]
+            draw.polygon(pts, fill=255)
+        masked = Image.composite(im, Image.new("RGB", (W, H), (0, 0, 0)), mask)
+
+        xs = [x for poly in expanded for x, _ in poly]
+        ys = [y for poly in expanded for _, y in poly]
+        cx0, cy0 = max(0.0, min(xs)), max(0.0, min(ys))
+        cx1, cy1 = min(1.0, max(xs)), min(1.0, max(ys))
+        if cx1 - cx0 < 0.02 or cy1 - cy0 < 0.02:
+            return img_bytes, (0.0, 0.0, 1.0, 1.0)
+        crop = masked.crop((int(cx0 * W), int(cy0 * H), int(cx1 * W), int(cy1 * H)))
+        buf = _io.BytesIO()
+        crop.save(buf, format="PNG")
+        return buf.getvalue(), (cx0, cy0, cx1, cy1)
+    except Exception as e:
+        logger.info("facet mask-and-crop failed (%s) — using full tile", e)
+        return img_bytes, (0.0, 0.0, 1.0, 1.0)
+
+
 def _center_crop(
     img_bytes: bytes, frac: float = 0.6,
 ) -> tuple[bytes, tuple[float, float, float, float]]:
@@ -1784,6 +1832,10 @@ async def suggest_facets(
 
     prompt = """You are a roof inspector analyzing a top-down satellite image of a residential property.
 
+IMPORTANT: Everything OUTSIDE the subject building may be masked to solid BLACK.
+Trace roof planes ONLY on the visible (non-black) building. Never trace into black
+areas, and treat any black region as 'not roof'.
+
 STEP 1 — LOCATE THE PRIMARY BUILDING.
 The image is centered on a residential address. The primary building is usually:
   - In the central 60% of the image
@@ -1875,18 +1927,47 @@ suggestions and trust your high-confidence ones.
     # frame. crop_win is the crop rectangle in full-tile fractions; we map the
     # returned polygons back through it below. If localization fails we crop
     # nothing (identity window) and detect on the whole tile as before.
-    bbox = await _locate_building_bbox(img_bytes, mt)
-    # The tile is geocoded on the SUBJECT address, so the subject building sits at
-    # the image center. If the localizer's box doesn't actually contain the center
-    # (0.5, 0.5), it locked onto a neighbor — discard it and fall back to a
-    # centered crop rather than confidently cropping (and tracing) the wrong house.
-    if bbox and not (bbox["x0"] <= 0.5 <= bbox["x1"] and bbox["y0"] <= 0.5 <= bbox["y1"]):
-        logger.info("facet localize bbox %s excludes tile center — likely a neighbor; using centered crop", bbox)
-        bbox = None
-    if bbox:
-        detect_bytes, crop_win = _crop_to_bbox(img_bytes, bbox)
+    # P0-1 — HARD-MASK to the subject building so the model can't trace a
+    # neighbor / driveway / yard. Build the building polygon(s) from the most
+    # authoritative source available:
+    #   1. Google Solar roof planes (already computed above), else
+    #   2. the OSM building footprint (free, nationwide, no key).
+    # Everything outside is painted black, then we crop to it.
+    building_polys: list = []
+    mask_source = "none"
+    bbox = None   # set only in the no-geometry fallback; the centroid guard keys off it
+    if solar_segs:
+        building_polys = [s["rect"] for s in solar_segs if s.get("rect")]
+        mask_source = "solar"
+    elif s_lat is not None and s_lng is not None:
+        try:
+            from app.services import footprint_service
+            fp = await footprint_service.get_building_footprint(float(s_lat), float(s_lng))
+            ring = fp.get("ring") if fp.get("available") else None
+            if ring and len(ring) >= 3:
+                mpp = geo.metres_per_pixel(float(s_lat), int(s_zoom))
+                building_polys = [[
+                    _geo_to_frac(p["lat"], p["lng"], float(s_lat), float(s_lng), mpp)
+                    for p in ring
+                ]]
+                mask_source = "footprint"
+        except Exception as e:
+            logger.info("footprint mask fetch failed: %s", e)
+
+    if building_polys:
+        detect_bytes, crop_win = _mask_and_crop(img_bytes, building_polys, margin=0.15)
     else:
-        detect_bytes, crop_win = _center_crop(img_bytes, frac=0.5)
+        # No building geometry anywhere — fall back to the vision localizer, and
+        # if its box doesn't even contain the geocoded center, a centered crop.
+        bbox = await _locate_building_bbox(img_bytes, mt)
+        if bbox and not (bbox["x0"] <= 0.5 <= bbox["x1"] and bbox["y0"] <= 0.5 <= bbox["y1"]):
+            logger.info("facet localize bbox %s excludes tile center — likely a neighbor; using centered crop", bbox)
+            bbox = None
+        if bbox:
+            detect_bytes, crop_win = _crop_to_bbox(img_bytes, bbox)
+        else:
+            detect_bytes, crop_win = _center_crop(img_bytes, frac=0.5)
+    logger.info("facet detect mask_source=%s crop_win=%s", mask_source, crop_win)
     cwx0, cwy0, cwx1, cwy1 = crop_win
     cw_w, cw_h = (cwx1 - cwx0), (cwy1 - cwy0)
 
