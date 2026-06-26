@@ -119,6 +119,37 @@ def _centered_lines(draw, cx, cy, lines, font, fontb) -> None:
         y += h + 5
 
 
+def _crop_image_to_facets(img_bytes: bytes, facets: list[dict], margin: float = 0.18) -> bytes | None:
+    """Crop the aerial to the subject roof's bounding box (+ margin) so the report
+    shows ONLY this house, not the neighbors. Uses the traced facet polygons.
+    Returns cropped PNG bytes, or None to fall back to the full image."""
+    try:
+        from PIL import Image as _PImage
+
+        pts = [p for f in facets for p in (f.get("polygon") or []) if len(f.get("polygon") or []) >= 3]
+        if len(pts) < 3:
+            return None
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+        bw, bh = (maxx - minx) or 0.05, (maxy - miny) or 0.05
+        cx0 = max(0.0, minx - margin * bw)
+        cy0 = max(0.0, miny - margin * bh)
+        cx1 = min(1.0, maxx + margin * bw)
+        cy1 = min(1.0, maxy + margin * bh)
+        im = _PImage.open(io.BytesIO(img_bytes)).convert("RGB")
+        W, H = im.size
+        box = (int(cx0 * W), int(cy0 * H), int(cx1 * W), int(cy1 * H))
+        if box[2] - box[0] < 16 or box[3] - box[1] < 16:
+            return None
+        out = io.BytesIO()
+        im.crop(box).save(out, format="PNG")
+        return out.getvalue()
+    except Exception as e:
+        logger.info("report aerial crop failed: %s", e)
+        return None
+
+
 def _render_facet_diagram(facets: list[dict]) -> bytes | None:
     """Draw the traced facets to scale on a clean canvas, labeled with each
     facet's area + pitch — the EagleView/Hover-style roof diagram, built ONLY
@@ -205,7 +236,7 @@ def _table_style(header_color=BRAND, alt_row=True) -> TableStyle:
 
 def _section_1_executive(
     project: dict, run: dict, aggregates: dict, facet_count: int,
-    styles: dict,
+    styles: dict, facets: list[dict] | None = None,
 ) -> list:
     """Executive Summary — top of the report."""
     flow: list = []
@@ -268,10 +299,15 @@ def _section_1_executive(
         data = _fetch_satellite_image(img_url)
         if data:
             try:
-                flow.append(Image(io.BytesIO(data), width=6.5 * inch, height=4.0 * inch))
+                # Crop to the subject roof so the report shows only THIS house,
+                # not the neighbors (the contractor already confirmed the house).
+                cropped = _crop_image_to_facets(data, facets or []) if facets else None
+                shown = cropped or data
+                flow.append(Image(io.BytesIO(shown), width=6.5 * inch, height=4.0 * inch, kind="proportional"))
                 provider = (run.get("satellite_provider") or "satellite").lower()
+                note = "Subject roof" if cropped else "Aerial"
                 flow.append(Paragraph(
-                    f"Source: {provider} imagery (Web Mercator, zoom {run.get('satellite_zoom') or '—'})",
+                    f"{note} — {provider} imagery (Web Mercator, zoom {run.get('satellite_zoom') or '—'})",
                     styles["muted"],
                 ))
             except Exception:
@@ -771,7 +807,7 @@ def generate_v2_report(
     default_waste = int(run.get("waste_pct_default") or aggregates.get("waste_pct_default") or 12)
 
     story: list = []
-    story.extend(_section_1_executive(project, run, aggregates, len(facets), styles))
+    story.extend(_section_1_executive(project, run, aggregates, len(facets), styles, facets))
     story.append(Spacer(1, 12))
     story.extend(_section_2_roof_summary(aggregates, facets, styles))
     story.append(PageBreak())
