@@ -877,7 +877,7 @@ export function RoofFacetEditor({
         {/* Canvas */}
         <div
           ref={containerRef}
-          className="relative flex-1 overflow-hidden rounded-lg border border-white/10 bg-black"
+          className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-white/10 bg-black"
           onKeyDown={(ev) => {
             if (ev.key === 'Enter' && mode === 'draw' && drawingPoly.length >= 3) {
               finalizeDrawingPoly()

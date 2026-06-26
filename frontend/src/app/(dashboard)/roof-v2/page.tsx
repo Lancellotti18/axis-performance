@@ -743,7 +743,7 @@ export default function RoofV2Page() {
               </span>
             )}
           </div>
-          <div className="h-[680px]">
+          <div className="h-[680px] overflow-hidden">
             <RoofFacetEditor
               imageUrl={imagery.url}
               imageWidthPx={imagery.width_px ?? 2048}
