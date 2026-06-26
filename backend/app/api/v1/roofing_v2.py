@@ -2449,6 +2449,39 @@ async def record_facet_rejections(
     return {"recorded": recorded}
 
 
+def _geom_edge_confidence(poly: list, vi: int, edge_type: str) -> tuple[float, str]:
+    """How sure is the GEOMETRY about an unshared eave/rake guess? Replaces the
+    old flat 0.45 'I dunno' with a graded score: a clearly horizontal LOWEST edge
+    is a confident eave; a clearly sloped side edge is a confident rake; only true
+    diagonals stay low. This is why most edges used to read 45% — they were all
+    hitting the same hardcoded fallback regardless of how obvious they were."""
+    import math
+    try:
+        n = len(poly)
+        p1, p2 = poly[vi], poly[(vi + 1) % n]
+        dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+        ang = abs(math.degrees(math.atan2(abs(dy), abs(dx))))  # 0=horizontal, 90=vertical
+        mids = [((poly[k][1] + poly[(k + 1) % n][1]) / 2) for k in range(n)]
+        is_lowest = ((p1[1] + p2[1]) / 2) >= (max(mids) - 1e-6)
+        if edge_type == "eave":
+            if ang <= 8 and is_lowest:
+                return 0.74, "Clearly horizontal lowest edge → eave"
+            if ang <= 8:
+                return 0.60, "Horizontal edge → likely eave"
+            if ang <= 18:
+                return 0.50, "Near-horizontal → possibly eave"
+            return 0.45, "Orientation ambiguous — please confirm"
+        if edge_type == "rake":
+            if ang >= 28:
+                return 0.68, "Clearly sloped side edge → rake"
+            if ang >= 15:
+                return 0.55, "Sloped edge → likely rake"
+            return 0.45, "Orientation ambiguous — please confirm"
+    except Exception:
+        pass
+    return 0.45, "Geometric heuristic — please confirm"
+
+
 class EdgeLabelSuggestRequest(BaseModel):
     facets: list[dict]            # [{label, polygon, pitch_degrees}]
     unlabeled_edges: list[dict]   # [{facet_label, vertex_index_start, vertex_index_end}]
@@ -2558,28 +2591,33 @@ async def suggest_edge_labels(
         # 2D trace. The satellite CAN tell them apart, so let vision break the tie.
         rv_edges = [
             e for e in req.unlabeled_edges
-            if (geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}).get("edge_type") in ("ridge", "valley")
+            if (geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}).get("edge_type") in ("ridge", "hip", "valley")
         ]
         if rv_edges:
             try:
                 prompt = (
                     "Top-down satellite roof image. For each traced edge below — each is a line where two "
-                    "roof planes meet — tell me if it is a RIDGE or a VALLEY:\n"
-                    "  - RIDGE: the PEAK where two slopes rise to meet and shed water AWAY on both sides. "
-                    "Often a bright/high line; planes get LOWER as they leave the edge.\n"
+                    "roof planes meet — tell me if it is a RIDGE, a HIP, or a VALLEY:\n"
+                    "  - RIDGE: the horizontal PEAK at the top where two slopes rise to meet and shed water "
+                    "AWAY on both sides. Bright/high line running along the top of the roof; planes get LOWER "
+                    "leaving the edge.\n"
+                    "  - HIP: a DIAGONAL peak running DOWN from the ridge to an outside corner of the roof. "
+                    "Like a ridge (sheds water away, raised line) but slanted, going corner-to-peak — an "
+                    "OUTWARD/convex fold.\n"
                     "  - VALLEY: the TROUGH where two slopes fall to meet and channel water INTO the line. "
-                    "Often a darker, recessed line that may show staining/debris; planes get HIGHER leaving the edge.\n\n"
+                    "Darker, recessed line that often shows staining/debris; an INWARD/concave fold; planes "
+                    "get HIGHER leaving the edge.\n\n"
                     "Edges (coordinates are image fractions, 0..1):\n"
                     + "\n".join(_edge_manifest(rv_edges))
                     + "\n\nReturn ONLY valid JSON:\n"
                     "{\n  \"labels\": [\n    {\"facet_label\": \"A\", \"vertex_index_start\": 0, \"edge_type\": \"valley\", \"confidence\": 0.7, \"reason\": \"dark recessed line, water channels in\"}\n  ]\n}\n"
                     "confidence < 0.5 if you truly cannot tell from the image."
                 )
-                parsed = _loads_tolerant(await llm_vision(img_bytes, mt, prompt, max_tokens=900))
+                parsed = _loads_tolerant(await llm_vision(img_bytes, mt, prompt, max_tokens=1000))
                 if parsed is not None:
                     for v in parsed.get("labels") or []:
                         et = v.get("edge_type")
-                        if et not in ("ridge", "valley"):
+                        if et not in ("ridge", "hip", "valley"):
                             continue
                         key = (v.get("facet_label"), int(v.get("vertex_index_start") or -1))
                         rv_vision_by_edge[key] = {
@@ -2600,12 +2638,12 @@ async def suggest_edge_labels(
             etype = geo_sug.get("edge_type") or "ridge"
             conf = 0.85
             reason = f"Shared edge with facet {shared} (geometric)"
-            # Vision breaks the ridge↔valley tie when it's confident.
+            # Vision breaks the ridge↔hip↔valley confusion when it's confident.
             rv = rv_vision_by_edge.get(key)
-            if rv and rv.get("edge_type") in ("ridge", "valley") and (rv.get("confidence") or 0) >= 0.6:
+            if rv and rv.get("edge_type") in ("ridge", "hip", "valley") and (rv.get("confidence") or 0) >= 0.6:
                 etype = rv["edge_type"]
                 conf = max(0.6, rv.get("confidence") or 0.6)
-                reason = f"Shared with {shared}; ridge/valley confirmed from satellite — {rv.get('reason', '')}".strip()
+                reason = f"Shared with {shared}; {etype} confirmed from satellite — {rv.get('reason', '')}".strip()
             out.append({
                 "facet_label": key[0],
                 "vertex_index_start": key[1],
@@ -2628,13 +2666,20 @@ async def suggest_edge_labels(
                     "ai_suggested": True,
                 })
             else:
-                # Geometric fallback (horizontal=eave, sloped=rake)
+                # Geometric fallback (horizontal=eave, sloped=rake), but graded by
+                # how obvious the orientation is rather than a flat 0.45.
+                etype = geo_sug.get("edge_type") or "unlabeled"
+                facet = next((f for f in req.facets if f.get("label") == key[0]), None)
+                gc, greason = (
+                    _geom_edge_confidence(facet.get("polygon") or [], key[1], etype)
+                    if facet else (0.45, "Geometric heuristic — please confirm")
+                )
                 out.append({
                     "facet_label": key[0],
                     "vertex_index_start": key[1],
-                    "suggested_edge_type": geo_sug.get("edge_type") or "unlabeled",
-                    "confidence": 0.45,
-                    "reason": "Geometric heuristic (no vision confidence)",
+                    "suggested_edge_type": etype,
+                    "confidence": gc,
+                    "reason": greason,
                     "shared_with_facet_label": None,
                     "ai_suggested": True,
                 })
