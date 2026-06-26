@@ -65,6 +65,7 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
 
   const fileRef = useRef<HTMLInputElement | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
+  const gRef = useRef<SVGGElement | null>(null)
   const panRef = useRef<{ sx: number; sy: number; px: number; py: number; moved: boolean } | null>(null)
 
   // ----- derived scale + area -----
@@ -107,22 +108,31 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
 
   const resetView = useCallback(() => { setZoom(1); setPan([0, 0]) }, [])
 
-  // screen → image-pixel coordinate (inverts the group transform)
+  // screen → image-pixel coordinate. Uses the transformed <g>'s live CTM, so it
+  // is EXACT regardless of viewBox letterboxing (preserveAspectRatio), zoom, or
+  // pan — the click lands precisely where the cursor is.
   const evToPixel = useCallback((clientX: number, clientY: number): Pt | null => {
+    const g = gRef.current
+    const ctm = g?.getScreenCTM()
+    if (!ctm) return null
+    const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse())
+    return [p.x, p.y]
+  }, [])
+
+  // screen → viewBox (image-pixel BEFORE the group transform), for zoom-to-cursor.
+  const clientToViewBox = useCallback((clientX: number, clientY: number): Pt | null => {
     const svg = svgRef.current
-    if (!svg || imageDims.w === 0) return null
-    const r = svg.getBoundingClientRect()
-    const rawX = ((clientX - r.left) / r.width) * imageDims.w
-    const rawY = ((clientY - r.top) / r.height) * imageDims.h
-    return [(rawX - pan[0]) / zoom, (rawY - pan[1]) / zoom]
-  }, [imageDims, pan, zoom])
+    const ctm = svg?.getScreenCTM()
+    if (!ctm) return null
+    const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse())
+    return [p.x, p.y]
+  }, [])
 
   const zoomAt = useCallback((clientX: number, clientY: number, factor: number) => {
-    const svg = svgRef.current
-    if (!svg || imageDims.w === 0) return
-    const r = svg.getBoundingClientRect()
-    const rawX = ((clientX - r.left) / r.width) * imageDims.w
-    const rawY = ((clientY - r.top) / r.height) * imageDims.h
+    if (imageDims.w === 0) return
+    const vb = clientToViewBox(clientX, clientY)
+    if (!vb) return
+    const [rawX, rawY] = vb
     setZoom(prevZ => {
       const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZ * factor))
       setPan(prevP => {
@@ -132,7 +142,7 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
       })
       return z
     })
-  }, [imageDims, clampPan])
+  }, [imageDims, clampPan, clientToViewBox])
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
@@ -426,7 +436,7 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
               onPointerUp={onPointerUp}
               onPointerLeave={() => setCursor(null)}
             >
-              <g transform={transform}>
+              <g ref={gRef} transform={transform}>
                 <image href={imageUrl} x={0} y={0} width={imageDims.w} height={imageDims.h} preserveAspectRatio="none" />
 
                 {/* Scale line */}
