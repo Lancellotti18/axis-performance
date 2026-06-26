@@ -62,6 +62,9 @@ interface Props {
   initialFacets?: Facet[]
   initialEdges?: LabeledEdge[]
   onChange: (facets: Facet[], edges: LabeledEdge[]) => void
+  // Bump this from the parent to pull EXTERNAL facet/edge changes (e.g. an
+  // accepted auto-label suggestion) into the editor so they show on the canvas.
+  syncRev?: number
 }
 
 const PITCH_OPTIONS = ['2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '9/12', '10/12', '12/12']
@@ -143,10 +146,22 @@ function constrainTo45(from: Pt, to: Pt, imageW: number, imageH: number): Pt {
 
 export function RoofFacetEditor({
   imageUrl, imageWidthPx, imageHeightPx,
-  initialFacets = [], initialEdges = [], onChange,
+  initialFacets = [], initialEdges = [], onChange, syncRev,
 }: Props) {
   const [facets, setFacets] = useState<Facet[]>(initialFacets)
   const [edges, setEdges] = useState<LabeledEdge[]>(initialEdges)
+
+  // Pull EXTERNAL facet/edge changes onto the canvas when the parent bumps
+  // syncRev (e.g. after accepting an auto-labeled edge or AI facet). Skips the
+  // first render so it doesn't clobber the editor's own in-progress work.
+  const firstSync = useRef(true)
+  useEffect(() => {
+    if (firstSync.current) { firstSync.current = false; return }
+    setFacets(initialFacets)
+    setEdges(initialEdges)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncRev])
+
   const [mode, setMode] = useState<Mode>('draw')
   const [activeFacetIdx, setActiveFacetIdx] = useState<number | null>(null)
   const [drawingPoly, setDrawingPoly] = useState<Pt[]>([])

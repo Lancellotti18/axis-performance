@@ -103,6 +103,7 @@ export default function RoofV2Page() {
   const [facets, setFacets] = useState<Facet[]>([])
   const [edges, setEdges] = useState<LabeledEdge[]>([])
   const [geometryStamp, setGeometryStamp] = useState(0)
+  const [editorSyncRev, setEditorSyncRev] = useState(0)   // bump to push external edits into the editor canvas
   const [step, setStep] = useState<Step>('project')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -749,6 +750,7 @@ export default function RoofV2Page() {
               initialFacets={facets}
               initialEdges={edges}
               onChange={onEditorChange}
+              syncRev={editorSyncRev}
             />
           </div>
           <MeasurementsSummary
@@ -771,6 +773,7 @@ export default function RoofV2Page() {
               imageHeightPx={imagery?.height_px ?? 1366}
               onAcceptEdges={(updatedEdges) => {
                 setEdges(updatedEdges)
+                setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
                 void persistGeometry(facets, updatedEdges)
               }}
             />
@@ -803,6 +806,7 @@ export default function RoofV2Page() {
                 const updated = facets.map(f => ({ ...f, pitch }))
                 setFacets(updated)
                 setGeometryStamp(s => s + 1)   // force MeasurementsSummary to recompute
+                setEditorSyncRev(r => r + 1)
                 void persistGeometry(updated, edges)
                 return true
               }}
@@ -840,6 +844,7 @@ export default function RoofV2Page() {
                 )
                 const mergedEdges = [...edges, ...newEdges]
                 setEdges(mergedEdges)
+                setEditorSyncRev(r => r + 1)
                 void persistGeometry(merged, mergedEdges)
               }}
             />
@@ -861,6 +866,7 @@ export default function RoofV2Page() {
               }))
               const mergedEdges = [...edges, ...newEdges]
               setEdges(mergedEdges)
+              setEditorSyncRev(r => r + 1)
               void persistGeometry(merged, mergedEdges)
             }}
           />
@@ -898,6 +904,7 @@ export default function RoofV2Page() {
               imageHeightPx={imagery?.height_px ?? 1366}
               onApplyEdges={(updated) => {
                 setEdges(updated)
+                setEditorSyncRev(r => r + 1)
                 void persistGeometry(facets, updated)
               }}
             />
