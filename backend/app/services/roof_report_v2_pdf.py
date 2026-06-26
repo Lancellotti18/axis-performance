@@ -119,24 +119,31 @@ def _centered_lines(draw, cx, cy, lines, font, fontb) -> None:
         y += h + 5
 
 
-def _crop_image_to_facets(img_bytes: bytes, facets: list[dict], margin: float = 0.18) -> bytes | None:
-    """Crop the aerial to the subject roof's bounding box (+ margin) so the report
-    shows ONLY this house, not the neighbors. Uses the traced facet polygons.
-    Returns cropped PNG bytes, or None to fall back to the full image."""
+def _crop_image_to_facets(img_bytes: bytes, facets: list[dict], margin: float = 0.22) -> bytes | None:
+    """Crop the aerial to the subject roof so the report shows ONLY this house,
+    not the neighbors. Robust to a stray vertex: centers on the MEDIAN of the
+    facet vertices and drops outliers far from that center before taking the box,
+    so one bad point can't blow the crop out to a yard. Returns PNG or None."""
     try:
         from PIL import Image as _PImage
 
-        pts = [p for f in facets for p in (f.get("polygon") or []) if len(f.get("polygon") or []) >= 3]
+        pts = [(float(p[0]), float(p[1]))
+               for f in facets if len(f.get("polygon") or []) >= 3
+               for p in (f.get("polygon") or [])
+               if isinstance(p, (list, tuple)) and len(p) >= 2]
         if len(pts) < 3:
             return None
-        xs = [p[0] for p in pts]
-        ys = [p[1] for p in pts]
-        minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
-        bw, bh = (maxx - minx) or 0.05, (maxy - miny) or 0.05
-        cx0 = max(0.0, minx - margin * bw)
-        cy0 = max(0.0, miny - margin * bh)
-        cx1 = min(1.0, maxx + margin * bw)
-        cy1 = min(1.0, maxy + margin * bh)
+        # Median center + 75th-percentile half-extent — robust: a stray vertex
+        # is past the 75th percentile, so it never inflates the window.
+        cx = sorted(p[0] for p in pts)[len(pts) // 2]
+        cy = sorted(p[1] for p in pts)[len(pts) // 2]
+        dxs = sorted(abs(x - cx) for x, _ in pts)
+        dys = sorted(abs(y - cy) for _, y in pts)
+        hx = dxs[int(len(dxs) * 0.75)]
+        hy = dys[int(len(dys) * 0.75)]
+        half = min(0.40, max(hx, hy, 0.04) * (1.0 + margin))
+        cx0, cy0 = max(0.0, cx - half), max(0.0, cy - half)
+        cx1, cy1 = min(1.0, cx + half), min(1.0, cy + half)
         im = _PImage.open(io.BytesIO(img_bytes)).convert("RGB")
         W, H = im.size
         box = (int(cx0 * W), int(cy0 * H), int(cx1 * W), int(cy1 * H))
