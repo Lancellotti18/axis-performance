@@ -104,6 +104,7 @@ export default function RoofV2Page() {
   const [edges, setEdges] = useState<LabeledEdge[]>([])
   const [geometryStamp, setGeometryStamp] = useState(0)
   const [editorSyncRev, setEditorSyncRev] = useState(0)   // bump to push external edits into the editor canvas
+  const [autoLabelTrigger, setAutoLabelTrigger] = useState(0)   // editor toolbar → run edge auto-label
   const [step, setStep] = useState<Step>('project')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -751,6 +752,11 @@ export default function RoofV2Page() {
               initialEdges={edges}
               onChange={onEditorChange}
               syncRev={editorSyncRev}
+              onAutoLabelEdges={() => {
+                setAutoLabelTrigger(t => t + 1)
+                setTimeout(() => document.getElementById('edge-label-panel')
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+              }}
             />
           </div>
           <MeasurementsSummary
@@ -764,19 +770,22 @@ export default function RoofV2Page() {
               one click labels every edge (eave/rake/ridge/hip/valley) — review and
               accept, or label by hand in the editor above. */}
           {facets.length > 0 && (
-            <EdgeLabelSuggestions
-              runId={runId}
-              facets={facets}
-              edges={edges}
-              imageUrl={imagery?.original_url || imagery?.url}
-              imageWidthPx={imagery?.width_px ?? 2048}
-              imageHeightPx={imagery?.height_px ?? 1366}
-              onAcceptEdges={(updatedEdges) => {
-                setEdges(updatedEdges)
-                setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
-                void persistGeometry(facets, updatedEdges)
-              }}
-            />
+            <div id="edge-label-panel" className="scroll-mt-16">
+              <EdgeLabelSuggestions
+                runId={runId}
+                facets={facets}
+                edges={edges}
+                imageUrl={imagery?.original_url || imagery?.url}
+                imageWidthPx={imagery?.width_px ?? 2048}
+                imageHeightPx={imagery?.height_px ?? 1366}
+                trigger={autoLabelTrigger}
+                onAcceptEdges={(updatedEdges) => {
+                  setEdges(updatedEdges)
+                  setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
+                  void persistGeometry(facets, updatedEdges)
+                }}
+              />
+            </div>
           )}
 
           {/* Tap your house FIRST so auto-detect locks onto the right building. */}

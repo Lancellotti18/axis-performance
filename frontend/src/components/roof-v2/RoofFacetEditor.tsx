@@ -65,6 +65,8 @@ interface Props {
   // Bump this from the parent to pull EXTERNAL facet/edge changes (e.g. an
   // accepted auto-label suggestion) into the editor so they show on the canvas.
   syncRev?: number
+  // Toolbar "Auto-label edges" button — runs the AI edge-label suggestion flow.
+  onAutoLabelEdges?: () => void
 }
 
 const PITCH_OPTIONS = ['2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '9/12', '10/12', '12/12']
@@ -146,7 +148,7 @@ function constrainTo45(from: Pt, to: Pt, imageW: number, imageH: number): Pt {
 
 export function RoofFacetEditor({
   imageUrl, imageWidthPx, imageHeightPx,
-  initialFacets = [], initialEdges = [], onChange, syncRev,
+  initialFacets = [], initialEdges = [], onChange, syncRev, onAutoLabelEdges,
 }: Props) {
   const [facets, setFacets] = useState<Facet[]>(initialFacets)
   const [edges, setEdges] = useState<LabeledEdge[]>(initialEdges)
@@ -796,6 +798,14 @@ export function RoofFacetEditor({
             {m === 'draw' ? '+ Draw facet' : m === 'select' ? 'Edit vertices' : 'Label edges'}
           </button>
         ))}
+        {onAutoLabelEdges && (
+          <button
+            onClick={onAutoLabelEdges}
+            disabled={facets.length === 0}
+            title="Let AI label every edge (eave/rake/ridge/hip/valley), then review — or label by hand"
+            className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
+          >✨ Auto-label edges</button>
+        )}
         <div className="mx-2 h-5 w-px bg-white/10" />
         {/* Undo / redo */}
         <button

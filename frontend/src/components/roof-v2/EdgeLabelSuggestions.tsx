@@ -12,7 +12,7 @@
  * below", "shared with facet B, matching pitch", etc.). Contractor accepts
  * each individually or hits "Accept all high-confidence" to batch-apply.
  */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { Facet, LabeledEdge, EdgeType } from './RoofFacetEditor'
 import EdgeReviewModal from './EdgeReviewModal'
@@ -34,6 +34,8 @@ interface Props {
   imageWidthPx?: number
   imageHeightPx?: number
   onAcceptEdges: (updatedEdges: LabeledEdge[]) => void
+  // Bump to auto-run the suggestion (e.g. from the editor's toolbar button).
+  trigger?: number
 }
 
 const EDGE_COLORS: Record<EdgeType, string> = {
@@ -48,7 +50,7 @@ const EDGE_COLORS: Record<EdgeType, string> = {
 }
 
 export function EdgeLabelSuggestions({
-  runId, facets, edges, imageUrl, imageWidthPx = 2048, imageHeightPx = 1366, onAcceptEdges,
+  runId, facets, edges, imageUrl, imageWidthPx = 2048, imageHeightPx = 1366, onAcceptEdges, trigger,
 }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
@@ -90,6 +92,14 @@ export function EdgeLabelSuggestions({
       setLoading(false)
     }
   }, [runId, facets, unlabeledEdges])
+
+  // Auto-run when the editor's "Auto-label edges" button bumps `trigger`.
+  const firstTrigger = useRef(true)
+  useEffect(() => {
+    if (firstTrigger.current) { firstTrigger.current = false; return }
+    void runSuggest()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger])
 
   const acceptOne = useCallback((s: Suggestion) => {
     const updated = edges.map(e => {
