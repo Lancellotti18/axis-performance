@@ -757,6 +757,25 @@ export default function RoofV2Page() {
             onConfidenceChange={setConfidence}
             onForceSave={async () => { await persistGeometry(facets, edges) }}
           />
+
+          {/* Auto-label edges sits right after the outline: draw your facets, then
+              one click labels every edge (eave/rake/ridge/hip/valley) — review and
+              accept, or label by hand in the editor above. */}
+          {facets.length > 0 && (
+            <EdgeLabelSuggestions
+              runId={runId}
+              facets={facets}
+              edges={edges}
+              imageUrl={imagery?.original_url || imagery?.url}
+              imageWidthPx={imagery?.width_px ?? 2048}
+              imageHeightPx={imagery?.height_px ?? 1366}
+              onAcceptEdges={(updatedEdges) => {
+                setEdges(updatedEdges)
+                void persistGeometry(facets, updatedEdges)
+              }}
+            />
+          )}
+
           {/* Tap your house FIRST so auto-detect locks onto the right building. */}
           {imagery?.url && (
             <HousePicker runId={runId} imageUrl={imagery.url} />
@@ -857,24 +876,10 @@ export default function RoofV2Page() {
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="③ Label edges + penetrations"
-            subtitle="Label eaves / rakes / ridges / valleys and add chimneys, skylights, vents. These drive flashing and the final report."
+            title="③ Penetrations"
+            subtitle="Add chimneys, skylights, and vents — these drive flashing and the final report. (Edge labels are handled right under the outline above.)"
             badge="step 3"
           >
-          {facets.length > 0 && (
-            <EdgeLabelSuggestions
-              runId={runId}
-              facets={facets}
-              edges={edges}
-              imageUrl={imagery?.original_url || imagery?.url}
-              imageWidthPx={imagery?.width_px ?? 2048}
-              imageHeightPx={imagery?.height_px ?? 1366}
-              onAcceptEdges={(updatedEdges) => {
-                setEdges(updatedEdges)
-                void persistGeometry(facets, updatedEdges)
-              }}
-            />
-          )}
           <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
           </CollapsibleSection>
 
