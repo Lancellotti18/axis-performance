@@ -2465,43 +2465,49 @@ async def suggest_edge_labels(
     ).eq("id", run_id).single().execute()
     img_url = (run.data or {}).get("satellite_image_url")
 
+    def _edge_manifest(edge_list: list) -> list[str]:
+        lines: list[str] = []
+        for e in edge_list:
+            fl = e.get("facet_label")
+            i = e.get("vertex_index_start")
+            facet = next((f for f in req.facets if f.get("label") == fl), None)
+            if not facet:
+                continue
+            poly = facet.get("polygon") or []
+            if i >= len(poly):
+                continue
+            p1, p2 = poly[i], poly[(i + 1) % len(poly)]
+            lines.append(f"  - facet {fl} edge {i}: from ({p1[0]:.3f},{p1[1]:.3f}) to ({p2[0]:.3f},{p2[1]:.3f})")
+        return lines
+
     vision_suggestions_by_edge: dict[tuple[str, int], dict] = {}
+    rv_vision_by_edge: dict[tuple[str, int], dict] = {}   # shared-edge ridge↔valley disambiguation
+    img_bytes = None
+    mt = "image/png"
     if img_url and req.unlabeled_edges:
-        # We only need vision for unshared edges (the geometry suggester
-        # already handles shared ones via overlap detection).
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                r = await client.get(img_url, follow_redirects=True)
+                r.raise_for_status()
+                img_bytes = r.content
+                mt = (r.headers.get("content-type") or "image/png").split(";")[0].strip()
+                if mt not in ("image/png", "image/jpeg", "image/webp"):
+                    mt = "image/png"
+        except Exception as e:
+            logger.info("edge-label tile fetch failed: %s", e)
+            img_bytes = None
+
+    if img_bytes is not None:
+        from app.services.llm import llm_vision
+
+        # ---- Pass 1: unshared edges → eave / rake / gable_end / wall ----
         edges_for_vision = [
             e for e in req.unlabeled_edges
             if not geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}).get("shared_with_facet_label")
         ]
         if edges_for_vision:
-            from app.services.llm import llm_vision
-            import httpx, json as _json, re as _re
             try:
-                async with httpx.AsyncClient(timeout=20) as client:
-                    r = await client.get(img_url, follow_redirects=True)
-                    r.raise_for_status()
-                    img_bytes = r.content
-                    mt = (r.headers.get("content-type") or "image/png").split(";")[0].strip()
-                    if mt not in ("image/png", "image/jpeg", "image/webp"):
-                        mt = "image/png"
-
-                # Build a compact edges manifest for the prompt
-                edge_lines: list[str] = []
-                for e in edges_for_vision:
-                    fl = e.get("facet_label")
-                    i = e.get("vertex_index_start")
-                    facet = next((f for f in req.facets if f.get("label") == fl), None)
-                    if not facet:
-                        continue
-                    poly = facet.get("polygon") or []
-                    if i >= len(poly):
-                        continue
-                    p1 = poly[i]
-                    p2 = poly[(i + 1) % len(poly)]
-                    edge_lines.append(
-                        f"  - facet {fl} edge {i}: from ({p1[0]:.3f},{p1[1]:.3f}) to ({p2[0]:.3f},{p2[1]:.3f})"
-                    )
-
                 prompt = (
                     "You are a roof inspector looking at a top-down satellite image with a set of "
                     "edges I traced on the roof. For each edge below, tell me what TYPE it is by looking "
@@ -2513,16 +2519,12 @@ async def suggest_edge_labels(
                     "  - WALL_INTERSECTION: edge where roof meets a vertical wall (dormer/second story)\n"
                     "  Only use these four types — shared edges (ridge/hip/valley) were already labeled.\n\n"
                     "Edges to classify (coordinates are image fractions, 0..1):\n"
-                    + "\n".join(edge_lines)
+                    + "\n".join(_edge_manifest(edges_for_vision))
                     + "\n\nReturn ONLY valid JSON:\n"
                     "{\n  \"labels\": [\n    {\"facet_label\": \"A\", \"vertex_index_start\": 0, \"edge_type\": \"eave\", \"confidence\": 0.8, \"reason\": \"gutter visible below\"},\n    ...\n  ]\n}\n"
                     "Be honest — confidence < 0.5 if you genuinely cannot tell."
                 )
-                text = await llm_vision(img_bytes, mt, prompt, max_tokens=1200)
-                t = (text or "").strip()
-                t = _re.sub(r"^```(?:json)?\s*", "", t, flags=_re.MULTILINE)
-                t = _re.sub(r"\s*```\s*$", "", t)
-                parsed = _loads_tolerant(t)
+                parsed = _loads_tolerant(await llm_vision(img_bytes, mt, prompt, max_tokens=1200))
                 if parsed is not None:
                     for v in parsed.get("labels") or []:
                         key = (v.get("facet_label"), int(v.get("vertex_index_start") or -1))
@@ -2534,6 +2536,43 @@ async def suggest_edge_labels(
             except Exception as e:
                 logger.info("edge-label vision pass failed: %s", e)
 
+        # ---- Pass 2: shared RIDGE vs VALLEY (the confusable pair) ----
+        # Geometry can't see height, so a ridge and a valley look identical from a
+        # 2D trace. The satellite CAN tell them apart, so let vision break the tie.
+        rv_edges = [
+            e for e in req.unlabeled_edges
+            if (geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}).get("edge_type") in ("ridge", "valley")
+        ]
+        if rv_edges:
+            try:
+                prompt = (
+                    "Top-down satellite roof image. For each traced edge below — each is a line where two "
+                    "roof planes meet — tell me if it is a RIDGE or a VALLEY:\n"
+                    "  - RIDGE: the PEAK where two slopes rise to meet and shed water AWAY on both sides. "
+                    "Often a bright/high line; planes get LOWER as they leave the edge.\n"
+                    "  - VALLEY: the TROUGH where two slopes fall to meet and channel water INTO the line. "
+                    "Often a darker, recessed line that may show staining/debris; planes get HIGHER leaving the edge.\n\n"
+                    "Edges (coordinates are image fractions, 0..1):\n"
+                    + "\n".join(_edge_manifest(rv_edges))
+                    + "\n\nReturn ONLY valid JSON:\n"
+                    "{\n  \"labels\": [\n    {\"facet_label\": \"A\", \"vertex_index_start\": 0, \"edge_type\": \"valley\", \"confidence\": 0.7, \"reason\": \"dark recessed line, water channels in\"}\n  ]\n}\n"
+                    "confidence < 0.5 if you truly cannot tell from the image."
+                )
+                parsed = _loads_tolerant(await llm_vision(img_bytes, mt, prompt, max_tokens=900))
+                if parsed is not None:
+                    for v in parsed.get("labels") or []:
+                        et = v.get("edge_type")
+                        if et not in ("ridge", "valley"):
+                            continue
+                        key = (v.get("facet_label"), int(v.get("vertex_index_start") or -1))
+                        rv_vision_by_edge[key] = {
+                            "edge_type": et,
+                            "confidence": geo.normalize_confidence(v.get("confidence")),
+                            "reason": str(v.get("reason") or "")[:200],
+                        }
+            except Exception as e:
+                logger.info("ridge/valley vision pass failed: %s", e)
+
     # Merge: shared edges from geometry, unshared from vision (else geometry fallback)
     out: list[dict] = []
     for e in req.unlabeled_edges:
@@ -2541,12 +2580,21 @@ async def suggest_edge_labels(
         geo_sug = geom_index.get(key, {})
         shared = geo_sug.get("shared_with_facet_label")
         if shared:
+            etype = geo_sug.get("edge_type") or "ridge"
+            conf = 0.85
+            reason = f"Shared edge with facet {shared} (geometric)"
+            # Vision breaks the ridge↔valley tie when it's confident.
+            rv = rv_vision_by_edge.get(key)
+            if rv and rv.get("edge_type") in ("ridge", "valley") and (rv.get("confidence") or 0) >= 0.6:
+                etype = rv["edge_type"]
+                conf = max(0.6, rv.get("confidence") or 0.6)
+                reason = f"Shared with {shared}; ridge/valley confirmed from satellite — {rv.get('reason', '')}".strip()
             out.append({
                 "facet_label": key[0],
                 "vertex_index_start": key[1],
-                "suggested_edge_type": geo_sug.get("edge_type") or "ridge",
-                "confidence": 0.85,
-                "reason": f"Shared edge with facet {shared} (geometric)",
+                "suggested_edge_type": etype,
+                "confidence": conf,
+                "reason": reason,
                 "shared_with_facet_label": shared,
                 "ai_suggested": True,
             })
