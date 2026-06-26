@@ -855,10 +855,15 @@ export default function RoofV2Page() {
                 imageWidthPx={imagery?.width_px ?? 2048}
                 imageHeightPx={imagery?.height_px ?? 1366}
                 trigger={autoLabelTrigger}
-                onAcceptEdges={(updatedEdges) => {
+                onAcceptEdges={async (updatedEdges) => {
                   setEdges(updatedEdges)
                   setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
-                  void persistGeometry(facets, updatedEdges)
+                  // Persist FIRST, then bump geometryStamp so MeasurementsSummary
+                  // refetches against the saved edges — otherwise accepting labels
+                  // left the measurements + material order stale (only the
+                  // previously-saved ridges showed).
+                  await persistGeometry(facets, updatedEdges)
+                  setGeometryStamp(s => s + 1)
                 }}
               />
             </div>

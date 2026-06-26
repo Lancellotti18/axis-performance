@@ -445,19 +445,50 @@ def recommended_waste_pct(complexity: float) -> int:
 # ----------------------------------------------------------------------------
 
 def _segments_overlap(
-    a1: list[float], a2: list[float], b1: list[float], b2: list[float], tol: float = 0.005
+    a1: list[float], a2: list[float], b1: list[float], b2: list[float], tol: float = 0.006
 ) -> bool:
     """
-    True if line segments (a1,a2) and (b1,b2) are coincident within `tol`
-    (image-fraction units, default ≈0.5% of side). Used to detect when two
-    facets share an edge — that edge is then a ridge, hip, or valley.
+    True if two facet edges are the SAME physical roof line — i.e. the facets
+    share that edge (→ it's a ridge, hip, or valley, not a perimeter eave/rake).
 
-    We test both orderings since polygon traversal may differ.
+    Two ways to be "shared":
+      1. Coincident endpoints within `tol` (the clean case).
+      2. COLLINEAR OVERLAP — same line, overlapping spans, even if the traced
+         endpoints don't match. This is the important one: hand-traced facets
+         rarely meet exactly, and one slope is often longer than its neighbor, so
+         a real ridge/hip/valley would otherwise be missed and mislabeled as an
+         eave/rake. We require near-parallel direction, small perpendicular
+         distance, and meaningful projected overlap so we never fuse two distinct
+         parallel edges.
     """
     def close(p: list[float], q: list[float]) -> bool:
         return abs(p[0] - q[0]) <= tol and abs(p[1] - q[1]) <= tol
 
-    return (close(a1, b1) and close(a2, b2)) or (close(a1, b2) and close(a2, b1))
+    if (close(a1, b1) and close(a2, b2)) or (close(a1, b2) and close(a2, b1)):
+        return True
+
+    ax, ay = a2[0] - a1[0], a2[1] - a1[1]
+    bx, by = b2[0] - b1[0], b2[1] - b1[1]
+    la = math.hypot(ax, ay)
+    lb = math.hypot(bx, by)
+    if la < 1e-6 or lb < 1e-6:
+        return False
+    # Near-parallel? |sin(angle)| via normalized cross product (~10°).
+    if abs((ax * by - ay * bx) / (la * lb)) > 0.18:
+        return False
+    # Perpendicular distance of b's endpoints to a's infinite line (≈1% of tile).
+    nx, ny = -ay / la, ax / la
+    if abs((b1[0] - a1[0]) * nx + (b1[1] - a1[1]) * ny) > 0.010:
+        return False
+    if abs((b2[0] - a1[0]) * nx + (b2[1] - a1[1]) * ny) > 0.010:
+        return False
+    # Projected overlap along a's direction must be a real fraction of the
+    # shorter edge — guards against collinear-but-disjoint edges.
+    ux, uy = ax / la, ay / la
+    pb0 = (b1[0] - a1[0]) * ux + (b1[1] - a1[1]) * uy
+    pb1 = (b2[0] - a1[0]) * ux + (b2[1] - a1[1]) * uy
+    overlap = min(la, max(pb0, pb1)) - max(0.0, min(pb0, pb1))
+    return overlap > 0.35 * min(la, lb)
 
 
 def _interior_angle_deg(prev, v, nxt) -> float:

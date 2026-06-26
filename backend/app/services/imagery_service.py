@@ -533,11 +533,10 @@ async def fetch_satellite_image(
                 if result is None:
                     continue
                 result.providers_tried = list(all_tried)
-                if try_zoom != requested_zoom:
-                    result.warnings.insert(0, (
-                        f"Tile unavailable at requested zoom {requested_zoom}; "
-                        f"falling back to zoom {try_zoom}. House framing will be slightly wider."
-                    ))
+                # Zoom fallback (z22→z21→z20) is silent by design — the contractor
+                # asked us not to surface "couldn't reach zoom 22"; just serve the
+                # best zoom the provider actually has. (The effective zoom is still
+                # on the result for the measurement math.)
                 if result.health_score >= FALLBACK_THRESHOLD:
                     return result
                 if zoom_best is None or result.health_score > zoom_best.health_score:
