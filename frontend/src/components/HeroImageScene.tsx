@@ -71,7 +71,7 @@ export default function HeroImageScene({
         <img
           ref={imgRef}
           src={image}
-          alt="Modern home at dusk"
+          alt="Modern home at dusk with its roof being measured by a glowing AI digital-twin scan"
           className="absolute inset-0 h-full w-full object-cover will-change-transform"
           style={{
             transform: 'scale(1.06)',

@@ -262,7 +262,7 @@ export default function HomePage() {
 
       {/* ─── HERO: scroll-driven 3D house frame sequence ─────────────────── */}
       <HeroImageScene
-        image="/hero/house-hero.jpg"
+        image="/hero/digital-twin-hero.jpg"
         trackHeightVh={500}
         onProgress={setProgress}
       >
