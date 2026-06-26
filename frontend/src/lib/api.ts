@@ -591,6 +591,11 @@ export const api = {
           method: 'POST',
           body: JSON.stringify({ lat, lng, zoom, width_px: width, height_px: height }),
         }, 60000),
+      // Street-level photo of the address, so users who don't recognize the house
+      // from above can match it and tap the right roof. Best-effort.
+      getStreetView: (lat: number, lng: number) =>
+        apiRequest<{ available: boolean; image?: string }>(
+          `/api/v1/roofing/v2/streetview?lat=${lat}&lng=${lng}`),
       locationSearch: (q: string, withGeographies = false) =>
         apiRequest<{
           matches: Array<{

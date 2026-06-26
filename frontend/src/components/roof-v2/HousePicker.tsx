@@ -6,22 +6,39 @@
  * the contractor tap their roof once; the point (image fractions) is saved on
  * the run and the backend anchors its mask/crop on it. One tap, foolproof.
  */
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 
 interface Props {
   runId: string
   imageUrl: string
+  /** Address coords — used to pull a Street View reference photo. */
+  lat?: number
+  lng?: number
+  /** Formatted address, shown so the user knows which property this is. */
+  address?: string
   initialPoint?: { x: number; y: number } | null
   onConfirmed?: (p: { x: number; y: number }) => void
 }
 
-export default function HousePicker({ runId, imageUrl, initialPoint, onConfirmed }: Props) {
+export default function HousePicker({ runId, imageUrl, lat, lng, address, initialPoint, onConfirmed }: Props) {
   const [point, setPoint] = useState<{ x: number; y: number }>(initialPoint ?? { x: 0.5, y: 0.5 })
   const [confirmed, setConfirmed] = useState<boolean>(!!initialPoint)
   const [saving, setSaving] = useState(false)
+  const [streetView, setStreetView] = useState<string | null>(null)
   const imgRef = useRef<HTMLImageElement>(null)
+
+  // Pull a street-level photo of the address so users who don't recognize the
+  // house from the top-down view can match it. Best-effort — hidden if missing.
+  useEffect(() => {
+    if (lat == null || lng == null || (lat === 0 && lng === 0)) return
+    let cancelled = false
+    api.roofing.v2.getStreetView(lat, lng)
+      .then(r => { if (!cancelled && r.available && r.image) setStreetView(r.image) })
+      .catch(() => { /* best-effort */ })
+    return () => { cancelled = true }
+  }, [lat, lng])
 
   const place = useCallback((clientX: number, clientY: number) => {
     const el = imgRef.current
@@ -56,8 +73,13 @@ export default function HousePicker({ runId, imageUrl, initialPoint, onConfirmed
           <h3 className="text-sm font-semibold text-emerald-100">📍 Tap your house</h3>
           <p className="text-xs text-slate-400">
             Tap the <strong>center of YOUR roof</strong> so auto-detect locks onto the right building —
-            not a neighbor or a shed. One tap; you can re-tap to adjust.
+            not a neighbor or a shed. The marker starts on the address; re-tap to adjust.
           </p>
+          {address && (
+            <p className="mt-1 text-[11px] text-emerald-200/80">
+              Property: <span className="font-medium text-emerald-100">{address}</span>
+            </p>
+          )}
         </div>
         {confirmed && (
           <span className="shrink-0 rounded-full bg-emerald-500/20 px-2.5 py-1 text-[10px] font-semibold text-emerald-300">
@@ -65,6 +87,25 @@ export default function HousePicker({ runId, imageUrl, initialPoint, onConfirmed
           </span>
         )}
       </div>
+
+      {/* Street-level reference: the view people actually recognize. Find THIS
+          house on the satellite below, then tap its roof. */}
+      {streetView && (
+        <div className="mt-3 flex gap-3 rounded-lg border border-white/10 bg-slate-900/50 p-2.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={streetView}
+            alt="Street view of the address"
+            className="h-24 w-36 shrink-0 rounded-md border border-white/10 object-cover"
+            draggable={false}
+          />
+          <div className="text-[11px] leading-relaxed text-slate-400">
+            <span className="font-semibold text-slate-200">Don&apos;t recognize it from above?</span>{' '}
+            This is the address from the street. Find <em>this same house</em> on the satellite
+            image below — it&apos;s the building at the center — and tap its roof.
+          </div>
+        </div>
+      )}
 
       <div className="mt-3 overflow-hidden rounded-lg border border-white/10 bg-black">
         <div className="relative">

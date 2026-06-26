@@ -871,7 +871,13 @@ export default function RoofV2Page() {
 
           {/* Tap your house FIRST so auto-detect locks onto the right building. */}
           {imagery?.url && (
-            <HousePicker runId={runId} imageUrl={imagery.url} />
+            <HousePicker
+              runId={runId}
+              imageUrl={imagery.url}
+              lat={imagery.lat ?? location?.lat}
+              lng={imagery.lng ?? location?.lng}
+              address={project ? [project.address, project.city, project.state, project.zip].filter(Boolean).join(', ') : undefined}
+            />
           )}
 
           {/* Guided workflow — recommended top-to-bottom order. The editor above

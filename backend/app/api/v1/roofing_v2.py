@@ -469,6 +469,59 @@ x0,y0 is the top-left corner of the building's bounding box; x1,y1 the bottom-ri
     }
 
 
+@router.get("/streetview")
+async def street_view(
+    lat: float = Query(...),
+    lng: float = Query(...),
+    user: dict = Depends(require_user),
+) -> dict:
+    """Best-effort Google Street View thumbnail of an address, so a contractor who
+    can't recognize the house from the top-down satellite can match the familiar
+    STREET-LEVEL view and tap the right roof. The camera is aimed from the nearest
+    panorama toward the address so the house is centered. Returns
+    {available, image?} where image is a base64 data URL — the key never leaves the
+    server. Degrades silently (available=false) when there's no coverage or the key
+    isn't enabled for Street View."""
+    from app.core.config import settings as _settings
+    import base64
+    import httpx as _httpx
+    key = _settings.GOOGLE_SOLAR_API_KEY
+    if not key:
+        return {"available": False}
+    try:
+        async with _httpx.AsyncClient(timeout=10) as client:
+            meta = await client.get(
+                "https://maps.googleapis.com/maps/api/streetview/metadata",
+                params={"location": f"{lat},{lng}", "key": key},
+            )
+            md = meta.json() or {}
+            if md.get("status") != "OK":
+                return {"available": False}
+            # Aim the camera from the panorama toward the actual address.
+            heading: Optional[float] = None
+            ploc = md.get("location") or {}
+            plat, plng = ploc.get("lat"), ploc.get("lng")
+            if plat is not None and plng is not None:
+                dlng = math.radians(lng - float(plng))
+                y = math.sin(dlng) * math.cos(math.radians(lat))
+                x = (math.cos(math.radians(float(plat))) * math.sin(math.radians(lat))
+                     - math.sin(math.radians(float(plat))) * math.cos(math.radians(lat)) * math.cos(dlng))
+                heading = (math.degrees(math.atan2(y, x)) + 360) % 360
+            params = {"size": "640x400", "location": f"{lat},{lng}", "fov": "75",
+                      "source": "outdoor", "key": key}
+            if heading is not None:
+                params["heading"] = f"{heading:.0f}"
+            img = await client.get(
+                "https://maps.googleapis.com/maps/api/streetview", params=params)
+            img.raise_for_status()
+            ct = img.headers.get("content-type", "image/jpeg").split(";")[0]
+            b64 = base64.b64encode(img.content).decode()
+            return {"available": True, "image": f"data:{ct};base64,{b64}"}
+    except Exception as e:
+        logger.info("street view lookup failed: %s", e)
+        return {"available": False}
+
+
 # ----------------------------------------------------------------------------
 # Location
 # ----------------------------------------------------------------------------
