@@ -1787,6 +1787,7 @@ def _solar_segments_as_fractions(
             "pitch": str(s.get("pitch") or "").strip(),
             "area_sqft": float(s.get("area_sqft") or 0.0),
             "slope_direction": str(s.get("slope_direction") or ""),
+            "azimuth_degrees": (float(s["azimuth_degrees"]) if s.get("azimuth_degrees") is not None else None),
         })
     return out
 
@@ -2502,18 +2503,53 @@ async def suggest_edge_labels(
     Returns suggestions with confidence + reasoning. Frontend renders these as
     pre-selected dropdowns the contractor can accept or override per edge.
     """
-    # Always available: deterministic geometry suggestion (shared edges, angles)
-    geom_suggestions = geo.auto_suggest_edge_types(req.facets)
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select(
+        "satellite_image_url, satellite_lat, satellite_lng, satellite_zoom"
+    ).eq("id", run_id).single().execute()
+    run_data = run.data or {}
+    img_url = run_data.get("satellite_image_url")
+
+    # Enrich facets with Google Solar's MEASURED azimuth (slope direction). This is
+    # the single biggest accuracy lever for edge labels: knowing which way each
+    # plane slopes lets the geometry classifier tell eave/rake/ridge/hip/valley
+    # physically instead of guessing from a flat trace. Best-effort — no Solar
+    # coverage just falls back to 2D geometry + the vision passes below.
+    facets_enriched = [dict(f) for f in req.facets]
+    s_lat, s_lng = run_data.get("satellite_lat"), run_data.get("satellite_lng")
+    s_zoom = run_data.get("satellite_zoom") or 20
+    if s_lat is not None and s_lng is not None:
+        try:
+            from app.services import solar_service
+            solar = await solar_service.get_building_insights(float(s_lat), float(s_lng))
+            if solar.get("available"):
+                segs = _solar_segments_as_fractions(solar, float(s_lat), float(s_lng), int(s_zoom))
+                for f in facets_enriched:
+                    poly = f.get("polygon") or []
+                    if len(poly) < 3:
+                        continue
+                    best_az, best_score = None, 0.0
+                    for seg in segs:
+                        az = seg.get("azimuth_degrees")
+                        if az is None:
+                            continue
+                        # Coverage of the facet by the segment, +1 if the segment's
+                        # center sits inside the facet (strongest match signal).
+                        score = _coverage(poly, seg["rect"])
+                        if _point_in_poly(seg["center"], poly):
+                            score += 1.0
+                        if score > best_score:
+                            best_score, best_az = score, az
+                    if best_az is not None and best_score > 0.15:
+                        f["azimuth_degrees"] = best_az
+        except Exception as e:
+            logger.info("solar azimuth enrich failed for run %s: %s", run_id, e)
+
+    # Deterministic geometry suggestion — now slope-aware where azimuth is known.
+    geom_suggestions = geo.auto_suggest_edge_types(facets_enriched)
     geom_index: dict[tuple[str, int], dict] = {}
     for s in geom_suggestions:
         geom_index[(s.get("facet_label"), s.get("vertex_index_start"))] = s
-
-    # Get the satellite image for vision check on unshared edges
-    db = get_supabase()
-    run = db.table("roof_measurement_runs").select(
-        "satellite_image_url"
-    ).eq("id", run_id).single().execute()
-    img_url = (run.data or {}).get("satellite_image_url")
 
     def _edge_manifest(edge_list: list) -> list[str]:
         lines: list[str] = []
@@ -2552,10 +2588,14 @@ async def suggest_edge_labels(
         from app.services.llm import llm_vision
 
         # ---- Pass 1: unshared edges → eave / rake / gable_end / wall ----
-        edges_for_vision = [
-            e for e in req.unlabeled_edges
-            if not geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}).get("shared_with_facet_label")
-        ]
+        # Skip edges slope already nailed (Solar azimuth) — vision is the fallback
+        # for facets Solar didn't cover, not a second-guess of measured slope.
+        edges_for_vision = []
+        for e in req.unlabeled_edges:
+            gi = geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}
+            if gi.get("shared_with_facet_label") or gi.get("method") == "slope":
+                continue
+            edges_for_vision.append(e)
         if edges_for_vision:
             try:
                 prompt = (
@@ -2589,10 +2629,13 @@ async def suggest_edge_labels(
         # ---- Pass 2: shared RIDGE vs VALLEY (the confusable pair) ----
         # Geometry can't see height, so a ridge and a valley look identical from a
         # 2D trace. The satellite CAN tell them apart, so let vision break the tie.
-        rv_edges = [
-            e for e in req.unlabeled_edges
-            if (geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}).get("edge_type") in ("ridge", "hip", "valley")
-        ]
+        rv_edges = []
+        for e in req.unlabeled_edges:
+            gi = geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}
+            # Only disambiguate shared edges geometry was UNSURE about — when slope
+            # classified them from measured azimuth, that wins.
+            if gi.get("edge_type") in ("ridge", "hip", "valley") and gi.get("method") != "slope":
+                rv_edges.append(e)
         if rv_edges:
             try:
                 prompt = (
@@ -2636,14 +2679,19 @@ async def suggest_edge_labels(
         shared = geo_sug.get("shared_with_facet_label")
         if shared:
             etype = geo_sug.get("edge_type") or "ridge"
-            conf = 0.85
-            reason = f"Shared edge with facet {shared} (geometric)"
-            # Vision breaks the ridge↔hip↔valley confusion when it's confident.
-            rv = rv_vision_by_edge.get(key)
-            if rv and rv.get("edge_type") in ("ridge", "hip", "valley") and (rv.get("confidence") or 0) >= 0.6:
-                etype = rv["edge_type"]
-                conf = max(0.6, rv.get("confidence") or 0.6)
-                reason = f"Shared with {shared}; {etype} confirmed from satellite — {rv.get('reason', '')}".strip()
+            if geo_sug.get("method") == "slope":
+                # Classified from Google Solar's measured slope direction — trusted.
+                conf = geo_sug.get("confidence") or 0.82
+                reason = f"Shared with {shared}; {etype} from measured slope direction"
+            else:
+                conf = 0.85
+                reason = f"Shared edge with facet {shared} (geometric)"
+                # Vision breaks the ridge↔hip↔valley confusion when slope is unknown.
+                rv = rv_vision_by_edge.get(key)
+                if rv and rv.get("edge_type") in ("ridge", "hip", "valley") and (rv.get("confidence") or 0) >= 0.6:
+                    etype = rv["edge_type"]
+                    conf = max(0.6, rv.get("confidence") or 0.6)
+                    reason = f"Shared with {shared}; {etype} confirmed from satellite — {rv.get('reason', '')}".strip()
             out.append({
                 "facet_label": key[0],
                 "vertex_index_start": key[1],
@@ -2651,6 +2699,17 @@ async def suggest_edge_labels(
                 "confidence": conf,
                 "reason": reason,
                 "shared_with_facet_label": shared,
+                "ai_suggested": True,
+            })
+        elif geo_sug.get("method") == "slope":
+            # Eave/rake from measured slope direction — trusted over vision/guess.
+            out.append({
+                "facet_label": key[0],
+                "vertex_index_start": key[1],
+                "suggested_edge_type": geo_sug.get("edge_type") or "eave",
+                "confidence": geo_sug.get("confidence") or 0.76,
+                "reason": f"{geo_sug.get('edge_type')} from measured slope direction",
+                "shared_with_facet_label": None,
                 "ai_suggested": True,
             })
         else:

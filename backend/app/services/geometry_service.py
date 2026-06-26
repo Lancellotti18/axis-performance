@@ -561,8 +561,85 @@ def _classify_shared_edge(p1, p2, this_poly: list, facets: list[dict]) -> tuple[
     return ("ridge", 0.45) if near_h else ("hip", 0.45)
 
 
+# ----------------------------------------------------------------------------
+# Slope-direction edge classification (the reliable path)
+#
+# Pure 2D geometry can't tell a ridge from a hip from a valley, or an eave from a
+# rake, because all of that depends on which way each plane SLOPES — invisible in
+# a flat top-down trace. Google Solar gives us each facet's measured azimuth (the
+# compass direction it faces = the downhill direction). With that we classify
+# edges the way a roofer physically reasons about them: the eave is at the bottom
+# of the slope, rakes run up the slope, the ridge/hip is the high fold where two
+# planes shed water apart, the valley is the low fold where they channel water in.
+# ----------------------------------------------------------------------------
+
+def _downslope_vec(azimuth_deg: float) -> tuple[float, float]:
+    """Image-space unit vector pointing DOWN the slope. Azimuth is compass degrees
+    (0=N, 90=E, 180=S, 270=W); tiles are north-up and image y points DOWN, so a
+    north-facing plane (az 0) slopes toward the top of the image → (0, -1)."""
+    r = math.radians(azimuth_deg)
+    return (math.sin(r), -math.cos(r))
+
+
+def _poly_centroid(poly: list) -> tuple[float, float]:
+    n = len(poly)
+    if n == 0:
+        return (0.0, 0.0)
+    return (sum(p[0] for p in poly) / n, sum(p[1] for p in poly) / n)
+
+
+def _azimuth_diff(a: float, b: float) -> float:
+    """Smallest absolute difference between two compass bearings, 0..180."""
+    return abs(((a - b + 180) % 360) - 180)
+
+
+def _classify_shared_slope(p1, p2, facet_a: dict, facet_b: dict,
+                           az_a: float, az_b: float) -> tuple[str, float] | None:
+    """Ridge / hip / valley from the two facets' slope directions.
+      - Both planes slope DOWN toward the shared edge → VALLEY (water collects).
+      - Both slope AWAY from it → a peak: RIDGE if the planes face ~opposite
+        ways, HIP if they face ~perpendicular (two slopes meeting at a corner).
+    Returns None when the geometry is mixed/ambiguous so the caller falls back."""
+    da, db = _downslope_vec(az_a), _downslope_vec(az_b)
+    mx, my = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
+    ca, cb = _poly_centroid(facet_a.get("polygon") or []), _poly_centroid(facet_b.get("polygon") or [])
+    oax, oay = mx - ca[0], my - ca[1]      # facet A centroid → shared edge (outward)
+    obx, oby = mx - cb[0], my - cb[1]
+    la = math.hypot(oax, oay) or 1e-9
+    lb = math.hypot(obx, oby) or 1e-9
+    a_low = (da[0] * oax + da[1] * oay) / la > 0   # A slopes down toward the edge
+    b_low = (db[0] * obx + db[1] * oby) / lb > 0
+    if a_low and b_low:
+        return ("valley", 0.82)
+    if (not a_low) and (not b_low):
+        return ("ridge", 0.85) if _azimuth_diff(az_a, az_b) > 135 else ("hip", 0.82)
+    return None
+
+
+def _classify_perimeter_slope(p1, p2, facet: dict, az: float) -> tuple[str, float] | None:
+    """Eave / rake from one facet's slope direction. Eave = the low cross-slope
+    edge; rake = an edge running up the slope. Returns None for the rare high
+    cross-slope perimeter edge (gable top) so geometry/vision decides that."""
+    d = _downslope_vec(az)
+    ex, ey = p2[0] - p1[0], p2[1] - p1[1]
+    le = math.hypot(ex, ey)
+    if le < 1e-9:
+        return None
+    along = abs((ex / le) * d[0] + (ey / le) * d[1])   # 1 = runs up/down slope (rake)
+    if along > 0.6:
+        return ("rake", 0.74)
+    mx, my = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
+    c = _poly_centroid(facet.get("polygon") or [])
+    ox, oy = mx - c[0], my - c[1]
+    lo = math.hypot(ox, oy) or 1e-9
+    facing = (d[0] * ox + d[1] * oy) / lo      # >0 → edge on the downslope (low) side
+    if facing > 0.25:
+        return ("eave", 0.80)
+    return None
+
+
 def auto_suggest_edge_types(
-    facets: list[dict],   # each: {label, polygon, pitch_degrees}
+    facets: list[dict],   # each: {label, polygon, pitch_degrees, azimuth_degrees?}
 ) -> list[dict]:
     """
     Given a list of facets, return a list of suggested edge labels:
@@ -606,6 +683,7 @@ def auto_suggest_edge_types(
             p2 = poly[(vi + 1) % n]
 
             shared_with: str | None = None
+            shared_other: dict | None = None
             for j, other in enumerate(facets):
                 if j == i:
                     continue
@@ -618,29 +696,39 @@ def auto_suggest_edge_types(
                     q2 = opoly[(vj + 1) % m]
                     if _segments_overlap(p1, p2, q1, q2):
                         shared_with = other.get("label")
+                        shared_other = other
                         break
                 if shared_with:
                     break
 
+            method = "geometry"
+            confidence: float | None = None
+            az_self = f.get("azimuth_degrees")
             if shared_with:
-                # Classify by GEOMETRY (orientation + concavity), NOT pitch
-                # equality — Solar gives facets similar pitch, which used to make
-                # every shared edge a "ridge". Valleys are now detected too.
-                edge_type, _conf = _classify_shared_edge(p1, p2, poly, facets)
-            else:
-                # Heuristic: classify by edge orientation in image space.
-                dx = p2[0] - p1[0]
-                dy = p2[1] - p1[1]
-                # Horizontal edges → eave or ridge end. Without slope direction
-                # we can't tell which; we lean 'eave' because every roof has eaves
-                # at its lower perimeter, and unmatched eaves are far more common
-                # than unmatched ridges (a ridge usually has another facet on the
-                # far side).
-                horizontal = abs(dy) < 0.15 * abs(dx) if dx != 0 else False
-                if horizontal:
-                    edge_type = "eave"
+                # SLOPE FIRST (reliable): if both facets have a measured azimuth,
+                # classify ridge/hip/valley by which way the planes slope. Fall
+                # back to 2D geometry (concavity + orientation) when slope is
+                # unavailable or ambiguous.
+                az_other = shared_other.get("azimuth_degrees") if shared_other else None
+                slope = (
+                    _classify_shared_slope(p1, p2, f, shared_other, az_self, az_other)
+                    if (az_self is not None and az_other is not None and shared_other) else None
+                )
+                if slope:
+                    edge_type, confidence, method = slope[0], slope[1], "slope"
                 else:
-                    edge_type = "rake"
+                    edge_type, _c = _classify_shared_edge(p1, p2, poly, facets)
+            else:
+                # Perimeter: slope tells eave (low cross-slope) from rake (up the
+                # slope) far better than image-orientation guessing.
+                slope = _classify_perimeter_slope(p1, p2, f, az_self) if az_self is not None else None
+                if slope:
+                    edge_type, confidence, method = slope[0], slope[1], "slope"
+                else:
+                    dx = p2[0] - p1[0]
+                    dy = p2[1] - p1[1]
+                    horizontal = abs(dy) < 0.15 * abs(dx) if dx != 0 else False
+                    edge_type = "eave" if horizontal else "rake"
 
             suggestions.append({
                 "facet_label": f.get("label"),
@@ -648,6 +736,8 @@ def auto_suggest_edge_types(
                 "vertex_index_end": (vi + 1) % n,
                 "edge_type": edge_type,
                 "shared_with_facet_label": shared_with,
+                "method": method,
+                "confidence": confidence,
             })
 
     return suggestions
