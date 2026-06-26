@@ -694,6 +694,59 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict) -> list:
 # Public entry
 # ----------------------------------------------------------------------------
 
+def _section_photos(run: dict, styles: dict) -> list:
+    """Photos page — the aerial tile + the contractor's uploaded ground photos.
+    Real images only; downloads each and embeds two per row."""
+    import urllib.request
+
+    flow = [_section_header("Property Photos", 9, styles)]
+    items: list[tuple[str, str]] = []
+    if run.get("satellite_image_url"):
+        items.append(("Aerial (satellite)", run["satellite_image_url"]))
+    for i, u in enumerate(run.get("ground_photo_urls") or []):
+        items.append((f"Ground photo {i + 1}", u))
+
+    if not items:
+        flow.append(Paragraph(
+            "No photos captured. Upload ground photos in the editor to include them here.",
+            styles["muted"]))
+        return flow
+
+    cap_style = styles.get("small") or styles["muted"]
+    rows: list[list] = []
+    row: list = []
+    for caption, url in items[:12]:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "AxisReport/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                data = r.read()
+            cell = [Image(io.BytesIO(data), width=3.1 * inch, height=2.3 * inch, kind="proportional"),
+                    Paragraph(caption, cap_style)]
+        except Exception:
+            logger.info("report: could not fetch photo %s", url)
+            continue
+        row.append(cell)
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        while len(row) < 2:
+            row.append("")
+        rows.append(row)
+
+    if rows:
+        t = Table(rows, colWidths=[3.45 * inch, 3.45 * inch])
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        flow.append(t)
+    else:
+        flow.append(Paragraph("Photos could not be loaded.", styles["muted"]))
+    return flow
+
+
 def generate_v2_report(
     project: dict,
     run: dict,
@@ -733,6 +786,8 @@ def generate_v2_report(
     story.extend(_section_7_exterior(siding_measurements, styles))
     story.append(Spacer(1, 10))
     story.extend(_section_8_methodology(run, aggregates, styles))
+    story.append(PageBreak())
+    story.extend(_section_photos(run, styles))
 
     doc.build(story)
     return buf.getvalue()

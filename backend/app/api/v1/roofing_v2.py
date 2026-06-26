@@ -1177,7 +1177,49 @@ async def analyze_ground_photo(
         except Exception as e:
             logger.warning("could not persist ground_findings on run %s: %s", run_id, e)
 
+    # Persist the photos themselves so they can appear in the report. Best-effort.
+    try:
+        new_urls = _store_ground_photos(run_id, images)
+        if new_urls:
+            db = get_supabase()
+            cur = db.table("roof_measurement_runs").select(
+                "ground_photo_urls").eq("id", run_id).single().execute()
+            existing = (cur.data or {}).get("ground_photo_urls") or []
+            db.table("roof_measurement_runs").update(
+                {"ground_photo_urls": (existing + new_urls)[:24]}
+            ).eq("id", run_id).execute()
+    except Exception as e:
+        logger.info("could not persist ground photo urls for run %s: %s", run_id, e)
+
     return {"results": results, "findings": first, "message": message}
+
+
+def _store_ground_photos(run_id: str, images: list[tuple[bytes, str]]) -> list[str]:
+    """Upload ground photos to Supabase Storage (the existing 'blueprints' bucket,
+    under ground-photos/<run>/) and return long-lived signed URLs for the report.
+    Best-effort — returns whatever uploaded."""
+    import uuid as _uuid
+    from app.core.config import settings as _settings
+
+    bucket = get_supabase().storage.from_("blueprints")
+    urls: list[str] = []
+    for img_bytes, mt in (images or [])[:12]:
+        ext = "png" if "png" in (mt or "") else "jpg"
+        key = f"ground-photos/{run_id}/{_uuid.uuid4().hex}.{ext}"
+        try:
+            bucket.upload(key, img_bytes, {"content-type": mt or "image/jpeg", "upsert": "true"})
+            signed = bucket.create_signed_url(key, 31_536_000)
+            url = None
+            if isinstance(signed, dict):
+                url = (signed.get("signedURL") or signed.get("signedUrl")
+                       or signed.get("signed_url") or signed.get("url"))
+            if url:
+                if url.startswith("/"):
+                    url = _settings.SUPABASE_URL.rstrip("/") + url
+                urls.append(url)
+        except Exception as e:
+            logger.info("ground photo upload failed: %s", e)
+    return urls
 
 
 @router.get("/runs/{run_id}/solar")
