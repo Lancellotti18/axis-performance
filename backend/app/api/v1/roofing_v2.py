@@ -219,6 +219,73 @@ def _enhance_for_vision(img_bytes: bytes, media_type: str) -> tuple[bytes, str]:
         return img_bytes, media_type
 
 
+USE_FACET_REFERENCES = True   # send roof-type reference diagrams as few-shot
+_REFERENCE_CACHE: Optional[list] = None
+
+
+def _roof_reference_examples() -> list:
+    """Static, generated schematic diagrams of common roof TYPES from above, used
+    as few-shot references so the model labels facet_type more consistently
+    (gable vs hip vs valley). Cached after first build. Each item is
+    (png_bytes, 'image/png', caption)."""
+    global _REFERENCE_CACHE
+    if _REFERENCE_CACHE is not None:
+        return _REFERENCE_CACHE
+    try:
+        import io as _io
+        from PIL import Image, ImageDraw
+
+        def _canvas():
+            im = Image.new("RGB", (640, 480), (245, 245, 247))
+            return im, ImageDraw.Draw(im, "RGBA")
+
+        out: list = []
+
+        # GABLE — 2 facets, one straight ridge
+        im, d = _canvas()
+        d.polygon([(120, 120), (520, 120), (520, 240), (120, 240)], fill=(59, 130, 246, 90))
+        d.polygon([(120, 240), (520, 240), (520, 360), (120, 360)], fill=(34, 197, 94, 90))
+        d.rectangle([120, 120, 520, 360], outline=(30, 30, 30), width=3)
+        d.line([(120, 240), (520, 240)], fill=(220, 38, 38), width=6)
+        d.text((130, 90), "GABLE: 2 facets, one horizontal RIDGE (red)", fill=(20, 20, 20))
+        b = _io.BytesIO(); im.save(b, "PNG")
+        out.append((b.getvalue(), "image/png",
+                    "a GABLE roof from above: exactly 2 slopes meeting at ONE straight ridge; the end walls are triangular gables."))
+
+        # HIP — 4 facets, diagonal hips to a central ridge
+        im, d = _canvas()
+        cx0, cy0, cx1, cy1, rx0, rx1, ry = 120, 120, 520, 360, 240, 400, 240
+        d.polygon([(cx0, cy0), (cx1, cy0), (rx1, ry), (rx0, ry)], fill=(59, 130, 246, 90))
+        d.polygon([(cx0, cy1), (cx1, cy1), (rx1, ry), (rx0, ry)], fill=(34, 197, 94, 90))
+        d.polygon([(cx0, cy0), (rx0, ry), (cx0, cy1)], fill=(245, 158, 11, 90))
+        d.polygon([(cx1, cy0), (rx1, ry), (cx1, cy1)], fill=(236, 72, 153, 90))
+        for a, bb in [((cx0, cy0), (rx0, ry)), ((cx1, cy0), (rx1, ry)),
+                      ((cx0, cy1), (rx0, ry)), ((cx1, cy1), (rx1, ry))]:
+            d.line([a, bb], fill=(16, 185, 129), width=4)
+        d.line([(rx0, ry), (rx1, ry)], fill=(220, 38, 38), width=6)
+        d.text((130, 90), "HIP: 4 facets, diagonal HIPS (green) to RIDGE (red)", fill=(20, 20, 20))
+        b = _io.BytesIO(); im.save(b, "PNG")
+        out.append((b.getvalue(), "image/png",
+                    "a HIP roof from above: 4 slopes with diagonal hip lines from each corner to a central ridge; NO triangular gable end walls."))
+
+        # COMPLEX / VALLEY — L-shape with an inside corner
+        im, d = _canvas()
+        d.polygon([(120, 140), (360, 140), (360, 260), (520, 260), (520, 380), (120, 380)],
+                  fill=(59, 130, 246, 60), outline=(30, 30, 30))
+        d.line([(360, 260), (445, 330)], fill=(37, 99, 235), width=6)
+        d.text((130, 100), "COMPLEX (L): wings meet at a VALLEY (blue)", fill=(20, 20, 20))
+        b = _io.BytesIO(); im.save(b, "PNG")
+        out.append((b.getvalue(), "image/png",
+                    "a COMPLEX / L-shaped roof from above: two wings meeting at an inside corner, forming a valley where water collects."))
+
+        _REFERENCE_CACHE = out
+        return out
+    except Exception as e:
+        logger.info("roof reference examples build failed: %s", e)
+        _REFERENCE_CACHE = []
+        return []
+
+
 def _loads_tolerant(text: Optional[str]) -> Optional[dict]:
     """Best-effort extraction of a JSON object from an LLM response. Vision
     models occasionally emit slightly-broken JSON — trailing commas, a stray
@@ -1953,6 +2020,10 @@ IMPORTANT: Everything OUTSIDE the subject building may be masked to solid BLACK.
 Trace roof planes ONLY on the visible (non-black) building. Never trace into black
 areas, and treat any black region as 'not roof'.
 
+You may FIRST be shown labeled REFERENCE EXAMPLE diagrams of roof types (gable,
+hip, complex/valley) from above. Use them only to choose each facet's "facet_type"
+correctly — do NOT copy their shapes; trace the actual building in the photo.
+
 STEP 1 — LOCATE THE PRIMARY BUILDING.
 The image is centered on a residential address. The primary building is usually:
   - In the central 60% of the image
@@ -2116,8 +2187,9 @@ suggestions and trust your high-confidence ones.
     # Solar has planes for this address we still want to hand those back below.
     facets: list = []
     reason = ""
+    refs = _roof_reference_examples() if USE_FACET_REFERENCES else None
     try:
-        text = await llm_vision(vision_bytes, vision_mt, prompt, max_tokens=2048)
+        text = await llm_vision(vision_bytes, vision_mt, prompt, max_tokens=2048, reference_images=refs)
         parsed = _loads_tolerant(text)
         if parsed is None:
             reason = "The vision model did not return structured data for this tile."

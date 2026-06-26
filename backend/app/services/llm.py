@@ -103,17 +103,22 @@ async def llm_vision(
     prompt: str,
     system: Optional[str] = None,
     max_tokens: int = 8192,
+    reference_images: Optional[list] = None,
 ) -> str:
     """
     Analyze an image with a text prompt. Tries providers in priority order with automatic fallback.
     Gemini → Groq (vision) → Claude. Raises only if ALL configured providers fail.
+
+    reference_images: optional few-shot examples as (bytes, media_type, caption)
+    tuples, shown to the model BEFORE the target image. Only the Gemini path uses
+    them (multi-image); fallbacks ignore them.
     """
     errors = []
 
     if settings.GEMINI_API_KEY:
         try:
             from google import genai  # noqa: F401
-            return await _gemini_vision(image_bytes, media_type, prompt, system, max_tokens)
+            return await _gemini_vision(image_bytes, media_type, prompt, system, max_tokens, reference_images)
         except Exception as e:
             errors.append(f"Gemini: {e}")
 
@@ -291,6 +296,7 @@ async def _gemini_vision(
     prompt: str,
     system: Optional[str],
     max_tokens: int,
+    reference_images: Optional[list] = None,
 ) -> str:
     from google import genai
     from google.genai import types
@@ -307,12 +313,20 @@ async def _gemini_vision(
         # go to the answer. (2.0 models have no thinking config — leave them be.)
         if "2.5" in model:
             cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+        # Prepend few-shot reference images (captioned) before the target image.
+        contents: list = []
+        for ref in (reference_images or []):
+            try:
+                rb, rmt, rcap = ref
+                contents.append(types.Part.from_bytes(data=rb, mime_type=rmt))
+                contents.append(f"REFERENCE EXAMPLE — {rcap}")
+            except Exception:
+                continue
+        contents.append(types.Part.from_bytes(data=image_bytes, mime_type=media_type))
+        contents.append(full_prompt)
         response = client.models.generate_content(
             model=model,
-            contents=[
-                types.Part.from_bytes(data=image_bytes, mime_type=media_type),
-                full_prompt,
-            ],
+            contents=contents,
             config=types.GenerateContentConfig(**cfg_kwargs),
         )
         return _gemini_text_or_raise(response, model)
