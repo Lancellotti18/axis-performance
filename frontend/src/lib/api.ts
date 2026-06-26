@@ -851,6 +851,7 @@ export const api = {
           totals: Record<string, number>
           count: number
           message: string
+          gaps?: Array<{ type: string; detected: number; present: number; message: string }>
         }>(`/api/v1/roofing/v2/runs/${runId}/flashing`),
       suggestFacets: (runId: string) =>
         apiRequest<{

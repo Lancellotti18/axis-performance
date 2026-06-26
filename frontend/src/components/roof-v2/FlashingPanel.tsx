@@ -47,6 +47,7 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
   const [reqs, setReqs] = useState<Req[]>([])
   const [totals, setTotals] = useState<Record<string, number>>({})
   const [message, setMessage] = useState<string | null>(null)
+  const [gaps, setGaps] = useState<NonNullable<Awaited<ReturnType<typeof api.roofing.v2.getFlashing>>['gaps']>>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
@@ -59,6 +60,7 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
       setReqs(res.requirements)
       setTotals(res.totals)
       setMessage(res.message)
+      setGaps(res.gaps || [])
       setDismissed(new Set())
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Flashing analysis failed')
@@ -114,6 +116,18 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
 
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
       {message && !error && <p className="mt-2 text-xs text-slate-400">{message}</p>}
+
+      {/* Ground-photo completeness: conditions the photos detected but that
+          aren't reflected on the roof yet — so the flashing order isn't short. */}
+      {gaps.length > 0 && (
+        <ul className="mt-3 space-y-1.5">
+          {gaps.map((g, i) => (
+            <li key={i} className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-200">
+              📷 {g.message}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Confirmed totals */}
       {confirmed.length > 0 && (

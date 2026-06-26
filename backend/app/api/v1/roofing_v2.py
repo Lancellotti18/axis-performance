@@ -2927,7 +2927,7 @@ async def get_run_flashing(run_id: str, user: dict = Depends(require_user)) -> d
     from app.services.flashing_engine import build_input_from_rows, compute_flashing
 
     db = get_supabase()
-    run = db.table("roof_measurement_runs").select("id").eq("id", run_id).single().execute()
+    run = db.table("roof_measurement_runs").select("id, ground_findings").eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
 
@@ -2941,6 +2941,31 @@ async def get_run_flashing(run_id: str, user: dict = Depends(require_user)) -> d
     inp = build_input_from_rows(facets, edges, pens)
     summary = compute_flashing(inp)
     payload = summary.to_dict()
+
+    # Completeness cross-check against the GROUND PHOTOS: surface anything the
+    # photos detected that hasn't been added/labeled yet, so flashing is never
+    # silently short a chimney/skylight/wall/dormer the contractor photographed.
+    gf = run.data.get("ground_findings") or {}
+    gaps: list[dict] = []
+    det_ch = int((gf.get("chimney") or {}).get("count") or 0) if (gf.get("chimney") or {}).get("present") else 0
+    have_ch = sum(1 for p in pens if p.get("type") == "chimney")
+    if det_ch > have_ch:
+        gaps.append({"type": "chimney", "detected": det_ch, "present": have_ch,
+                     "message": f"Ground photos show {det_ch} chimney(s); {have_ch} added. Add the rest so chimney flashing is counted."})
+    det_sky = int(gf.get("skylights") or 0)
+    have_sky = sum(1 for p in pens if p.get("type") == "skylight")
+    if det_sky > have_sky:
+        gaps.append({"type": "skylight", "detected": det_sky, "present": have_sky,
+                     "message": f"Ground photos show {det_sky} skylight(s); {have_sky} added. Add the rest so skylight flashing is counted."})
+    if (gf.get("wall_abutment") or {}).get("present") and len(inp.wall_edges) == 0:
+        gaps.append({"type": "wall_intersection", "detected": 1, "present": 0,
+                     "message": "Ground photos show a roof-to-wall abutment, but no edge is labeled 'wall intersection' yet — label it (roof-to-wall panel) so step/counter flashing is added."})
+    det_dorm = int(gf.get("dormers") or 0)
+    if det_dorm > 0 and len(inp.wall_edges) < det_dorm:
+        gaps.append({"type": "dormer", "detected": det_dorm, "present": len(inp.wall_edges),
+                     "message": f"Ground photos show {det_dorm} dormer(s) — each dormer's roof-to-wall (cheek) edges need labeling so its step flashing is counted."})
+    payload["gaps"] = gaps
+
     n_conditions = len(inp.wall_edges) + len(inp.valley_edges) + len(inp.penetrations)
     if n_conditions == 0:
         payload["message"] = (
@@ -2955,6 +2980,11 @@ async def get_run_flashing(run_id: str, user: dict = Depends(require_user)) -> d
             f"{payload['count']} flashing requirement(s) derived from "
             f"{len(inp.wall_edges)} roof-to-wall run(s), {len(inp.valley_edges)} valley(s), "
             f"and {len(inp.penetrations)} penetration(s)."
+        )
+    if gaps:
+        payload["message"] += (
+            f" ⚠ {len(gaps)} condition(s) seen in your ground photos aren't reflected yet — "
+            "see below so the flashing order isn't short."
         )
     return payload
 
