@@ -180,21 +180,21 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
                 {showAreas && (
                   <g>
                     <rect
-                      x={cx - 46 * u} y={cy - 15 * u}
-                      width={92 * u} height={30 * u}
+                      x={cx - 66 * u} y={cy - 22 * u}
+                      width={132 * u} height={44 * u}
                       fill="rgba(15, 23, 42, 0.82)"
-                      stroke="#3b82f6" strokeWidth={1.2 * u}
-                      rx={4 * u}
+                      stroke="#3b82f6" strokeWidth={1.6 * u}
+                      rx={5 * u}
                     />
                     <text
-                      x={cx} y={cy - 3 * u}
+                      x={cx} y={cy - 5 * u}
                       textAnchor="middle" dominantBaseline="middle"
-                      fill="white" fontSize={10.5 * u} fontWeight={700}
+                      fill="white" fontSize={15.5 * u} fontWeight={700}
                     >{f.label}</text>
                     <text
-                      x={cx} y={cy + 8 * u}
+                      x={cx} y={cy + 12 * u}
                       textAnchor="middle" dominantBaseline="middle"
-                      fill="#cbd5e1" fontSize={8.5 * u}
+                      fill="#cbd5e1" fontSize={12.5 * u}
                     >{f.pitch}</text>
                   </g>
                 )}
@@ -221,18 +221,18 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
               const label = e ? EDGE_LABELS[e.edgeType] : '?'
               return (
                 <g key={`${f.label}-${i}`}>
-                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={2.4 * u} strokeLinecap="round" />
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={3.2 * u} strokeLinecap="round" />
                   {showLabels && e && e.edgeType !== 'unlabeled' && (
                     <g transform={`translate(${mx}, ${my}) rotate(${textAngle})`}>
                       <rect
-                        x={-20 * u} y={-17 * u} width={40 * u} height={13 * u} rx={3 * u}
+                        x={-29 * u} y={-23 * u} width={58 * u} height={18 * u} rx={4 * u}
                         fill="rgba(255,255,255,0.92)"
-                        stroke={color} strokeWidth={0.8 * u}
+                        stroke={color} strokeWidth={1.0 * u}
                       />
                       <text
-                        x={0} y={-10.5 * u}
+                        x={0} y={-14 * u}
                         textAnchor="middle" dominantBaseline="middle"
-                        fill={color} fontSize={8 * u} fontWeight={700}
+                        fill={color} fontSize={12 * u} fontWeight={700}
                       >{label}</text>
                     </g>
                   )}

@@ -30,13 +30,15 @@ interface Props {
 
 type Pt = [number, number]   // image fractions
 
-// Standardized, unambiguous references only. (A driveway/sidewalk has no
-// standard size — measuring those was the #1 source of wildly-off scale checks.)
+// TOP-DOWN references only — things you can actually see and measure from a
+// satellite view (horizontal ground features). Vertical features (door/window
+// height) and wall-face items don't read from above, so they're excluded.
 const PRESETS: { label: string; feet: number }[] = [
+  { label: 'Sedan length (15′)', feet: 15 },
+  { label: 'Pickup truck length (19′)', feet: 19 },
+  { label: 'Vehicle width (6′)', feet: 6 },
+  { label: 'Parking stall width (9′)', feet: 9 },
   { label: 'Double garage door — width (16′)', feet: 16 },
-  { label: 'Single garage door — width (9′)', feet: 9 },
-  { label: 'Single garage door — height (7′)', feet: 7 },
-  { label: 'Car length (15′)', feet: 15 },
 ]
 
 function fmtFt(v: number): string {
@@ -96,9 +98,9 @@ export default function ScaleCheckPanel({ runId, imageUrl, imageWidthPx, imageHe
     <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
       <h3 className="text-sm font-semibold text-slate-100">Scale check</h3>
       <p className="text-xs text-slate-400">
-        Click the two ends of a <strong>standard-size</strong> object on the tile (a garage door is best —
-        avoid driveways/sidewalks, which have no standard size), then pick its real size.
-        Confirms whether the imagery scale — and every measurement — is accurate.
+        Click the two ends of a <strong>standard-size</strong> object on the tile (a parked car is best —
+        you can see it clearly from above; avoid driveways/sidewalks, which have no standard size),
+        then pick its real size. Confirms whether the imagery scale — and every measurement — is accurate.
       </p>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_220px]">

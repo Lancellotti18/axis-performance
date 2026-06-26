@@ -78,14 +78,6 @@ function wallEdgeCandidates(facets: Facet[], edges: LabeledEdge[]): EdgeCandidat
   return out.sort((x, y) => y.score - x.score).slice(0, 6)
 }
 
-interface Transition {
-  p0: [number, number]
-  p1: [number, number]
-  kind: 'wall' | 'dormer'
-  confidence: number
-  reason: string
-}
-
 interface Props {
   runId: string
   facets: Facet[]
@@ -124,53 +116,9 @@ function TransitionThumb({
 type EdgeKey = string   // `${facetLabel}:${vertexIndexStart}`
 const edgeKey = (facetLabel: string, vstart: number): EdgeKey => `${facetLabel}:${vstart}`
 
-// Match tolerances (image fractions / cosine).
-const MAX_MIDPOINT_DIST = 0.06
-const MIN_DIR_SIMILARITY = 0.66
-
-function mid(a: [number, number], b: [number, number]): [number, number] {
-  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
-}
-function unit(a: [number, number], b: [number, number]): [number, number] {
-  const dx = b[0] - a[0], dy = b[1] - a[1]
-  const n = Math.hypot(dx, dy) || 1
-  return [dx / n, dy / n]
-}
-
-/** Find the facet edge that best matches a detected transition segment. */
-function matchEdge(t: Transition, facets: Facet[], edges: LabeledEdge[]): EdgeKey | null {
-  const segMid = mid(t.p0, t.p1)
-  const segDir = unit(t.p0, t.p1)
-  let best: EdgeKey | null = null
-  let bestScore = Infinity
-  for (const e of edges) {
-    const f = facets.find(x => x.label === e.facetLabel)
-    if (!f || f.polygon.length < 2) continue
-    const a = f.polygon[e.vertexIndexStart]
-    const b = f.polygon[e.vertexIndexEnd]
-    if (!a || !b) continue
-    const eMid = mid(a as [number, number], b as [number, number])
-    const eDir = unit(a as [number, number], b as [number, number])
-    const dist = Math.hypot(segMid[0] - eMid[0], segMid[1] - eMid[1])
-    const dirSim = Math.abs(segDir[0] * eDir[0] + segDir[1] * eDir[1])
-    if (dist <= MAX_MIDPOINT_DIST && dirSim >= MIN_DIR_SIMILARITY) {
-      const score = dist + (1 - dirSim) * 0.1
-      if (score < bestScore) { bestScore = score; best = edgeKey(e.facetLabel, e.vertexIndexStart) }
-    }
-  }
-  return best
-}
-
 export default function WallTransitionPanel({
   runId, facets, edges, imageUrl, imageWidthPx = 2048, imageHeightPx = 1366, onApplyEdges,
 }: Props) {
-  const [transitions, setTransitions] = useState<Transition[]>([])
-  const [message, setMessage] = useState<string | null>(null)
-  const [reason, setReason] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [ran, setRan] = useState(false)
-  const [applied, setApplied] = useState(false)
   const [ground, setGround] = useState<Awaited<ReturnType<typeof api.roofing.v2.getGroundFindings>>['findings'] | null>(null)
   const [showCandidates, setShowCandidates] = useState(false)
   const [labeledKeys, setLabeledKeys] = useState<Set<EdgeKey>>(new Set())
@@ -183,8 +131,6 @@ export default function WallTransitionPanel({
       .then(r => {
         if (cancelled) return
         setGround(r.findings)
-        // Ground photo is the PRIMARY source — if it saw a wall/dormer, open the
-        // candidate edges automatically so the contractor just taps to confirm.
         if (r.findings?.wall_abutment?.present || (r.findings?.dormers ?? 0) > 0) {
           setShowCandidates(true)
         }
@@ -207,65 +153,18 @@ export default function WallTransitionPanel({
     setLabeledKeys(prev => new Set(prev).add(edgeKey(c.facetLabel, c.vertexIndexStart)))
   }, [edges, onApplyEdges])
 
-  // Precompute the edge match for each transition.
-  const matches = useMemo(
-    () => transitions.map(t => matchEdge(t, facets, edges)),
-    [transitions, facets, edges],
-  )
-  const matchableCount = matches.filter(Boolean).length
-
-  const detect = useCallback(async () => {
-    setLoading(true); setError(null); setApplied(false)
-    try {
-      const res = await api.roofing.v2.detectWallTransitions(runId)
-      setTransitions(res.transitions)
-      setMessage(res.message)
-      setReason(res.reason || null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Detection failed')
-    } finally {
-      setLoading(false); setRan(true)
-    }
-  }, [runId])
-
-  const applyAll = useCallback(() => {
-    const keys = new Set(matches.filter(Boolean) as EdgeKey[])
-    if (keys.size === 0) return
-    const updated = edges.map(e =>
-      keys.has(edgeKey(e.facetLabel, e.vertexIndexStart))
-        ? { ...e, edgeType: 'wall_intersection' as const, userConfirmed: true }
-        : e,
-    )
-    onApplyEdges(updated)
-    setApplied(true)
-  }, [matches, edges, onApplyEdges])
-
   return (
     <section id="roof-to-wall-panel" className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm scroll-mt-16">
       <div>
         <h3 className="text-sm font-semibold text-slate-100">Roof-to-wall transitions</h3>
         <p className="text-xs text-slate-400">
-          Where the roof meets a wall or dormer (step flashing). Your <strong>ground photos</strong> are
-          the primary source — they detect the condition, then you confirm the edge with one tap below.
+          Where the roof meets a wall or dormer (step flashing). Driven by your <strong>ground photos</strong> —
+          they detect the condition, then you confirm the matching roof edge with one tap.
         </p>
       </div>
 
-      {/* Satellite vision is the FALLBACK (less accurate from a top-down tile) —
-          only useful when there's no ground photo. */}
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          onClick={detect}
-          disabled={loading}
-          className="rounded border border-white/15 bg-slate-800 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-slate-700 disabled:opacity-50"
-        >{loading ? 'Detecting…' : ran ? 'Re-detect from satellite' : 'Detect from satellite (fallback)'}</button>
-        <span className="text-[10px] text-slate-500">Use only if you have no ground photo</span>
-      </div>
-
-      {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
-      {message && !error && <p className="mt-2 text-xs text-slate-400">{message}</p>}
-
-      {/* Bridge: ground photo detected a condition → highlight the likely roof
-          edges so the contractor confirms with one tap (no flaky satellite). */}
+      {/* Ground photo detected a condition → highlight the likely roof edges so
+          the contractor confirms with one tap. */}
       {(photoWall || photoDormers > 0) && (
         <div className="mt-3 rounded-md border border-emerald-400/30 bg-emerald-500/5 p-2.5 text-[11px]">
           <div className="text-emerald-200">
@@ -316,69 +215,6 @@ export default function WallTransitionPanel({
         </ul>
       )}
 
-      {transitions.length > 0 && (
-        <>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wide text-amber-300">
-              {transitions.length} found · {matchableCount} match a traced edge
-            </span>
-            <button
-              onClick={applyAll}
-              disabled={matchableCount === 0 || applied}
-              className="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600 disabled:opacity-40"
-            >{applied ? 'Applied ✓' : `Label ${matchableCount} edge${matchableCount === 1 ? '' : 's'}`}</button>
-          </div>
-          <ul className="mt-2 space-y-1.5">
-            {transitions.map((t, i) => {
-              const matched = matches[i]
-              return (
-                <li key={i} className="flex items-center gap-3 rounded-md border border-white/10 p-2">
-                  {imageUrl ? (
-                    <TransitionThumb
-                      imageUrl={imageUrl} imgW={imageWidthPx} imgH={imageHeightPx}
-                      p0={t.p0} p1={t.p1}
-                      color={t.kind === 'dormer' ? '#a855f7' : '#f59e0b'}
-                    />
-                  ) : (
-                    <span
-                      className="inline-block h-3 w-3 shrink-0 rounded-full"
-                      style={{ background: t.kind === 'dormer' ? '#a855f7' : '#f59e0b' }}
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium capitalize text-slate-100">{t.kind}</span>
-                      <span className="text-[10px] text-slate-400">{Math.round(t.confidence * 100)}%</span>
-                      {matched ? (
-                        <span className="rounded bg-emerald-900/40 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">
-                          → {matched.split(':')[0]}
-                        </span>
-                      ) : (
-                        <span className="rounded bg-slate-700 px-1.5 py-0.5 text-[9px] text-slate-300" title="No traced edge nearby — draw/adjust the facet edge then re-detect">
-                          no edge match
-                        </span>
-                      )}
-                    </div>
-                    <div className="truncate text-[11px] text-slate-400">{t.reason}</div>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-          {matchableCount === 0 && (
-            <p className="mt-2 text-[11px] text-slate-500">
-              None of the detected transitions line up with a traced facet edge yet. Make sure the
-              facet whose edge abuts the wall/dormer is drawn, then re-detect.
-            </p>
-          )}
-        </>
-      )}
-
-      {ran && !loading && transitions.length === 0 && !error && (
-        <p className="mt-3 text-xs text-slate-500">
-          {reason || 'No roof-to-wall transitions detected. If the roof has dormers or meets a taller wall, label those edges manually as wall_intersection.'}
-        </p>
-      )}
     </section>
   )
 }
