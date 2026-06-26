@@ -550,6 +550,23 @@ async def create_run(req: CreateRunRequest, user: dict = Depends(require_user)) 
     return res.data[0]
 
 
+@router.get("/projects/{project_id}/latest-run")
+async def latest_run_for_project(project_id: str, user: dict = Depends(require_user)) -> dict:
+    """The most recent measurement run for a project, so reopening a project can
+    RESUME the contractor's saved roof (facets/edges) instead of starting over."""
+    db = get_supabase()
+    res = (
+        db.table("roof_measurement_runs")
+        .select("id, created_at")
+        .eq("project_id", project_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    rows = res.data or []
+    return {"run_id": rows[0]["id"] if rows else None}
+
+
 @router.get("/runs/{run_id}")
 async def get_run(run_id: str, user: dict = Depends(require_user)) -> dict:
     db = get_supabase()

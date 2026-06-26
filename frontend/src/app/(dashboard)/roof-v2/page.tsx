@@ -140,6 +140,20 @@ export default function RoofV2Page() {
   }, [router])
 
   // When a project is picked
+  const deleteProject = useCallback(async (id: string, name: string) => {
+    if (!window.confirm(`Delete "${name}"? This permanently removes the project and its roof measurements.`)) return
+    try {
+      await api.projects.delete(id)
+      setProjects(prev => prev.filter(p => p.id !== id))
+      setProjectId(prev => {
+        if (prev === id) { setProject(null); setRunId(null); setFacets([]); setEdges([]) }
+        return prev === id ? null : prev
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not delete project')
+    }
+  }, [])
+
   const pickProject = useCallback(async (id: string) => {
     setProjectId(id)
     setError(null)
@@ -147,9 +161,64 @@ export default function RoofV2Page() {
     try {
       const p = await api.projects.get(id)
       setProject(p as Project)
+
+      // RESUME: if this project already has a saved run, reload the roof
+      // (facets/edges + imagery) and jump straight to the editor.
+      try {
+        const { run_id } = await api.roofing.v2.latestRun(id)
+        if (run_id) {
+          const data = await api.roofing.v2.getRun(run_id)
+          const run = data.run as Record<string, unknown>
+          const url = (run.satellite_image_url as string) || ''
+          if (url) {
+            const lat = Number(run.satellite_lat) || 0
+            const lng = Number(run.satellite_lng) || 0
+            const zoom = Number(run.satellite_zoom) || 20
+            const mpp = 156543.03392 * Math.cos((lat * Math.PI) / 180) / Math.pow(2, zoom)
+            setImagery({
+              status: 'ok', health_score: 1, warnings: [], providers_tried: [],
+              url, original_url: url, width_px: 2048, height_px: 1366,
+              lat, lng, zoom, feet_per_pixel: mpp * 3.28084, display_mode: 'original',
+            } as ImageryPayload)
+            setLocation({ lat, lng } as LocationSelected)
+
+            const byId: Record<string, string> = {}
+            const fcts: Facet[] = (data.facets as Record<string, unknown>[]).map(f => {
+              byId[f.id as string] = f.facet_label as string
+              return {
+                label: (f.facet_label as string) || '?',
+                polygon: (f.polygon as [number, number][]) || [],
+                pitch: (f.pitch as string) || '6/12',
+                confidence: (f.confidence as number) ?? 0.8,
+                userConfirmed: !!f.user_confirmed,
+                aiSuggested: !!f.ai_suggested,
+              }
+            })
+            const edgs: LabeledEdge[] = (data.edges as Record<string, unknown>[]).map(e => ({
+              facetLabel: byId[e.facet_id as string] || '',
+              vertexIndexStart: e.vertex_index_start as number,
+              vertexIndexEnd: e.vertex_index_end as number,
+              edgeType: (e.edge_type as LabeledEdge['edgeType']) || 'unlabeled',
+              userConfirmed: !!e.user_confirmed,
+              sharedWithFacetLabel: e.shared_with_facet ? (byId[e.shared_with_facet as string] || undefined) : undefined,
+            })).filter(e => e.facetLabel)
+
+            setRunId(run_id)
+            setFacets(fcts)
+            setEdges(edgs)
+            setGeometryStamp(s => s + 1)
+            setEditorSyncRev(r => r + 1)
+            setStep('editor')
+            setBusy(false)
+            return
+          }
+        }
+      } catch {
+        // Resume is best-effort — fall through to a fresh start below.
+      }
+
       const addr = [(p as Project).address, (p as Project).city, (p as Project).state, (p as Project).zip].filter(Boolean).join(', ')
       if (addr) {
-        // Try to pre-validate
         try {
           const loc = await api.roofing.v2.locationValidate(addr)
           setLocation(loc as LocationSelected)
@@ -572,15 +641,22 @@ export default function RoofV2Page() {
                 {projects.map(p => (
                   <li
                     key={p.id}
-                    onClick={() => void pickProject(p.id)}
-                    className="cursor-pointer rounded-md border border-white/10 bg-slate-800/40 p-3 text-sm transition hover:border-blue-400/40 hover:bg-blue-500/10"
+                    className="group relative rounded-md border border-white/10 bg-slate-800/40 p-3 text-sm transition hover:border-blue-400/40 hover:bg-blue-500/10"
                   >
-                    <div className="font-medium">{p.name}</div>
-                    {p.address && (
-                      <div className="text-xs text-slate-400">
-                        {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}
-                      </div>
-                    )}
+                    <button
+                      onClick={() => void deleteProject(p.id, p.name)}
+                      title="Delete project"
+                      className="absolute right-2 top-2 rounded px-1.5 py-0.5 text-xs text-slate-500 opacity-0 transition hover:bg-rose-600/30 hover:text-rose-300 group-hover:opacity-100"
+                    >✕</button>
+                    <div onClick={() => void pickProject(p.id)} className="cursor-pointer pr-5">
+                      <div className="font-medium">{p.name}</div>
+                      {p.address && (
+                        <div className="text-xs text-slate-400">
+                          {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}
+                        </div>
+                      )}
+                      <div className="mt-1 text-[10px] text-blue-300/70">Click to open / resume →</div>
+                    </div>
                   </li>
                 ))}
               </ul>

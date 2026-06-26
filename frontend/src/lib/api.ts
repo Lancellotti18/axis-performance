@@ -643,6 +643,9 @@ export const api = {
           edges: Array<Record<string, unknown>>
           penetrations: Array<Record<string, unknown>>
         }>(`/api/v1/roofing/v2/runs/${runId}`),
+      // Most recent run for a project — used to RESUME saved roof work.
+      latestRun: (projectId: string) =>
+        apiRequest<{ run_id: string | null }>(`/api/v1/roofing/v2/projects/${projectId}/latest-run`),
       patchRun: (runId: string, updates: Record<string, unknown>) =>
         apiRequest<Record<string, unknown>>(`/api/v1/roofing/v2/runs/${runId}`, {
           method: 'PATCH',
