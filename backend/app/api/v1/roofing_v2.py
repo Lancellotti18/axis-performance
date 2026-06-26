@@ -611,6 +611,7 @@ class FacetIn(BaseModel):
     pitch: str = "6/12"
     confidence: float = 0.7
     user_confirmed: bool = False
+    ai_suggested: bool = False   # true when this facet originated from AI (training provenance)
 
     @field_validator("polygon")
     @classmethod
@@ -670,6 +671,7 @@ async def put_facets(
             "true_area_sqft": round(plan * mult, 1),
             "confidence": geo.normalize_confidence(f.confidence),
             "user_confirmed": f.user_confirmed,
+            "ai_suggested": f.ai_suggested,
         })
 
     if rows:

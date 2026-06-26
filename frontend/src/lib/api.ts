@@ -660,6 +660,7 @@ export const api = {
           pitch: string
           confidence?: number
           user_confirmed?: boolean
+          ai_suggested?: boolean
         }>
       }) =>
         apiRequest<{ facets: Array<Record<string, unknown>>; count: number }>(

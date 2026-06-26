@@ -95,6 +95,7 @@ export default function SolarAssistPanel({
       pitch: '6/12',
       confidence: 0.6,
       userConfirmed: false,
+      aiSuggested: true,   // OSM/auto origin → ai_corrected once confirmed
     }])
     toast.success('Added the building outline — split it into roof planes and set pitch (a gable photo gives pitch)')
   }, [centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel, existingFacetCount, onAddFacets])

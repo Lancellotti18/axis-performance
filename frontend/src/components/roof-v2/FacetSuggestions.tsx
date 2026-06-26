@@ -160,9 +160,9 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
       label: nextLabel(existingFacets, idx),
       polygon: await refinePolygon(s.polygon),
       pitch: s.predicted_pitch || '6/12',
-      // Confidence < 0.85 marks this as ai_corrected in the training data trigger
       confidence: 0.7,
       userConfirmed: true,
+      aiSuggested: true,   // AI-origin → captured as 'ai_corrected' training data
     }
     onAccept(facet)
     setSuggestions(prev => prev.filter((_, i) => i !== idx))
@@ -193,6 +193,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
         pitch: s.predicted_pitch || '6/12',
         confidence: 0.7,
         userConfirmed: true,
+        aiSuggested: true,
       }
       onAccept(facet)
     }

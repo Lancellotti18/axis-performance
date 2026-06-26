@@ -433,6 +433,7 @@ export default function RoofV2Page() {
           pitch: f.pitch,
           confidence: f.confidence,
           user_confirmed: f.userConfirmed,
+          ai_suggested: !!f.aiSuggested,
         })),
       })
       await api.roofing.v2.putEdges(runId, {

@@ -43,6 +43,7 @@ export interface Facet {
   pitch: string                   // 'X/12'
   confidence: number              // 0..1
   userConfirmed: boolean
+  aiSuggested?: boolean           // true if it originated from AI (training provenance)
 }
 
 export interface LabeledEdge {
