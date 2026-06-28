@@ -2563,47 +2563,12 @@ async def suggest_edge_labels(
     run_data = run.data or {}
     img_url = run_data.get("satellite_image_url")
 
-    # Enrich facets with Google Solar's MEASURED azimuth (slope direction). This is
-    # the single biggest accuracy lever for edge labels: knowing which way each
-    # plane slopes lets the geometry classifier tell eave/rake/ridge/hip/valley
-    # physically instead of guessing from a flat trace. Best-effort — no Solar
-    # coverage just falls back to 2D geometry + the vision passes below.
-    facets_enriched = [dict(f) for f in req.facets]
-    s_lat, s_lng = run_data.get("satellite_lat"), run_data.get("satellite_lng")
-    s_zoom = run_data.get("satellite_zoom") or 20
-    if s_lat is not None and s_lng is not None:
-        try:
-            from app.services import solar_service
-            solar = await solar_service.get_building_insights(float(s_lat), float(s_lng))
-            if solar.get("available"):
-                segs = _solar_segments_as_fractions(solar, float(s_lat), float(s_lng), int(s_zoom))
-                for f in facets_enriched:
-                    poly = f.get("polygon") or []
-                    if len(poly) < 3:
-                        continue
-                    # STRICT match only: trust a Solar azimuth solely when that
-                    # segment's CENTER falls inside this traced facet. Solar
-                    # segments are coarse, overlapping axis-aligned bboxes, so
-                    # matching on bbox coverage alone cross-assigns a neighboring
-                    # plane's azimuth — and a wrong azimuth makes the slope
-                    # classifier confidently mislabel every edge (and skip vision).
-                    # Require the unambiguous center-in-facet signal; otherwise
-                    # leave azimuth unset and fall back to geometry + vision.
-                    best_az, best_cov = None, -1.0
-                    for seg in segs:
-                        az = seg.get("azimuth_degrees")
-                        if az is None or not _point_in_poly(seg["center"], poly):
-                            continue
-                        cov = _coverage(poly, seg["rect"])
-                        if cov > best_cov:
-                            best_cov, best_az = cov, az
-                    if best_az is not None:
-                        f["azimuth_degrees"] = best_az
-        except Exception as e:
-            logger.info("solar azimuth enrich failed for run %s: %s", run_id, e)
-
-    # Deterministic geometry suggestion — now slope-aware where azimuth is known.
-    geom_suggestions = geo.auto_suggest_edge_types(facets_enriched)
+    # Deterministic geometry suggestion (shared edges → ridge/hip/valley via overlap
+    # + concavity; perimeter → eave/rake), refined by the vision passes below. NOTE:
+    # the Google-Solar "slope direction" path was removed — its facet↔segment matching
+    # was unreliable (coarse overlapping bboxes) and mislabeled edges. Pure geometry +
+    # vision is the proven, reliable labeler, so we feed the raw facets straight in.
+    geom_suggestions = geo.auto_suggest_edge_types(req.facets)
     geom_index: dict[tuple[str, int], dict] = {}
     for s in geom_suggestions:
         geom_index[(s.get("facet_label"), s.get("vertex_index_start"))] = s
