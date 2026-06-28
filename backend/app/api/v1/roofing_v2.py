@@ -2581,19 +2581,23 @@ async def suggest_edge_labels(
                     poly = f.get("polygon") or []
                     if len(poly) < 3:
                         continue
-                    best_az, best_score = None, 0.0
+                    # STRICT match only: trust a Solar azimuth solely when that
+                    # segment's CENTER falls inside this traced facet. Solar
+                    # segments are coarse, overlapping axis-aligned bboxes, so
+                    # matching on bbox coverage alone cross-assigns a neighboring
+                    # plane's azimuth — and a wrong azimuth makes the slope
+                    # classifier confidently mislabel every edge (and skip vision).
+                    # Require the unambiguous center-in-facet signal; otherwise
+                    # leave azimuth unset and fall back to geometry + vision.
+                    best_az, best_cov = None, -1.0
                     for seg in segs:
                         az = seg.get("azimuth_degrees")
-                        if az is None:
+                        if az is None or not _point_in_poly(seg["center"], poly):
                             continue
-                        # Coverage of the facet by the segment, +1 if the segment's
-                        # center sits inside the facet (strongest match signal).
-                        score = _coverage(poly, seg["rect"])
-                        if _point_in_poly(seg["center"], poly):
-                            score += 1.0
-                        if score > best_score:
-                            best_score, best_az = score, az
-                    if best_az is not None and best_score > 0.15:
+                        cov = _coverage(poly, seg["rect"])
+                        if cov > best_cov:
+                            best_cov, best_az = cov, az
+                    if best_az is not None:
                         f["azimuth_degrees"] = best_az
         except Exception as e:
             logger.info("solar azimuth enrich failed for run %s: %s", run_id, e)
