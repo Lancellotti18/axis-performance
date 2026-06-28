@@ -638,7 +638,7 @@ def _classify_perimeter_slope(p1, p2, facet: dict, az: float) -> tuple[str, floa
     return None
 
 
-def _snap_clusters(facets: list[dict], tol: float = 0.012):
+def _snap_clusters(facets: list[dict], tol: float = 0.016):
     """Cluster facet vertices within `tol` so the SAME physical corner — traced a
     little differently by two adjacent facets — collapses to ONE point. Returns
     (cmap, reps): cmap[(facet_index, vertex_index)] -> cluster_id, and reps = the
@@ -754,20 +754,30 @@ def auto_suggest_edge_types(
             edge_deg = math.degrees(math.atan2(pb[1] - pa[1], pb[0] - pa[0]))
             shared_class[ek] = "ridge" if (eave is not None and _line_angle_diff(edge_deg, eave) < 28.0) else "hip"
 
-    # Per-facet topology for eave vs rake: how many perimeter (open) edges each
-    # facet has, and which of its vertices sit on a ridge/hip (a "peak"). A rake is
-    # the perimeter edge that climbs to a peak; the eave is the low edge that
-    # doesn't. This is reliable even when the eave isn't horizontal in the image
-    # (an east/west-facing slope), which the old orientation-only heuristic got wrong.
-    facet_perim_count: dict[int, int] = {}
-    facet_peak_verts: dict[int, set] = {}
+    # Per-facet eave vs rake: a facet's EAVE is its perimeter edge FARTHEST from
+    # its ridge/hip (peak) edges; the other perimeter edges are RAKES (they climb
+    # to the peak). Distance-based — robust to non-horizontal eaves (E/W slopes)
+    # and to an eave that merely touches a peak corner. A facet with no ridge/hip
+    # (a lone slope) falls back to the horizontal heuristic per edge.
+    facet_perim_edges: dict[int, list] = {}   # fi -> [(edge_key, midpoint)]
+    facet_peak_mids: dict[int, list] = {}     # fi -> [midpoints of its ridge/hip edges]
     for ek, owners in edge_owners.items():
+        a0, b0 = tuple(ek)
+        mid = ((reps[a0][0] + reps[b0][0]) / 2, (reps[a0][1] + reps[b0][1]) / 2)
         if len(owners) == 1:
-            fi0 = owners[0][0]
-            facet_perim_count[fi0] = facet_perim_count.get(fi0, 0) + 1
+            facet_perim_edges.setdefault(owners[0][0], []).append((ek, mid))
         elif shared_class.get(ek) in ("ridge", "hip"):
             for (ofi, _ovi) in owners:
-                facet_peak_verts.setdefault(ofi, set()).update(ek)
+                facet_peak_mids.setdefault(ofi, []).append(mid)
+    facet_eave_ek: dict[int, frozenset] = {}
+    for fi0, perim in facet_perim_edges.items():
+        peaks = facet_peak_mids.get(fi0)
+        if not peaks:
+            continue
+        facet_eave_ek[fi0] = max(
+            perim,
+            key=lambda e: min((e[1][0] - p[0]) ** 2 + (e[1][1] - p[1]) ** 2 for p in peaks),
+        )[0]
 
     # Pass 2 — emit one suggestion per original edge (original vertex indices, so
     # the frontend/API can map them back).
@@ -794,11 +804,8 @@ def auto_suggest_edge_types(
 
             if shared_with is not None:
                 edge_type = shared_class.get(ek) or "ridge"
-            elif facet_perim_count.get(fi, 0) == 1:
-                edge_type = "eave"                       # a facet's only open edge is its eave
-            elif facet_peak_verts.get(fi):
-                peaks = facet_peak_verts[fi]
-                edge_type = "rake" if (a in peaks or b in peaks) else "eave"
+            elif fi in facet_eave_ek:
+                edge_type = "eave" if ek == facet_eave_ek[fi] else "rake"
             else:
                 # Lone slope with no ridge/hip to climb to → orientation heuristic.
                 p1, p2 = reps[a], reps[b]

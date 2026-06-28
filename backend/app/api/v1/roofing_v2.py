@@ -2609,44 +2609,12 @@ async def suggest_edge_labels(
     if img_bytes is not None:
         from app.services.llm import llm_vision
 
-        # ---- Pass 1: unshared edges → eave / rake / gable_end / wall ----
-        # Skip edges slope already nailed (Solar azimuth) — vision is the fallback
-        # for facets Solar didn't cover, not a second-guess of measured slope.
-        edges_for_vision = []
-        for e in req.unlabeled_edges:
-            gi = geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}
-            if gi.get("shared_with_facet_label") or gi.get("method") == "slope":
-                continue
-            edges_for_vision.append(e)
-        if edges_for_vision:
-            try:
-                prompt = (
-                    "You are a roof inspector looking at a top-down satellite image with a set of "
-                    "edges I traced on the roof. For each edge below, tell me what TYPE it is by looking "
-                    "at what's visible just outside that edge in the image.\n\n"
-                    "Edge types and their visual cues:\n"
-                    "  - EAVE: bottom edge of a slope; gutter usually visible below it; horizontal\n"
-                    "  - RAKE: sloped edge along a gable end; usually no gutter; meets the wall at an angle\n"
-                    "  - GABLE_END: the short horizontal edge at the very top of a gable end (rare)\n"
-                    "  - WALL_INTERSECTION: edge where roof meets a vertical wall (dormer/second story)\n"
-                    "  Only use these four types — shared edges (ridge/hip/valley) were already labeled.\n\n"
-                    "Edges to classify (coordinates are image fractions, 0..1):\n"
-                    + "\n".join(_edge_manifest(edges_for_vision))
-                    + "\n\nReturn ONLY valid JSON:\n"
-                    "{\n  \"labels\": [\n    {\"facet_label\": \"A\", \"vertex_index_start\": 0, \"edge_type\": \"eave\", \"confidence\": 0.8, \"reason\": \"gutter visible below\"},\n    ...\n  ]\n}\n"
-                    "Be honest — confidence < 0.5 if you genuinely cannot tell."
-                )
-                parsed = _loads_tolerant(await llm_vision(img_bytes, mt, prompt, max_tokens=1200))
-                if parsed is not None:
-                    for v in parsed.get("labels") or []:
-                        key = (v.get("facet_label"), int(v.get("vertex_index_start") or -1))
-                        vision_suggestions_by_edge[key] = {
-                            "edge_type": v.get("edge_type"),
-                            "confidence": geo.normalize_confidence(v.get("confidence")),
-                            "reason": str(v.get("reason") or "")[:200],
-                        }
-            except Exception as e:
-                logger.info("edge-label vision pass failed: %s", e)
+        # NOTE: perimeter edges (eave/rake/wall) are NOT sent to vision anymore.
+        # The satellite-vision pass was unreliable there — it labeled interior edges
+        # as "wall_intersection" (the center-of-roof-as-wall bug) and flipped
+        # eave↔rake. The snapping/topology geometry is reliable for eave vs rake, and
+        # genuine roof-to-wall edges are labeled via the ground-photo Roof-to-wall
+        # panel. Vision is kept ONLY for the shared ridge/hip/valley tiebreak below.
 
         # ---- Pass 2: shared RIDGE vs VALLEY (the confusable pair) ----
         # Geometry can't see height, so a ridge and a valley look identical from a
@@ -2729,25 +2697,16 @@ async def suggest_edge_labels(
                 "ai_suggested": True,
             })
         else:
-            # Perimeter edge. The snapping-based geometry reliably gives eave vs
-            # rake, so it's PRIMARY. Vision is a conservative override: trusted for
-            # wall_intersection (which geometry can't see at all), and otherwise it
-            # only overrides eave/rake when it's highly confident AND disagrees.
+            # Perimeter edge → trust the snapping/topology geometry. It reliably
+            # gives eave vs rake, so no satellite-vision override here (that was the
+            # source of false "wall" labels on interior edges and eave↔rake flips).
+            # Genuine roof-to-wall edges are labeled via the ground-photo panel.
             etype = geo_sug.get("edge_type") or "unlabeled"
             facet = next((f for f in req.facets if f.get("label") == key[0]), None)
             gc, greason = (
                 _geom_edge_confidence(facet.get("polygon") or [], key[1], etype)
                 if facet else (0.5, "Geometric heuristic — please confirm")
             )
-            v = vision_suggestions_by_edge.get(key)
-            v_type = (v or {}).get("edge_type")
-            v_conf = (v or {}).get("confidence") or 0
-            if v and v_type == "wall_intersection" and v_conf >= 0.6:
-                etype, gc = "wall_intersection", max(0.6, v_conf)
-                greason = v.get("reason") or "Roof meets a wall (satellite)"
-            elif v and v_type in ("eave", "rake", "gable_end") and v_type != etype and v_conf >= 0.78:
-                etype, gc = v_type, v_conf
-                greason = v.get("reason") or f"{v_type} (satellite)"
             out.append({
                 "facet_label": key[0],
                 "vertex_index_start": key[1],
