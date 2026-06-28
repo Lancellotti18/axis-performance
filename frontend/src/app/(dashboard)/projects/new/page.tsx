@@ -102,25 +102,27 @@ export default function NewProjectPage() {
   const currentStageIdx = STAGES.findIndex(s => s.key === stage)
   const isProcessing = stage !== 'idle' && stage !== 'error'
 
-  const inputCls = 'w-full bg-slate-50 border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 rounded-xl px-4 py-2.5 text-slate-700 placeholder-slate-300 focus:outline-none transition-all text-sm'
+  const inputCls = 'w-full bg-white/[0.04]/[0.05] border border-white/10 focus:border-blue-400/40 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none transition-all text-sm [&>option]:bg-slate-900'
   const labelCls = 'block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2'
-  const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }
+  const cardStyle = { boxShadow: '0 8px 32px rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.10)' }
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
+    <div className="relative min-h-full" style={{ background: '#040810' }}>
+      <div className="pointer-events-none absolute inset-0 opacity-[0.11]" style={{ backgroundImage: 'linear-gradient(rgba(96,165,250,1) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(96,165,250,1) 1.5px, transparent 1.5px)', backgroundSize: '34px 34px' }} />
+      <div className="relative p-8 max-w-2xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
-        <Link href="/dashboard" className="text-slate-400 hover:text-slate-700 transition-colors text-sm">← Dashboard</Link>
-        <span className="text-slate-300">/</span>
-        <span className="text-slate-700 text-sm font-semibold">Upload Blueprint</span>
+        <Link href="/dashboard" className="text-slate-400 hover:text-slate-200 transition-colors text-sm">← Dashboard</Link>
+        <span className="text-slate-600">/</span>
+        <span className="text-slate-200 text-sm font-semibold">Upload Blueprint</span>
       </div>
 
-      <h1 className="text-2xl font-black text-slate-800 mb-6">Upload Blueprint</h1>
+      <h1 className="text-2xl font-black text-white mb-6">Upload Blueprint</h1>
 
       {isProcessing ? (
-        <div className="bg-white rounded-2xl p-10 text-center" style={cardStyle}>
+        <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
           <div className="mb-6">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: stage === 'done' ? '#d1fae5' : '#dbeafe' }}>
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: stage === 'done' ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)' }}>
               {stage === 'done' ? (
                 <svg className="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -132,10 +134,10 @@ export default function NewProjectPage() {
                 </svg>
               )}
             </div>
-            <p className="text-slate-800 font-semibold">{STAGES[currentStageIdx]?.label || 'Processing...'}</p>
+            <p className="text-white font-semibold">{STAGES[currentStageIdx]?.label || 'Processing...'}</p>
             {stage === 'uploading' && <p className="text-slate-400 text-sm mt-1">{uploadProgress}%</p>}
           </div>
-          <div className="w-full bg-slate-100 rounded-full h-2 mb-6">
+          <div className="w-full bg-white/[0.04]/10 rounded-full h-2 mb-6">
             <div
               className="h-2 rounded-full transition-all duration-500"
               style={{ width: `${STAGES[currentStageIdx]?.pct || 0}%`, background: 'linear-gradient(90deg, #3b82f6, #1d4ed8)' }}
@@ -143,8 +145,8 @@ export default function NewProjectPage() {
           </div>
           <div className="space-y-2.5">
             {STAGES.map((s, i) => (
-              <div key={s.key} className={`flex items-center gap-3 text-sm ${i <= currentStageIdx ? 'text-slate-700' : 'text-slate-300'}`}>
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${i < currentStageIdx ? 'bg-emerald-500' : i === currentStageIdx ? 'bg-blue-500' : 'bg-slate-100'}`}>
+              <div key={s.key} className={`flex items-center gap-3 text-sm ${i <= currentStageIdx ? 'text-slate-200' : 'text-slate-600'}`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${i < currentStageIdx ? 'bg-emerald-500' : i === currentStageIdx ? 'bg-blue-500' : 'bg-white/[0.04]/[0.08]'}`}>
                   {i < currentStageIdx && (
                     <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -160,7 +162,7 @@ export default function NewProjectPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
 
           {/* Project details card */}
-          <div className="bg-white rounded-2xl p-6 space-y-5" style={cardStyle}>
+          <div className="bg-white/[0.04] rounded-2xl p-6 space-y-5" style={cardStyle}>
             <div>
               <label className={labelCls}>Project Name</label>
               <input
@@ -225,7 +227,7 @@ export default function NewProjectPage() {
                     className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all capitalize ${
                       blueprintType === type
                         ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-slate-50 text-slate-500 border border-slate-200 hover:border-blue-200 hover:text-slate-700'
+                        : 'bg-white/[0.04]/[0.05] text-slate-400 border border-white/10 hover:border-blue-400/30 hover:text-white'
                     }`}
                   >
                     {type}
@@ -243,8 +245,8 @@ export default function NewProjectPage() {
             onDrop={onDrop}
             className="rounded-2xl p-12 text-center cursor-pointer transition-all duration-200"
             style={{
-              border: `2px dashed ${dragOver ? '#3b82f6' : file ? '#10b981' : '#cbd5e1'}`,
-              background: dragOver ? '#eff6ff' : file ? '#f0fdf4' : 'white',
+              border: `2px dashed ${dragOver ? '#3b82f6' : file ? '#10b981' : '#334155'}`,
+              background: dragOver ? 'rgba(59,130,246,0.12)' : file ? 'rgba(16,185,129,0.10)' : 'rgba(255,255,255,0.03)',
               boxShadow: '0 2px 12px rgba(59,130,246,0.08)',
             }}
           >
@@ -255,7 +257,7 @@ export default function NewProjectPage() {
             {file ? (
               <div>
                 <div className="text-4xl mb-3"></div>
-                <p className="text-slate-800 font-semibold">{file.name}</p>
+                <p className="text-white font-semibold">{file.name}</p>
                 <p className="text-slate-400 text-sm mt-1">{(file.size / 1024 / 1024).toFixed(1)} MB — click to change</p>
               </div>
             ) : (
@@ -265,7 +267,7 @@ export default function NewProjectPage() {
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
                 </div>
-                <p className="text-slate-700 font-semibold">Drop blueprint here</p>
+                <p className="text-slate-200 font-semibold">Drop blueprint here</p>
                 <p className="text-slate-400 text-sm mt-1">PDF, PNG, JPEG — up to 100MB</p>
                 <p className="text-blue-500 text-sm mt-3 font-medium">or click to browse</p>
               </div>
@@ -273,7 +275,7 @@ export default function NewProjectPage() {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm">
+            <div className="bg-rose-500/10 border border-rose-400/30 rounded-xl px-4 py-3 text-rose-300 text-sm">
               {error}
             </div>
           )}
@@ -288,6 +290,7 @@ export default function NewProjectPage() {
           </button>
         </form>
       )}
+      </div>
     </div>
   )
 }
