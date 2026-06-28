@@ -2556,22 +2556,18 @@ async def suggest_edge_labels(
     Returns suggestions with confidence + reasoning. Frontend renders these as
     pre-selected dropdowns the contractor can accept or override per edge.
     """
-    db = get_supabase()
-    run = db.table("roof_measurement_runs").select(
-        "satellite_image_url, satellite_lat, satellite_lng, satellite_zoom"
-    ).eq("id", run_id).single().execute()
-    run_data = run.data or {}
-    img_url = run_data.get("satellite_image_url")
-
-    # Deterministic geometry suggestion (shared edges → ridge/hip/valley via overlap
-    # + concavity; perimeter → eave/rake), refined by the vision passes below. NOTE:
-    # the Google-Solar "slope direction" path was removed — its facet↔segment matching
-    # was unreliable (coarse overlapping bboxes) and mislabeled edges. Pure geometry +
-    # vision is the proven, reliable labeler, so we feed the raw facets straight in.
+    # Always available: deterministic geometry suggestion (shared edges, angles)
     geom_suggestions = geo.auto_suggest_edge_types(req.facets)
     geom_index: dict[tuple[str, int], dict] = {}
     for s in geom_suggestions:
         geom_index[(s.get("facet_label"), s.get("vertex_index_start"))] = s
+
+    # Get the satellite image for vision check on unshared edges
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select(
+        "satellite_image_url"
+    ).eq("id", run_id).single().execute()
+    img_url = (run.data or {}).get("satellite_image_url")
 
     def _edge_manifest(edge_list: list) -> list[str]:
         lines: list[str] = []
@@ -2609,23 +2605,48 @@ async def suggest_edge_labels(
     if img_bytes is not None:
         from app.services.llm import llm_vision
 
-        # NOTE: perimeter edges (eave/rake/wall) are NOT sent to vision anymore.
-        # The satellite-vision pass was unreliable there — it labeled interior edges
-        # as "wall_intersection" (the center-of-roof-as-wall bug) and flipped
-        # eave↔rake. The snapping/topology geometry is reliable for eave vs rake, and
-        # genuine roof-to-wall edges are labeled via the ground-photo Roof-to-wall
-        # panel. Vision is kept ONLY for the shared ridge/hip/valley tiebreak below.
+        # ---- Pass 1: unshared edges → eave / rake / gable_end / wall ----
+        edges_for_vision = [
+            e for e in req.unlabeled_edges
+            if not geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}).get("shared_with_facet_label")
+        ]
+        if edges_for_vision:
+            try:
+                prompt = (
+                    "You are a roof inspector looking at a top-down satellite image with a set of "
+                    "edges I traced on the roof. For each edge below, tell me what TYPE it is by looking "
+                    "at what's visible just outside that edge in the image.\n\n"
+                    "Edge types and their visual cues:\n"
+                    "  - EAVE: bottom edge of a slope; gutter usually visible below it; horizontal\n"
+                    "  - RAKE: sloped edge along a gable end; usually no gutter; meets the wall at an angle\n"
+                    "  - GABLE_END: the short horizontal edge at the very top of a gable end (rare)\n"
+                    "  - WALL_INTERSECTION: edge where roof meets a vertical wall (dormer/second story)\n"
+                    "  Only use these four types — shared edges (ridge/hip/valley) were already labeled.\n\n"
+                    "Edges to classify (coordinates are image fractions, 0..1):\n"
+                    + "\n".join(_edge_manifest(edges_for_vision))
+                    + "\n\nReturn ONLY valid JSON:\n"
+                    "{\n  \"labels\": [\n    {\"facet_label\": \"A\", \"vertex_index_start\": 0, \"edge_type\": \"eave\", \"confidence\": 0.8, \"reason\": \"gutter visible below\"},\n    ...\n  ]\n}\n"
+                    "Be honest — confidence < 0.5 if you genuinely cannot tell."
+                )
+                parsed = _loads_tolerant(await llm_vision(img_bytes, mt, prompt, max_tokens=1200))
+                if parsed is not None:
+                    for v in parsed.get("labels") or []:
+                        key = (v.get("facet_label"), int(v.get("vertex_index_start") or -1))
+                        vision_suggestions_by_edge[key] = {
+                            "edge_type": v.get("edge_type"),
+                            "confidence": geo.normalize_confidence(v.get("confidence")),
+                            "reason": str(v.get("reason") or "")[:200],
+                        }
+            except Exception as e:
+                logger.info("edge-label vision pass failed: %s", e)
 
         # ---- Pass 2: shared RIDGE vs VALLEY (the confusable pair) ----
         # Geometry can't see height, so a ridge and a valley look identical from a
         # 2D trace. The satellite CAN tell them apart, so let vision break the tie.
-        rv_edges = []
-        for e in req.unlabeled_edges:
-            gi = geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}
-            # Only disambiguate shared edges geometry was UNSURE about — when slope
-            # classified them from measured azimuth, that wins.
-            if gi.get("edge_type") in ("ridge", "hip", "valley") and gi.get("method") != "slope":
-                rv_edges.append(e)
+        rv_edges = [
+            e for e in req.unlabeled_edges
+            if (geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}).get("edge_type") in ("ridge", "hip", "valley")
+        ]
         if rv_edges:
             try:
                 prompt = (
@@ -2669,24 +2690,14 @@ async def suggest_edge_labels(
         shared = geo_sug.get("shared_with_facet_label")
         if shared:
             etype = geo_sug.get("edge_type") or "ridge"
-            if geo_sug.get("method") == "slope":
-                # Classified from Google Solar's measured slope direction — trusted.
-                conf = geo_sug.get("confidence") or 0.82
-                reason = f"Shared with {shared}; {etype} from measured slope direction"
-            else:
-                conf = 0.85
-                reason = f"Shared edge with facet {shared} (geometric)"
-                # Vision arbitrates the ridge↔hip↔valley call, but CONSERVATIVELY:
-                # geometry's VALLEY (a reentrant/concave fold) is a strong, reliable
-                # signal, so vision must be near-certain to overturn it; ridge vs hip
-                # is the genuinely ambiguous pair, so a lower bar applies there.
-                rv = rv_vision_by_edge.get(key)
-                rv_conf = (rv or {}).get("confidence") or 0
-                threshold = 0.85 if etype == "valley" else 0.72
-                if rv and rv.get("edge_type") in ("ridge", "hip", "valley") and rv_conf >= threshold:
-                    etype = rv["edge_type"]
-                    conf = max(0.7, rv_conf)
-                    reason = f"Shared with {shared}; {etype} confirmed from satellite — {rv.get('reason', '')}".strip()
+            conf = 0.85
+            reason = f"Shared edge with facet {shared} (geometric)"
+            # Vision breaks the ridge↔hip↔valley confusion when it's confident.
+            rv = rv_vision_by_edge.get(key)
+            if rv and rv.get("edge_type") in ("ridge", "hip", "valley") and (rv.get("confidence") or 0) >= 0.6:
+                etype = rv["edge_type"]
+                conf = max(0.6, rv.get("confidence") or 0.6)
+                reason = f"Shared with {shared}; {etype} confirmed from satellite — {rv.get('reason', '')}".strip()
             out.append({
                 "facet_label": key[0],
                 "vertex_index_start": key[1],
@@ -2697,25 +2708,35 @@ async def suggest_edge_labels(
                 "ai_suggested": True,
             })
         else:
-            # Perimeter edge → trust the snapping/topology geometry. It reliably
-            # gives eave vs rake, so no satellite-vision override here (that was the
-            # source of false "wall" labels on interior edges and eave↔rake flips).
-            # Genuine roof-to-wall edges are labeled via the ground-photo panel.
-            etype = geo_sug.get("edge_type") or "unlabeled"
-            facet = next((f for f in req.facets if f.get("label") == key[0]), None)
-            gc, greason = (
-                _geom_edge_confidence(facet.get("polygon") or [], key[1], etype)
-                if facet else (0.5, "Geometric heuristic — please confirm")
-            )
-            out.append({
-                "facet_label": key[0],
-                "vertex_index_start": key[1],
-                "suggested_edge_type": etype,
-                "confidence": gc,
-                "reason": greason,
-                "shared_with_facet_label": None,
-                "ai_suggested": True,
-            })
+            v = vision_suggestions_by_edge.get(key)
+            if v and v.get("edge_type") in ("eave", "rake", "gable_end", "wall_intersection"):
+                out.append({
+                    "facet_label": key[0],
+                    "vertex_index_start": key[1],
+                    "suggested_edge_type": v["edge_type"],
+                    "confidence": v["confidence"],
+                    "reason": v["reason"],
+                    "shared_with_facet_label": None,
+                    "ai_suggested": True,
+                })
+            else:
+                # Geometric fallback (horizontal=eave, sloped=rake), but graded by
+                # how obvious the orientation is rather than a flat 0.45.
+                etype = geo_sug.get("edge_type") or "unlabeled"
+                facet = next((f for f in req.facets if f.get("label") == key[0]), None)
+                gc, greason = (
+                    _geom_edge_confidence(facet.get("polygon") or [], key[1], etype)
+                    if facet else (0.45, "Geometric heuristic — please confirm")
+                )
+                out.append({
+                    "facet_label": key[0],
+                    "vertex_index_start": key[1],
+                    "suggested_edge_type": etype,
+                    "confidence": gc,
+                    "reason": greason,
+                    "shared_with_facet_label": None,
+                    "ai_suggested": True,
+                })
 
     return {
         "suggestions": out,
