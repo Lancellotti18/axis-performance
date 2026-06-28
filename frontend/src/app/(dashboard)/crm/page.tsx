@@ -32,12 +32,12 @@ interface Note {
 }
 
 const STAGES: { key: Stage; label: string; color: string; bg: string; dot: string; colBg: string; headerBg: string }[] = [
-  { key: 'new',           label: 'New Lead',      color: 'text-blue-700',    bg: 'bg-blue-50 border-blue-200',      dot: 'bg-blue-500',    colBg: 'bg-blue-50/40',    headerBg: 'bg-blue-100/60'    },
+  { key: 'new',           label: 'New Lead',      color: 'text-blue-700',    bg: 'bg-blue-500/10 border-blue-200',      dot: 'bg-blue-500/100',    colBg: 'bg-blue-500/10/40',    headerBg: 'bg-blue-100/60'    },
   { key: 'contacted',     label: 'Contacted',     color: 'text-violet-700',  bg: 'bg-violet-50 border-violet-200',  dot: 'bg-violet-500',  colBg: 'bg-violet-50/40',  headerBg: 'bg-violet-100/60'  },
-  { key: 'site_visit',    label: 'Site Visit',    color: 'text-amber-700',   bg: 'bg-amber-50 border-amber-200',    dot: 'bg-amber-500',   colBg: 'bg-amber-50/40',   headerBg: 'bg-amber-100/60'   },
+  { key: 'site_visit',    label: 'Site Visit',    color: 'text-amber-700',   bg: 'bg-amber-500/10 border-amber-200',    dot: 'bg-amber-500/100',   colBg: 'bg-amber-500/10/40',   headerBg: 'bg-amber-100/60'   },
   { key: 'estimate_sent', label: 'Estimate Sent', color: 'text-orange-700',  bg: 'bg-orange-50 border-orange-200',  dot: 'bg-orange-500',  colBg: 'bg-orange-50/40',  headerBg: 'bg-orange-100/60'  },
-  { key: 'won',           label: 'Won',           color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200',dot: 'bg-emerald-500', colBg: 'bg-emerald-50/40', headerBg: 'bg-emerald-100/60' },
-  { key: 'lost',          label: 'Lost',          color: 'text-slate-500',   bg: 'bg-slate-50 border-slate-200',    dot: 'bg-slate-400',   colBg: 'bg-slate-50/40',   headerBg: 'bg-slate-100/60'   },
+  { key: 'won',           label: 'Won',           color: 'text-emerald-700', bg: 'bg-emerald-500/10 border-emerald-200',dot: 'bg-emerald-500/100', colBg: 'bg-emerald-500/10/40', headerBg: 'bg-emerald-100/60' },
+  { key: 'lost',          label: 'Lost',          color: 'text-slate-500',   bg: 'bg-white/[0.05] border-slate-200',    dot: 'bg-slate-400',   colBg: 'bg-white/[0.05]/40',   headerBg: 'bg-white/[0.06]/60'   },
 ]
 const STAGE_MAP = Object.fromEntries(STAGES.map(s => [s.key, s]))
 
@@ -57,9 +57,9 @@ function timeAgo(ts: string) {
   return new Date(ts).toLocaleDateString()
 }
 
-const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }
+const cardStyle = { boxShadow: '0 8px 32px rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.10)' }
 const EMPTY_FORM = { name: '', phone: '', email: '', address: '', city: '', state: '', job_type: 'residential', stage: 'new' as Stage, notes: '', estimated_value: '' }
-const inputCls = 'w-full bg-slate-50 border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 rounded-xl px-4 py-2.5 text-slate-700 placeholder-slate-300 focus:outline-none transition-all text-sm'
+const inputCls = 'w-full bg-white/[0.05] border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 rounded-xl px-4 py-2.5 text-slate-200 placeholder-slate-300 focus:outline-none transition-all text-sm'
 const labelCls = 'block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5'
 
 // ── Kanban card ───────────────────────────────────────────────────────────────
@@ -73,30 +73,30 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd}
       onClick={onOpen}
-      className={`bg-white rounded-xl p-4 cursor-pointer select-none transition-all ${isDragging ? 'opacity-40 scale-95 rotate-1' : 'hover:shadow-md hover:-translate-y-0.5'}`}
-      style={{ boxShadow: isDragging ? 'none' : '0 2px 8px rgba(59,130,246,0.1)', border: '1px solid rgba(219,234,254,0.9)' }}
+      className={`bg-white/[0.04] rounded-xl p-4 cursor-pointer select-none transition-all ${isDragging ? 'opacity-40 scale-95 rotate-1' : 'hover:shadow-md hover:-translate-y-0.5'}`}
+      style={{ boxShadow: isDragging ? 'none' : '0 2px 8px rgba(59,130,246,0.1)', border: '1px solid rgba(255,255,255,0.10)' }}
     >
       <div className="flex items-start justify-between gap-2 mb-1.5">
-        <div className="text-slate-800 font-semibold text-sm leading-tight">{lead.name}</div>
+        <div className="text-white font-semibold text-sm leading-tight">{lead.name}</div>
         {(lead.estimated_value ?? 0) > 0 && <span className="text-emerald-600 font-black text-xs flex-shrink-0">{fmt(lead.estimated_value!)}</span>}
       </div>
       {(lead.city || lead.state) && <div className="text-slate-400 text-xs mb-1">{[lead.city, lead.state].filter(Boolean).join(', ')}</div>}
-      {lead.job_type && <div className="inline-block text-[10px] font-semibold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full mb-2 capitalize">{lead.job_type}</div>}
+      {lead.job_type && <div className="inline-block text-[10px] font-semibold bg-white/[0.06] text-slate-500 px-2 py-0.5 rounded-full mb-2 capitalize">{lead.job_type}</div>}
       {lead.notes && <p className="text-slate-400 text-xs line-clamp-2 mb-2 italic">{lead.notes}</p>}
-      <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+      <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
         <div className="flex items-center gap-1">
           {stageIdx > 0 && (
-            <button onClick={e => { e.stopPropagation(); onMove('left') }} className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+            <button onClick={e => { e.stopPropagation(); onMove('left') }} className="p-1 rounded hover:bg-white/[0.06] text-slate-400 hover:text-slate-600 transition-colors">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
           )}
           {stageIdx < STAGES.length - 1 && (
-            <button onClick={e => { e.stopPropagation(); onMove('right') }} className="p-1 rounded hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors">
+            <button onClick={e => { e.stopPropagation(); onMove('right') }} className="p-1 rounded hover:bg-blue-500/10 text-blue-400 hover:text-blue-600 transition-colors">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
           )}
         </div>
-        <button onClick={e => { e.stopPropagation(); onDelete() }} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors">
+        <button onClick={e => { e.stopPropagation(); onDelete() }} className="p-1 rounded hover:bg-rose-500/10 text-slate-600 hover:text-red-400 transition-colors">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
         </button>
       </div>
@@ -108,9 +108,9 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
 function ListRow({ lead, onStageChange, onOpen, onDelete }: { lead: Lead; onStageChange: (id: string, s: Stage) => void; onOpen: () => void; onDelete: (id: string) => void }) {
   const stage = STAGE_MAP[lead.stage] || STAGE_MAP.new
   return (
-    <div onClick={onOpen} className="bg-white rounded-2xl px-5 py-4 flex items-center gap-4 hover:shadow-md transition-all cursor-pointer" style={cardStyle}>
+    <div onClick={onOpen} className="bg-white/[0.04] rounded-2xl px-5 py-4 flex items-center gap-4 hover:shadow-md transition-all cursor-pointer" style={cardStyle}>
       <div className="flex-1 min-w-0">
-        <div className="text-slate-800 font-semibold text-sm">{lead.name}</div>
+        <div className="text-white font-semibold text-sm">{lead.name}</div>
         <div className="text-slate-400 text-xs mt-0.5">{[lead.city, lead.state, lead.job_type].filter(Boolean).join(' · ')}</div>
       </div>
       <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border flex-shrink-0 ${stage.bg} ${stage.color}`}>
@@ -122,11 +122,11 @@ function ListRow({ lead, onStageChange, onOpen, onDelete }: { lead: Lead; onStag
         value={lead.stage}
         onChange={e => { e.stopPropagation(); onStageChange(lead.id, e.target.value as Stage) }}
         onClick={e => e.stopPropagation()}
-        className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none"
+        className="text-xs bg-white/[0.05] border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none"
       >
         {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
       </select>
-      <button onClick={e => { e.stopPropagation(); onDelete(lead.id) }} className="text-xs text-red-400 font-medium px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 transition-all"></button>
+      <button onClick={e => { e.stopPropagation(); onDelete(lead.id) }} className="text-xs text-red-400 font-medium px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-red-100 transition-all"></button>
     </div>
   )
 }
@@ -269,22 +269,22 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
       <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm" onClick={onClose} />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-white flex flex-col"
+      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-white/[0.04] flex flex-col"
         style={{ boxShadow: '-4px 0 40px rgba(0,0,0,0.12)' }}>
 
         {/* Header */}
-        <div className="flex items-start justify-between px-5 py-4 border-b flex-shrink-0" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+        <div className="flex items-start justify-between px-5 py-4 border-b flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
           <div className="flex-1 min-w-0">
-            <div className="text-slate-800 font-bold text-base leading-tight">{lead.name}</div>
+            <div className="text-white font-bold text-base leading-tight">{lead.name}</div>
             <div className="text-slate-400 text-xs mt-0.5">{[lead.job_type, lead.city, lead.state].filter(Boolean).join(' · ')}</div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
             <button onClick={() => onEdit(lead)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all">
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 hover:bg-blue-100 transition-all">
               Edit
             </button>
             <button onClick={() => { onDelete(lead.id); onClose() }}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-all">
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-500/10 text-red-500 hover:bg-red-100 transition-all">
               Delete
             </button>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors ml-1">
@@ -297,18 +297,18 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
         <div className="flex-1 overflow-y-auto">
 
           {/* Contact info */}
-          <div className="px-5 py-4 space-y-3 border-b" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+          <div className="px-5 py-4 space-y-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
             {lead.phone && (
-              <a href={`tel:${lead.phone}`} className="flex items-center gap-3 text-sm text-slate-700 hover:text-blue-600 transition-colors group">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors">
+              <a href={`tel:${lead.phone}`} className="flex items-center gap-3 text-sm text-slate-200 hover:text-blue-600 transition-colors group">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.63A2 2 0 012 .18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.09a16 16 0 006 9.91"/></svg>
                 </div>
                 {lead.phone}
               </a>
             )}
             {lead.email && (
-              <a href={`mailto:${lead.email}`} className="flex items-center gap-3 text-sm text-slate-700 hover:text-blue-600 transition-colors group">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors">
+              <a href={`mailto:${lead.email}`} className="flex items-center gap-3 text-sm text-slate-200 hover:text-blue-600 transition-colors group">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                 </div>
                 {lead.email}
@@ -316,7 +316,7 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
             )}
             {lead.address && (
               <div className="flex items-center gap-3 text-sm text-slate-600">
-                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-white/[0.05] flex items-center justify-center flex-shrink-0">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
                 </div>
                 {[lead.address, lead.city, lead.state].filter(Boolean).join(', ')}
@@ -325,7 +325,7 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
           </div>
 
           {/* Stage + value */}
-          <div className="px-5 py-4 flex items-center gap-4 border-b" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+          <div className="px-5 py-4 flex items-center gap-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
             <div className="flex-1">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Stage</div>
               <select
@@ -347,7 +347,7 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
 
           {/* Description / notes field */}
           {lead.notes && (
-            <div className="px-5 py-4 border-b" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+            <div className="px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Description</div>
               <p className="text-slate-600 text-sm leading-relaxed">{lead.notes}</p>
             </div>
@@ -358,9 +358,9 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
             <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Activity Log</div>
 
             {loadingNotes ? (
-              <div className="text-center py-6 text-slate-300 text-sm">Loading…</div>
+              <div className="text-center py-6 text-slate-600 text-sm">Loading…</div>
             ) : notes.length === 0 ? (
-              <div className="text-center py-6 text-slate-300 text-sm">No notes yet — add the first one below.</div>
+              <div className="text-center py-6 text-slate-600 text-sm">No notes yet — add the first one below.</div>
             ) : (
               <div className="space-y-3 mb-4">
                 {notes.map(note => (
@@ -369,12 +369,12 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-slate-700 text-sm leading-relaxed">{note.text}</p>
+                      <p className="text-slate-200 text-sm leading-relaxed">{note.text}</p>
                       <div className="text-slate-400 text-[10px] mt-0.5">{timeAgo(note.created_at)}</div>
                     </div>
                     <button
                       onClick={() => handleDeleteNote(note.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-red-400 flex-shrink-0 mt-0.5"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-600 hover:text-red-400 flex-shrink-0 mt-0.5"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
@@ -387,18 +387,18 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
         </div>
 
         {/* Add note input — pinned to bottom */}
-        <div className="px-5 py-4 border-t flex-shrink-0 space-y-2" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+        <div className="px-5 py-4 border-t flex-shrink-0 space-y-2" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
           {recError && (
-            <div className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5">
+            <div className="text-xs text-red-500 bg-rose-500/10 border border-red-100 rounded-lg px-3 py-1.5">
               {recError}
             </div>
           )}
           <div className="flex gap-2 items-stretch">
             {recording ? (
-              <div className="flex-1 flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4">
+              <div className="flex-1 flex items-center gap-3 bg-rose-500/10 border border-red-200 rounded-xl px-4">
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500/100"></span>
                 </span>
                 <span className="text-red-600 text-sm font-semibold flex-1">
                   Recording… {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}
@@ -412,7 +412,7 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAddNote()}
                 placeholder={transcribing ? 'Transcribing your voice note…' : 'Add a note… (Enter to save, or hit the mic to dictate)'}
                 disabled={transcribing}
-                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 transition-all disabled:opacity-60"
+                className="flex-1 bg-white/[0.05] border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 transition-all disabled:opacity-60"
               />
             )}
             <button
@@ -568,18 +568,18 @@ export default function CRMPage() {
   const convRate      = leads.length > 0 ? Math.round((wonCount / leads.length) * 100) : 0
 
   return (
-    <div className="h-full flex flex-col" style={{ background: 'linear-gradient(135deg, #eef6ff 0%, #ffffff 100%)' }}>
+    <div className="h-full flex flex-col" style={{ background: '#040810' }}>
 
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4 flex items-center gap-4 flex-shrink-0" style={{ borderColor: 'rgba(219,234,254,0.9)' }}>
+      <div className="bg-white/[0.04] border-b px-6 py-4 flex items-center gap-4 flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-black text-slate-800">Pipeline</h1>
+          <h1 className="text-xl font-black text-white">Pipeline</h1>
           <p className="text-slate-400 text-xs mt-0.5">Track leads through your sales pipeline</p>
         </div>
-        <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
+        <div className="flex items-center gap-1 bg-white/[0.06] rounded-xl p-1">
           {(['kanban', 'list'] as const).map(m => (
             <button key={m} onClick={() => setViewMode(m)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all capitalize ${viewMode === m ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all capitalize ${viewMode === m ? 'bg-white/[0.04] text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-200'}`}>
               {m === 'kanban' ? (
                 <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="11" y="3" width="5" height="11" rx="1"/><rect x="19" y="3" width="2" height="15" rx="1"/></svg>Board</>
               ) : (
@@ -590,7 +590,7 @@ export default function CRMPage() {
         </div>
         <div className="relative">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="w-48 bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="w-48 bg-white/[0.05] border border-slate-200 rounded-xl pl-8 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-100" />
         </div>
         <button onClick={() => openNew()}
           className="flex items-center gap-2 text-white font-bold px-5 py-2 rounded-xl text-sm transition-all hover:scale-[1.02]"
@@ -607,10 +607,10 @@ export default function CRMPage() {
           { label: 'Jobs Won',        value: wonCount,            icon: '', sub: `${convRate}% close rate` },
           { label: 'Won Revenue',     value: fmt(wonValue),       icon: '', sub: 'closed deals' },
         ].map(stat => (
-          <div key={stat.label} className="bg-white rounded-2xl px-4 py-3 flex items-center gap-3 flex-1" style={cardStyle}>
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base bg-blue-50 flex-shrink-0">{stat.icon}</div>
+          <div key={stat.label} className="bg-white/[0.04] rounded-2xl px-4 py-3 flex items-center gap-3 flex-1" style={cardStyle}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base bg-blue-500/10 flex-shrink-0">{stat.icon}</div>
             <div className="min-w-0">
-              <div className="text-lg font-black text-slate-800 leading-tight">{stat.value}</div>
+              <div className="text-lg font-black text-white leading-tight">{stat.value}</div>
               <div className="text-slate-400 text-xs">{stat.label}</div>
             </div>
           </div>
@@ -631,7 +631,7 @@ export default function CRMPage() {
                 return (
                   <div key={stage.key}
                     className={`flex flex-col rounded-2xl flex-shrink-0 transition-all ${isOver ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
-                    style={{ width: 272, background: isOver ? 'rgba(219,234,254,0.4)' : 'rgba(248,250,252,0.8)', border: '1px solid rgba(219,234,254,0.8)' }}
+                    style={{ width: 272, background: isOver ? 'rgba(255,255,255,0.4)' : 'rgba(248,250,252,0.8)', border: '1px solid rgba(255,255,255,0.10)' }}
                     onDragOver={e => handleDragOver(e, stage.key)}
                     onDrop={e => handleDrop(e, stage.key)}
                     onDragLeave={() => setDragOverStage(null)}
@@ -640,7 +640,7 @@ export default function CRMPage() {
                       <div className="flex items-center gap-2">
                         <div className={`w-2.5 h-2.5 rounded-full ${stage.dot}`} />
                         <span className={`font-bold text-sm ${stage.color}`}>{stage.label}</span>
-                        <span className="text-xs font-semibold bg-white/70 text-slate-500 px-1.5 py-0.5 rounded-full">{stageLeads.length}</span>
+                        <span className="text-xs font-semibold bg-white/[0.04]/70 text-slate-500 px-1.5 py-0.5 rounded-full">{stageLeads.length}</span>
                       </div>
                       {stageValue > 0 && <span className="text-xs font-bold text-slate-600">{fmt(stageValue)}</span>}
                     </div>
@@ -656,11 +656,11 @@ export default function CRMPage() {
                         />
                       ))}
                       {stageLeads.length === 0 && !isOver && (
-                        <div className="flex-1 flex items-center justify-center text-slate-300 text-xs text-center py-6">Drop leads here</div>
+                        <div className="flex-1 flex items-center justify-center text-slate-600 text-xs text-center py-6">Drop leads here</div>
                       )}
                     </div>
                     <button onClick={() => openNew(stage.key)}
-                      className="m-3 py-2 text-xs text-slate-400 hover:text-slate-600 border border-dashed border-slate-300 hover:border-slate-400 rounded-xl transition-all hover:bg-white/50">
+                      className="m-3 py-2 text-xs text-slate-400 hover:text-slate-600 border border-dashed border-slate-300 hover:border-slate-400 rounded-xl transition-all hover:bg-white/[0.04]/50">
                       + Add lead
                     </button>
                   </div>
@@ -702,10 +702,10 @@ export default function CRMPage() {
       {/* Add / Edit modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.4)', backdropFilter: 'blur(4px)' }}>
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]" style={{ border: '1px solid rgba(219,234,254,0.8)' }}>
-            <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
-              <h2 className="text-lg font-bold text-slate-800">{editingLead ? 'Edit Lead' : 'New Lead'}</h2>
-              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-700 transition-colors text-xl leading-none"></button>
+          <div className="bg-white/[0.04] rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+            <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
+              <h2 className="text-lg font-bold text-white">{editingLead ? 'Edit Lead' : 'New Lead'}</h2>
+              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-200 transition-colors text-xl leading-none"></button>
             </div>
             <div className="p-6 space-y-4">
               <div>
@@ -742,8 +742,8 @@ export default function CRMPage() {
               <div><label className={labelCls}>Estimated Value ($)</label><input value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} className={inputCls} placeholder="15000" type="number" min="0" /></div>
               <div><label className={labelCls}>Description / Notes</label><textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className={`${inputCls} resize-none`} rows={3} placeholder="Job details, source, any relevant context…" /></div>
             </div>
-            <div className="flex gap-3 p-6 border-t" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
-              <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Cancel</button>
+            <div className="flex gap-3 p-6 border-t" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
+              <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-white/[0.06] hover:bg-white/10 transition-all">Cancel</button>
               <button onClick={handleSave} disabled={saving || !form.name.trim()}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
                 style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.25)' }}>
