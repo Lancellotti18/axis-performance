@@ -25,6 +25,8 @@ export interface Project {
   blueprint_type?: BlueprintType | string
   address?: string
   blueprints?: Blueprint[]
+  /** Latest roof run's satellite tile, for the dashboard card thumbnail. */
+  thumbnail_url?: string | null
   created_at: string
   updated_at: string
 }

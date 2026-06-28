@@ -36,6 +36,30 @@ async def list_projects(user_id: str = Query(...), include_archived: bool = Quer
     # If include_archived=False but column doesn't exist, filter client-side (archived defaults to False)
     if not include_archived:
         rows = [r for r in rows if not r.get("archived", False)]
+
+    # Attach a thumbnail_url per project — the latest roof run's satellite tile, so
+    # the dashboard cards show the actual house. Best-effort + batched (one query);
+    # projects without a roof run simply get no thumbnail (frontend shows a fallback).
+    try:
+        ids = [r["id"] for r in rows if r.get("id")]
+        if ids:
+            runs = (
+                db.table("roof_measurement_runs")
+                .select("project_id, satellite_image_url, created_at")
+                .in_("project_id", ids)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            thumb: dict[str, str] = {}
+            for run in (runs.data or []):
+                pid, url = run.get("project_id"), run.get("satellite_image_url")
+                if pid and url and pid not in thumb:   # first seen = latest (desc order)
+                    thumb[pid] = url
+            for r in rows:
+                r["thumbnail_url"] = thumb.get(r.get("id"))
+    except Exception:
+        logger.debug("project thumbnail enrichment failed (non-fatal)", exc_info=True)
+
     return rows
 
 
