@@ -24,10 +24,6 @@ const SUGGESTED_PROMPTS: Record<ChatSection, string[]> = {
     'Explain my material cost breakdown',
     'Did the blueprint analysis catch everything?',
   ],
-  'aerial-report': [
-    'Does this roof outline look right?',
-    'How was the square footage calculated?',
-  ],
   'compliance': [
     'Which compliance items are blocking me?',
     'How do I fix the failures?',

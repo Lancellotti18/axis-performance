@@ -2,7 +2,7 @@
 /**
  * RoofOutlineEditor — EagleView-style editable roof polygon over a satellite tile.
  *
- * Flow: user opens the modal from the aerial-report panel, we call
+ * Flow: user opens the modal from a roofing panel, we call
  * /roofing/outline to get an AI-traced polygon in 0..1 image fractions,
  * then render it as an SVG with draggable corner handles. Area and
  * perimeter update live as vertices move.

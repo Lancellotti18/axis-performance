@@ -13,8 +13,8 @@
  *   7. Manual siding measurements on elevation photos
  *   8. Download the 8-section PDF report
  *
- * Coexists with the legacy /aerial-report page; this is the contractor-
- * facing accuracy-first workflow.
+ * The single contractor-facing roof measurement + report workflow
+ * (the legacy /aerial-report v1 was removed).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'

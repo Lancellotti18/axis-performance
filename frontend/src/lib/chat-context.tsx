@@ -17,7 +17,6 @@ export type ChatSection =
   | 'permit'
   | 'storm-report'
   | 'project-detail'
-  | 'aerial-report'
   | 'compliance'
   | 'dashboard'
   | 'general'
