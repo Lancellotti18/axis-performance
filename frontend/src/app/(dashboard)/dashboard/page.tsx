@@ -225,11 +225,11 @@ export default function DashboardPage() {
     <div className="relative min-h-full" style={{ background: '#040810' }}>
       {/* Blueprint-grid background + corner glow */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.04]"
+        className="pointer-events-none absolute inset-0 opacity-[0.11]"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(96,165,250,1) 1px, transparent 1px), linear-gradient(90deg, rgba(96,165,250,1) 1px, transparent 1px)',
-          backgroundSize: '32px 32px',
+            'linear-gradient(rgba(96,165,250,1) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(96,165,250,1) 1.5px, transparent 1.5px)',
+          backgroundSize: '34px 34px',
         }}
       />
       <div className="pointer-events-none absolute -top-32 -right-24 h-[420px] w-[420px] rounded-full opacity-[0.10] blur-3xl" style={{ background: 'radial-gradient(circle, #3b82f6, transparent 60%)' }} />
