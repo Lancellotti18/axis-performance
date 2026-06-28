@@ -677,6 +677,37 @@ def _snap_clusters(facets: list[dict], tol: float = 0.016):
     return cmap, reps
 
 
+def _opposite_sides(a, b, p, q) -> bool:
+    """True if points p and q lie on OPPOSITE sides of the infinite line a→b.
+    For a real shared roof edge the two facets sit on opposite sides; two parallel
+    eaves of separate sections sit on the SAME side — so this is the guard that
+    keeps collinear-overlap detection from fusing edges that aren't actually shared."""
+    ex, ey = b[0] - a[0], b[1] - a[1]
+    cp = (p[0] - a[0]) * ey - (p[1] - a[1]) * ex
+    cq = (q[0] - a[0]) * ey - (q[1] - a[1]) * ex
+    return abs(cp) > 1e-9 and abs(cq) > 1e-9 and (cp > 0) != (cq > 0)
+
+
+def _edges_collinear_overlap(a, b, c, d, perp_tol: float = 0.013, min_overlap: float = 0.4) -> bool:
+    """True if edges (a,b) and (c,d) lie on the same line and their spans overlap —
+    i.e. two facets traced the same physical edge with offset/extra vertices."""
+    ax, ay = b[0] - a[0], b[1] - a[1]
+    la = math.hypot(ax, ay)
+    lcd = math.hypot(d[0] - c[0], d[1] - c[1])
+    if la < 1e-9 or lcd < 1e-9:
+        return False
+    ux, uy = ax / la, ay / la
+    nx, ny = -uy, ux
+    if abs((c[0] - a[0]) * nx + (c[1] - a[1]) * ny) > perp_tol:
+        return False
+    if abs((d[0] - a[0]) * nx + (d[1] - a[1]) * ny) > perp_tol:
+        return False
+    pc = (c[0] - a[0]) * ux + (c[1] - a[1]) * uy
+    pd = (d[0] - a[0]) * ux + (d[1] - a[1]) * uy
+    overlap = min(la, max(pc, pd)) - max(0.0, min(pc, pd))
+    return overlap > min_overlap * min(la, lcd)
+
+
 def auto_suggest_edge_types(
     facets: list[dict],   # each: {label, polygon, pitch_degrees}
 ) -> list[dict]:
@@ -754,6 +785,41 @@ def auto_suggest_edge_types(
             edge_deg = math.degrees(math.atan2(pb[1] - pa[1], pb[0] - pa[0]))
             shared_class[ek] = "ridge" if (eave is not None and _line_angle_diff(edge_deg, eave) < 28.0) else "hip"
 
+    # ---- Supplement: shared edges snapping MISSED (offset vertices / T-junctions).
+    # Two PERIMETER edges from different facets that lie on the same line, overlap,
+    # and have their facets on OPPOSITE sides are really one shared edge (a hip or
+    # ridge). Without this they'd each be mislabeled a perimeter rake — the cause of
+    # the rake↔hip confusion when facets aren't traced corner-to-corner.
+    centroids = [_poly_centroid(s["polygon"]) for s in snapped]
+    perim_fv = [owners[0] for owners in edge_owners.values() if len(owners) == 1]
+
+    def _edge_pts(fv):
+        fi_, vi_ = fv
+        n_ = len(facets[fi_].get("polygon") or [])
+        return reps[cmap[(fi_, vi_)]], reps[cmap[(fi_, (vi_ + 1) % n_)]]
+
+    forced_shared: dict[tuple, int] = {}   # (fi, vi) -> other facet index
+    forced_class: dict[tuple, str] = {}    # (fi, vi) -> "ridge" | "hip"
+    for ii in range(len(perim_fv)):
+        fv1 = perim_fv[ii]
+        if fv1 in forced_shared:
+            continue
+        a1, b1 = _edge_pts(fv1)
+        for jj in range(ii + 1, len(perim_fv)):
+            fv2 = perim_fv[jj]
+            if fv2[0] == fv1[0] or fv2 in forced_shared:
+                continue
+            c1, d1 = _edge_pts(fv2)
+            if _edges_collinear_overlap(a1, b1, c1, d1) and _opposite_sides(a1, b1, centroids[fv1[0]], centroids[fv2[0]]):
+                forced_shared[fv1] = fv2[0]
+                forced_shared[fv2] = fv1[0]
+                eave = _longest_edge_angle_deg(snapped[fv1[0]]["polygon"])
+                edge_deg = math.degrees(math.atan2(b1[1] - a1[1], b1[0] - a1[0]))
+                cls = "ridge" if (eave is not None and _line_angle_diff(edge_deg, eave) < 28.0) else "hip"
+                forced_class[fv1] = cls
+                forced_class[fv2] = cls
+                break
+
     # Per-facet eave vs rake: a facet's EAVE is its perimeter edge FARTHEST from
     # its ridge/hip (peak) edges; the other perimeter edges are RAKES (they climb
     # to the peak). Distance-based — robust to non-horizontal eaves (E/W slopes)
@@ -765,7 +831,13 @@ def auto_suggest_edge_types(
         a0, b0 = tuple(ek)
         mid = ((reps[a0][0] + reps[b0][0]) / 2, (reps[a0][1] + reps[b0][1]) / 2)
         if len(owners) == 1:
-            facet_perim_edges.setdefault(owners[0][0], []).append((ek, mid))
+            fv = owners[0]
+            if fv in forced_shared:
+                # Reclassified as a shared ridge/hip → it's a peak, not a perimeter edge.
+                if forced_class.get(fv) in ("ridge", "hip"):
+                    facet_peak_mids.setdefault(fv[0], []).append(mid)
+                continue
+            facet_perim_edges.setdefault(fv[0], []).append((ek, mid))
         elif shared_class.get(ek) in ("ridge", "hip"):
             for (ofi, _ovi) in owners:
                 facet_peak_mids.setdefault(ofi, []).append(mid)
@@ -804,6 +876,9 @@ def auto_suggest_edge_types(
 
             if shared_with is not None:
                 edge_type = shared_class.get(ek) or "ridge"
+            elif (fi, vi) in forced_shared:
+                shared_with = label_by_fi.get(forced_shared[(fi, vi)])
+                edge_type = forced_class.get((fi, vi), "hip")
             elif fi in facet_eave_ek:
                 edge_type = "eave" if ek == facet_eave_ek[fi] else "rake"
             else:
