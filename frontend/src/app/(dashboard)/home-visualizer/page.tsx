@@ -6,7 +6,7 @@ import { STATES } from '@/lib/jurisdictions'
 
 const cardStyle = {
   boxShadow: '0 2px 12px rgba(59,130,246,0.07)',
-  border: '1px solid rgba(219,234,254,0.8)',
+  border: '1px solid rgba(255,255,255,0.10)',
 }
 
 const EXAMPLE_PROMPTS = [
@@ -70,12 +70,12 @@ export default function HomeVisualizerPage() {
   const fmt = (n: number) => `$${n?.toLocaleString() ?? '—'}`
 
   return (
-    <div className="min-h-screen p-6 md:p-8" style={{ background: 'linear-gradient(135deg, #f0f7ff 0%, #f8faff 100%)' }}>
+    <div className="min-h-screen p-6 md:p-8" style={{ background: '#040810' }}>
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Home Visualizer</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Home Visualizer</h1>
           <p className="text-slate-400 text-sm mt-1">
             Upload a photo of any property, describe the changes you want, and get an AI-generated
             concept render with a real cost estimate.
@@ -83,7 +83,7 @@ export default function HomeVisualizerPage() {
         </div>
 
         {/* Input card */}
-        <div className="bg-white rounded-2xl p-6 space-y-5" style={cardStyle}>
+        <div className="bg-white/[0.04] rounded-2xl p-6 space-y-5" style={cardStyle}>
 
           {/* Photo upload */}
           <div>
@@ -96,9 +96,9 @@ export default function HomeVisualizerPage() {
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
               className={`relative border-2 border-dashed rounded-2xl cursor-pointer transition-all overflow-hidden ${
-                dragOver ? 'border-blue-400 bg-blue-50' :
+                dragOver ? 'border-blue-400 bg-blue-500/10' :
                 preview   ? 'border-emerald-300' :
-                'border-slate-200 hover:border-blue-300 hover:bg-blue-50/30'
+                'border-slate-200 hover:border-blue-300 hover:bg-blue-500/10/30'
               }`}
               style={{ minHeight: 180 }}
             >
@@ -136,7 +136,7 @@ export default function HomeVisualizerPage() {
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Describe ONLY what to change — the original house, roofline, windows and angle will be preserved. e.g. 'repaint siding charcoal gray, add black shutters'"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none leading-relaxed"
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none leading-relaxed"
             />
             <p className="text-[11px] text-slate-400 mt-1.5">
               Tip: the AI edits your photo — don't redescribe the whole house, just the change.
@@ -145,7 +145,7 @@ export default function HomeVisualizerPage() {
             <div className="flex flex-wrap gap-2 mt-2">
               {EXAMPLE_PROMPTS.map((p, i) => (
                 <button key={i} onClick={() => setDescription(p)}
-                  className="text-[11px] px-2.5 py-1 rounded-full border border-blue-100 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
+                  className="text-[11px] px-2.5 py-1 rounded-full border border-blue-100 bg-blue-500/10 text-blue-600 hover:bg-blue-100 transition-colors">
                   {p.length > 45 ? p.slice(0, 45) + '…' : p}
                 </button>
               ))}
@@ -155,24 +155,24 @@ export default function HomeVisualizerPage() {
           {/* Location (optional but improves cost accuracy) */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">State <span className="text-slate-300 normal-case font-normal">(optional — improves cost accuracy)</span></label>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">State <span className="text-slate-600 normal-case font-normal">(optional — improves cost accuracy)</span></label>
               <select
                 value={state}
                 onChange={e => setState(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
               >
                 <option value="">Select state</option>
                 {STATES.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">City <span className="text-slate-300 normal-case font-normal">(optional)</span></label>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">City <span className="text-slate-600 normal-case font-normal">(optional)</span></label>
               <input
                 type="text"
                 value={city}
                 onChange={e => setCity(e.target.value)}
                 placeholder="e.g. Austin"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
             </div>
           </div>
@@ -209,7 +209,7 @@ export default function HomeVisualizerPage() {
 
         {/* Loading state */}
         {loading && (
-          <div className="bg-white rounded-2xl p-10 text-center" style={cardStyle}>
+          <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
             <div className="relative w-16 h-16 mx-auto mb-5">
               <svg className="animate-spin text-purple-200" width="64" height="64" viewBox="0 0 64 64" fill="none">
                 <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6"/>
@@ -219,7 +219,7 @@ export default function HomeVisualizerPage() {
               </svg>
               <div className="absolute inset-0 flex items-center justify-center text-2xl"></div>
             </div>
-            <div className="text-slate-800 font-bold text-base mb-1">Generating your visualization…</div>
+            <div className="text-white font-bold text-base mb-1">Generating your visualization…</div>
             <div className="text-slate-400 text-sm mb-4">This takes 30–90 seconds on first run</div>
             <div className="flex justify-center gap-6 text-xs text-slate-400">
               <span>Processing photo</span>
@@ -231,7 +231,7 @@ export default function HomeVisualizerPage() {
 
         {/* Error */}
         {error && !loading && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-600 text-sm flex gap-3">
+          <div className="bg-rose-500/10 border border-red-200 rounded-2xl p-4 text-red-600 text-sm flex gap-3">
             <svg className="flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             {error}
           </div>
@@ -250,7 +250,7 @@ export default function HomeVisualizerPage() {
                   {preview && <img src={preview} alt="Before" className="w-full object-cover" style={{ maxHeight: 320 }} />}
                   <div className="px-4 py-2.5 flex items-center gap-2">
                     <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Before</span>
-                    <span className="text-slate-300 text-xs">Original photo</span>
+                    <span className="text-slate-600 text-xs">Original photo</span>
                   </div>
                 </div>
                 {/* After */}
@@ -276,11 +276,11 @@ export default function HomeVisualizerPage() {
 
             {/* Cost estimate */}
             {estimate && (
-              <div className="bg-white rounded-2xl overflow-hidden" style={cardStyle}>
-                <div className="px-5 py-4 border-b" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+              <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+                <div className="px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-slate-800 font-bold text-sm">Cost Estimate</div>
+                      <div className="text-white font-bold text-sm">Cost Estimate</div>
                       {estimate.location && <div className="text-slate-400 text-xs mt-0.5">{estimate.location}</div>}
                     </div>
                     <div className="flex gap-4 text-center">
@@ -293,7 +293,7 @@ export default function HomeVisualizerPage() {
                         <div className="text-slate-400 text-[10px] mt-0.5">Mid</div>
                       </div>
                       <div>
-                        <div className="text-slate-700 font-bold text-base leading-none">{fmt(estimate.total_high)}</div>
+                        <div className="text-slate-200 font-bold text-base leading-none">{fmt(estimate.total_high)}</div>
                         <div className="text-slate-400 text-[10px] mt-0.5">High</div>
                       </div>
                     </div>
@@ -305,7 +305,7 @@ export default function HomeVisualizerPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr style={{ borderBottom: '1px solid rgba(219,234,254,0.8)' }}>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
                           <th className="text-left px-5 py-2.5 text-slate-400 font-semibold">Item</th>
                           <th className="text-right px-3 py-2.5 text-slate-400 font-semibold">Qty</th>
                           <th className="text-right px-3 py-2.5 text-slate-400 font-semibold">Low</th>
@@ -316,8 +316,8 @@ export default function HomeVisualizerPage() {
                       </thead>
                       <tbody>
                         {estimate.line_items.map((item: any, i: number) => (
-                          <tr key={i} className="hover:bg-slate-50/50 transition-colors" style={{ borderBottom: '1px solid rgba(219,234,254,0.5)' }}>
-                            <td className="px-5 py-3 text-slate-700 font-medium">{item.item}</td>
+                          <tr key={i} className="hover:bg-white/[0.05]/50 transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            <td className="px-5 py-3 text-slate-200 font-medium">{item.item}</td>
                             <td className="px-3 py-3 text-slate-500 text-right whitespace-nowrap">{item.quantity} {item.unit}</td>
                             <td className="px-3 py-3 text-emerald-600 font-semibold text-right">{fmt(item.total_low)}</td>
                             <td className="px-3 py-3 text-blue-600 font-semibold text-right">{fmt(item.total_mid)}</td>
@@ -327,12 +327,12 @@ export default function HomeVisualizerPage() {
                         ))}
                       </tbody>
                       <tfoot>
-                        <tr className="font-bold" style={{ borderTop: '2px solid rgba(219,234,254,0.9)' }}>
-                          <td className="px-5 py-3 text-slate-800">Total</td>
+                        <tr className="font-bold" style={{ borderTop: '2px solid rgba(255,255,255,0.10)' }}>
+                          <td className="px-5 py-3 text-white">Total</td>
                           <td />
                           <td className="px-3 py-3 text-emerald-600 text-right">{fmt(estimate.total_low)}</td>
                           <td className="px-3 py-3 text-blue-600 text-right">{fmt(estimate.total_mid)}</td>
-                          <td className="px-3 py-3 text-slate-700 text-right">{fmt(estimate.total_high)}</td>
+                          <td className="px-3 py-3 text-slate-200 text-right">{fmt(estimate.total_high)}</td>
                           <td className="hidden md:table-cell" />
                         </tr>
                       </tfoot>
@@ -342,7 +342,7 @@ export default function HomeVisualizerPage() {
 
                 {/* Notes */}
                 {estimate.notes && estimate.notes.length > 0 && (
-                  <div className="px-5 py-4 border-t space-y-2" style={{ borderColor: 'rgba(219,234,254,0.8)' }}>
+                  <div className="px-5 py-4 border-t space-y-2" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Notes</div>
                     {estimate.notes.map((note: string, i: number) => (
                       <div key={i} className="flex items-start gap-2 text-slate-500 text-xs">
@@ -356,7 +356,7 @@ export default function HomeVisualizerPage() {
                 {/* Disclaimer */}
                 {estimate.disclaimer && (
                   <div className="px-5 pb-4">
-                    <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-amber-700 text-xs">
+                    <div className="bg-amber-500/10 border border-amber-100 rounded-xl px-4 py-3 text-amber-700 text-xs">
                       {estimate.disclaimer}
                     </div>
                   </div>
@@ -367,7 +367,7 @@ export default function HomeVisualizerPage() {
             {/* New visualization button */}
             <button
               onClick={() => { setResult(null); setFile(null); setPreview(null); setDescription(''); setState(''); setCity('') }}
-              className="w-full py-3 rounded-xl text-slate-600 font-semibold text-sm border border-slate-200 hover:border-blue-300 hover:text-blue-600 transition-all bg-white"
+              className="w-full py-3 rounded-xl text-slate-600 font-semibold text-sm border border-slate-200 hover:border-blue-300 hover:text-blue-600 transition-all bg-white/[0.04]"
               style={cardStyle}
             >
               + New Visualization
