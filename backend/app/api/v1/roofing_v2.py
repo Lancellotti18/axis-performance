@@ -3077,12 +3077,26 @@ async def get_run_materials(
 # Report
 # ----------------------------------------------------------------------------
 
-@router.get("/runs/{run_id}/report")
-async def get_run_report(run_id: str, user: dict = Depends(require_user)):
-    """
-    Redesigned 8-section roof report. Pulls everything we need server-side
-    and renders a PDF.
-    """
+_REPORTS_BUCKET = "blueprints"
+def _report_key(run_id: str) -> str:
+    return f"roof-reports/{run_id}.pdf"
+
+
+def _signed_report_url(run_id: str) -> Optional[str]:
+    """Signed URL for a stored report PDF, or None if it isn't stored."""
+    try:
+        signed = get_supabase().storage.from_(_REPORTS_BUCKET).create_signed_url(_report_key(run_id), 31_536_000)
+        if isinstance(signed, dict):
+            return signed.get("signedURL") or signed.get("signedUrl")
+    except Exception:
+        return None
+    return None
+
+
+async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str]]:
+    """Build the v2 roof-report PDF, persist it to storage (so it can be reopened /
+    re-downloaded / shared from the Reports tab), and return (bytes, filename, url).
+    url is a long-lived signed URL, or None if storage failed (download still works)."""
     from app.services.roof_report_v2_pdf import generate_v2_report
     db = get_supabase()
     run_res = db.table("roof_measurement_runs").select("*").eq("id", run_id).single().execute()
@@ -3101,10 +3115,8 @@ async def get_run_report(run_id: str, user: dict = Depends(require_user)):
         edges = edges_res.data or []
     pens_res = db.table("roof_penetrations").select("*").eq("run_id", run_id).eq("user_confirmed", True).execute()
 
-    # Recompute to ensure totals are current
     aggregates = _aggregate_run(run_id)
 
-    # Materials
     catalog = db.table("materials_catalog").select("*").eq("active", True).execute().data or []
     totals = RoofTotals(
         total_roof_sqft=float(aggregates["total_roof_sqft"] or 0),
@@ -3122,19 +3134,14 @@ async def get_run_report(run_id: str, user: dict = Depends(require_user)):
     default_waste = int(run.get("waste_pct_default") or aggregates["waste_pct_default"])
     material_lines = compute_material_lines(catalog, totals, pens, default_waste_pct=default_waste)
 
-    # Manual siding (Phase-1 placeholder section)
     siding_res = db.table("manual_siding_measurements").select("*").eq("project_id", run["project_id"]).execute()
 
-    # Flashing intelligence — derive step/counter/apron/kickout/valley/chimney/
-    # skylight/cricket from the same facets/edges/penetrations and render it in
-    # the report's Flashing section.
     try:
         from app.services.flashing_engine import build_input_from_rows, compute_flashing
         from app.services.materials_engine import compute_flashing_material_lines
         flashing_summary = compute_flashing(
             build_input_from_rows(facets_res.data or [], edges, pens_res.data or [])
         ).to_dict()
-        # Append priced, orderable flashing line items to the material order.
         material_lines = material_lines + compute_flashing_material_lines(
             catalog, flashing_summary, default_waste_pct=default_waste,
         )
@@ -3144,25 +3151,87 @@ async def get_run_report(run_id: str, user: dict = Depends(require_user)):
 
     pdf_bytes = await asyncio.to_thread(
         generate_v2_report,
-        proj.data,
-        run,
-        aggregates,
-        facets_res.data or [],
-        edges,
-        pens_res.data or [],
-        material_lines,
-        siding_res.data or [],
-        flashing_summary,
+        proj.data, run, aggregates, facets_res.data or [], edges,
+        pens_res.data or [], material_lines, siding_res.data or [], flashing_summary,
     )
 
     slug = (proj.data.get("name") or "project").strip().lower()
     slug = "".join(c if c.isalnum() else "-" for c in slug).strip("-") or "project"
     filename = f"axis-roof-report-{slug}-{run_id[:8]}.pdf"
+
+    # Persist so the Reports tab can reopen / re-download / share it. Best-effort.
+    url: Optional[str] = None
+    try:
+        bucket = db.storage.from_(_REPORTS_BUCKET)
+        bucket.upload(_report_key(run_id), pdf_bytes, {"content-type": "application/pdf", "upsert": "true"})
+        url = _signed_report_url(run_id)
+    except Exception as e:
+        logger.info("report storage failed for run %s: %s", run_id, e)
+
+    return pdf_bytes, filename, url
+
+
+@router.get("/runs/{run_id}/report")
+async def get_run_report(run_id: str, user: dict = Depends(require_user)):
+    """Redesigned 8-section roof report PDF (also stored for the Reports tab)."""
+    pdf_bytes, filename, _ = await _build_and_store_report(run_id)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/runs/{run_id}/report/url")
+async def get_run_report_url(run_id: str, user: dict = Depends(require_user)) -> dict:
+    """A shareable signed URL for the run's report — returns the stored one if it
+    exists, otherwise builds + stores it first."""
+    url = _signed_report_url(run_id)
+    if not url:
+        _, _, url = await _build_and_store_report(run_id)
+    if not url:
+        raise HTTPException(status_code=503, detail="Could not prepare a shareable link for this report.")
+    return {"url": url}
+
+
+@router.get("/reports")
+async def list_roof_reports(user_id: str = Query(...), user: dict = Depends(require_user)) -> dict:
+    """Every roof report available across a user's projects — any run that has a
+    traced roof. Includes a signed pdf_url when one has already been generated."""
+    db = get_supabase()
+    projects = db.table("projects").select("id, name, address, city").eq("user_id", user_id).execute().data or []
+    pmap = {p["id"]: p for p in projects}
+    if not pmap:
+        return {"reports": []}
+    runs = (db.table("roof_measurement_runs").select("id, project_id, created_at")
+            .in_("project_id", list(pmap)).order("created_at", desc=True).execute().data or [])
+    run_ids = [r["id"] for r in runs]
+    if not run_ids:
+        return {"reports": []}
+    facets = db.table("roof_facets").select("run_id").in_("run_id", run_ids).execute().data or []
+    reportable = {f["run_id"] for f in facets}
+    stored: set = set()
+    try:
+        for obj in (db.storage.from_(_REPORTS_BUCKET).list("roof-reports") or []):
+            nm = obj.get("name", "")
+            if nm.endswith(".pdf"):
+                stored.add(nm[:-4])
+    except Exception:
+        pass
+    out = []
+    for r in runs:
+        if r["id"] not in reportable:
+            continue
+        p = pmap.get(r["project_id"], {})
+        out.append({
+            "run_id": r["id"],
+            "project_id": r["project_id"],
+            "project_name": p.get("name") or "Project",
+            "address": ", ".join([x for x in [p.get("address"), p.get("city")] if x]) or None,
+            "created_at": r.get("created_at"),
+            "pdf_url": _signed_report_url(r["id"]) if r["id"] in stored else None,
+        })
+    return {"reports": out}
 
 
 # ----------------------------------------------------------------------------

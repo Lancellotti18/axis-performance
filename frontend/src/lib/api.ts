@@ -980,6 +980,19 @@ export const api = {
         a.remove()
         setTimeout(() => URL.revokeObjectURL(url), 2000)
       },
+      // Every roof report across a user's projects (for the Reports tab).
+      listReports: (userId: string) =>
+        apiRequest<{ reports: Array<{
+          run_id: string
+          project_id: string
+          project_name: string
+          address: string | null
+          created_at: string
+          pdf_url: string | null
+        }> }>(`/api/v1/roofing/v2/reports?user_id=${userId}`),
+      // A shareable signed URL for a run's report (builds + stores it if needed).
+      getReportShareUrl: (runId: string) =>
+        apiRequest<{ url: string }>(`/api/v1/roofing/v2/runs/${runId}/report/url`, {}, 60000),
       addSidingMeasurement: (payload: {
         project_id: string
         elevation: 'front' | 'rear' | 'left' | 'right' | 'other'

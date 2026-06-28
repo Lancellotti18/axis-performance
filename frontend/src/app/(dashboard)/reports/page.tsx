@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
+import toast from 'react-hot-toast'
 
 const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.07)', border: '1px solid rgba(255,255,255,0.10)' }
 
@@ -102,6 +103,8 @@ export default function ReportsPage() {
   const [savedFlash, setSavedFlash] = useState(false)
   const [exporting, setExporting]   = useState(false)
   const saveTimer = useRef<any>(null)
+  const [roofReports, setRoofReports] = useState<Array<{ run_id: string; project_id: string; project_name: string; address: string | null; created_at: string; pdf_url: string | null }>>([])
+  const [roofBusy, setRoofBusy] = useState<string>('')
 
   useEffect(() => {
     getUser().then(u => {
@@ -112,8 +115,30 @@ export default function ReportsPage() {
         setProjects(all)
         if (all.length > 0) setSelectedId(all[0].id)
       }).catch(() => {}).finally(() => setLoadingProjects(false))
+      api.roofing.v2.listReports(u.id).then(r => setRoofReports(r.reports || [])).catch(() => {})
     })
   }, [router])
+
+  async function openRoofReport(rep: { run_id: string; pdf_url: string | null }) {
+    if (rep.pdf_url) { window.open(rep.pdf_url, '_blank'); return }
+    setRoofBusy(rep.run_id + ':open')
+    try {
+      const { url } = await api.roofing.v2.getReportShareUrl(rep.run_id)
+      window.open(url, '_blank')
+      setRoofReports(prev => prev.map(x => x.run_id === rep.run_id ? { ...x, pdf_url: url } : x))
+    } catch { try { await api.roofing.v2.downloadReport(rep.run_id) } catch {} }
+    finally { setRoofBusy('') }
+  }
+  async function shareRoofReport(rep: { run_id: string; pdf_url: string | null }) {
+    setRoofBusy(rep.run_id + ':share')
+    try {
+      const url = rep.pdf_url || (await api.roofing.v2.getReportShareUrl(rep.run_id)).url
+      await navigator.clipboard.writeText(url)
+      setRoofReports(prev => prev.map(x => x.run_id === rep.run_id ? { ...x, pdf_url: url } : x))
+      toast.success('Share link copied to clipboard')
+    } catch { toast.error('Could not create a share link') }
+    finally { setRoofBusy('') }
+  }
 
   useEffect(() => {
     if (!selectedId) return
@@ -212,6 +237,47 @@ export default function ReportsPage() {
           </button>
         )}
       </div>
+
+      {/* Roof reports — every measured roof across all projects, reopen / download / share */}
+      {roofReports.length > 0 && (
+        <div className="px-6 pt-5">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-white/10 flex items-center gap-2">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
+              <h2 className="text-white font-semibold text-sm">Roof Reports</h2>
+              <span className="text-slate-500 text-xs">({roofReports.length})</span>
+            </div>
+            <div className="divide-y divide-white/[0.06]">
+              {roofReports.map(rep => {
+                const busyOpen = roofBusy === rep.run_id + ':open'
+                const busyShare = roofBusy === rep.run_id + ':share'
+                return (
+                  <div key={rep.run_id} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.03] transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-white font-medium truncate">{rep.project_name}</div>
+                      <div className="text-[11px] text-slate-500 truncate">
+                        {rep.address ? `${rep.address} · ` : ''}{new Date(rep.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                    </div>
+                    <button onClick={() => openRoofReport(rep)} disabled={busyOpen}
+                      className="text-xs font-medium text-blue-200 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/25 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                      {busyOpen ? '…' : 'Open'}
+                    </button>
+                    <button onClick={() => api.roofing.v2.downloadReport(rep.run_id).catch(() => toast.error('Download failed'))}
+                      className="text-xs font-medium text-slate-300 bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 px-3 py-1.5 rounded-lg transition-colors">
+                      Download
+                    </button>
+                    <button onClick={() => shareRoofReport(rep)} disabled={busyShare}
+                      className="text-xs font-medium text-slate-300 bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                      {busyShare ? '…' : 'Share'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-0">
 
