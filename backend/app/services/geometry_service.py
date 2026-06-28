@@ -445,12 +445,16 @@ def recommended_waste_pct(complexity: float) -> int:
 # ----------------------------------------------------------------------------
 
 def _segments_overlap(
-    a1: list[float], a2: list[float], b1: list[float], b2: list[float], tol: float = 0.005
+    a1: list[float], a2: list[float], b1: list[float], b2: list[float], tol: float = 0.008
 ) -> bool:
     """
     True if line segments (a1,a2) and (b1,b2) are coincident within `tol`
-    (image-fraction units, default ≈0.5% of side). Used to detect when two
-    facets share an edge — that edge is then a ridge, hip, or valley.
+    (image-fraction units, ≈0.8% of side). Used to detect when two facets share an
+    edge — that edge is then a ridge, hip, or valley. Slightly forgiving so a hip/
+    ridge whose corners were traced a hair apart is still caught (fewer hips landing
+    as perimeter rakes), while staying well under the spacing of distinct corners.
+
+    We test both orderings since polygon traversal may differ.
 
     We test both orderings since polygon traversal may differ.
     """
@@ -570,46 +574,60 @@ def auto_suggest_edge_types(
         n = len(poly)
         if n < 3:
             continue
+
+        # Pass A — resolve each edge's shared status, and classify the shared ones
+        # (ridge / hip / valley) by geometry. Done first so the perimeter eave/rake
+        # call below can use which vertices are ridge/hip "peaks".
+        edge_shared: list[str | None] = [None] * n        # vi -> other facet label
+        edge_type_shared: list[str | None] = [None] * n   # vi -> ridge/hip/valley
         for vi in range(n):
             p1 = poly[vi]
             p2 = poly[(vi + 1) % n]
-
             shared_with: str | None = None
             for j, other in enumerate(facets):
                 if j == i:
                     continue
                 opoly = other.get("polygon") or []
-                m = len(opoly)
-                if m < 3:
+                if len(opoly) < 3:
                     continue
-                for vj in range(m):
-                    q1 = opoly[vj]
-                    q2 = opoly[(vj + 1) % m]
-                    if _segments_overlap(p1, p2, q1, q2):
+                hit = False
+                for vj in range(len(opoly)):
+                    if _segments_overlap(p1, p2, opoly[vj], opoly[(vj + 1) % len(opoly)]):
                         shared_with = other.get("label")
+                        hit = True
                         break
-                if shared_with:
+                if hit:
                     break
-
+            edge_shared[vi] = shared_with
             if shared_with:
-                # Classify by GEOMETRY (orientation + concavity), NOT pitch
-                # equality — Solar gives facets similar pitch, which used to make
-                # every shared edge a "ridge". Valleys are now detected too.
-                edge_type, _conf = _classify_shared_edge(p1, p2, poly, facets)
+                edge_type_shared[vi], _conf = _classify_shared_edge(p1, p2, poly, facets)
+
+        # Vertices of THIS facet that sit on a ridge/hip edge (a "peak").
+        peak_vtx: set[int] = set()
+        for vi in range(n):
+            if edge_type_shared[vi] in ("ridge", "hip"):
+                peak_vtx.add(vi)
+                peak_vtx.add((vi + 1) % n)
+        has_peak = bool(peak_vtx)
+
+        # Pass B — emit. Perimeter edges: a RAKE climbs to a peak (exactly ONE
+        # endpoint on a ridge/hip); an EAVE has none — or both, like the base of a
+        # hip facet that runs between two hips. Falls back to the horizontal
+        # heuristic only when the facet has no ridge/hip at all (a lone slope).
+        for vi in range(n):
+            p1 = poly[vi]
+            p2 = poly[(vi + 1) % n]
+            shared_with = edge_shared[vi]
+            if shared_with:
+                edge_type = edge_type_shared[vi] or "ridge"
+            elif has_peak:
+                touch = (1 if vi in peak_vtx else 0) + (1 if (vi + 1) % n in peak_vtx else 0)
+                edge_type = "rake" if touch == 1 else "eave"
             else:
-                # Heuristic: classify by edge orientation in image space.
                 dx = p2[0] - p1[0]
                 dy = p2[1] - p1[1]
-                # Horizontal edges → eave or ridge end. Without slope direction
-                # we can't tell which; we lean 'eave' because every roof has eaves
-                # at its lower perimeter, and unmatched eaves are far more common
-                # than unmatched ridges (a ridge usually has another facet on the
-                # far side).
                 horizontal = abs(dy) < 0.15 * abs(dx) if dx != 0 else False
-                if horizontal:
-                    edge_type = "eave"
-                else:
-                    edge_type = "rake"
+                edge_type = "eave" if horizontal else "rake"
 
             suggestions.append({
                 "facet_label": f.get("label"),

@@ -2708,35 +2708,30 @@ async def suggest_edge_labels(
                 "ai_suggested": True,
             })
         else:
+            # Perimeter edge. Geometry now decides eave vs rake reliably (it uses the
+            # detected ridge/hip topology), so TRUST it — don't let satellite vision
+            # flip eaves↔rakes (the main mixup). Vision is consulted only to flag a
+            # wall_intersection, which geometry can't see, and only when confident.
+            etype = geo_sug.get("edge_type") or "unlabeled"
+            facet = next((f for f in req.facets if f.get("label") == key[0]), None)
+            gc, greason = (
+                _geom_edge_confidence(facet.get("polygon") or [], key[1], etype)
+                if facet else (0.5, "Geometric heuristic — please confirm")
+            )
             v = vision_suggestions_by_edge.get(key)
-            if v and v.get("edge_type") in ("eave", "rake", "gable_end", "wall_intersection"):
-                out.append({
-                    "facet_label": key[0],
-                    "vertex_index_start": key[1],
-                    "suggested_edge_type": v["edge_type"],
-                    "confidence": v["confidence"],
-                    "reason": v["reason"],
-                    "shared_with_facet_label": None,
-                    "ai_suggested": True,
-                })
-            else:
-                # Geometric fallback (horizontal=eave, sloped=rake), but graded by
-                # how obvious the orientation is rather than a flat 0.45.
-                etype = geo_sug.get("edge_type") or "unlabeled"
-                facet = next((f for f in req.facets if f.get("label") == key[0]), None)
-                gc, greason = (
-                    _geom_edge_confidence(facet.get("polygon") or [], key[1], etype)
-                    if facet else (0.45, "Geometric heuristic — please confirm")
-                )
-                out.append({
-                    "facet_label": key[0],
-                    "vertex_index_start": key[1],
-                    "suggested_edge_type": etype,
-                    "confidence": gc,
-                    "reason": greason,
-                    "shared_with_facet_label": None,
-                    "ai_suggested": True,
-                })
+            if v and v.get("edge_type") == "wall_intersection" and (v.get("confidence") or 0) >= 0.7:
+                etype = "wall_intersection"
+                gc = max(0.6, v.get("confidence") or 0.6)
+                greason = v.get("reason") or "Roof meets a wall (from satellite)"
+            out.append({
+                "facet_label": key[0],
+                "vertex_index_start": key[1],
+                "suggested_edge_type": etype,
+                "confidence": gc,
+                "reason": greason,
+                "shared_with_facet_label": None,
+                "ai_suggested": True,
+            })
 
     return {
         "suggestions": out,
