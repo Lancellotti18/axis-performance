@@ -2708,11 +2708,16 @@ async def suggest_edge_labels(
             else:
                 conf = 0.85
                 reason = f"Shared edge with facet {shared} (geometric)"
-                # Vision breaks the ridge↔hip↔valley confusion when slope is unknown.
+                # Vision arbitrates the ridge↔hip↔valley call, but CONSERVATIVELY:
+                # geometry's VALLEY (a reentrant/concave fold) is a strong, reliable
+                # signal, so vision must be near-certain to overturn it; ridge vs hip
+                # is the genuinely ambiguous pair, so a lower bar applies there.
                 rv = rv_vision_by_edge.get(key)
-                if rv and rv.get("edge_type") in ("ridge", "hip", "valley") and (rv.get("confidence") or 0) >= 0.6:
+                rv_conf = (rv or {}).get("confidence") or 0
+                threshold = 0.85 if etype == "valley" else 0.72
+                if rv and rv.get("edge_type") in ("ridge", "hip", "valley") and rv_conf >= threshold:
                     etype = rv["edge_type"]
-                    conf = max(0.6, rv.get("confidence") or 0.6)
+                    conf = max(0.7, rv_conf)
                     reason = f"Shared with {shared}; {etype} confirmed from satellite — {rv.get('reason', '')}".strip()
             out.append({
                 "facet_label": key[0],
@@ -2723,47 +2728,35 @@ async def suggest_edge_labels(
                 "shared_with_facet_label": shared,
                 "ai_suggested": True,
             })
-        elif geo_sug.get("method") == "slope":
-            # Eave/rake from measured slope direction — trusted over vision/guess.
+        else:
+            # Perimeter edge. The snapping-based geometry reliably gives eave vs
+            # rake, so it's PRIMARY. Vision is a conservative override: trusted for
+            # wall_intersection (which geometry can't see at all), and otherwise it
+            # only overrides eave/rake when it's highly confident AND disagrees.
+            etype = geo_sug.get("edge_type") or "unlabeled"
+            facet = next((f for f in req.facets if f.get("label") == key[0]), None)
+            gc, greason = (
+                _geom_edge_confidence(facet.get("polygon") or [], key[1], etype)
+                if facet else (0.5, "Geometric heuristic — please confirm")
+            )
+            v = vision_suggestions_by_edge.get(key)
+            v_type = (v or {}).get("edge_type")
+            v_conf = (v or {}).get("confidence") or 0
+            if v and v_type == "wall_intersection" and v_conf >= 0.6:
+                etype, gc = "wall_intersection", max(0.6, v_conf)
+                greason = v.get("reason") or "Roof meets a wall (satellite)"
+            elif v and v_type in ("eave", "rake", "gable_end") and v_type != etype and v_conf >= 0.78:
+                etype, gc = v_type, v_conf
+                greason = v.get("reason") or f"{v_type} (satellite)"
             out.append({
                 "facet_label": key[0],
                 "vertex_index_start": key[1],
-                "suggested_edge_type": geo_sug.get("edge_type") or "eave",
-                "confidence": geo_sug.get("confidence") or 0.76,
-                "reason": f"{geo_sug.get('edge_type')} from measured slope direction",
+                "suggested_edge_type": etype,
+                "confidence": gc,
+                "reason": greason,
                 "shared_with_facet_label": None,
                 "ai_suggested": True,
             })
-        else:
-            v = vision_suggestions_by_edge.get(key)
-            if v and v.get("edge_type") in ("eave", "rake", "gable_end", "wall_intersection"):
-                out.append({
-                    "facet_label": key[0],
-                    "vertex_index_start": key[1],
-                    "suggested_edge_type": v["edge_type"],
-                    "confidence": v["confidence"],
-                    "reason": v["reason"],
-                    "shared_with_facet_label": None,
-                    "ai_suggested": True,
-                })
-            else:
-                # Geometric fallback (horizontal=eave, sloped=rake), but graded by
-                # how obvious the orientation is rather than a flat 0.45.
-                etype = geo_sug.get("edge_type") or "unlabeled"
-                facet = next((f for f in req.facets if f.get("label") == key[0]), None)
-                gc, greason = (
-                    _geom_edge_confidence(facet.get("polygon") or [], key[1], etype)
-                    if facet else (0.45, "Geometric heuristic — please confirm")
-                )
-                out.append({
-                    "facet_label": key[0],
-                    "vertex_index_start": key[1],
-                    "suggested_edge_type": etype,
-                    "confidence": gc,
-                    "reason": greason,
-                    "shared_with_facet_label": None,
-                    "ai_suggested": True,
-                })
 
     return {
         "suggestions": out,

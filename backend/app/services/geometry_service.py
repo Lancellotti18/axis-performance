@@ -638,97 +638,173 @@ def _classify_perimeter_slope(p1, p2, facet: dict, az: float) -> tuple[str, floa
     return None
 
 
+def _snap_clusters(facets: list[dict], tol: float = 0.012):
+    """Cluster facet vertices within `tol` so the SAME physical corner — traced a
+    little differently by two adjacent facets — collapses to ONE point. Returns
+    (cmap, reps): cmap[(facet_index, vertex_index)] -> cluster_id, and reps = the
+    cluster centroids.
+
+    This normalization is the foundation of reliable edge typing. Comparing raw
+    hand-traced coordinates is fragile: too strict and a real shared edge (ridge/
+    hip/valley) is missed and mislabeled eave/rake; too loose and distinct edges
+    get fused into phantom ridges. After snapping, two facets that share an edge
+    have IDENTICAL endpoint cluster ids, so shared-edge detection is exact."""
+    reps: list[list[float]] = []
+    counts: list[int] = []
+    cmap: dict[tuple[int, int], int] = {}
+    for fi, f in enumerate(facets):
+        poly = f.get("polygon") or []
+        for vi, p in enumerate(poly):
+            try:
+                px, py = float(p[0]), float(p[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            cid = None
+            for k, c in enumerate(reps):
+                if abs(px - c[0]) <= tol and abs(py - c[1]) <= tol:
+                    cid = k
+                    break
+            if cid is None:
+                reps.append([px, py])
+                counts.append(1)
+                cid = len(reps) - 1
+            else:
+                m = counts[cid] + 1
+                reps[cid][0] = (reps[cid][0] * counts[cid] + px) / m
+                reps[cid][1] = (reps[cid][1] * counts[cid] + py) / m
+                counts[cid] = m
+            cmap[(fi, vi)] = cid
+    return cmap, reps
+
+
 def auto_suggest_edge_types(
-    facets: list[dict],   # each: {label, polygon, pitch_degrees, azimuth_degrees?}
+    facets: list[dict],   # each: {label, polygon, pitch_degrees}
 ) -> list[dict]:
     """
-    Given a list of facets, return a list of suggested edge labels:
+    Suggest an edge type (eave/rake/ridge/hip/valley) for every facet edge from 2D
+    geometry alone (no AI). Robust, deterministic pipeline:
 
-        [
-          {"facet_label": "A", "vertex_index_start": 0, "vertex_index_end": 1,
-           "edge_type": "eave", "shared_with_facet_label": None},
-          ...
-        ]
+      1. SNAP vertices across facets (_snap_clusters) so a shared corner is one
+         point — makes shared-edge detection reliable regardless of how precisely
+         the contractor traced.
+      2. An edge owned by TWO facets is a ridge / hip / valley; classify it by
+         concavity (valley = reentrant fold) + orientation (ridge ∥ eave, hip
+         diagonal) via _classify_shared_edge.
+      3. A perimeter edge (one owner) is an eave (horizontal, low) or a rake
+         (sloped).
 
-    Heuristic (deterministic, no AI):
-      1. For every edge, check every other facet's edges for overlap.
-         - If overlap AND both facets share equal pitch_degrees → 'ridge'.
-         - If overlap AND pitches differ → 'hip' if both rise from the edge
-           (outer corner) or 'valley' if both fall toward the edge.
-           Since we don't yet know slope direction at this stage, the
-           default for unequal-pitch shared edges is 'hip' (more common
-           in residential). The user reviews each edge in the editor.
-      2. For every non-shared edge:
-         - 'eave' if the edge is approximately horizontal in the image
-           (within 8°) AND on the lower portion of the polygon bounding box.
-         - 'rake' if it's a non-horizontal edge on the side of the polygon.
-         - 'gable_end' if it's the topmost/bottommost short edge on a
-           triangle-like end.
-      3. Anything we can't confidently label → 'unlabeled' so the user
-         decides.
-
-    This is INTENTIONALLY conservative. Edge types feed directly into
-    material orders — better to leave 'unlabeled' than to mislabel a
-    'rake' as a 'ridge' and order the wrong amount of cap shingles.
+    Conservative by design — the API-layer vision pass refines the genuinely
+    ambiguous calls (ridge vs hip, wall intersections) only when highly confident.
     """
-    suggestions: list[dict] = []
+    cmap, reps = _snap_clusters(facets)
 
-    for i, f in enumerate(facets):
+    # Snapped polygon per facet — clean coordinates for the angle/orientation math.
+    snapped: list[dict] = []
+    for fi, f in enumerate(facets):
+        n = len(f.get("polygon") or [])
+        spoly = [reps[cmap[(fi, vi)]] for vi in range(n) if (fi, vi) in cmap]
+        snapped.append({"label": f.get("label"), "polygon": spoly})
+
+    # Edge topology: unordered cluster-pair -> list of (facet_index, vertex_index).
+    edge_owners: dict[frozenset, list] = {}
+    for fi, f in enumerate(facets):
+        n = len(f.get("polygon") or [])
+        for vi in range(n):
+            a = cmap.get((fi, vi))
+            b = cmap.get((fi, (vi + 1) % n))
+            if a is None or b is None or a == b:
+                continue
+            edge_owners.setdefault(frozenset((a, b)), []).append((fi, vi))
+
+    # Which clusters sit on the building boundary (touch a perimeter/unshared edge)
+    # vs. are purely interior (only shared edges meet there — a hip/ridge apex).
+    cluster_on_boundary: set = set()
+    for ek, owners in edge_owners.items():
+        if len(owners) == 1:
+            cluster_on_boundary.update(ek)
+
+    # Pass 1 — classify each shared edge from TOPOLOGY (the reliable way):
+    #   • VALLEY: a reentrant (concave) corner ON THE BOUNDARY. Concavity only
+    #     means valley at a boundary corner — an interior apex where many facets
+    #     meet (a hip/pyramid peak) also has a large angle sum but is convex, NOT a
+    #     valley. This is the fix for hips being mislabeled valleys.
+    #   • HIP: runs from a boundary corner up to an interior apex/ridge.
+    #   • RIDGE: spans the top — both ends interior, or horizontal between two
+    #     gable peaks.
+    shared_class: dict[frozenset, str] = {}
+    for ek, owners in edge_owners.items():
+        if len(owners) < 2:
+            continue
+        a, b = tuple(ek)
+        pa, pb = reps[a], reps[b]
+        a_bnd, b_bnd = a in cluster_on_boundary, b in cluster_on_boundary
+        is_valley = ((a_bnd and _angle_sum_at(snapped, pa) > 185.0)
+                     or (b_bnd and _angle_sum_at(snapped, pb) > 185.0))
+        if is_valley:
+            shared_class[ek] = "valley"
+        elif a_bnd != b_bnd:
+            shared_class[ek] = "hip"          # corner → apex
+        elif not a_bnd and not b_bnd:
+            shared_class[ek] = "ridge"        # interior span
+        else:
+            # Both ends on the boundary (gable ridge between peaks, or a short hip):
+            # parallel to the facet's eave → ridge, diagonal → hip.
+            fi = owners[0][0]
+            eave = _longest_edge_angle_deg(snapped[fi]["polygon"])
+            edge_deg = math.degrees(math.atan2(pb[1] - pa[1], pb[0] - pa[0]))
+            shared_class[ek] = "ridge" if (eave is not None and _line_angle_diff(edge_deg, eave) < 28.0) else "hip"
+
+    # Per-facet topology for eave vs rake: how many perimeter (open) edges each
+    # facet has, and which of its vertices sit on a ridge/hip (a "peak"). A rake is
+    # the perimeter edge that climbs to a peak; the eave is the low edge that
+    # doesn't. This is reliable even when the eave isn't horizontal in the image
+    # (an east/west-facing slope), which the old orientation-only heuristic got wrong.
+    facet_perim_count: dict[int, int] = {}
+    facet_peak_verts: dict[int, set] = {}
+    for ek, owners in edge_owners.items():
+        if len(owners) == 1:
+            fi0 = owners[0][0]
+            facet_perim_count[fi0] = facet_perim_count.get(fi0, 0) + 1
+        elif shared_class.get(ek) in ("ridge", "hip"):
+            for (ofi, _ovi) in owners:
+                facet_peak_verts.setdefault(ofi, set()).update(ek)
+
+    # Pass 2 — emit one suggestion per original edge (original vertex indices, so
+    # the frontend/API can map them back).
+    label_by_fi = {fi: f.get("label") for fi, f in enumerate(facets)}
+    suggestions: list[dict] = []
+    for fi, f in enumerate(facets):
         poly = f.get("polygon") or []
         n = len(poly)
         if n < 3:
             continue
         for vi in range(n):
-            p1 = poly[vi]
-            p2 = poly[(vi + 1) % n]
-
-            shared_with: str | None = None
-            shared_other: dict | None = None
-            for j, other in enumerate(facets):
-                if j == i:
-                    continue
-                opoly = other.get("polygon") or []
-                m = len(opoly)
-                if m < 3:
-                    continue
-                for vj in range(m):
-                    q1 = opoly[vj]
-                    q2 = opoly[(vj + 1) % m]
-                    if _segments_overlap(p1, p2, q1, q2):
-                        shared_with = other.get("label")
-                        shared_other = other
+            a = cmap.get((fi, vi))
+            b = cmap.get((fi, (vi + 1) % n))
+            if a is None or b is None or a == b:
+                continue
+            ek = frozenset((a, b))
+            owners = edge_owners.get(ek, [])
+            shared_with = None
+            if len(owners) > 1:
+                for (ofi, _ovi) in owners:
+                    if ofi != fi:
+                        shared_with = label_by_fi.get(ofi)
                         break
-                if shared_with:
-                    break
 
-            method = "geometry"
-            confidence: float | None = None
-            az_self = f.get("azimuth_degrees")
-            if shared_with:
-                # SLOPE FIRST (reliable): if both facets have a measured azimuth,
-                # classify ridge/hip/valley by which way the planes slope. Fall
-                # back to 2D geometry (concavity + orientation) when slope is
-                # unavailable or ambiguous.
-                az_other = shared_other.get("azimuth_degrees") if shared_other else None
-                slope = (
-                    _classify_shared_slope(p1, p2, f, shared_other, az_self, az_other)
-                    if (az_self is not None and az_other is not None and shared_other) else None
-                )
-                if slope:
-                    edge_type, confidence, method = slope[0], slope[1], "slope"
-                else:
-                    edge_type, _c = _classify_shared_edge(p1, p2, poly, facets)
+            if shared_with is not None:
+                edge_type = shared_class.get(ek) or "ridge"
+            elif facet_perim_count.get(fi, 0) == 1:
+                edge_type = "eave"                       # a facet's only open edge is its eave
+            elif facet_peak_verts.get(fi):
+                peaks = facet_peak_verts[fi]
+                edge_type = "rake" if (a in peaks or b in peaks) else "eave"
             else:
-                # Perimeter: slope tells eave (low cross-slope) from rake (up the
-                # slope) far better than image-orientation guessing.
-                slope = _classify_perimeter_slope(p1, p2, f, az_self) if az_self is not None else None
-                if slope:
-                    edge_type, confidence, method = slope[0], slope[1], "slope"
-                else:
-                    dx = p2[0] - p1[0]
-                    dy = p2[1] - p1[1]
-                    horizontal = abs(dy) < 0.15 * abs(dx) if dx != 0 else False
-                    edge_type = "eave" if horizontal else "rake"
+                # Lone slope with no ridge/hip to climb to → orientation heuristic.
+                p1, p2 = reps[a], reps[b]
+                dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+                horizontal = abs(dy) < 0.15 * abs(dx) if dx != 0 else False
+                edge_type = "eave" if horizontal else "rake"
 
             suggestions.append({
                 "facet_label": f.get("label"),
@@ -736,8 +812,6 @@ def auto_suggest_edge_types(
                 "vertex_index_end": (vi + 1) % n,
                 "edge_type": edge_type,
                 "shared_with_facet_label": shared_with,
-                "method": method,
-                "confidence": confidence,
             })
 
     return suggestions
