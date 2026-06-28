@@ -31,16 +31,16 @@ interface ShingleMaterial {
 
 type RoofTab = 'measurements' | 'waste' | 'shingles'
 
-const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(219,234,254,0.8)' }
+const cardStyle = { boxShadow: '0 8px 32px rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.10)' }
 
 function formatMoney(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 }
 
 function ConfidenceBadge({ pct }: { pct: number }) {
-  const color = pct >= 75 ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-    : pct >= 50 ? 'bg-amber-50 text-amber-600 border-amber-200'
-    : 'bg-red-50 text-red-500 border-red-200'
+  const color = pct >= 75 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-200'
+    : pct >= 50 ? 'bg-amber-500/10 text-amber-600 border-amber-200'
+    : 'bg-rose-500/10 text-red-500 border-red-200'
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${color}`}>
       AI Confidence: {pct}%
@@ -135,7 +135,7 @@ export default function RoofingSection({
     setDraft(prev => prev ? { ...prev, [field]: value } : prev)
   }
 
-  const inputCls = 'w-full bg-slate-50 border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 rounded-xl px-3 py-2 text-slate-700 text-sm focus:outline-none transition-all'
+  const inputCls = 'w-full bg-white/[0.05] border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 rounded-xl px-3 py-2 text-slate-200 text-sm focus:outline-none transition-all'
   const labelCls = 'block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1'
 
   const ROOF_TABS: { key: RoofTab; label: string }[] = [
@@ -151,13 +151,13 @@ export default function RoofingSection({
   return (
     <div>
       {/* Sub-tabs */}
-      <div className="flex items-center gap-1 mb-6 bg-slate-100 p-1 rounded-2xl w-fit">
+      <div className="flex items-center gap-1 mb-6 bg-white/[0.06] p-1 rounded-2xl w-fit">
         {ROOF_TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-              tab === t.key ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              tab === t.key ? 'bg-white/[0.04] text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-200'
             }`}
           >
             {t.label}
@@ -170,14 +170,14 @@ export default function RoofingSection({
         <div className="space-y-5">
           {/* Action banner */}
           {!measurements && !analyzing && (
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
+            <div className="bg-blue-500/10 border border-blue-200 rounded-2xl p-6 text-center">
               <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl"></div>
-              <h3 className="text-slate-800 font-bold mb-1">Analyze Roof Measurements</h3>
+              <h3 className="text-white font-bold mb-1">Analyze Roof Measurements</h3>
               <p className="text-slate-500 text-sm mb-4 max-w-sm mx-auto">
                 AI will analyze your uploaded blueprint or roof image to extract measurements. You'll review and confirm before anything is used.
               </p>
               {analysisError && (
-                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm mb-4">{analysisError}</div>
+                <div className="bg-rose-500/10 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm mb-4">{analysisError}</div>
               )}
               <button
                 onClick={handleAnalyze}
@@ -191,12 +191,12 @@ export default function RoofingSection({
           )}
 
           {analyzing && (
-            <div className="bg-white rounded-2xl p-10 text-center" style={cardStyle}>
+            <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
               <svg className="w-10 h-10 text-blue-500 animate-spin mx-auto mb-4" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
               </svg>
-              <p className="text-slate-700 font-semibold">Analyzing roof measurements…</p>
+              <p className="text-slate-200 font-semibold">Analyzing roof measurements…</p>
               <p className="text-slate-400 text-sm mt-1">Claude is examining your blueprint for dimensions, pitch, and structure.</p>
             </div>
           )}
@@ -205,7 +205,7 @@ export default function RoofingSection({
             <>
               {/* Confirmed / unconfirmed banner */}
               {measurements.confirmed ? (
-                <div className="flex flex-wrap items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-3">
+                <div className="flex flex-wrap items-center gap-3 bg-emerald-500/10 border border-emerald-200 rounded-2xl px-5 py-3">
                   <span className="text-emerald-500 text-xl"></span>
                   <div className="min-w-0">
                     <div className="text-emerald-700 font-semibold text-sm">Measurements Confirmed</div>
@@ -237,13 +237,13 @@ export default function RoofingSection({
                     <button onClick={handleAnalyze} className="text-xs text-emerald-600 underline hover:no-underline">Re-analyze</button>
                   </div>
                   {pdfError && (
-                    <div className="basis-full text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 mt-1">
+                    <div className="basis-full text-xs text-red-600 bg-rose-500/10 border border-red-200 rounded-lg px-2.5 py-1.5 mt-1">
                       {pdfError}
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3">
+                <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-200 rounded-2xl px-5 py-3">
                   <span className="text-amber-500 text-xl"></span>
                   <div>
                     <div className="text-amber-700 font-semibold text-sm">Review & Confirm</div>
@@ -254,14 +254,14 @@ export default function RoofingSection({
               )}
 
               {measurements.notes && (
-                <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-600 text-sm italic">
+                <div className="bg-white/[0.05] border border-slate-200 rounded-xl px-4 py-3 text-slate-300 text-sm italic">
                   {measurements.notes}
                 </div>
               )}
 
               {/* Measurement fields */}
-              <div className="bg-white rounded-2xl p-6" style={cardStyle}>
-                <h3 className="text-slate-800 font-bold text-sm mb-4">Roof Measurements</h3>
+              <div className="bg-white/[0.04] rounded-2xl p-6" style={cardStyle}>
+                <h3 className="text-white font-bold text-sm mb-4">Roof Measurements</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <label className={labelCls}>Total Sq Ft</label>
@@ -309,7 +309,7 @@ export default function RoofingSection({
                   </div>
                 </div>
 
-                <div className="flex gap-3 mt-5 pt-4 border-t" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+                <div className="flex gap-3 mt-5 pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
                   <button
                     onClick={handleConfirm}
                     disabled={confirming}
@@ -318,7 +318,7 @@ export default function RoofingSection({
                   >
                     {confirming ? 'Saving…' : 'Confirm Measurements'}
                   </button>
-                  <button onClick={handleAnalyze} className="text-sm text-slate-500 hover:text-slate-700 font-medium px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 transition-all">
+                  <button onClick={handleAnalyze} className="text-sm text-slate-500 hover:text-slate-200 font-medium px-4 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.06] transition-all">
                     Re-analyze
                   </button>
                 </div>
@@ -331,9 +331,9 @@ export default function RoofingSection({
                   { label: 'Gross w/ Waste', value: (draft.total_sqft * (1 + draft.waste_pct / 100) / 100).toFixed(1) + ' sq', sub: `${draft.waste_pct}% waste factor` },
                   { label: 'Perimeter Est.', value: `${Math.round(draft.eaves_ft + draft.rakes_ft)} ft`, sub: 'Eaves + rakes' },
                 ].map(s => (
-                  <div key={s.label} className="bg-white rounded-2xl p-4 text-center" style={cardStyle}>
-                    <div className="text-2xl font-black text-slate-800">{s.value}</div>
-                    <div className="text-slate-600 text-sm font-semibold mt-0.5">{s.label}</div>
+                  <div key={s.label} className="bg-white/[0.04] rounded-2xl p-4 text-center" style={cardStyle}>
+                    <div className="text-2xl font-black text-white">{s.value}</div>
+                    <div className="text-slate-300 text-sm font-semibold mt-0.5">{s.label}</div>
                     <div className="text-slate-400 text-xs">{s.sub}</div>
                   </div>
                 ))}
@@ -346,8 +346,8 @@ export default function RoofingSection({
       {/* ── WASTE CALC TAB ─────────────────────────────────── */}
       {tab === 'waste' && (
         <div className="space-y-5">
-          <div className="bg-white rounded-2xl p-6" style={cardStyle}>
-            <h3 className="text-slate-800 font-bold text-sm mb-1">Waste & Overage Calculator</h3>
+          <div className="bg-white/[0.04] rounded-2xl p-6" style={cardStyle}>
+            <h3 className="text-white font-bold text-sm mb-1">Waste & Overage Calculator</h3>
             <p className="text-slate-400 text-xs mb-5">Adjust inputs to see how waste percentage affects your order quantities.</p>
 
             {!draft ? (
@@ -377,7 +377,7 @@ export default function RoofingSection({
                 </div>
 
                 {/* Waste guide */}
-                <div className="bg-slate-50 rounded-xl p-4 mb-5">
+                <div className="bg-white/[0.05] rounded-xl p-4 mb-5">
                   <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Recommended Waste by Roof Type</div>
                   <div className="grid grid-cols-3 gap-2 text-xs">
                     {[
@@ -388,8 +388,8 @@ export default function RoofingSection({
                       { type: 'Many valleys/cuts', pct: '+3–5%' },
                       { type: 'Cut-up dormers', pct: '+5%' },
                     ].map(r => (
-                      <div key={r.type} className="bg-white rounded-lg p-2.5 border border-slate-200">
-                        <div className="font-bold text-slate-700">{r.pct}</div>
+                      <div key={r.type} className="bg-white/[0.04] rounded-lg p-2.5 border border-slate-200">
+                        <div className="font-bold text-slate-200">{r.pct}</div>
                         <div className="text-slate-400 mt-0.5">{r.type}</div>
                       </div>
                     ))}
@@ -404,7 +404,7 @@ export default function RoofingSection({
                     { label: 'Squares Needed', value: Math.ceil(squares * 10) / 10, unit: 'squares' },
                     { label: 'Bundles (3/sq)', value: Math.ceil(squares * 3), unit: 'bundles' },
                   ].map(r => (
-                    <div key={r.label} className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
+                    <div key={r.label} className="bg-blue-500/10 border border-blue-100 rounded-xl p-4 text-center">
                       <div className="text-2xl font-black text-blue-700">{r.value}</div>
                       <div className="text-blue-600 text-xs font-semibold mt-0.5">{r.unit}</div>
                       <div className="text-slate-400 text-xs mt-0.5">{r.label}</div>
@@ -423,9 +423,9 @@ export default function RoofingSection({
           {loadingShingles ? (
             <div className="flex items-center justify-center py-16 text-slate-400">Loading estimate…</div>
           ) : !shingleData || !shingleData.ready ? (
-            <div className="bg-white rounded-2xl p-10 text-center" style={cardStyle}>
+            <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
               <div className="text-4xl mb-3"></div>
-              <div className="text-slate-700 font-bold mb-1">Measurements Not Confirmed</div>
+              <div className="text-slate-200 font-bold mb-1">Measurements Not Confirmed</div>
               <div className="text-slate-400 text-sm mb-4">
                 {shingleData?.message || 'Confirm your roof measurements first to generate the shingle material list.'}
               </div>
@@ -445,24 +445,24 @@ export default function RoofingSection({
                   { label: 'Materials Cost', value: formatMoney(shingleData.total_materials_cost), sub: 'materials only' },
                   { label: 'Pitch', value: shingleData.measurements?.pitch || '—', sub: shingleData.measurements?.roof_type || '' },
                 ].map(s => (
-                  <div key={s.label} className="bg-white rounded-2xl p-5" style={cardStyle}>
-                    <div className="text-2xl font-black text-slate-800">{s.value}</div>
-                    <div className="text-slate-600 text-sm font-semibold mt-0.5">{s.label}</div>
+                  <div key={s.label} className="bg-white/[0.04] rounded-2xl p-5" style={cardStyle}>
+                    <div className="text-2xl font-black text-white">{s.value}</div>
+                    <div className="text-slate-300 text-sm font-semibold mt-0.5">{s.label}</div>
                     <div className="text-slate-400 text-xs">{s.sub}</div>
                   </div>
                 ))}
               </div>
 
               {/* Materials table */}
-              <div className="bg-white rounded-2xl overflow-hidden" style={cardStyle}>
-                <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
-                  <h3 className="text-slate-800 font-bold text-sm">Roofing Material List</h3>
+              <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+                <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+                  <h3 className="text-white font-bold text-sm">Roofing Material List</h3>
                   <span className="text-xs text-slate-400">Quantities include waste factor</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b bg-slate-50" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+                      <tr className="border-b bg-white/[0.05]" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
                         <th className="text-left px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Material</th>
                         <th className="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Qty</th>
                         <th className="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Unit</th>
@@ -472,21 +472,21 @@ export default function RoofingSection({
                     </thead>
                     <tbody>
                       {(shingleData.materials as ShingleMaterial[]).map((m, i) => (
-                        <tr key={i} className="border-b hover:bg-blue-50/30 transition-colors" style={{ borderColor: 'rgba(219,234,254,0.4)' }}>
+                        <tr key={i} className="border-b hover:bg-blue-500/10/30 transition-colors" style={{ borderColor: 'rgba(255,255,255,0.4)' }}>
                           <td className="px-6 py-4">
-                            <div className="text-slate-800 font-medium text-sm">{m.item_name}</div>
+                            <div className="text-white font-medium text-sm">{m.item_name}</div>
                             {m.notes && <div className="text-slate-400 text-xs mt-0.5">{m.notes}</div>}
                           </td>
-                          <td className="px-4 py-4 text-right text-slate-700 font-semibold text-sm">{m.quantity}</td>
+                          <td className="px-4 py-4 text-right text-slate-200 font-semibold text-sm">{m.quantity}</td>
                           <td className="px-4 py-4 text-right text-slate-400 text-sm">{m.unit}</td>
-                          <td className="px-4 py-4 text-right text-slate-600 text-sm">${m.unit_cost.toFixed(2)}</td>
-                          <td className="px-6 py-4 text-right font-bold text-slate-800 text-sm">{formatMoney(m.total_cost)}</td>
+                          <td className="px-4 py-4 text-right text-slate-300 text-sm">${m.unit_cost.toFixed(2)}</td>
+                          <td className="px-6 py-4 text-right font-bold text-white text-sm">{formatMoney(m.total_cost)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="bg-blue-50 border-t-2 border-blue-200">
-                        <td colSpan={4} className="px-6 py-4 text-sm font-bold text-slate-700">Total Materials</td>
+                      <tr className="bg-blue-500/10 border-t-2 border-blue-200">
+                        <td colSpan={4} className="px-6 py-4 text-sm font-bold text-slate-200">Total Materials</td>
                         <td className="px-6 py-4 text-right text-lg font-black text-blue-700">{formatMoney(shingleData.total_materials_cost)}</td>
                       </tr>
                     </tfoot>
@@ -494,7 +494,7 @@ export default function RoofingSection({
                 </div>
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 text-amber-700 text-xs">
+              <div className="bg-amber-500/10 border border-amber-200 rounded-xl px-5 py-3 text-amber-700 text-xs">
                 These are estimated material costs. Labor, permits, disposal, and contractor markup are not included. Always get supplier quotes before finalizing bids.
               </div>
             </>
