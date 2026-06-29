@@ -32,12 +32,12 @@ interface Note {
 }
 
 const STAGES: { key: Stage; label: string; color: string; bg: string; dot: string; colBg: string; headerBg: string }[] = [
-  { key: 'new',           label: 'New Lead',      color: 'text-blue-700',    bg: 'bg-blue-500/10 border-blue-200',      dot: 'bg-blue-500/100',    colBg: 'bg-blue-500/10/40',    headerBg: 'bg-blue-100/60'    },
+  { key: 'new',           label: 'New Lead',      color: 'text-blue-700',    bg: 'bg-blue-500/10 border-blue-200',      dot: 'bg-blue-500',    colBg: 'bg-blue-500/40',    headerBg: 'bg-blue-100/60'    },
   { key: 'contacted',     label: 'Contacted',     color: 'text-violet-700',  bg: 'bg-violet-50 border-violet-200',  dot: 'bg-violet-500',  colBg: 'bg-violet-50/40',  headerBg: 'bg-violet-100/60'  },
-  { key: 'site_visit',    label: 'Site Visit',    color: 'text-amber-700',   bg: 'bg-amber-500/10 border-amber-200',    dot: 'bg-amber-500/100',   colBg: 'bg-amber-500/10/40',   headerBg: 'bg-amber-100/60'   },
+  { key: 'site_visit',    label: 'Site Visit',    color: 'text-amber-700',   bg: 'bg-amber-500/10 border-amber-200',    dot: 'bg-amber-500',   colBg: 'bg-amber-500/40',   headerBg: 'bg-amber-100/60'   },
   { key: 'estimate_sent', label: 'Estimate Sent', color: 'text-orange-700',  bg: 'bg-orange-50 border-orange-200',  dot: 'bg-orange-500',  colBg: 'bg-orange-50/40',  headerBg: 'bg-orange-100/60'  },
-  { key: 'won',           label: 'Won',           color: 'text-emerald-700', bg: 'bg-emerald-500/10 border-emerald-200',dot: 'bg-emerald-500/100', colBg: 'bg-emerald-500/10/40', headerBg: 'bg-emerald-100/60' },
-  { key: 'lost',          label: 'Lost',          color: 'text-slate-500',   bg: 'bg-white/[0.05] border-slate-200',    dot: 'bg-slate-400',   colBg: 'bg-white/[0.05]/40',   headerBg: 'bg-white/[0.06]/60'   },
+  { key: 'won',           label: 'Won',           color: 'text-emerald-700', bg: 'bg-emerald-500/10 border-emerald-200',dot: 'bg-emerald-500', colBg: 'bg-emerald-500/40', headerBg: 'bg-emerald-100/60' },
+  { key: 'lost',          label: 'Lost',          color: 'text-slate-500',   bg: 'bg-white/[0.05] border-white/10',    dot: 'bg-slate-400',   colBg: 'bg-white/[0.05]/40',   headerBg: 'bg-white/[0.06]/60'   },
 ]
 const STAGE_MAP = Object.fromEntries(STAGES.map(s => [s.key, s]))
 
@@ -59,7 +59,7 @@ function timeAgo(ts: string) {
 
 const cardStyle = { boxShadow: '0 8px 32px rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.10)' }
 const EMPTY_FORM = { name: '', phone: '', email: '', address: '', city: '', state: '', job_type: 'residential', stage: 'new' as Stage, notes: '', estimated_value: '' }
-const inputCls = 'w-full bg-white/[0.05] border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 rounded-xl px-4 py-2.5 text-slate-200 placeholder-slate-300 focus:outline-none transition-all text-sm'
+const inputCls = 'w-full bg-white/[0.06] border border-white/15 focus:border-blue-400/60 focus:bg-white/[0.09] rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none transition-colors text-sm [&>option]:bg-slate-900 [&>option]:text-white'
 const labelCls = 'block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5'
 
 // ── Kanban card ───────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ function ListRow({ lead, onStageChange, onOpen, onDelete }: { lead: Lead; onStag
         value={lead.stage}
         onChange={e => { e.stopPropagation(); onStageChange(lead.id, e.target.value as Stage) }}
         onClick={e => e.stopPropagation()}
-        className="text-xs bg-white/[0.05] border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none"
+        className="text-xs bg-white/[0.06] border border-white/12 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none"
       >
         {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
       </select>
@@ -331,7 +331,7 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
               <select
                 value={lead.stage}
                 onChange={e => onStageChange(lead.id, e.target.value as Stage)}
-                className={`text-sm border rounded-xl px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 ${stage.bg} ${stage.color}`}
+                className={`text-sm border rounded-xl px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${stage.bg} ${stage.color}`}
                 style={{ borderColor: 'currentColor' }}
               >
                 {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
@@ -398,7 +398,7 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
               <div className="flex-1 flex items-center gap-3 bg-rose-500/10 border border-red-200 rounded-xl px-4">
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500/100"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
                 </span>
                 <span className="text-red-600 text-sm font-semibold flex-1">
                   Recording… {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}
@@ -412,7 +412,7 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAddNote()}
                 placeholder={transcribing ? 'Transcribing your voice note…' : 'Add a note… (Enter to save, or hit the mic to dictate)'}
                 disabled={transcribing}
-                className="flex-1 bg-white/[0.05] border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 transition-all disabled:opacity-60"
+                className="flex-1 bg-white/[0.06] border border-white/12 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 transition-all disabled:opacity-60"
               />
             )}
             <button
@@ -590,7 +590,7 @@ export default function CRMPage() {
         </div>
         <div className="relative">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="w-48 bg-white/[0.05] border border-slate-200 rounded-xl pl-8 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="w-48 bg-white/[0.06] border border-white/12 rounded-xl pl-8 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
         </div>
         <button onClick={() => openNew()}
           className="flex items-center gap-2 text-white font-bold px-5 py-2 rounded-xl text-sm transition-all hover:scale-[1.02]"
@@ -660,7 +660,7 @@ export default function CRMPage() {
                       )}
                     </div>
                     <button onClick={() => openNew(stage.key)}
-                      className="m-3 py-2 text-xs text-slate-400 hover:text-slate-600 border border-dashed border-slate-300 hover:border-slate-400 rounded-xl transition-all hover:bg-white/[0.04]/50">
+                      className="m-3 py-2 text-xs text-slate-400 hover:text-slate-600 border border-dashed border-white/15 hover:border-slate-400 rounded-xl transition-all hover:bg-white/[0.04]/50">
                       + Add lead
                     </button>
                   </div>

@@ -52,7 +52,7 @@ const CATEGORY_META: Record<string, { label: string; icon: string; color: string
   drywall:       { label: 'Drywall',               icon: '', color: 'bg-gray-50 text-gray-700 border-gray-200' },
   insulation:    { label: 'Insulation',            icon: '', color: 'bg-orange-50 text-orange-700 border-orange-200' },
   roofing:       { label: 'Roofing',               icon: '', color: 'bg-rose-500/10 text-red-700 border-red-200' },
-  concrete:      { label: 'Concrete & Foundation', icon: '', color: 'bg-white/[0.05] text-slate-200 border-slate-200' },
+  concrete:      { label: 'Concrete & Foundation', icon: '', color: 'bg-white/[0.05] text-slate-200 border-white/10' },
   flooring:      { label: 'Flooring',              icon: '', color: 'bg-teal-50 text-teal-700 border-teal-200' },
   doors_windows: { label: 'Doors & Windows',       icon: '', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
   electrical:    { label: 'Electrical',            icon: '', color: 'bg-amber-500/10 text-yellow-800 border-yellow-300' },
@@ -61,9 +61,9 @@ const CATEGORY_META: Record<string, { label: string; icon: string; color: string
 }
 
 const SEVERITY: Record<ComplianceSeverity, { badge: string; dot: string; label: string }> = {
-  required:    { badge: 'bg-rose-500/10 text-red-600 border border-red-200',       dot: 'bg-rose-500/100',    label: 'Required' },
-  recommended: { badge: 'bg-amber-500/10 text-yellow-600 border border-yellow-200', dot: 'bg-amber-500/100', label: 'Recommended' },
-  info:        { badge: 'bg-blue-500/10 text-blue-600 border border-blue-200',    dot: 'bg-blue-500/100',   label: 'Info' },
+  required:    { badge: 'bg-rose-500/10 text-red-600 border border-red-200',       dot: 'bg-rose-500',    label: 'Required' },
+  recommended: { badge: 'bg-amber-500/10 text-yellow-600 border border-yellow-200', dot: 'bg-amber-500', label: 'Recommended' },
+  info:        { badge: 'bg-blue-500/10 text-blue-600 border border-blue-200',    dot: 'bg-blue-500',   label: 'Info' },
 }
 const STATUS_BADGE: Record<string, { badge: string; label: string }> = {
   pass:   { badge: 'bg-emerald-500/10 text-emerald-700 border border-emerald-200', label: 'Pass' },
@@ -74,7 +74,7 @@ const TIER_BADGE: Record<string, { badge: string; label: string }> = {
   municipal: { badge: 'bg-violet-50 text-violet-700 border border-violet-200', label: 'Municipal' },
   county:    { badge: 'bg-indigo-50 text-indigo-700 border border-indigo-200', label: 'County' },
   state:     { badge: 'bg-sky-50 text-sky-700 border border-sky-200',          label: 'State' },
-  base_code: { badge: 'bg-white/[0.05] text-slate-300 border border-slate-200',    label: 'Base Code' },
+  base_code: { badge: 'bg-white/[0.05] text-slate-300 border border-white/10',    label: 'Base Code' },
 }
 const RISK_BANNER: Record<string, string> = {
   low:    'bg-emerald-500/10 border-emerald-200 text-emerald-700',
@@ -690,7 +690,7 @@ Thank you for your time.`
             blueprintStatus === 'failed'   ? 'bg-rose-500/10 text-red-600 border-red-200' :
             'bg-amber-500/10 text-amber-700 border-amber-200'
           }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${blueprintStatus === 'complete' ? 'bg-emerald-500/100' : blueprintStatus === 'failed' ? 'bg-rose-500/100' : 'bg-amber-400 animate-pulse'}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${blueprintStatus === 'complete' ? 'bg-emerald-500' : blueprintStatus === 'failed' ? 'bg-rose-500' : 'bg-amber-400 animate-pulse'}`} />
             {blueprintStatus === 'complete' ? 'Analysis Complete' : blueprintStatus === 'failed' ? 'Failed' : 'Processing…'}
           </span>
           <Link href="/permits" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-all">
@@ -716,7 +716,7 @@ Thank you for your time.`
             <h2 className="text-xl font-bold text-white mb-2">Analyzing Blueprint</h2>
             <p className="text-slate-500 text-sm leading-relaxed">Detecting rooms, walls, electrical, plumbing — then fetching real-time pricing for every material. This takes 60–120 seconds.</p>
             <div className="mt-6 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-              <div className="h-full bg-blue-500/100 rounded-full animate-pulse" style={{ width: '65%' }} />
+              <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: '65%' }} />
             </div>
             <p className="text-slate-400 text-xs mt-3">Auto-refreshing…</p>
           </div>
@@ -825,7 +825,7 @@ Thank you for your time.`
                       truncated and we recovered just enough to continue. */}
                   {analysis?.raw_detections?.parse_status === 'partial' && (
                     <div
-                      className="rounded-2xl border border-amber-200 bg-amber-500/10/70 px-5 py-4 flex gap-3"
+                      className="rounded-2xl border border-amber-200 bg-amber-500/70 px-5 py-4 flex gap-3"
                       style={cardStyle}
                     >
                       <svg
@@ -1020,14 +1020,14 @@ Thank you for your time.`
                 <div className="flex gap-2 flex-wrap mb-5">
                   <button
                     onClick={() => { setCategoryFilter('all'); setReviewFilterOnly(false) }}
-                    className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${categoryFilter === 'all' && !reviewFilterOnly ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/[0.04] text-slate-500 border-slate-200 hover:border-blue-300'}`}
+                    className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${categoryFilter === 'all' && !reviewFilterOnly ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/[0.04] text-slate-500 border-white/10 hover:border-blue-300'}`}
                   >
                     All ({materials.length})
                   </button>
                   {unreviewedLowConfCount > 0 && (
                     <button
                       onClick={() => setReviewFilterOnly(v => !v)}
-                      className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all inline-flex items-center gap-1.5 ${reviewFilterOnly ? 'bg-amber-500/100 text-white border-amber-500' : 'bg-amber-500/10 text-amber-700 border-amber-200 hover:border-amber-400'}`}
+                      className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all inline-flex items-center gap-1.5 ${reviewFilterOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-500/10 text-amber-700 border-amber-200 hover:border-amber-400'}`}
                       title="Items with placeholder prices or missing vendor data"
                     >
                       <span></span> Review needed ({unreviewedLowConfCount})
@@ -1040,7 +1040,7 @@ Thank you for your time.`
                       <button
                         key={cat}
                         onClick={() => setCategoryFilter(cat)}
-                        className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${categoryFilter === cat ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/[0.04] text-slate-500 border-slate-200 hover:border-blue-300'}`}
+                        className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${categoryFilter === cat ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/[0.04] text-slate-500 border-white/10 hover:border-blue-300'}`}
                       >
                         {meta.icon} {meta.label} ({count})
                       </button>
@@ -1053,15 +1053,15 @@ Thank you for your time.`
                     <div className="text-sm font-bold text-slate-200 mb-3">Add New Material</div>
                     <div className="grid grid-cols-5 gap-3">
                       <input placeholder="Item name" value={newMaterial.item_name} onChange={e => setNewMaterial(p => ({...p, item_name: e.target.value}))}
-                        className="col-span-2 bg-white/[0.05] border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                        className="col-span-2 bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
                       <select value={newMaterial.category} onChange={e => setNewMaterial(p => ({...p, category: e.target.value}))}
-                        className="bg-white/[0.05] border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+                        className="bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
                         {Object.entries(CATEGORY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                       </select>
                       <input type="number" placeholder="Qty" value={newMaterial.quantity || ''} onChange={e => setNewMaterial(p => ({...p, quantity: Number(e.target.value)}))}
-                        className="bg-white/[0.05] border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                        className="bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
                       <input type="number" placeholder="Unit cost $" value={newMaterial.unit_cost || ''} onChange={e => setNewMaterial(p => ({...p, unit_cost: Number(e.target.value)}))}
-                        className="bg-white/[0.05] border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                        className="bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
                     </div>
                     <div className="flex gap-2 mt-3">
                       <button onClick={handleAddMaterial} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all">Add</button>
@@ -1075,7 +1075,7 @@ Thank you for your time.`
                 ) : (
                   <div className="space-y-6">
                     {Object.entries(byCategory).map(([cat, items]) => {
-                      const meta = CATEGORY_META[cat] || { label: cat, icon: '', color: 'bg-white/[0.05] text-slate-200 border-slate-200' }
+                      const meta = CATEGORY_META[cat] || { label: cat, icon: '', color: 'bg-white/[0.05] text-slate-200 border-white/10' }
                       const catTotal = items.reduce((s, m) => s + (m.total_cost || 0), 0)
                       return (
                         <div key={cat} className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
@@ -1110,7 +1110,7 @@ Thank you for your time.`
                                 <div key={matKey} className="group">
                                   {/* Material row */}
                                   <div
-                                    className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-blue-500/10/40 transition-colors cursor-pointer"
+                                    className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-blue-500/40 transition-colors cursor-pointer"
                                     onClick={() => setExpandedMaterial(isExpanded ? null : matKey)}
                                   >
                                     <div className="flex-1 min-w-0">
@@ -1166,7 +1166,7 @@ Thank you for your time.`
                                               </span>
                                               <button
                                                 onClick={() => toggleReviewed(m.id)}
-                                                className="text-[10px] font-bold text-white bg-emerald-500/100 hover:bg-emerald-600 px-2 py-0.5 rounded-full transition-colors"
+                                                className="text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-2 py-0.5 rounded-full transition-colors"
                                                 title="Mark this price as verified"
                                               >
 
@@ -1217,7 +1217,7 @@ Thank you for your time.`
                                   {isExpanded && vendors.length === 0 && (
                                     <div className="px-5 pb-4 bg-white/[0.05]">
                                       <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 pt-3">Where to Buy</div>
-                                      <div className="rounded-xl border border-dashed border-slate-200 bg-white/[0.04] px-4 py-5 text-center">
+                                      <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.04] px-4 py-5 text-center">
                                         <div className="text-slate-500 text-sm font-semibold mb-1">No live listings yet</div>
                                         <div className="text-slate-400 text-xs">Click "Search for Live Prices" below to pull real product pages from Home Depot, Lowe's, Ferguson, Grainger, and more.</div>
                                       </div>
@@ -1268,7 +1268,7 @@ Thank you for your time.`
                                                   target="_blank"
                                                   rel="noopener noreferrer"
                                                   onClick={e => e.stopPropagation()}
-                                                  className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${isQuoteOnly ? 'bg-amber-500/100 hover:bg-amber-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                                                  className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${isQuoteOnly ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
                                                 >
                                                   {isQuoteOnly ? 'Get Quote' : 'Buy Now'}
                                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -1400,12 +1400,12 @@ Thank you for your time.`
                                   </div>
                                 </div>
                                 <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                                  <div className="h-full bg-blue-500/100 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                                  <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
                                 </div>
                               </div>
                             )
                           })}
-                        <div className="px-5 py-3 flex justify-between items-center bg-blue-500/100/10 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                        <div className="px-5 py-3 flex justify-between items-center bg-blue-500/10 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                           <span className="text-slate-300 text-sm font-bold">Materials Subtotal</span>
                           <span className="text-white font-black">{formatMoney(matTotal)}</span>
                         </div>
@@ -1437,7 +1437,7 @@ Thank you for your time.`
                             </div>
                           )
                         })}
-                        <div className="px-5 py-3 flex justify-between items-center bg-purple-500/100/10 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                        <div className="px-5 py-3 flex justify-between items-center bg-purple-500/10 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                           <span className="text-slate-300 text-sm font-bold">Labor Subtotal</span>
                           <span className="text-white font-black">{formatMoney(laborTotal)}</span>
                         </div>
@@ -1479,7 +1479,7 @@ Thank you for your time.`
                                     placeholder="0"
                                     value={actual || ''}
                                     onChange={e => updateActualCost(cat, parseFloat(e.target.value) || 0)}
-                                    className="w-24 bg-white/[0.05] border border-slate-200 rounded-lg px-2 py-1 text-sm text-slate-200 focus:outline-none focus:border-blue-400 text-right"
+                                    className="w-24 bg-white/[0.06] border border-white/12 rounded-lg px-2 py-1 text-sm text-slate-200 focus:outline-none focus:border-blue-400 text-right"
                                   />
                                 </div>
                                 {actual > 0 && (
@@ -1509,10 +1509,10 @@ Thank you for your time.`
                           <span className="text-white font-bold">Project Cost Summary</span>
                         </div>
                         {[
-                          { label: 'Materials',      value: matTotal,   color: 'bg-blue-500/100',   icon: '' },
-                          { label: 'Labor',          value: laborTotal, color: 'bg-purple-500/100', icon: '' },
+                          { label: 'Materials',      value: matTotal,   color: 'bg-blue-500',   icon: '' },
+                          { label: 'Labor',          value: laborTotal, color: 'bg-purple-500', icon: '' },
                           { label: 'Overhead (10%)', value: overhead,   color: 'bg-slate-400',  icon: '' },
-                          { label: `Markup (${estimate.markup_pct || 15}%)`, value: markupAmt, color: 'bg-amber-500/100', icon: '' },
+                          { label: `Markup (${estimate.markup_pct || 15}%)`, value: markupAmt, color: 'bg-amber-500', icon: '' },
                         ].map(row => (
                           <div key={row.label} className="px-5 py-3.5 border-b last:border-0 flex justify-between items-center" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                             <span className="text-slate-300 text-sm flex items-center gap-2"><span>{row.icon}</span>{row.label}</span>
@@ -1637,7 +1637,7 @@ Thank you for your time.`
                             onChange={e => setRenderUserContext(e.target.value)}
                             placeholder='e.g. "red brick exterior, black windows, cedar shake roof, mature oaks, coastal New England"'
                             disabled={renderLoading}
-                            className="w-full text-xs rounded-xl px-3.5 py-2.5 border text-slate-200 placeholder-slate-300 focus:outline-none focus:border-indigo-400 disabled:opacity-50"
+                            className="w-full text-xs rounded-xl px-3.5 py-2.5 border text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-400 disabled:opacity-50"
                             style={{ borderColor: 'rgba(255,255,255,0.10)', background: '#f8faff' }}
                             onKeyDown={e => { if (e.key === 'Enter' && !renderLoading && hasBlueprint) (e.target as HTMLInputElement).blur() }}
                           />
@@ -1779,7 +1779,7 @@ Thank you for your time.`
                     <div className="flex gap-2 flex-wrap">
                       {(['all', 'required', 'recommended', 'info'] as const).map(f => (
                         <button key={f} onClick={() => setComplianceFilter(f)}
-                          className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all capitalize border ${complianceFilter === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/[0.04] text-slate-500 border-slate-200 hover:border-blue-300'}`}>
+                          className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all capitalize border ${complianceFilter === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/[0.04] text-slate-500 border-white/10 hover:border-blue-300'}`}>
                           {f === 'all' ? `All (${compliance.items.length})` :
                            f === 'required' ? `Required (${requiredCount})` :
                            f === 'recommended' ? `Recommended (${recommendedCount})` :
@@ -1809,7 +1809,7 @@ Thank you for your time.`
                             <div key={item.id} className="bg-white/[0.04] rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-sm" style={itemCardStyle}
                               onClick={() => setExpandedItem(expandedItem === item.id ? null : item.id)}>
                               <div className="px-4 py-3.5 flex items-start gap-3">
-                                <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${isFail ? 'bg-rose-500/100' : SEVERITY[item.severity].dot}`} />
+                                <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${isFail ? 'bg-rose-500' : SEVERITY[item.severity].dot}`} />
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-start justify-between gap-3 flex-wrap">
                                     <span className={`text-sm font-medium leading-snug ${isFail ? 'text-red-700' : 'text-white'}`}>{item.title}</span>
@@ -2220,7 +2220,7 @@ Thank you for your time.`
                       href={quoteModal.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-500/100 hover:bg-amber-600 text-white transition-all"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white transition-all"
                     >
                       Open {quoteModal.vendor}
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>

@@ -359,7 +359,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         <span className="text-[10px] font-semibold bg-amber-500/10 text-amber-700 border border-amber-200 rounded-full px-1.5 py-0.5" title="Inferred from your blueprint or uploaded docs — verify">AI inferred · verify</span>
       )
       return (
-        <span className="text-[10px] font-semibold bg-white/[0.06] text-slate-300 border border-slate-200 rounded-full px-1.5 py-0.5" title="Generic default — verify">Default · verify</span>
+        <span className="text-[10px] font-semibold bg-white/[0.06] text-slate-300 border border-white/10 rounded-full px-1.5 py-0.5" title="Generic default — verify">Default · verify</span>
       )
     }
     return null
@@ -389,11 +389,11 @@ export default function PermitPortalSection({ project, projectId }: { project: a
           )}
         </div>
         {f.field_type === 'signature' ? (
-          <div className="border-b-2 border-slate-300 h-8 flex items-end pb-1">
+          <div className="border-b-2 border-white/15 h-8 flex items-end pb-1">
             <input type="text" placeholder="Type full name as signature"
               value={fieldValues[f.key] || ''}
               onChange={e => setFieldValues(p => ({...p, [f.key]: e.target.value}))}
-              className="w-full text-sm italic text-slate-200 focus:outline-none bg-transparent placeholder-slate-300"
+              className="w-full text-sm italic text-slate-200 focus:outline-none bg-transparent placeholder-slate-500"
             />
           </div>
         ) : (
@@ -402,7 +402,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               type={f.field_type === 'date' ? 'date' : 'text'}
               value={fieldValues[f.key] || ''}
               onChange={e => setFieldValues(p => ({...p, [f.key]: e.target.value}))}
-              className="w-full bg-white/[0.05] border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all"
+              className="w-full bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-500/20 transition-all"
               style={showVoice ? { paddingRight: '34px' } : undefined}
               placeholder={f.required ? 'Required' : 'Optional'}
               autoFocus={entryMode === 'wizard'}
@@ -412,7 +412,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 type="button"
                 onClick={() => voiceActive === f.key ? stopVoiceInput() : startVoiceInput(f.key)}
                 className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
-                  voiceActive === f.key ? 'bg-rose-500/100 text-white animate-pulse' : 'bg-white/[0.06] text-slate-500 hover:bg-blue-100 hover:text-blue-600'
+                  voiceActive === f.key ? 'bg-rose-500 text-white animate-pulse' : 'bg-white/[0.06] text-slate-500 hover:bg-blue-100 hover:text-blue-600'
                 }`}
                 title={voiceActive === f.key ? 'Stop' : 'Speak to fill'}
               >
@@ -445,7 +445,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
             <React.Fragment key={s.key}>
               <div className="flex items-center gap-1.5 min-w-0">
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
-                  isDone ? 'bg-emerald-500/100 text-white' : isActive ? 'bg-blue-600 text-white' : 'bg-white/[0.06] text-slate-400'
+                  isDone ? 'bg-emerald-500 text-white' : isActive ? 'bg-blue-600 text-white' : 'bg-white/[0.06] text-slate-400'
                 }`}>
                   {isDone ? '' : i + 1}
                 </div>
@@ -600,7 +600,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                   value={manualFormUrl}
                   onChange={e => setManualFormUrl(e.target.value)}
                   placeholder="https://example.gov/permits/application.pdf"
-                  className="w-full bg-white/[0.05] border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-400"
+                  className="w-full bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-400"
                 />
               </div>
               <div className="flex gap-2">
@@ -669,7 +669,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               {!scanning && blueprintScan && Object.keys(blueprintScan).length > 0 && (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   {Object.entries(blueprintScan).map(([k, v]) => (
-                    <div key={k} className="flex justify-between border-b border-slate-100 py-1.5">
+                    <div key={k} className="flex justify-between border-b border-white/10 py-1.5">
                       <span className="text-slate-400 text-xs capitalize">{k.replace(/_/g, ' ')}</span>
                       <span className="text-white text-xs font-semibold">{v}</span>
                     </div>
@@ -693,7 +693,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               disabled={reqLoading}
               placeholder={`Owner: John Smith, 123 Main St, Charlotte NC 28202, 704-555-1234\nAPN: 123-456-789 · 2,400 sq ft · Est. cost $280,000`}
               rows={3}
-              className="w-full text-sm rounded-xl px-3.5 py-2.5 border text-slate-200 placeholder-slate-300 focus:outline-none focus:border-indigo-400 resize-none disabled:opacity-50"
+              className="w-full text-sm rounded-xl px-3.5 py-2.5 border text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-400 resize-none disabled:opacity-50"
               style={{ borderColor: 'rgba(255,255,255,0.10)', background: '#f8faff' }}
             />
           </div>
@@ -1049,7 +1049,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               <button
                 onClick={() => handleDownloadClick(true)}
                 disabled={generatingPdf}
-                className="flex flex-col items-center gap-3 p-5 border-2 border-slate-200 hover:border-slate-400 rounded-2xl transition-all hover:bg-white/[0.05] disabled:opacity-50"
+                className="flex flex-col items-center gap-3 p-5 border-2 border-white/10 hover:border-slate-400 rounded-2xl transition-all hover:bg-white/[0.05] disabled:opacity-50"
               >
                 <div className="w-12 h-12 bg-white/[0.06] rounded-xl flex items-center justify-center">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="1.75" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>

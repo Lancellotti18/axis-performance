@@ -167,7 +167,7 @@ function ComplianceResults({ result }: { result: any }) {
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Code Sources</div>
             <div className="flex flex-wrap gap-2">
               {result.code_sources.map((src: string, i: number) => (
-                <span key={i} className="text-[10px] px-2 py-1 bg-white/[0.05] border border-slate-200 rounded-lg text-slate-500">{src}</span>
+                <span key={i} className="text-[10px] px-2 py-1 bg-white/[0.06] border border-white/12 rounded-lg text-slate-500">{src}</span>
               ))}
             </div>
           </div>
@@ -332,7 +332,7 @@ export default function MaterialCheckPage() {
                 className={`px-4 py-1.5 rounded-xl text-sm font-semibold transition-all border ${
                   mode === m
                     ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white/[0.04] text-slate-500 border-slate-200 hover:border-blue-300'
+                    : 'bg-white/[0.04] text-slate-500 border-white/10 hover:border-blue-300'
                 }`}>
                 {m === 'file' ? 'Upload File' : 'Paste / Type List'}
               </button>
@@ -350,8 +350,8 @@ export default function MaterialCheckPage() {
                 dragOver
                   ? 'border-blue-400 bg-blue-500/10'
                   : file
-                  ? 'border-emerald-300 bg-emerald-500/10/40'
-                  : 'border-slate-200 hover:border-blue-300 hover:bg-blue-500/10/30'
+                  ? 'border-emerald-300 bg-emerald-500/40'
+                  : 'border-white/10 hover:border-blue-300 hover:bg-blue-500/30'
               }`}
             >
               <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,.txt" className="hidden" onChange={handleFileChange} />
@@ -381,7 +381,7 @@ export default function MaterialCheckPage() {
                 value={rawText}
                 onChange={e => setRawText(e.target.value)}
                 placeholder={"One item per line. Examples:\n2x4 lumber, 200, pieces\n3-tab shingles, 25, squares\nPVC pipe 4\", 50, lf\nR-19 batt insulation, 800, sqft"}
-                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparent resize-none font-mono leading-relaxed"
+                className="w-full border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparent resize-none font-mono leading-relaxed"
               />
               <div className="text-slate-400 text-xs">
                 Format: <span className="font-mono">item name, quantity, unit</span> — quantity and unit are optional
@@ -396,7 +396,7 @@ export default function MaterialCheckPage() {
               <select
                 value={selectedState}
                 onChange={e => { setSelectedState(e.target.value); setSelectedCounty(''); setSelectedCity('') }}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
+                className="w-full border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
               >
                 <option value="">Select state</option>
                 {STATES.map(s => (
@@ -411,7 +411,7 @@ export default function MaterialCheckPage() {
                 value={selectedCounty}
                 onChange={e => { setSelectedCounty(e.target.value); setSelectedCity('') }}
                 disabled={!selectedState}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04] disabled:opacity-50"
+                className="w-full border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04] disabled:opacity-50"
               >
                 <option value="">Select county</option>
                 {counties.map(c => (
@@ -426,7 +426,7 @@ export default function MaterialCheckPage() {
                 <select
                   value={selectedCity}
                   onChange={e => setSelectedCity(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
+                  className="w-full border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
                 >
                   <option value="">Select city</option>
                   {cities.map(c => (
@@ -439,7 +439,7 @@ export default function MaterialCheckPage() {
                   value={selectedCity}
                   onChange={e => setSelectedCity(e.target.value)}
                   placeholder="Enter city"
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  className="w-full border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
               )}
             </div>
@@ -449,7 +449,7 @@ export default function MaterialCheckPage() {
               <select
                 value={projectType}
                 onChange={e => setProjectType(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
+                className="w-full border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
               >
                 {PROJECT_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>

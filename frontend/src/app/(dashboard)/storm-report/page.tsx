@@ -11,9 +11,9 @@ const cardStyle = {
 }
 
 const RISK_COLORS: Record<string, { bg: string; text: string; bar: string; badge: string }> = {
-  emerald: { bg: 'bg-emerald-500/10', text: 'text-emerald-700', bar: 'bg-emerald-500/100', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  emerald: { bg: 'bg-emerald-500/10', text: 'text-emerald-700', bar: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
   amber:   { bg: 'bg-amber-500/10',   text: 'text-amber-700',   bar: 'bg-amber-400',   badge: 'bg-amber-100 text-amber-700 border-amber-200'   },
-  red:     { bg: 'bg-rose-500/10',     text: 'text-red-700',     bar: 'bg-rose-500/100',     badge: 'bg-red-100 text-red-700 border-red-200'         },
+  red:     { bg: 'bg-rose-500/10',     text: 'text-red-700',     bar: 'bg-rose-500',     badge: 'bg-red-100 text-red-700 border-red-200'         },
 }
 
 const PRIORITY_STYLE: Record<string, { label: string; chip: string }> = {
@@ -195,7 +195,7 @@ export default function StormReportPage() {
               <select
                 value={state}
                 onChange={e => setState(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
+                className="w-full border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
               >
                 <option value="">Select</option>
                 {STATES.map(s => (
@@ -211,7 +211,7 @@ export default function StormReportPage() {
                 onChange={e => setCity(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 placeholder="Dallas"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
             </div>
             <div className="space-y-1">
@@ -222,7 +222,7 @@ export default function StormReportPage() {
                 onChange={e => setZip(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 placeholder="75201"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
             </div>
           </div>
@@ -432,14 +432,14 @@ export default function StormReportPage() {
                         href={a.url || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block border rounded-xl p-3 hover:bg-blue-500/10/40 transition-colors"
+                        className="block border rounded-xl p-3 hover:bg-blue-500/40 transition-colors"
                         style={{ borderColor: 'rgba(255,255,255,0.10)' }}
                       >
                         <div className="flex items-start gap-3">
                           <div className="text-base flex-shrink-0 leading-none mt-0.5">{cat.icon}</div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold border bg-white/[0.05] text-slate-600 border-slate-200">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold border bg-white/[0.05] text-slate-600 border-white/10">
                                 {cat.label}
                               </span>
                               {host && (
@@ -477,7 +477,7 @@ export default function StormReportPage() {
 
             {/* Data source */}
             {result.data_source && (
-              <div className="bg-blue-500/100/10 border border-blue-100 rounded-2xl px-5 py-4 flex gap-3">
+              <div className="bg-blue-500/10 border border-blue-100 rounded-2xl px-5 py-4 flex gap-3">
                 <svg className="flex-shrink-0 text-blue-400 mt-0.5" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 <p className="text-slate-500 text-xs leading-relaxed">
                   <strong className="text-slate-200">Source:</strong> {result.data_source}

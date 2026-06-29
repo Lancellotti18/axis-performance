@@ -98,7 +98,7 @@ export default function HomeVisualizerPage() {
               className={`relative border-2 border-dashed rounded-2xl cursor-pointer transition-all overflow-hidden ${
                 dragOver ? 'border-blue-400 bg-blue-500/10' :
                 preview   ? 'border-emerald-300' :
-                'border-slate-200 hover:border-blue-300 hover:bg-blue-500/10/30'
+                'border-white/10 hover:border-blue-300 hover:bg-blue-500/30'
               }`}
               style={{ minHeight: 180 }}
             >
@@ -136,7 +136,7 @@ export default function HomeVisualizerPage() {
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Describe ONLY what to change — the original house, roofline, windows and angle will be preserved. e.g. 'repaint siding charcoal gray, add black shutters'"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none leading-relaxed"
+              className="w-full border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none leading-relaxed"
             />
             <p className="text-[11px] text-slate-400 mt-1.5">
               Tip: the AI edits your photo — don't redescribe the whole house, just the change.
@@ -159,7 +159,7 @@ export default function HomeVisualizerPage() {
               <select
                 value={state}
                 onChange={e => setState(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
+                className="w-full border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
               >
                 <option value="">Select state</option>
                 {STATES.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
@@ -172,7 +172,7 @@ export default function HomeVisualizerPage() {
                 value={city}
                 onChange={e => setCity(e.target.value)}
                 placeholder="e.g. Austin"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
             </div>
           </div>
@@ -367,7 +367,7 @@ export default function HomeVisualizerPage() {
             {/* New visualization button */}
             <button
               onClick={() => { setResult(null); setFile(null); setPreview(null); setDescription(''); setState(''); setCity('') }}
-              className="w-full py-3 rounded-xl text-slate-600 font-semibold text-sm border border-slate-200 hover:border-blue-300 hover:text-blue-600 transition-all bg-white/[0.04]"
+              className="w-full py-3 rounded-xl text-slate-600 font-semibold text-sm border border-white/10 hover:border-blue-300 hover:text-blue-600 transition-all bg-white/[0.04]"
               style={cardStyle}
             >
               + New Visualization

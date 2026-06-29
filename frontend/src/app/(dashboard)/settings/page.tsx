@@ -44,7 +44,7 @@ export default function SettingsPage() {
                     defaultValue={f.value}
                     placeholder={f.placeholder}
                     disabled={f.disabled}
-                    className="w-full bg-white/[0.05] border border-white/10 focus:border-blue-400/40 rounded-xl px-4 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none disabled:opacity-40 transition-colors"
+                    className="w-full bg-white/[0.06] border border-white/12 focus:border-blue-400/40 rounded-xl px-4 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none disabled:opacity-40 transition-colors"
                   />
                 </div>
               ))}

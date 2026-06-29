@@ -19,7 +19,7 @@ const SEVERITY_STYLE: Record<string, string> = {
   info:        'bg-blue-500/10 text-blue-700 border-blue-200',
 }
 const SEVERITY_DOT: Record<string, string> = {
-  required: 'bg-rose-500/100', recommended: 'bg-amber-400', info: 'bg-blue-400',
+  required: 'bg-rose-500', recommended: 'bg-amber-400', info: 'bg-blue-400',
 }
 
 // ── Editable field ────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ function EditableText({ value, onSave, multiline = false, placeholder = 'Click t
   }
   return (
     <div onClick={() => setEditing(true)}
-      className={`group cursor-text rounded-lg px-3 py-1.5 hover:bg-blue-500/100/10 hover:ring-1 hover:ring-blue-200 transition-all relative ${className}`}>
+      className={`group cursor-text rounded-lg px-3 py-1.5 hover:bg-blue-500/10 hover:ring-1 hover:ring-blue-200 transition-all relative ${className}`}>
       {value ? (
         <span className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{value}</span>
       ) : (
@@ -326,7 +326,7 @@ export default function ReportsPage() {
           ) : (
             <>
               {/* Edit hint */}
-              <div className="flex items-center gap-2 text-xs text-slate-400 bg-blue-500/100/10 border border-blue-100 rounded-xl px-4 py-2.5">
+              <div className="flex items-center gap-2 text-xs text-slate-400 bg-blue-500/10 border border-blue-100 rounded-xl px-4 py-2.5">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Click any text field to edit it. Changes save automatically and are included in your PDF export.
               </div>
@@ -447,7 +447,7 @@ export default function ReportsPage() {
                                 />
                               ))}
                               {entry.photos.length > 8 && (
-                                <div className="w-14 h-14 flex-shrink-0 rounded-lg border border-slate-200 bg-white/[0.04] text-slate-500 text-[10px] font-semibold flex items-center justify-center">
+                                <div className="w-14 h-14 flex-shrink-0 rounded-lg border border-white/10 bg-white/[0.04] text-slate-500 text-[10px] font-semibold flex items-center justify-center">
                                   +{entry.photos.length - 8}
                                 </div>
                               )}
@@ -479,7 +479,7 @@ export default function ReportsPage() {
                         </thead>
                         <tbody>
                           {materials.map((m: any, i: number) => (
-                            <tr key={i} className="hover:bg-blue-500/10/30 transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.4)' }}>
+                            <tr key={i} className="hover:bg-blue-500/30 transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.4)' }}>
                               <td className="px-4 py-2.5 text-slate-200 font-medium">{m.item_name || m.name || '—'}</td>
                               <td className="px-4 py-2.5 text-slate-500 capitalize">{m.category || '—'}</td>
                               <td className="px-4 py-2.5 text-slate-600">{m.quantity || '—'}</td>
@@ -490,7 +490,7 @@ export default function ReportsPage() {
                           ))}
                         </tbody>
                         <tfoot>
-                          <tr className="bg-emerald-500/10/60" style={{ borderTop: '2px solid rgba(167,243,208,0.8)' }}>
+                          <tr className="bg-emerald-500/60" style={{ borderTop: '2px solid rgba(167,243,208,0.8)' }}>
                             <td colSpan={5} className="px-4 py-3 text-slate-200 font-bold text-right text-sm">Total</td>
                             <td className="px-4 py-3 text-emerald-700 font-black text-sm">{fmt(totalMaterialCost)}</td>
                           </tr>
@@ -542,7 +542,7 @@ export default function ReportsPage() {
                           </thead>
                           <tbody>
                             {Object.entries(cost.categories).map(([k, v]: any) => (
-                              <tr key={k} className="hover:bg-blue-500/10/20 transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.4)' }}>
+                              <tr key={k} className="hover:bg-blue-500/20 transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.4)' }}>
                                 <td className="px-4 py-2.5 text-slate-200 capitalize">{k.replace(/_/g, ' ')}</td>
                                 <td className="px-4 py-2.5 text-right text-slate-600 font-semibold">{fmt(v)}</td>
                               </tr>
@@ -643,13 +643,13 @@ export default function ReportsPage() {
                         </div>
                       )}
                       {permitInfo.instructions && (
-                        <div className="bg-white/[0.05] rounded-xl px-4 py-3 border border-slate-200">
+                        <div className="bg-white/[0.05] rounded-xl px-4 py-3 border border-white/10">
                           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Instructions</div>
                           <p className="text-slate-600 text-sm leading-relaxed">{permitInfo.instructions}</p>
                         </div>
                       )}
                       {permitInfo.form_url && (
-                        <div className="flex items-center gap-3 bg-white/[0.05] border border-slate-200 rounded-xl px-4 py-3">
+                        <div className="flex items-center gap-3 bg-white/[0.06] border border-white/12 rounded-xl px-4 py-3">
                           <svg className="flex-shrink-0 text-slate-500" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                           <div className="flex-1">
                             <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Application Form</div>

@@ -135,7 +135,7 @@ export default function RoofingSection({
     setDraft(prev => prev ? { ...prev, [field]: value } : prev)
   }
 
-  const inputCls = 'w-full bg-white/[0.05] border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 rounded-xl px-3 py-2 text-slate-200 text-sm focus:outline-none transition-all'
+  const inputCls = 'w-full bg-white/[0.06] border border-white/12 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-3 py-2 text-slate-200 text-sm focus:outline-none transition-all'
   const labelCls = 'block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1'
 
   const ROOF_TABS: { key: RoofTab; label: string }[] = [
@@ -254,7 +254,7 @@ export default function RoofingSection({
               )}
 
               {measurements.notes && (
-                <div className="bg-white/[0.05] border border-slate-200 rounded-xl px-4 py-3 text-slate-300 text-sm italic">
+                <div className="bg-white/[0.06] border border-white/12 rounded-xl px-4 py-3 text-slate-300 text-sm italic">
                   {measurements.notes}
                 </div>
               )}
@@ -388,7 +388,7 @@ export default function RoofingSection({
                       { type: 'Many valleys/cuts', pct: '+3–5%' },
                       { type: 'Cut-up dormers', pct: '+5%' },
                     ].map(r => (
-                      <div key={r.type} className="bg-white/[0.04] rounded-lg p-2.5 border border-slate-200">
+                      <div key={r.type} className="bg-white/[0.04] rounded-lg p-2.5 border border-white/10">
                         <div className="font-bold text-slate-200">{r.pct}</div>
                         <div className="text-slate-400 mt-0.5">{r.type}</div>
                       </div>
@@ -472,7 +472,7 @@ export default function RoofingSection({
                     </thead>
                     <tbody>
                       {(shingleData.materials as ShingleMaterial[]).map((m, i) => (
-                        <tr key={i} className="border-b hover:bg-blue-500/10/30 transition-colors" style={{ borderColor: 'rgba(255,255,255,0.4)' }}>
+                        <tr key={i} className="border-b hover:bg-blue-500/30 transition-colors" style={{ borderColor: 'rgba(255,255,255,0.4)' }}>
                           <td className="px-6 py-4">
                             <div className="text-white font-medium text-sm">{m.item_name}</div>
                             {m.notes && <div className="text-slate-400 text-xs mt-0.5">{m.notes}</div>}

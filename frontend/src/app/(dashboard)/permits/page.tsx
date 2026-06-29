@@ -53,7 +53,7 @@ export default function PermitsPage() {
   const missingLocation = project && (!project.city || !project.region)
 
   const cardStyle = { boxShadow: '0 8px 32px rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.10)' }
-  const selectCls = 'w-full bg-white/[0.05] border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 rounded-xl px-3 py-2.5 text-slate-200 text-sm focus:outline-none transition-all'
+  const selectCls = 'w-full bg-white/[0.06] border border-white/12 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-3 py-2.5 text-slate-200 text-sm focus:outline-none transition-all'
 
   return (
     <div className="relative min-h-full" style={{ background: '#040810' }}>
