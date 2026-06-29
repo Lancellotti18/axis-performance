@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
 import type { Project } from '@/types'
+import { ButtonLink, CountUp, PageTransition, StatusBadge } from '@/components/ui'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function relTime(s?: string): string {
@@ -16,23 +17,6 @@ function relTime(s?: string): string {
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-function StatusBadge({ status }: { status: string }) {
-  // Electric-blue-only palette: blue for active/complete, muted rose only for errors.
-  const map: Record<string, { cls: string; dot: string; label: string }> = {
-    complete:   { cls: 'bg-blue-500/15 text-blue-200 border-blue-400/30', dot: 'bg-blue-400', label: 'Complete' },
-    processing: { cls: 'bg-white/[0.05] text-slate-300 border-white/10', dot: 'bg-blue-400 animate-pulse', label: 'In progress' },
-    pending:    { cls: 'bg-white/[0.05] text-slate-300 border-white/10', dot: 'bg-blue-400 animate-pulse', label: 'In progress' },
-    failed:     { cls: 'bg-rose-500/15 text-rose-300 border-rose-400/30', dot: 'bg-rose-400', label: 'Failed' },
-  }
-  const s = map[status] || { cls: 'bg-white/[0.05] text-slate-400 border-white/10', dot: 'bg-slate-500', label: status }
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ${s.cls}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-      {s.label}
-    </span>
-  )
 }
 
 function ThumbPlaceholder({ id }: { id: string }) {
@@ -156,7 +140,9 @@ function StatTile({ label, value, icon }: { label: string; value: number | strin
         {icon}
       </div>
       <div>
-        <div className="text-2xl font-bold text-white leading-none">{value}</div>
+        <div className="text-2xl font-bold text-white leading-none">
+          {typeof value === 'number' ? <CountUp value={value} /> : value}
+        </div>
         <div className="text-slate-400 text-xs mt-1">{label}</div>
       </div>
     </div>
@@ -234,7 +220,7 @@ export default function DashboardPage() {
       />
       <div className="pointer-events-none absolute -top-32 -right-24 h-[420px] w-[420px] rounded-full opacity-[0.10] blur-3xl" style={{ background: 'radial-gradient(circle, #3b82f6, transparent 60%)' }} />
 
-      <div className="relative p-8 max-w-7xl mx-auto">
+      <PageTransition className="relative p-8 max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-end justify-between gap-4 mb-7">
           <div>
@@ -245,14 +231,14 @@ export default function DashboardPage() {
                 : `${completed} complete · ${inProgress} in progress`}
             </p>
           </div>
-          <Link
+          <ButtonLink
             href="/projects/new"
-            className="flex items-center gap-2 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition-all hover:scale-[1.02] flex-shrink-0"
-            style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 8px 24px rgba(59,130,246,0.4), inset 0 1px 0 rgba(255,255,255,0.2)' }}
+            variant="primary"
+            className="flex-shrink-0"
+            leftIcon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>}
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             New Project
-          </Link>
+          </ButtonLink>
         </div>
 
         {/* Stats bar */}
@@ -289,7 +275,7 @@ export default function DashboardPage() {
             </div>
             <div className="text-white font-semibold text-base mb-1">No projects yet</div>
             <div className="text-slate-400 text-sm mb-5">Create your first project to get started.</div>
-            <Link href="/projects/new" className="text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-all hover:scale-[1.03]" style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 8px 24px rgba(59,130,246,0.4)' }}>New Project</Link>
+            <ButtonLink href="/projects/new" variant="primary" size="lg">New Project</ButtonLink>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
@@ -320,7 +306,7 @@ export default function DashboardPage() {
             )}
           </div>
         )}
-      </div>
+      </PageTransition>
     </div>
   )
 }

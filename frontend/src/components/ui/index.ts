@@ -13,3 +13,7 @@ export type { PageHeaderProps } from './PageHeader'
 export { Skeleton } from './Skeleton'
 export { EmptyState } from './EmptyState'
 export type { EmptyStateProps } from './EmptyState'
+
+// Dark "app" primitives (in-app screens — distinct from the light auth pages)
+export { AppButton, ButtonLink, StatusBadge, Spinner, PageTransition, CountUp } from './app'
+export type { AppVariant, AppSize } from './app'
