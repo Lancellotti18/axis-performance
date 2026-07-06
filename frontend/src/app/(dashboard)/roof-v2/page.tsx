@@ -835,16 +835,9 @@ export default function RoofV2Page() {
               }}
             />
           </div>
-          <MeasurementsSummary
-            runId={runId}
-            geometryStamp={geometryStamp}
-            onConfidenceChange={setConfidence}
-            onForceSave={async () => { await persistGeometry(facets, edges) }}
-          />
-
-          {/* Auto-label edges sits right after the outline: draw your facets, then
-              one click labels every edge (eave/rake/ridge/hip/valley) — review and
-              accept, or label by hand in the editor above. */}
+          {/* Auto-label edges sits DIRECTLY under the canvas — the intended flow
+              is trace → ✨ auto-label → review, with by-hand labeling in the
+              editor as the fallback for individual disagreements. */}
           {facets.length > 0 && (
             <div id="edge-label-panel" className="scroll-mt-16">
               <EdgeLabelSuggestions
@@ -868,6 +861,13 @@ export default function RoofV2Page() {
               />
             </div>
           )}
+
+          <MeasurementsSummary
+            runId={runId}
+            geometryStamp={geometryStamp}
+            onConfidenceChange={setConfidence}
+            onForceSave={async () => { await persistGeometry(facets, edges) }}
+          />
 
           {/* Tap your house FIRST so auto-detect locks onto the right building. */}
           {imagery?.url && (

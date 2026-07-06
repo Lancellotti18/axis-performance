@@ -58,6 +58,18 @@ export function EdgeLabelSuggestions({
   const [error, setError] = useState<string | null>(null)
   const [reviewing, setReviewing] = useState(false)
 
+  // First-use "how this works" bubble — shown once, reopenable via the ? button.
+  const [showHowTo, setShowHowTo] = useState(false)
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('axis_edge_autolabel_coach_v1')) setShowHowTo(true)
+    } catch { /* ignore */ }
+  }, [])
+  const dismissHowTo = useCallback(() => {
+    setShowHowTo(false)
+    try { localStorage.setItem('axis_edge_autolabel_coach_v1', '1') } catch { /* ignore */ }
+  }, [])
+
   const unlabeledEdges = useMemo(
     () => edges.filter(e => e.edgeType === 'unlabeled'),
     [edges],
@@ -162,11 +174,18 @@ export function EdgeLabelSuggestions({
     <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">Auto-label edges</h3>
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-100">
+            ✨ Auto-label edges
+            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">recommended</span>
+            <button
+              onClick={() => setShowHowTo(v => !v)}
+              className="flex h-4 w-4 items-center justify-center rounded-full border border-white/20 text-[10px] text-slate-400 hover:bg-slate-800 hover:text-white"
+              title="How does auto-labeling work?"
+            >?</button>
+          </h3>
           <p className="text-xs text-slate-400">
-            AI proposes a type (eave / rake / ridge / hip / valley) for each unlabeled edge.
-            Shared edges use deterministic geometry; unshared edges use Gemini Vision.
-            <strong> Accept each suggestion individually</strong> or batch-accept high-confidence ones.
+            One click names every edge — <strong>eave, rake, ridge, hip, valley</strong> — from the
+            roof&apos;s geometry. You review and accept; label by hand only where you disagree.
           </p>
         </div>
         <button
@@ -177,14 +196,42 @@ export function EdgeLabelSuggestions({
               : unlabeledEdges.length === 0 ? 'Every edge already has a label.'
               : `Suggest a type for ${unlabeledEdges.length} unlabeled edge(s).`
           }
-          className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+          className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
         >
           {loading ? 'Analyzing…'
             : suggestions.length > 0 ? 'Re-analyze'
-            : unlabeledEdges.length === 0 ? 'All labeled'
-            : `Auto-label (${unlabeledEdges.length} unlabeled)`}
+            : unlabeledEdges.length === 0 ? 'All labeled ✓'
+            : `✨ Auto-label ${unlabeledEdges.length} edge${unlabeledEdges.length === 1 ? '' : 's'}`}
         </button>
       </div>
+
+      {/* How-it-works bubble — first visit + reopenable. */}
+      {showHowTo && (
+        <div className="mt-3 rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-3 text-xs">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-semibold text-emerald-200">How auto-labeling works</span>
+            <button onClick={dismissHowTo} className="rounded p-0.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Dismiss">✕</button>
+          </div>
+          <ol className="space-y-1.5 text-slate-300">
+            <li className="flex gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">1</span>
+              <span><strong className="text-white">Map out the whole house first.</strong> Trace every roof plane in the editor (or add them with Google Solar / AI auto-detect). The labeler reads how the planes fit together — so the more complete the outline, the smarter the labels.</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">2</span>
+              <span><strong className="text-white">Click ✨ Auto-label.</strong> Where two planes meet it knows ridge vs hip vs valley from the geometry; outline edges are read as eaves (gutter lines) or rakes (gable sides). Every call shows a confidence % and a plain-English reason.</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">3</span>
+              <span><strong className="text-white">Review &amp; accept.</strong> Hit <strong>Accept all ≥ 70%</strong> for the confident ones, or 🔍 <strong>Review visually</strong> to step through each edge zoomed-in. Disagree with one? Fix just that edge in the editor&apos;s <strong>Label by hand</strong> mode.</span>
+            </li>
+          </ol>
+          <p className="mt-2 text-[11px] text-slate-500">
+            Labels drive the material order — ridge cap, valley metal, drip edge, flashing — so a quick review here keeps the order right.
+          </p>
+          <button onClick={dismissHowTo} className="mt-2 w-full rounded bg-emerald-700 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-600">Got it</button>
+        </div>
+      )}
 
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
       {message && !error && <p className="mt-2 text-xs text-slate-400">{message}</p>}

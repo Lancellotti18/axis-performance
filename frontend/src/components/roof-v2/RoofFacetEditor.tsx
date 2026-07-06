@@ -177,6 +177,9 @@ export function RoofFacetEditor({
 
   // First-use coachmark (shown once, dismissed to localStorage).
   const [showCoach, setShowCoach] = useState(false)
+  // "Auto-label first" nudge — session-dismissible; disappears on its own once
+  // the edges are labeled.
+  const [labelNudgeDismissed, setLabelNudgeDismissed] = useState(false)
   useEffect(() => {
     try {
       if (!localStorage.getItem('axis_editor_coach_v1')) setShowCoach(true)
@@ -780,6 +783,8 @@ export function RoofFacetEditor({
     )
   }
 
+  const unlabeledCount = edges.filter(e => e.edgeType === 'unlabeled').length
+
   return (
     <div className="flex h-full w-full flex-col gap-3">
       {/* Toolbar */}
@@ -794,17 +799,20 @@ export function RoofFacetEditor({
                 ? 'bg-blue-600 text-white'
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
+            title={m === 'label' ? 'Manual fallback — click an edge on the canvas, then pick its type. Fastest path is ✨ Auto-label.' : undefined}
           >
-            {m === 'draw' ? '+ Draw facet' : m === 'select' ? 'Edit vertices' : 'Label edges'}
+            {m === 'draw' ? '+ Draw facet' : m === 'select' ? 'Edit vertices' : 'Label by hand'}
           </button>
         ))}
         {onAutoLabelEdges && (
           <button
             onClick={onAutoLabelEdges}
             disabled={facets.length === 0}
-            title="Let AI label every edge (eave/rake/ridge/hip/valley), then review — or label by hand"
-            className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
-          >✨ Auto-label edges</button>
+            title="Recommended: AI names every edge (eave/rake/ridge/hip/valley) at once — you review and accept"
+            className={`rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40 ${
+              facets.length > 0 && unlabeledCount > 0 ? 'ring-2 ring-emerald-300/60 shadow-[0_0_14px_rgba(52,211,153,0.45)]' : ''
+            }`}
+          >✨ Auto-label edges{unlabeledCount > 0 && facets.length > 0 ? ` (${unlabeledCount})` : ''}</button>
         )}
         <div className="mx-2 h-5 w-px bg-white/10" />
         {/* Undo / redo */}
@@ -872,6 +880,35 @@ export function RoofFacetEditor({
           )}
         </div>
       </div>
+
+      {/* Auto-first nudge: appears the moment there are unlabeled edges and
+          steers to ✨ Auto-label before manual clicking. Session-dismissible;
+          disappears on its own once everything is labeled. */}
+      {onAutoLabelEdges && facets.length > 0 && unlabeledCount > 0 && !labelNudgeDismissed && mode !== 'label' && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+          <span className="text-sm">🎯</span>
+          <span>
+            <strong>{unlabeledCount} edge{unlabeledCount === 1 ? '' : 's'} need{unlabeledCount === 1 ? 's' : ''} a label.</strong>{' '}
+            Fastest: let AI name them all (ridge / eave / hip / valley), then just review.
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={onAutoLabelEdges}
+              className="rounded bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-500"
+            >✨ Auto-label {unlabeledCount}</button>
+            <button
+              onClick={() => { setLabelNudgeDismissed(true); setMode('label') }}
+              className="rounded bg-slate-800 px-2 py-1 text-slate-300 hover:bg-slate-700"
+              title="Click edges on the canvas and pick each type yourself"
+            >I&apos;ll label by hand</button>
+            <button
+              onClick={() => setLabelNudgeDismissed(true)}
+              className="rounded p-1 text-emerald-200/60 hover:text-white"
+              aria-label="Dismiss"
+            >✕</button>
+          </div>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1 gap-3">
         {/* Canvas */}
@@ -1008,7 +1045,7 @@ export function RoofFacetEditor({
                 </li>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">3</span>
-                  <span>Repeat for each plane, then <strong>label the edges</strong> (ridge, eave, valley…).</span>
+                  <span>Repeat for each plane, then hit <strong className="text-emerald-300">✨ Auto-label edges</strong> — AI names every edge (ridge, eave, hip, valley) and you just review. Fix any single edge by hand in <strong>Label by hand</strong> mode.</span>
                 </li>
               </ol>
               <div className="mt-2 rounded bg-slate-800/60 px-2 py-1.5 text-[10px] text-slate-400">
