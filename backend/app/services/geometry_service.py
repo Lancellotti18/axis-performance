@@ -445,7 +445,7 @@ def recommended_waste_pct(complexity: float) -> int:
 # ----------------------------------------------------------------------------
 
 def _segments_overlap(
-    a1: list[float], a2: list[float], b1: list[float], b2: list[float], tol: float = 0.008
+    a1: list[float], a2: list[float], b1: list[float], b2: list[float], tol: float = 0.010
 ) -> bool:
     """
     True if line segments (a1,a2) and (b1,b2) are coincident within `tol`
@@ -512,132 +512,421 @@ def _longest_edge_angle_deg(poly: list) -> float | None:
     return math.degrees(math.atan2(bdy, bdx))
 
 
-def _classify_shared_edge(p1, p2, this_poly: list, facets: list[dict]) -> tuple[str, float]:
-    """Classify a shared edge as ridge / hip / valley from 2D geometry.
-      - VALLEY: an endpoint is a concave (inside) roof corner — water collects.
-      - RIDGE vs HIP: a ridge runs PARALLEL to the facet's eave (the long edge);
-        a hip cuts diagonally toward an eave corner.
-    Returns (edge_type, confidence). Conservative confidence — contractor verifies."""
-    # Valley first: concavity is the most reliable rotation-invariant signal.
-    if max(_angle_sum_at(facets, p1), _angle_sum_at(facets, p2)) > 200.0:
-        return "valley", 0.6
+# ----------------------------------------------------------------------------
+# Edge classification — slope-aware, straight-skeleton-grounded
+# ----------------------------------------------------------------------------
+#
+# The interior lines of a pitched roof are the straight skeleton of its
+# outline. That theory gives exact, rotation-invariant rules:
+#   * RIDGE  — interior line between two PARALLEL outline (eave) edges, or a
+#              fully-interior line (hip-roof ridge runs junction→junction).
+#   * HIP    — interior line reaching the outline at a CONVEX corner.
+#   * VALLEY — interior line reaching the outline at a REFLEX corner
+#              (valleys only exist at inside corners: L/T shapes).
+#   * EAVE   — perimeter edge PERPENDICULAR to the facet's slope, downhill.
+#   * RAKE   — perimeter edge PARALLEL to the facet's slope.
+#
+# CRITICAL lesson baked in: concavity must be tested at the edge's OUTLINE
+# endpoint only. At interior junctions (where ridge meets hips) three facets
+# meet and the angle sum is ~360° — testing there made every hip and ridge on
+# a hip roof read as a "valley".
 
-    eave = _longest_edge_angle_deg(this_poly)
-    edge_deg = math.degrees(math.atan2(p2[1] - p1[1], p2[0] - p1[0]))
-    if eave is not None:
-        rel = _line_angle_diff(edge_deg, eave)   # 0 = parallel to eave, 90 = perpendicular
-        if rel < 28.0:
-            return "ridge", 0.6        # parallel to the eave → ridge line
-        return "hip", 0.55             # diagonal across the roof → hip
-    # No eave reference — fall back to image-horizontal heuristic.
-    near_h = abs(p2[1] - p1[1]) < 0.30 * abs(p2[0] - p1[0]) if (p2[0] - p1[0]) else False
-    return ("ridge", 0.45) if near_h else ("hip", 0.45)
+
+def _edge_angle_deg(p1, p2) -> float:
+    return math.degrees(math.atan2(p2[1] - p1[1], p2[0] - p1[0]))
+
+
+def _seg_len(p1, p2) -> float:
+    return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+
+
+def _edges_share(a1, a2, b1, b2, perp_tol: float = 0.009) -> bool:
+    """
+    True if the two edges are the SAME roof line — exact endpoint match (fast
+    path) or collinear with substantial partial overlap. Partial overlap is
+    how real traces share edges on T/L roofs (a long main ridge overlapped by
+    a shorter wing edge) and when adjacent facets were traced slightly offset.
+    """
+    if _segments_overlap(a1, a2, b1, b2):
+        return True
+
+    la, lb = _seg_len(a1, a2), _seg_len(b1, b2)
+    if la < 1e-9 or lb < 1e-9:
+        return False
+    # Work along the LONGER edge's line.
+    if lb > la:
+        a1, a2, b1, b2, la, lb = b1, b2, a1, a2, lb, la
+    ux, uy = (a2[0] - a1[0]) / la, (a2[1] - a1[1]) / la
+
+    # Both endpoints of the shorter edge must sit ON the longer edge's line.
+    def perp_dist(p) -> float:
+        wx, wy = p[0] - a1[0], p[1] - a1[1]
+        return abs(wx * uy - wy * ux)
+
+    if perp_dist(b1) > perp_tol or perp_dist(b2) > perp_tol:
+        return False
+
+    # ...and overlap it substantially in 1D.
+    t1 = (b1[0] - a1[0]) * ux + (b1[1] - a1[1]) * uy
+    t2 = (b2[0] - a1[0]) * ux + (b2[1] - a1[1]) * uy
+    lo, hi = min(t1, t2), max(t1, t2)
+    overlap = min(hi, la) - max(lo, 0.0)
+    return overlap >= max(0.010, 0.30 * lb)
+
+
+def _closest_point_on_segment(p, s1, s2) -> tuple[float, float]:
+    dx, dy = s2[0] - s1[0], s2[1] - s1[1]
+    L2 = dx * dx + dy * dy
+    if L2 < 1e-18:
+        return (s1[0], s1[1])
+    t = ((p[0] - s1[0]) * dx + (p[1] - s1[1]) * dy) / L2
+    t = max(0.0, min(1.0, t))
+    return (s1[0] + t * dx, s1[1] + t * dy)
+
+
+def _facet_downhill(
+    poly: list, interior_vis: set[int], perimeter_vis: set[int],
+) -> tuple[float, float] | None:
+    """
+    Provisional downhill (drain) direction for a facet: from the mass of its
+    interior edges (ridge/hips — the high side) toward the mass of its
+    perimeter edges (eave side). Rotation-invariant; None when the facet has
+    no interior edges to anchor the high side.
+    """
+    if not interior_vis or not perimeter_vis:
+        return None
+    n = len(poly)
+
+    def mass(vis: set[int]) -> tuple[float, float] | None:
+        sx = sy = tw = 0.0
+        for vi in vis:
+            p1, p2 = poly[vi], poly[(vi + 1) % n]
+            w = _seg_len(p1, p2)
+            sx += w * (p1[0] + p2[0]) / 2
+            sy += w * (p1[1] + p2[1]) / 2
+            tw += w
+        return (sx / tw, sy / tw) if tw > 1e-9 else None
+
+    hi, lo = mass(interior_vis), mass(perimeter_vis)
+    if hi is None or lo is None:
+        return None
+    dx, dy = lo[0] - hi[0], lo[1] - hi[1]
+    d = math.hypot(dx, dy)
+    return (dx / d, dy / d) if d > 1e-9 else None
+
+
+def _classify_interior_edge(
+    p1, p2,
+    fa: dict, fb: dict,
+    a_perim: list[tuple[list, list]],   # perimeter edges of facet A [(p1,p2)...]
+    b_perim: list[tuple[list, list]],
+    da: tuple[float, float] | None,     # provisional downhill of A / B
+    db: tuple[float, float] | None,
+    ca: tuple[float, float],            # centroids
+    cb: tuple[float, float],
+) -> tuple[str, float, str]:
+    """Classify one shared edge (A↔B) as ridge / hip / valley. Symmetric in
+    A and B, so both facets get the same answer for the same physical line."""
+    edge_deg = _edge_angle_deg(p1, p2)
+    edge_len = _seg_len(p1, p2)
+
+    # -- RIDGE test 1: parallel to a substantial eave-candidate of EACH facet.
+    #    (A ridge runs between two parallel outline edges; hips and valleys cut
+    #    diagonally, ~45° to every eave, so they never pass this.)
+    def has_parallel_perimeter(perim: list) -> bool:
+        for q1, q2 in perim:
+            if _seg_len(q1, q2) < max(0.02, 0.25 * edge_len):
+                continue   # ignore tiny jog edges
+            if _line_angle_diff(edge_deg, _edge_angle_deg(q1, q2)) <= 25.0:
+                return True
+        return False
+
+    if has_parallel_perimeter(a_perim) and has_parallel_perimeter(b_perim):
+        return "ridge", 0.9, "Runs parallel to the eaves of both facets — ridge line"
+
+    # -- RIDGE test 2: both endpoints interior (touch no perimeter edge of
+    #    either facet). Hips and valleys always run down to the outline; a
+    #    hip-roof ridge runs junction→junction fully inside it.
+    def endpoint_on_outline(pt) -> bool:
+        for q1, q2 in a_perim + b_perim:
+            if (abs(q1[0] - pt[0]) <= 0.012 and abs(q1[1] - pt[1]) <= 0.012) or \
+               (abs(q2[0] - pt[0]) <= 0.012 and abs(q2[1] - pt[1]) <= 0.012):
+                return True
+        return False
+
+    p1_out, p2_out = endpoint_on_outline(p1), endpoint_on_outline(p2)
+    if not p1_out and not p2_out:
+        return "ridge", 0.85, "Fully interior line (junction to junction) — ridge"
+
+    # -- HIP vs VALLEY: concavity of the building outline at the OUTLINE
+    #    endpoint. Sum the two facets' corner angles there: an outside (convex)
+    #    corner sums well under 180°, an inside (reflex) corner well over.
+    #    NEVER tested at the interior junction endpoint — 3+ facets meet there
+    #    and the sum is meaninglessly large (the old hip→valley bug).
+    outline_pt = p1 if p1_out else p2
+    corner = _angle_sum_at([fa, fb], outline_pt)
+
+    # Secondary signal — drainage: water CONVERGES onto a valley (both facets'
+    # downhills point toward the line) and DIVERGES off a hip. The provisional
+    # downhill vectors can be contaminated on narrow wing facets, so the corner
+    # reading (geometrically exact for a real outline corner) always OUTRANKS
+    # drainage: drainage only tunes confidence, and only gets to decide when
+    # the corner reading is junction-poisoned (>320° means the "outline"
+    # endpoint was actually an interior junction — a missed shared edge).
+    drain = None   # +1 converge (valley-like) / -1 diverge (hip-like) / None unknown
+    if da is not None and db is not None:
+        ex, ey = p2[0] - p1[0], p2[1] - p1[1]
+        el = math.hypot(ex, ey)
+        if el > 1e-9:
+            ux, uy = ex / el, ey / el
+
+            def toward(centroid, d) -> float:
+                # Perpendicular direction from the centroid to the edge's LINE
+                # (no segment clamp — clamping rotates the normal near the ends).
+                wx, wy = centroid[0] - p1[0], centroid[1] - p1[1]
+                t = wx * ux + wy * uy
+                nx, ny = (p1[0] + t * ux) - centroid[0], (p1[1] + t * uy) - centroid[1]
+                nd = math.hypot(nx, ny)
+                if nd < 1e-9:
+                    return 0.0
+                return (d[0] * nx + d[1] * ny) / nd
+
+            ta, tb = toward(ca, da), toward(cb, db)
+            if ta > 0.15 and tb > 0.15:
+                drain = 1
+            elif ta < -0.15 and tb < -0.15:
+                drain = -1
+
+    junction_poisoned = corner > 320.0 or corner <= 1.0
+    if not junction_poisoned:
+        if corner > 195.0:
+            conf = 0.9 if drain == 1 else (0.6 if drain == -1 else 0.8)
+            note = " (drainage disagrees — please confirm)" if drain == -1 else ""
+            return "valley", conf, f"Meets the outline at an inside corner ({corner:.0f}°) — water collects here{note}"
+        if corner < 168.0:
+            conf = 0.9 if drain == -1 else (0.6 if drain == 1 else 0.8)
+            note = " (drainage disagrees — please confirm)" if drain == 1 else ""
+            return "hip", conf, f"Meets the outline at an outside corner ({corner:.0f}°) — external junction{note}"
+
+    # Corner inconclusive or junction-poisoned → drainage decides.
+    if drain == 1:
+        return "valley", 0.65, "Both facets drain toward this line — valley"
+    if drain == -1:
+        return "hip", 0.65, "Both facets drain away from this line — hip"
+    return "hip", 0.5, "Diagonal junction — likely hip; please confirm hip vs valley"
 
 
 def auto_suggest_edge_types(
     facets: list[dict],   # each: {label, polygon, pitch_degrees}
 ) -> list[dict]:
     """
-    Given a list of facets, return a list of suggested edge labels:
+    Deterministic, rotation-invariant edge classification for a set of traced
+    roof facets. Returns one suggestion per polygon edge:
 
         [
           {"facet_label": "A", "vertex_index_start": 0, "vertex_index_end": 1,
-           "edge_type": "eave", "shared_with_facet_label": None},
+           "edge_type": "eave", "confidence": 0.8, "reason": "...",
+           "shared_with_facet_label": None},
           ...
         ]
 
-    Heuristic (deterministic, no AI):
-      1. For every edge, check every other facet's edges for overlap.
-         - If overlap AND both facets share equal pitch_degrees → 'ridge'.
-         - If overlap AND pitches differ → 'hip' if both rise from the edge
-           (outer corner) or 'valley' if both fall toward the edge.
-           Since we don't yet know slope direction at this stage, the
-           default for unequal-pitch shared edges is 'hip' (more common
-           in residential). The user reviews each edge in the editor.
-      2. For every non-shared edge:
-         - 'eave' if the edge is approximately horizontal in the image
-           (within 8°) AND on the lower portion of the polygon bounding box.
-         - 'rake' if it's a non-horizontal edge on the side of the polygon.
-         - 'gable_end' if it's the topmost/bottommost short edge on a
-           triangle-like end.
-      3. Anything we can't confidently label → 'unlabeled' so the user
-         decides.
+    Method (straight-skeleton-grounded — see the block comment above):
+      1. Shared-edge detection with partial (collinear) overlap, so offset
+         traces and T/L roofs still register their interior lines.
+      2. Interior edges → ridge / hip / valley by parallel-eave test,
+         fully-interior test, and outline-corner concavity (+ drain-direction
+         tiebreak). All rotation-invariant.
+      3. Perimeter edges → eave / rake relative to the facet's own level
+         axis and downhill side — never the image axes.
 
-    This is INTENTIONALLY conservative. Edge types feed directly into
-    material orders — better to leave 'unlabeled' than to mislabel a
-    'rake' as a 'ridge' and order the wrong amount of cap shingles.
+    Edge types feed material orders (ridge cap, valley metal, drip edge,
+    flashing), so every call carries an honest confidence + a plain-English
+    reason the contractor can sanity-check in the review UI.
     """
+    # ---- Pass 0: normalize + centroids -------------------------------------
+    polys: list[list] = []
+    for f in facets:
+        poly = f.get("polygon") or []
+        polys.append(poly if len(poly) >= 3 else [])
+
+    # ---- Pass 1: shared-edge matrix (partial overlap aware) -----------------
+    # shared[i][vi] = index j of the facet sharing that edge (best overlap), or None
+    shared: list[list[int | None]] = [[None] * len(p) for p in polys]
+    for i, poly in enumerate(polys):
+        n = len(poly)
+        for vi in range(n):
+            p1, p2 = poly[vi], poly[(vi + 1) % n]
+            for j, opoly in enumerate(polys):
+                if j == i or not opoly:
+                    continue
+                m = len(opoly)
+                if any(_edges_share(p1, p2, opoly[vj], opoly[(vj + 1) % m]) for vj in range(m)):
+                    shared[i][vi] = j
+                    break
+
+    # ---- Pass 2: per-facet structure ----------------------------------------
+    interior_vis: list[set[int]] = []
+    perimeter_vis: list[set[int]] = []
+    perim_edges: list[list[tuple[list, list]]] = []
+    centroids: list[tuple[float, float]] = []
+    downhills: list[tuple[float, float] | None] = []
+    for i, poly in enumerate(polys):
+        n = len(poly)
+        ivis = {vi for vi in range(n) if shared[i][vi] is not None}
+        pvis = set(range(n)) - ivis
+        interior_vis.append(ivis)
+        perimeter_vis.append(pvis)
+        perim_edges.append([(poly[vi], poly[(vi + 1) % n]) for vi in sorted(pvis)])
+        centroids.append(polygon_centroid(poly) if poly else (0.0, 0.0))
+        downhills.append(_facet_downhill(poly, ivis, pvis) if poly else None)
+
+    # ---- Pass 3: classify ----------------------------------------------------
     suggestions: list[dict] = []
+    interior_cache: dict[tuple[int, int, int, int], tuple[str, float, str]] = {}
 
     for i, f in enumerate(facets):
-        poly = f.get("polygon") or []
+        poly = polys[i]
         n = len(poly)
         if n < 3:
             continue
 
-        # Pass A — resolve each edge's shared status, and classify the shared ones
-        # (ridge / hip / valley) by geometry. Done first so the perimeter eave/rake
-        # call below can use which vertices are ridge/hip "peaks".
-        edge_shared: list[str | None] = [None] * n        # vi -> other facet label
-        edge_type_shared: list[str | None] = [None] * n   # vi -> ridge/hip/valley
-        for vi in range(n):
-            p1 = poly[vi]
-            p2 = poly[(vi + 1) % n]
-            shared_with: str | None = None
-            for j, other in enumerate(facets):
-                if j == i:
-                    continue
-                opoly = other.get("polygon") or []
-                if len(opoly) < 3:
-                    continue
-                hit = False
-                for vj in range(len(opoly)):
-                    if _segments_overlap(p1, p2, opoly[vj], opoly[(vj + 1) % len(opoly)]):
-                        shared_with = other.get("label")
-                        hit = True
-                        break
-                if hit:
-                    break
-            edge_shared[vi] = shared_with
-            if shared_with:
-                edge_type_shared[vi], _conf = _classify_shared_edge(p1, p2, poly, facets)
+        # Classify this facet's interior (shared) edges first — its ridge, if
+        # found, then anchors the level axis used for the perimeter calls.
+        interior_labels: dict[int, tuple[str, float, str]] = {}
+        for vi in sorted(interior_vis[i]):
+            j = shared[i][vi]
+            if j is None:
+                continue
+            key = _pair_key(i, vi, j, -1)
+            if key not in interior_cache:
+                interior_cache[key] = _classify_interior_edge(
+                    poly[vi], poly[(vi + 1) % n],
+                    facets[i], facets[j],
+                    perim_edges[i], perim_edges[j],
+                    downhills[i], downhills[j],
+                    centroids[i], centroids[j],
+                )
+            interior_labels[vi] = interior_cache[key]
 
-        # Vertices of THIS facet that sit on a ridge/hip edge (a "peak").
-        peak_vtx: set[int] = set()
-        for vi in range(n):
-            if edge_type_shared[vi] in ("ridge", "hip"):
-                peak_vtx.add(vi)
-                peak_vtx.add((vi + 1) % n)
-        has_peak = bool(peak_vtx)
+        # The facet's LEVEL axis (ridge/eave direction) for perimeter calls.
+        # Best source: its own ridge; else perpendicular to its drain direction;
+        # else its longest edge (lone-facet eave assumption).
+        level_deg: float | None
+        ridge_dirs = [
+            _edge_angle_deg(poly[vi], poly[(vi + 1) % n])
+            for vi, (t, _c, _r) in interior_labels.items() if t == "ridge"
+        ]
+        if ridge_dirs:
+            level_deg = ridge_dirs[0]
+        elif downhills[i] is not None:
+            dh = downhills[i]
+            level_deg = math.degrees(math.atan2(dh[1], dh[0])) + 90.0
+        else:
+            level_deg = _longest_edge_angle_deg(poly)
 
-        # Pass B — emit. Perimeter edges: a RAKE climbs to a peak (exactly ONE
-        # endpoint on a ridge/hip); an EAVE has none — or both, like the base of a
-        # hip facet that runs between two hips. Falls back to the horizontal
-        # heuristic only when the facet has no ridge/hip at all (a lone slope).
+        # Downhill unit vector for the eave-side test.
+        dh_vec = downhills[i]
+        if dh_vec is None and level_deg is not None:
+            # Lone facet: assume the longest edge is the eave and downhill
+            # points from the centroid toward it. When other facets exist,
+            # prefer the side FACING AWAY from them (roofs drain outward).
+            ldeg = _longest_edge_angle_deg(poly)
+            if ldeg is not None:
+                # find the longest edge's midpoint
+                bl, bmid = -1.0, None
+                for vi in range(n):
+                    L = _seg_len(poly[vi], poly[(vi + 1) % n])
+                    if L > bl:
+                        bl = L
+                        bmid = ((poly[vi][0] + poly[(vi + 1) % n][0]) / 2,
+                                (poly[vi][1] + poly[(vi + 1) % n][1]) / 2)
+                if bmid is not None:
+                    dx, dy = bmid[0] - centroids[i][0], bmid[1] - centroids[i][1]
+                    dd = math.hypot(dx, dy)
+                    if dd > 1e-9:
+                        dh_vec = (dx / dd, dy / dd)
+
+        single_perimeter = len(perimeter_vis[i]) == 1
+        has_interior = bool(interior_vis[i])
+
         for vi in range(n):
-            p1 = poly[vi]
-            p2 = poly[(vi + 1) % n]
-            shared_with = edge_shared[vi]
-            if shared_with:
-                edge_type = edge_type_shared[vi] or "ridge"
-            elif has_peak:
-                touch = (1 if vi in peak_vtx else 0) + (1 if (vi + 1) % n in peak_vtx else 0)
-                edge_type = "rake" if touch == 1 else "eave"
+            p1, p2 = poly[vi], poly[(vi + 1) % n]
+            j = shared[i][vi]
+
+            if j is not None:
+                etype, conf, reason = interior_labels.get(vi, ("ridge", 0.5, "Shared edge"))
+                shared_label = facets[j].get("label")
+            elif single_perimeter and has_interior:
+                # A facet ringed by junctions with ONE outline edge (hip-end
+                # triangle, clipped hip trapezoid): that edge is its eave.
+                etype, conf, reason = "eave", 0.85, "The facet's only outline edge — its eave"
+                shared_label = None
             else:
-                dx = p2[0] - p1[0]
-                dy = p2[1] - p1[1]
-                horizontal = abs(dy) < 0.15 * abs(dx) if dx != 0 else False
-                edge_type = "eave" if horizontal else "rake"
+                etype, conf, reason = _classify_perimeter_edge(
+                    p1, p2, level_deg, dh_vec, centroids[i], has_interior,
+                )
+                if not has_interior and conf > 0.55:
+                    conf = 0.55   # lone facet: level axis is an assumption — be honest
+                shared_label = None
 
             suggestions.append({
                 "facet_label": f.get("label"),
                 "vertex_index_start": vi,
                 "vertex_index_end": (vi + 1) % n,
-                "edge_type": edge_type,
-                "shared_with_facet_label": shared_with,
+                "edge_type": etype,
+                "confidence": round(conf, 2),
+                "reason": reason,
+                "shared_with_facet_label": shared_label,
             })
 
     return suggestions
+
+
+def _pair_key(i: int, vi: int, j: int, _unused: int) -> tuple[int, int, int, int]:
+    """Cache key for an interior edge seen from facet i, edge vi (partner j).
+    Keyed per (facet, edge) side; classification is symmetric by construction,
+    so both sides land on the same answer."""
+    return (i, vi, j, 0)
+
+
+def _classify_perimeter_edge(
+    p1, p2,
+    level_deg: float | None,
+    downhill: tuple[float, float] | None,
+    centroid: tuple[float, float],
+    has_interior: bool,
+) -> tuple[str, float, str]:
+    """Eave vs rake for an outline edge, relative to the facet's own level
+    axis — rotation-invariant (never uses the image axes)."""
+    if level_deg is None:
+        return "unlabeled", 0.3, "Not enough structure to classify — please label"
+
+    rel = _line_angle_diff(_edge_angle_deg(p1, p2), level_deg)   # 0=level, 90=along slope
+    mid = ((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2)
+    downhill_side = 0.0
+    if downhill is not None:
+        # Use only the CROSS-SLOPE component of the drain vector — the
+        # along-ridge component is provisional-estimate noise (narrow wing
+        # facets pick some up from gable ends) and must not tip the side test.
+        lrad = math.radians(level_deg)
+        px, py = -math.sin(lrad), math.cos(lrad)      # perpendicular of level axis
+        mag = downhill[0] * px + downhill[1] * py
+        if abs(mag) < 0.2:
+            downhill = None    # drain vector ~parallel to the ridge: unusable
+        else:
+            downhill_side = ((mid[0] - centroid[0]) * px + (mid[1] - centroid[1]) * py) * mag
+
+    if rel <= 30.0:
+        if downhill is None or downhill_side > 0:
+            conf = 0.8 if has_interior else 0.6
+            return "eave", conf, "Level edge on the downhill side — gutter line"
+        return "ridge", 0.45, "Level edge on the HIGH side — ridge if freestanding, wall flashing if it meets a wall"
+    if rel >= 60.0:
+        return "rake", 0.8 if has_interior else 0.6, "Runs up the slope along the gable end — rake"
+    # Diagonal outline edge (clipped corner, angled addition) — side decides.
+    if downhill is not None and downhill_side > 0:
+        return "eave", 0.5, "Diagonal outline edge on the downhill side — likely eave; please confirm"
+    return "rake", 0.5, "Diagonal outline edge on the high side — likely rake; please confirm"
 
 
 # ----------------------------------------------------------------------------

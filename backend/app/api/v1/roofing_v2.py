@@ -2503,39 +2503,6 @@ async def record_facet_rejections(
     return {"recorded": recorded}
 
 
-def _geom_edge_confidence(poly: list, vi: int, edge_type: str) -> tuple[float, str]:
-    """How sure is the GEOMETRY about an unshared eave/rake guess? Replaces the
-    old flat 0.45 'I dunno' with a graded score: a clearly horizontal LOWEST edge
-    is a confident eave; a clearly sloped side edge is a confident rake; only true
-    diagonals stay low. This is why most edges used to read 45% — they were all
-    hitting the same hardcoded fallback regardless of how obvious they were."""
-    import math
-    try:
-        n = len(poly)
-        p1, p2 = poly[vi], poly[(vi + 1) % n]
-        dx, dy = p2[0] - p1[0], p2[1] - p1[1]
-        ang = abs(math.degrees(math.atan2(abs(dy), abs(dx))))  # 0=horizontal, 90=vertical
-        mids = [((poly[k][1] + poly[(k + 1) % n][1]) / 2) for k in range(n)]
-        is_lowest = ((p1[1] + p2[1]) / 2) >= (max(mids) - 1e-6)
-        if edge_type == "eave":
-            if ang <= 8 and is_lowest:
-                return 0.74, "Clearly horizontal lowest edge → eave"
-            if ang <= 8:
-                return 0.60, "Horizontal edge → likely eave"
-            if ang <= 18:
-                return 0.50, "Near-horizontal → possibly eave"
-            return 0.45, "Orientation ambiguous — please confirm"
-        if edge_type == "rake":
-            if ang >= 28:
-                return 0.68, "Clearly sloped side edge → rake"
-            if ang >= 15:
-                return 0.55, "Sloped edge → likely rake"
-            return 0.45, "Orientation ambiguous — please confirm"
-    except Exception:
-        pass
-    return 0.45, "Geometric heuristic — please confirm"
-
-
 class EdgeLabelSuggestRequest(BaseModel):
     facets: list[dict]            # [{label, polygon, pitch_degrees}]
     unlabeled_edges: list[dict]   # [{facet_label, vertex_index_start, vertex_index_end}]
@@ -2640,13 +2607,16 @@ async def suggest_edge_labels(
             except Exception as e:
                 logger.info("edge-label vision pass failed: %s", e)
 
-        # ---- Pass 2: shared RIDGE vs VALLEY (the confusable pair) ----
-        # Geometry can't see height, so a ridge and a valley look identical from a
-        # 2D trace. The satellite CAN tell them apart, so let vision break the tie.
-        rv_edges = [
-            e for e in req.unlabeled_edges
-            if (geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}).get("edge_type") in ("ridge", "hip", "valley")
-        ]
+        # ---- Pass 2: shared ridge/hip/valley SECOND OPINION ----
+        # Only for shared edges where the geometry itself admits doubt
+        # (confidence < 0.75). The rewritten classifier resolves nearly all of
+        # these exactly (straight-skeleton rules), so this pass usually runs on
+        # zero or a handful of edges — vision is a tiebreaker, not an authority.
+        rv_edges = []
+        for e in req.unlabeled_edges:
+            g = geom_index.get((e.get("facet_label"), e.get("vertex_index_start")), {}) or {}
+            if g.get("edge_type") in ("ridge", "hip", "valley") and (g.get("confidence") or 0.5) < 0.75:
+                rv_edges.append(e)
         if rv_edges:
             try:
                 prompt = (
@@ -2682,7 +2652,10 @@ async def suggest_edge_labels(
             except Exception as e:
                 logger.info("ridge/valley vision pass failed: %s", e)
 
-    # Merge: shared edges from geometry, unshared from vision (else geometry fallback)
+    # Merge. The rewritten geometric classifier is rotation-invariant and
+    # straight-skeleton-exact, so GEOMETRY IS AUTHORITATIVE. Vision only:
+    #   * breaks ties on shared edges where geometry admits doubt (<0.75), and
+    #   * flags wall_intersection on perimeter edges (geometry can't see walls).
     out: list[dict] = []
     for e in req.unlabeled_edges:
         key = (e.get("facet_label"), int(e.get("vertex_index_start") or 0))
@@ -2690,14 +2663,18 @@ async def suggest_edge_labels(
         shared = geo_sug.get("shared_with_facet_label")
         if shared:
             etype = geo_sug.get("edge_type") or "ridge"
-            conf = 0.85
-            reason = f"Shared edge with facet {shared} (geometric)"
-            # Vision breaks the ridge↔hip↔valley confusion when it's confident.
+            conf = geo_sug.get("confidence") or 0.75
+            reason = geo_sug.get("reason") or f"Shared edge with facet {shared} (geometric)"
             rv = rv_vision_by_edge.get(key)
-            if rv and rv.get("edge_type") in ("ridge", "hip", "valley") and (rv.get("confidence") or 0) >= 0.6:
-                etype = rv["edge_type"]
-                conf = max(0.6, rv.get("confidence") or 0.6)
-                reason = f"Shared with {shared}; {etype} confirmed from satellite — {rv.get('reason', '')}".strip()
+            if rv and rv.get("edge_type") in ("ridge", "hip", "valley") and conf < 0.75:
+                v_conf = rv.get("confidence") or 0.0
+                if rv["edge_type"] == etype and v_conf >= 0.5:
+                    conf = min(0.85, conf + 0.15)   # corroboration
+                    reason = f"{reason}; confirmed from satellite"
+                elif v_conf >= 0.65:
+                    etype = rv["edge_type"]
+                    conf = 0.65
+                    reason = f"Satellite reads this as a {etype} — {rv.get('reason', '')}".strip()
             out.append({
                 "facet_label": key[0],
                 "vertex_index_start": key[1],
@@ -2708,16 +2685,13 @@ async def suggest_edge_labels(
                 "ai_suggested": True,
             })
         else:
-            # Perimeter edge. Geometry now decides eave vs rake reliably (it uses the
-            # detected ridge/hip topology), so TRUST it — don't let satellite vision
-            # flip eaves↔rakes (the main mixup). Vision is consulted only to flag a
+            # Perimeter edge. Geometry decides eave vs rake (rotation-invariant,
+            # anchored to the facet's own ridge axis) — never let satellite vision
+            # flip eaves↔rakes. Vision is consulted only to flag a
             # wall_intersection, which geometry can't see, and only when confident.
             etype = geo_sug.get("edge_type") or "unlabeled"
-            facet = next((f for f in req.facets if f.get("label") == key[0]), None)
-            gc, greason = (
-                _geom_edge_confidence(facet.get("polygon") or [], key[1], etype)
-                if facet else (0.5, "Geometric heuristic — please confirm")
-            )
+            gc = geo_sug.get("confidence") or 0.5
+            greason = geo_sug.get("reason") or "Geometric heuristic — please confirm"
             v = vision_suggestions_by_edge.get(key)
             if v and v.get("edge_type") == "wall_intersection" and (v.get("confidence") or 0) >= 0.7:
                 etype = "wall_intersection"
