@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { api } from '@/lib/api'
+import { api, invalidateApiCache } from '@/lib/api'
 import { fracToGeo } from './SolarAssistPanel'
 
 interface Props {
@@ -71,6 +71,10 @@ export default function HousePicker({
         geo = fracToGeo(point.x, point.y, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel)
       }
       await api.roofing.v2.setSubjectPoint(runId, point.x, point.y, geo?.lat, geo?.lng)
+      // The anchor changed → cached Solar/footprint responses (which may hold
+      // the WRONG building) must never be served again for this run.
+      invalidateApiCache('/solar')
+      invalidateApiCache('/footprint')
       setConfirmed(true)
       onConfirmed?.(point)
       toast.success('Locked onto your house — auto-detect + Solar will use this spot')

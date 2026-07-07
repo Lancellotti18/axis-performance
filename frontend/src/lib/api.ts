@@ -123,6 +123,16 @@ const _inflight = new Map<string, Promise<unknown>>()
 // HTTP-caches the heavy tile image bytes; this just spares the JSON round-trip).
 const _ttlCache = new Map<string, { at: number; value: unknown }>()
 
+/** Drop cached GET responses whose path contains `substr`. Needed when an
+ *  action changes what an endpoint would return — e.g. tapping "this is my
+ *  house" changes the anchor for /solar + /footprint lookups, so their cached
+ *  (possibly wrong-building) responses must not be served afterward. */
+export function invalidateApiCache(substr: string): void {
+  for (const key of _ttlCache.keys()) {
+    if (key.includes(substr)) _ttlCache.delete(key)
+  }
+}
+
 export async function apiRequest<T>(
   path: string,
   options?: RequestInit,

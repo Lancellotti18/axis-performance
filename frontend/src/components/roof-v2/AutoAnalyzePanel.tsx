@@ -43,6 +43,9 @@ interface Props {
   onAutoLabel: () => void
   /** Run automatically (once per run) when the roof is untraced. */
   autoStart?: boolean
+  /** Bump to force a re-run (e.g. after the contractor taps their house —
+   *  the lookup anchor changed, so the sources must be re-queried). */
+  trigger?: number
 }
 
 const LABELS = ['RF-1', 'RF-2', 'RF-3', 'RF-4', 'RF-5', 'RF-6', 'RF-7', 'RF-8', 'RF-9', 'RF-10', 'RF-11', 'RF-12']
@@ -57,7 +60,7 @@ const MAX_OFF_CENTER_FT = 90
 
 export default function AutoAnalyzePanel({
   runId, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel,
-  facetCount, onAddFacets, onAutoLabel, autoStart = false,
+  facetCount, onAddFacets, onAutoLabel, autoStart = false, trigger,
 }: Props) {
   const [running, setRunning] = useState(false)
   const [steps, setSteps] = useState<StepState[]>([])
@@ -243,6 +246,14 @@ export default function AutoAnalyzePanel({
     const t = setTimeout(() => { void runRef.current() }, 800)
     return () => clearTimeout(t)
   }, [autoStart, facetCount, runId])
+
+  // Forced re-run (house tapped → anchor changed → re-query the sources).
+  const firstTrigger = useRef(true)
+  useEffect(() => {
+    if (firstTrigger.current) { firstTrigger.current = false; return }
+    void runRef.current()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger])
 
   const icon = (s: StepStatus) =>
     s === 'done' ? '✓' : s === 'running' ? '…' : s === 'failed' ? '✕' : s === 'skipped' ? '↷' : '·'

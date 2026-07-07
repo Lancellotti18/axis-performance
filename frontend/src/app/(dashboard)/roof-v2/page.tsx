@@ -109,6 +109,7 @@ export default function RoofV2Page() {
   const [geometryStamp, setGeometryStamp] = useState(0)
   const [editorSyncRev, setEditorSyncRev] = useState(0)   // bump to push external edits into the editor canvas
   const [autoLabelTrigger, setAutoLabelTrigger] = useState(0)   // editor toolbar → run edge auto-label
+  const [analyzeTrigger, setAnalyzeTrigger] = useState(0)       // house tapped → re-run auto-analyze
   const [step, setStep] = useState<Step>('project')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -841,6 +842,7 @@ export default function RoofV2Page() {
             feetPerPixel={imagery.feet_per_pixel ?? 0}
             facetCount={facets.length}
             autoStart
+            trigger={analyzeTrigger}
             onAddFacets={async (newFacets) => {
               const merged = [...facets, ...newFacets]
               setFacets(merged)
@@ -925,6 +927,13 @@ export default function RoofV2Page() {
               imageHeightPx={imagery.height_px ?? 1366}
               feetPerPixel={imagery.feet_per_pixel ?? 0}
               address={project ? [project.address, project.city, project.state, project.zip].filter(Boolean).join(', ') : undefined}
+              onConfirmed={() => {
+                if (facets.length > 0) {
+                  toast('House locked. If the drawn facets are on the wrong building, delete them, then hit \u26a1 Re-run.', { icon: '\ud83c\udfaf' })
+                } else {
+                  setAnalyzeTrigger(t => t + 1)   // re-query Solar/footprint from the tapped anchor
+                }
+              }}
             />
           )}
 
