@@ -17,6 +17,74 @@ import type {
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
+// ── Growth-engine types ─────────────────────────────────────────────────────
+export interface QuoteWidget {
+  id: string
+  user_id: string
+  widget_key: string
+  enabled: boolean
+  company_name: string | null
+  phone: string | null
+  price_low: number
+  price_high: number
+}
+
+export interface WidgetLead {
+  id: string
+  name: string
+  phone: string | null
+  email: string | null
+  address: string
+  squares_estimate: number | null
+  price_low: number | null
+  price_high: number | null
+  quote_source: string | null
+  status: 'new' | 'contacted' | 'quoted' | 'won' | 'lost'
+  notes: string | null
+  created_at: string
+}
+
+export interface ProposalTier {
+  name: string
+  headline: string
+  description: string
+  features: string[]
+  price: number
+}
+
+export interface RoofProposal {
+  id: string
+  token: string
+  project_id: string | null
+  run_id: string | null
+  company_name: string | null
+  address: string | null
+  squares: number | null
+  tiers: ProposalTier[]
+  status: 'draft' | 'sent' | 'accepted' | 'declined' | 'expired'
+  accepted_tier: string | null
+  accepted_by_name: string | null
+  valid_until: string | null
+  created_at: string
+}
+
+export interface PublicProposal {
+  company_name: string
+  license_number: string | null
+  phone: string | null
+  email: string | null
+  logo_url: string | null
+  address: string | null
+  squares: number | null
+  total_roof_sqft: number | null
+  predominant_pitch: string | null
+  tiers: ProposalTier[]
+  status: string
+  accepted_tier: string | null
+  valid_until: string | null
+  created_at: string
+}
+
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -433,6 +501,71 @@ export const api = {
       }).then(async res => {
         if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
         return res.blob()
+      }),
+  },
+  // ── Growth engine: instant quote widget + lead inbox ─────────────────────
+  instantQuote: {
+    // Public (homeowner-facing; no auth required)
+    widgetConfig: (key: string) =>
+      apiRequest<{ company_name: string; phone: string }>(`/api/v1/instant-quote/w/${key}`),
+    quote: (key: string, address: string) =>
+      apiRequest<{
+        found: boolean
+        measured?: boolean
+        address?: string
+        lat?: number
+        lng?: number
+        squares?: number
+        roof_sqft?: number
+        price_low?: number
+        price_high?: number
+        source?: string
+        message?: string
+      }>(`/api/v1/instant-quote/w/${key}/quote`, {
+        method: 'POST', body: JSON.stringify({ address }),
+      }, 45000),
+    submitLead: (key: string, payload: {
+      name: string; phone?: string; email?: string; address: string
+      lat?: number; lng?: number; squares_estimate?: number
+      price_low?: number; price_high?: number; quote_source?: string
+    }) =>
+      apiRequest<{ ok: boolean; message: string }>(`/api/v1/instant-quote/w/${key}/lead`, {
+        method: 'POST', body: JSON.stringify(payload),
+      }),
+    // Contractor
+    myWidget: () =>
+      apiRequest<QuoteWidget>(`/api/v1/instant-quote/my-widget`),
+    updateWidget: (patch: Partial<Pick<QuoteWidget, 'enabled' | 'company_name' | 'phone' | 'price_low' | 'price_high'>>) =>
+      apiRequest<QuoteWidget>(`/api/v1/instant-quote/my-widget`, {
+        method: 'PATCH', body: JSON.stringify(patch),
+      }),
+    leads: (status?: string) =>
+      apiRequest<{ leads: WidgetLead[]; counts: Record<string, number> }>(
+        `/api/v1/instant-quote/leads${status ? `?status=${status}` : ''}`),
+    updateLead: (leadId: string, patch: { status?: WidgetLead['status']; notes?: string }) =>
+      apiRequest<WidgetLead>(`/api/v1/instant-quote/leads/${leadId}`, {
+        method: 'PATCH', body: JSON.stringify(patch),
+      }),
+  },
+  // ── Growth engine: good/better/best proposals ────────────────────────────
+  roofProposals: {
+    createFromRun: (runId: string, validDays = 30) =>
+      apiRequest<RoofProposal>(`/api/v1/roof-proposals/from-run/${runId}`, {
+        method: 'POST', body: JSON.stringify({ valid_days: validDays }),
+      }),
+    list: (projectId?: string) =>
+      apiRequest<{ proposals: RoofProposal[] }>(
+        `/api/v1/roof-proposals${projectId ? `?project_id=${projectId}` : ''}`),
+    update: (proposalId: string, patch: { tiers?: ProposalTier[]; status?: string; company_name?: string; phone?: string }) =>
+      apiRequest<RoofProposal>(`/api/v1/roof-proposals/${proposalId}`, {
+        method: 'PATCH', body: JSON.stringify(patch),
+      }),
+    // Public (homeowner)
+    publicGet: (token: string) =>
+      apiRequest<PublicProposal>(`/api/v1/roof-proposals/public/${token}`),
+    publicAccept: (token: string, payload: { tier_name: string; name: string; email?: string; note?: string }) =>
+      apiRequest<{ ok: boolean; message: string }>(`/api/v1/roof-proposals/public/${token}/accept`, {
+        method: 'POST', body: JSON.stringify(payload),
       }),
   },
   contractorProfile: {

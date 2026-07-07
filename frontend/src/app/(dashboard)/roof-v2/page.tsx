@@ -33,6 +33,7 @@ import GroundPhotoPanel from '@/components/roof-v2/GroundPhotoPanel'
 import CollapsibleSection from '@/components/roof-v2/CollapsibleSection'
 import AutoAnalyzePanel from '@/components/roof-v2/AutoAnalyzePanel'
 import JobVerificationPanel from '@/components/roof-v2/JobVerificationPanel'
+import ProposalPanel from '@/components/roof-v2/ProposalPanel'
 import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
 import SolarAssistPanel from '@/components/roof-v2/SolarAssistPanel'
@@ -1096,6 +1097,9 @@ export default function RoofV2Page() {
             facets={facets}
             edges={edges}
           />
+
+          {/* Good/Better/Best proposal — the last mile from measurement to signed job */}
+          <ProposalPanel runId={runId} projectId={projectId} />
 
           {/* Accuracy flywheel + white-label branding */}
           {userId && <JobVerificationPanel runId={runId} userId={userId} />}
