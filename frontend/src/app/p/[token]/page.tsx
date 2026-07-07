@@ -2,6 +2,7 @@
 
 /**
  * Public proposal page — the homeowner-facing good/better/best proposal.
+ * LIGHT theme: homeowner-facing surfaces read clean/trustworthy in white.
  * Branded with the contractor's company; homeowner picks a tier and accepts
  * online. This is the last mile from measurement to signed job.
  */
@@ -9,6 +10,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 
 import { api, type PublicProposal, type ProposalTier } from '@/lib/api'
+
+const inputCls = 'rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20'
 
 export default function PublicProposalPage() {
   const params = useParams<{ token: string }>()
@@ -55,15 +58,15 @@ export default function PublicProposalPage() {
 
   if (notFound) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#060b18] p-6 text-slate-300">
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-slate-600">
         This proposal link isn&apos;t valid — please contact your contractor for a fresh one.
       </main>
     )
   }
   if (!p) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#060b18]">
-        <span className="h-6 w-6 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+      <main className="flex min-h-screen items-center justify-center bg-slate-50">
+        <span className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
       </main>
     )
   }
@@ -72,7 +75,10 @@ export default function PublicProposalPage() {
   const popularIdx = p.tiers.length >= 2 ? 1 : 0   // "Better" is the anchor
 
   return (
-    <main className="min-h-screen bg-[#060b18] px-4 py-10 text-slate-100 sm:px-8">
+    <main
+      className="min-h-screen px-4 py-10 text-slate-900 sm:px-8"
+      style={{ background: 'linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)' }}
+    >
       <div className="mx-auto max-w-4xl">
         {/* Contractor header */}
         <header className="mb-8 text-center">
@@ -80,49 +86,46 @@ export default function PublicProposalPage() {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={p.logo_url} alt={p.company_name} className="mx-auto mb-3 h-12 object-contain" />
           )}
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{p.company_name}</h1>
-          <div className="mt-1 text-xs text-slate-400">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{p.company_name}</h1>
+          <div className="mt-1 text-xs text-slate-500">
             {[p.license_number ? `License ${p.license_number}` : null, p.phone, p.email].filter(Boolean).join(' · ')}
           </div>
         </header>
 
         {/* Property + measurement summary */}
-        <section
-          className="mb-8 rounded-2xl border border-white/10 p-5"
-          style={{ background: 'linear-gradient(160deg, rgba(15,23,42,0.9), rgba(8,13,28,0.95))' }}
-        >
-          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.28em] text-blue-300/80">Roof replacement proposal</div>
-          <div className="text-lg font-semibold text-white">{p.address || 'Your property'}</div>
+        <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_40px_-12px_rgba(15,40,80,0.12)]">
+          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.28em] text-blue-600/80">Roof replacement proposal</div>
+          <div className="text-lg font-semibold text-slate-900">{p.address || 'Your property'}</div>
           <div className="mt-3 grid grid-cols-3 gap-3 text-center">
-            <div className="rounded-xl border border-white/10 bg-slate-800/50 p-3">
-              <div className="text-lg font-bold text-white">{p.total_roof_sqft ? Math.round(p.total_roof_sqft).toLocaleString() : '—'} ft²</div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="text-lg font-bold text-slate-900">{p.total_roof_sqft ? Math.round(p.total_roof_sqft).toLocaleString() : '—'} ft²</div>
               <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Measured roof area</div>
             </div>
-            <div className="rounded-xl border border-white/10 bg-slate-800/50 p-3">
-              <div className="text-lg font-bold text-white">{p.squares ?? '—'}</div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="text-lg font-bold text-slate-900">{p.squares ?? '—'}</div>
               <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Roofing squares</div>
             </div>
-            <div className="rounded-xl border border-white/10 bg-slate-800/50 p-3">
-              <div className="text-lg font-bold text-white">{p.predominant_pitch || '—'}</div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="text-lg font-bold text-slate-900">{p.predominant_pitch || '—'}</div>
               <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Roof pitch</div>
             </div>
           </div>
-          <p className="mt-2 text-[11px] text-slate-500">
+          <p className="mt-2 text-[11px] text-slate-400">
             Measured from aerial + solar data{p.valid_until ? ` · proposal valid through ${p.valid_until}` : ''}.
           </p>
         </section>
 
         {isAccepted ? (
-          <section className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-8 text-center">
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-8 text-center shadow-sm">
             <div className="text-3xl">🎉</div>
-            <h2 className="mt-2 text-xl font-bold text-emerald-200">
+            <h2 className="mt-2 text-xl font-bold text-emerald-800">
               {accepted || `Accepted — ${p.accepted_tier} option`}
             </h2>
-            <p className="mt-2 text-sm text-slate-300">
+            <p className="mt-2 text-sm text-slate-600">
               {p.company_name} will contact you to confirm details and schedule the work.
             </p>
             {p.phone && (
-              <a href={`tel:${p.phone}`} className="mt-4 inline-block rounded-lg bg-slate-800 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700">
+              <a href={`tel:${p.phone}`} className="mt-4 inline-block rounded-lg bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50">
                 Questions? Call {p.phone}
               </a>
             )}
@@ -134,10 +137,10 @@ export default function PublicProposalPage() {
               {p.tiers.map((t, i) => (
                 <div
                   key={t.name}
-                  className={`relative flex flex-col rounded-2xl border p-5 ${
+                  className={`relative flex flex-col rounded-2xl border bg-white p-5 ${
                     i === popularIdx
-                      ? 'border-blue-400/50 bg-blue-500/10 shadow-[0_0_30px_rgba(59,130,246,0.15)]'
-                      : 'border-white/10 bg-slate-900/60'
+                      ? 'border-blue-400 shadow-[0_16px_44px_-14px_rgba(59,130,246,0.35)]'
+                      : 'border-slate-200 shadow-[0_8px_30px_-14px_rgba(15,40,80,0.15)]'
                   }`}
                 >
                   {i === popularIdx && (
@@ -145,14 +148,14 @@ export default function PublicProposalPage() {
                       Most popular
                     </span>
                   )}
-                  <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-300/80">{t.name}</div>
-                  <div className="mt-1 text-base font-semibold text-white">{t.headline}</div>
-                  <div className="mt-3 text-3xl font-bold text-white">{money(t.price)}</div>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-400">{t.description}</p>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-600/80">{t.name}</div>
+                  <div className="mt-1 text-base font-semibold text-slate-900">{t.headline}</div>
+                  <div className="mt-3 text-3xl font-bold text-slate-900">{money(t.price)}</div>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-500">{t.description}</p>
                   <ul className="mt-3 flex-1 space-y-1.5">
                     {t.features.map(f => (
-                      <li key={f} className="flex items-start gap-1.5 text-xs text-slate-300">
-                        <span className="mt-0.5 text-emerald-400">✓</span>{f}
+                      <li key={f} className="flex items-start gap-1.5 text-xs text-slate-600">
+                        <span className="mt-0.5 text-emerald-500">✓</span>{f}
                       </li>
                     ))}
                   </ul>
@@ -161,9 +164,9 @@ export default function PublicProposalPage() {
                     className={`mt-4 rounded-lg py-2.5 text-sm font-semibold transition ${
                       i === popularIdx
                         ? 'text-white hover:scale-[1.02]'
-                        : 'bg-slate-800 text-white hover:bg-slate-700'
+                        : 'bg-slate-100 text-slate-800 ring-1 ring-slate-200 hover:bg-slate-200'
                     }`}
-                    style={i === popularIdx ? { background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.4)' } : undefined}
+                    style={i === popularIdx ? { background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' } : undefined}
                   >Choose {t.name}</button>
                 </div>
               ))}
@@ -171,30 +174,28 @@ export default function PublicProposalPage() {
 
             {/* Accept modal */}
             {choosing && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setChoosing(null)}>
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm" onClick={() => setChoosing(null)}>
                 <div
-                  className="w-full max-w-md rounded-2xl border border-white/15 bg-slate-900 p-6"
+                  className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
                   onClick={e => e.stopPropagation()}
                 >
-                  <h3 className="text-lg font-bold text-white">Accept the {choosing.name} option</h3>
-                  <div className="mt-1 text-sm text-slate-400">{choosing.headline} — <strong className="text-white">{money(choosing.price)}</strong></div>
+                  <h3 className="text-lg font-bold text-slate-900">Accept the {choosing.name} option</h3>
+                  <div className="mt-1 text-sm text-slate-500">{choosing.headline} — <strong className="text-slate-900">{money(choosing.price)}</strong></div>
                   <div className="mt-4 grid gap-2">
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name"
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white placeholder:text-slate-500" />
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email (optional)"
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white placeholder:text-slate-500" />
+                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" className={inputCls} />
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email (optional)" className={inputCls} />
                     <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Anything the crew should know? (optional)"
-                      className="h-16 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white placeholder:text-slate-500" />
+                      className={`h-16 ${inputCls}`} />
                   </div>
-                  {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
+                  {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
                   <div className="mt-4 flex gap-2">
                     <button onClick={accept} disabled={submitting}
-                      className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">
+                      className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(5,150,105,0.3)] hover:bg-emerald-500 disabled:opacity-50">
                       {submitting ? 'Accepting…' : `Accept — ${money(choosing.price)}`}
                     </button>
-                    <button onClick={() => setChoosing(null)} className="rounded-lg bg-slate-800 px-4 text-sm text-slate-300 hover:bg-slate-700">Back</button>
+                    <button onClick={() => setChoosing(null)} className="rounded-lg bg-slate-100 px-4 text-sm text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200">Back</button>
                   </div>
-                  <p className="mt-3 text-[10px] text-slate-500">
+                  <p className="mt-3 text-[10px] text-slate-400">
                     Accepting signals your intent to move forward — {p.company_name} will confirm final details
                     and paperwork before any work begins.
                   </p>
@@ -204,7 +205,7 @@ export default function PublicProposalPage() {
           </>
         )}
 
-        <p className="mt-8 text-center text-[10px] text-slate-600">Proposal generated with Axis Performance.</p>
+        <p className="mt-8 text-center text-[10px] text-slate-400">Proposal generated with Axis Performance.</p>
       </div>
     </main>
   )

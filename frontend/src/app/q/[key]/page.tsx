@@ -1,7 +1,9 @@
 'use client'
 
 /**
- * Public instant-quote page — homeowner-facing, mobile-first.
+ * Public instant-quote page — homeowner-facing, mobile-first, LIGHT theme.
+ * Homeowner-facing surfaces read clean/trustworthy in white; the brand blue
+ * is kept for actions.
  *
  * Hosted at /q/{widgetKey}: contractors share it from their website (iframe
  * embed with ?embed=1), Google Business Profile, Facebook, ads, or a QR code.
@@ -35,6 +37,8 @@ function monthly(principal: number): number {
   const n = 120
   return principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
 }
+
+const inputCls = 'rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20'
 
 export default function InstantQuotePage() {
   const params = useParams<{ key: string }>()
@@ -113,36 +117,36 @@ export default function InstantQuotePage() {
     } finally {
       setSubmitting(false)
     }
-  }, [name, phone, email, quote, address, widgetKey])
+  }, [name, phone, email, urgency, insurance, material, quote, address, widgetKey])
 
   const money = (v?: number) => v == null ? '—' : v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 
   if (notFound) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#060b18] p-6 text-slate-300">
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-slate-600">
         This quote tool isn&apos;t available. Please contact the contractor directly.
       </main>
     )
   }
 
   return (
-    <main className={`min-h-screen bg-[#060b18] text-slate-100 ${embedded ? 'p-3' : 'flex items-center justify-center p-4 sm:p-8'}`}>
+    <main
+      className={`min-h-screen text-slate-900 ${embedded ? 'p-3' : 'flex items-center justify-center p-4 sm:p-8'}`}
+      style={{ background: 'linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)' }}
+    >
       <div className="w-full max-w-xl">
         {/* Header */}
         <div className="mb-6 text-center">
-          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.28em] text-blue-300/80">Instant roof quote</div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{company || '…'}</h1>
-          <p className="mt-2 text-sm text-slate-400">
+          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.28em] text-blue-600/80">Instant roof quote</div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{company || '…'}</h1>
+          <p className="mt-2 text-sm text-slate-500">
             Type your address — we measure your roof from aerial data and show a real price range in seconds.
           </p>
         </div>
 
-        {/* Address input */}
-        <div
-          className="rounded-2xl border border-white/10 p-5 shadow-2xl"
-          style={{ background: 'linear-gradient(160deg, rgba(15,23,42,0.9), rgba(8,13,28,0.95))' }}
-        >
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Property address</label>
+        {/* Card */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_40px_-12px_rgba(15,40,80,0.15)] sm:p-6">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Property address</label>
           <div className="mt-2 flex gap-2">
             <input
               type="text"
@@ -150,27 +154,27 @@ export default function InstantQuotePage() {
               onChange={e => setAddress(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') void getQuote() }}
               placeholder="123 Main St, Springfield, IL"
-              className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-3 text-sm text-white placeholder:text-slate-500"
+              className={`min-w-0 flex-1 ${inputCls}`}
             />
             <button
               onClick={getQuote}
               disabled={loading}
               className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.02] disabled:opacity-50"
-              style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.45)' }}
+              style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
             >{loading ? 'Measuring…' : 'Get my quote'}</button>
           </div>
           {loading && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-blue-300">
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+            <div className="mt-3 flex items-center gap-2 text-xs text-blue-600">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
               Measuring your roof from satellite + solar data…
             </div>
           )}
-          {error && <p className="mt-3 text-xs text-rose-400">{error}</p>}
+          {error && <p className="mt-3 text-xs text-rose-600">{error}</p>}
 
           {/* Quote result */}
           {quote?.found && !done && (
-            <div className="mt-5 border-t border-white/10 pt-5">
-              <div className="text-xs text-slate-400">{quote.address}</div>
+            <div className="mt-5 border-t border-slate-200 pt-5">
+              <div className="text-xs text-slate-500">{quote.address}</div>
               {quote.measured ? (() => {
                 const mult = MATERIALS.find(m => m.key === material)?.mult ?? 1
                 const lo = (quote.price_low ?? 0) * mult
@@ -187,96 +191,93 @@ export default function InstantQuotePage() {
                             onClick={() => setMaterial(m.key)}
                             className={`rounded-lg border px-2 py-2 text-center transition ${
                               material === m.key
-                                ? 'border-blue-400/60 bg-blue-500/15 text-white'
-                                : 'border-white/10 bg-slate-800/50 text-slate-400 hover:text-white'
+                                ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm'
+                                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700'
                             }`}
                           >
                             <div className="text-[11px] font-semibold leading-tight">{m.label}</div>
-                            <div className="mt-0.5 text-[9px] text-slate-500">{m.note}</div>
+                            <div className="mt-0.5 text-[9px] text-slate-400">{m.note}</div>
                           </button>
                         ))}
                       </div>
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-3">
-                      <div className="rounded-xl border border-white/10 bg-slate-800/50 p-3 text-center">
-                        <div className="text-xl font-bold text-white">{quote.roof_sqft?.toLocaleString()} ft²</div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                        <div className="text-xl font-bold text-slate-900">{quote.roof_sqft?.toLocaleString()} ft²</div>
                         <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Measured roof area</div>
                       </div>
-                      <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-3 text-center">
-                        <div className="text-xl font-bold text-emerald-300">{money(lo)}–{money(hi)}</div>
-                        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-emerald-400/70">Estimated range</div>
-                        <div className="mt-1 text-[10px] text-slate-400">
-                          or from <strong className="text-emerald-200">{money(monthly(lo))}/mo</strong> with financing*
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+                        <div className="text-xl font-bold text-emerald-700">{money(lo)}–{money(hi)}</div>
+                        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-emerald-600/80">Estimated range</div>
+                        <div className="mt-1 text-[10px] text-slate-500">
+                          or from <strong className="text-emerald-700">{money(monthly(lo))}/mo</strong> with financing*
                         </div>
                       </div>
                     </div>
 
-                    {/* Honest expectations — this is an estimate, and here's why it varies */}
-                    <div className="mt-3 rounded-lg border border-amber-400/25 bg-amber-500/[0.07] p-3">
-                      <div className="text-[11px] font-semibold text-amber-200">
+                    {/* Honest expectations — estimate, not the official quote */}
+                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <div className="text-[11px] font-semibold text-amber-900">
                         ⓘ This is an instant estimate — not your official quote.
                       </div>
-                      <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                      <p className="mt-1 text-[11px] leading-relaxed text-amber-900/70">
                         It&apos;s based on an aerial measurement of your roof and typical pricing.
                         Your firm quote comes after {company || 'the contractor'} verifies the
                         details below — the final price can be higher or lower.
                       </p>
                       <button
                         onClick={() => setFactorsOpen(o => !o)}
-                        className="mt-1.5 text-[11px] font-semibold text-amber-300/90 underline-offset-2 hover:underline"
+                        className="mt-1.5 text-[11px] font-semibold text-amber-800 underline-offset-2 hover:underline"
                       >{factorsOpen ? 'Hide' : 'What can change the price?'}</button>
                       {factorsOpen && (
-                        <ul className="mt-2 space-y-1 text-[11px] text-slate-400">
-                          <li>• <strong className="text-slate-300">Roof steepness &amp; height</strong> — steeper or multi-story roofs take more labor and safety setup</li>
-                          <li>• <strong className="text-slate-300">Layers to tear off</strong> — removing two or more old shingle layers costs more than one</li>
-                          <li>• <strong className="text-slate-300">Decking condition</strong> — rotted or soft plywood found during tear-off is replaced per sheet</li>
-                          <li>• <strong className="text-slate-300">Material &amp; color choice</strong> — the exact shingle line and warranty level you pick</li>
-                          <li>• <strong className="text-slate-300">Roof complexity</strong> — chimneys, skylights, valleys and dormers add flashing work</li>
-                          <li>• <strong className="text-slate-300">Local code &amp; permits</strong> — ice-and-water barrier requirements and permit fees vary by town</li>
+                        <ul className="mt-2 space-y-1 text-[11px] text-amber-900/70">
+                          <li>• <strong className="text-amber-900">Roof steepness &amp; height</strong> — steeper or multi-story roofs take more labor and safety setup</li>
+                          <li>• <strong className="text-amber-900">Layers to tear off</strong> — removing two or more old shingle layers costs more than one</li>
+                          <li>• <strong className="text-amber-900">Decking condition</strong> — rotted or soft plywood found during tear-off is replaced per sheet</li>
+                          <li>• <strong className="text-amber-900">Material &amp; color choice</strong> — the exact shingle line and warranty level you pick</li>
+                          <li>• <strong className="text-amber-900">Roof complexity</strong> — chimneys, skylights, valleys and dormers add flashing work</li>
+                          <li>• <strong className="text-amber-900">Local code &amp; permits</strong> — ice-and-water barrier requirements and permit fees vary by town</li>
                         </ul>
                       )}
-                      <p className="mt-1.5 text-[10px] text-slate-500">
+                      <p className="mt-1.5 text-[10px] text-amber-900/50">
                         *Financing example: 9.9% APR, 120 months, subject to credit approval. Terms vary.
                       </p>
                     </div>
                   </>
                 )
               })() : (
-                <p className="mt-3 text-sm text-amber-300/90">{quote.message}</p>
+                <p className="mt-3 text-sm text-amber-700">{quote.message}</p>
               )}
 
               {/* Lead capture */}
-              <div className="mt-5 rounded-xl border border-blue-400/20 bg-blue-500/5 p-4">
-                <div className="text-sm font-semibold text-white">Get your official quote — free, no obligation</div>
-                <p className="mt-1 text-xs text-slate-400">
+              <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+                <div className="text-sm font-semibold text-slate-900">Get your official quote — free, no obligation</div>
+                <p className="mt-1 text-xs text-slate-500">
                   {company || 'The contractor'} verifies the measurement and the factors above, then gives you a firm price in writing.
                 </p>
                 <div className="mt-3 grid gap-2">
-                  <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your name"
-                    className="rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2.5 text-sm text-white placeholder:text-slate-500" />
+                  <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" className={inputCls} />
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone"
-                      className="rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2.5 text-sm text-white placeholder:text-slate-500" />
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email"
-                      className="rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2.5 text-sm text-white placeholder:text-slate-500" />
+                    <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone" className={inputCls} />
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className={inputCls} />
                   </div>
                   <select
                     value={urgency}
                     onChange={e => setUrgency(e.target.value as typeof URGENCY[number]['key'])}
-                    className="rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2.5 text-sm text-white"
+                    className={inputCls}
                   >
                     {URGENCY.map(u => <option key={u.key} value={u.key}>When do you need this? — {u.label}</option>)}
                   </select>
-                  <label className="flex items-center gap-2 text-xs text-slate-300">
+                  <label className="flex items-center gap-2 text-xs text-slate-600">
                     <input type="checkbox" checked={insurance} onChange={e => setInsurance(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-800" />
+                      className="h-4 w-4 rounded border-slate-300" />
                     My roof may have storm damage (possible insurance claim)
                   </label>
                   <button
                     onClick={submitLead}
                     disabled={submitting}
-                    className="rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+                    className="rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(5,150,105,0.3)] transition hover:bg-emerald-500 disabled:opacity-50"
                   >{submitting ? 'Sending…' : 'Get my official quote →'}</button>
                 </div>
               </div>
@@ -284,11 +285,11 @@ export default function InstantQuotePage() {
           )}
 
           {done && (
-            <div className="mt-5 rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-center">
+            <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
               <div className="text-2xl">✅</div>
-              <div className="mt-1 text-sm font-semibold text-emerald-200">{done}</div>
+              <div className="mt-1 text-sm font-semibold text-emerald-800">{done}</div>
               {companyPhone && (
-                <a href={`tel:${companyPhone}`} className="mt-3 inline-block rounded-lg bg-slate-800 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700">
+                <a href={`tel:${companyPhone}`} className="mt-3 inline-block rounded-lg bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50">
                   Or call now: {companyPhone}
                 </a>
               )}
@@ -297,7 +298,7 @@ export default function InstantQuotePage() {
         </div>
 
         {!embedded && (
-          <p className="mt-4 text-center text-[10px] text-slate-600">
+          <p className="mt-4 text-center text-[10px] text-slate-400">
             Measurements powered by Axis Performance aerial + solar data.
           </p>
         )}

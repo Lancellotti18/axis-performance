@@ -83,12 +83,14 @@ async def create_from_run(
     if squares <= 0:
         raise HTTPException(status_code=422, detail="Measure the roof first — this run has no square footage yet.")
 
+    # Ownership: the run's project must belong to the caller.
     address = None
     if run.data.get("project_id"):
-        proj = db.table("projects").select("address, city, state, zip, name").eq("id", run.data["project_id"]).single().execute()
-        if proj.data:
-            parts = [proj.data.get("address"), proj.data.get("city"), proj.data.get("state")]
-            address = ", ".join(p for p in parts if p) or proj.data.get("name")
+        proj = db.table("projects").select("user_id, address, city, state, zip, name").eq("id", run.data["project_id"]).single().execute()
+        if not proj.data or proj.data.get("user_id") != user["id"]:
+            raise HTTPException(status_code=403, detail="This measurement belongs to another account.")
+        parts = [proj.data.get("address"), proj.data.get("city"), proj.data.get("state")]
+        address = ", ".join(p for p in parts if p) or proj.data.get("name")
 
     order_sq = squares * 1.10   # waste
     tiers = []
