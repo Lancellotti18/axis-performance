@@ -1,21 +1,28 @@
 'use client'
 
 /**
- * AutoAnalyzePanel — ⚡ one button runs the whole detection pipeline and lands
- * the contractor at a REVIEW screen instead of a build screen:
+ * AutoAnalyzePanel — ⚡ the whole detection pipeline in one shot, so the
+ * contractor VERIFIES a drawn roof instead of tracing one:
  *
- *   1. Roof planes — Google Solar (measured pitch) → OSM footprint →
- *      AI vision detection, first source that returns wins.
+ *   1. Roof planes — best available source wins:
+ *        a. Google Solar × building outline: each Solar plane (measured
+ *           pitch) is CLIPPED to the OSM footprint (offset outward ~1.5 ft
+ *           for roof overhang), so outer facet edges land on the real roof
+ *           edge instead of floating rectangles.
+ *        b. Solar bboxes alone (no footprint coverage).
+ *        c. Footprint outline alone (no Solar coverage).
+ *        d. AI vision detection on the satellite tile.
  *   2. Edge labels — the geometric auto-labeler runs on the result.
  *
- * Everything it adds is a normal editable facet/edge suggestion — the
- * contractor refines vertices and accepts labels exactly as if they'd drawn
- * it, so "review what AI found" replaces "operate five tools in order".
+ * With `autoStart`, it runs ITSELF the first time the editor opens on an
+ * untraced roof (once per run) — zero clicks before "review what AI found".
+ * Everything it adds is a normal editable facet/suggestion.
  */
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
+import { clipPolygonToRect, offsetPolygon, polygonArea, type Pt } from '@/lib/polyclip'
 import type { Facet } from './RoofFacetEditor'
 import { geoToFrac } from './SolarAssistPanel'
 
@@ -34,13 +41,17 @@ interface Props {
   onAddFacets: (facets: Facet[]) => void | Promise<void>
   /** Kick the edge auto-labeler (bumps the trigger + scrolls to the panel). */
   onAutoLabel: () => void
+  /** Run automatically (once per run) when the roof is untraced. */
+  autoStart?: boolean
 }
 
 const LABELS = ['RF-1', 'RF-2', 'RF-3', 'RF-4', 'RF-5', 'RF-6', 'RF-7', 'RF-8', 'RF-9', 'RF-10', 'RF-11', 'RF-12']
+const OVERHANG_FT = 1.5           // typical eave overhang past the wall line
+const MIN_FACET_AREA_FRAC = 0.0002   // ≈ 90 ft² on a standard tile — rejects clip slivers
 
 export default function AutoAnalyzePanel({
   runId, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel,
-  facetCount, onAddFacets, onAutoLabel,
+  facetCount, onAddFacets, onAutoLabel, autoStart = false,
 }: Props) {
   const [running, setRunning] = useState(false)
   const [steps, setSteps] = useState<StepState[]>([])
@@ -64,46 +75,89 @@ export default function AutoAnalyzePanel({
         setStep('facets', { status: 'skipped', detail: `${facetCount} facet(s) already traced — keeping yours` })
       } else {
         let source = ''
-        // 1a. Google Solar — pre-segmented planes with MEASURED pitch.
-        if (centerLat != null && centerLng != null && feetPerPixel > 0) {
-          try {
-            const solar = await api.roofing.v2.getSolar(runId)
-            const segs = solar.available ? (solar.segments || []) : []
-            if (segs.length > 0) {
-              const facets: Facet[] = segs.slice(0, LABELS.length).map((s, i) => {
-                const { sw, ne } = s.bbox
-                const conv = (la: number, ln: number) =>
-                  geoToFrac(la, ln, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel)
-                return {
-                  label: LABELS[i],
-                  polygon: [conv(ne.lat, sw.lng), conv(ne.lat, ne.lng), conv(sw.lat, ne.lng), conv(sw.lat, sw.lng)],
-                  pitch: s.pitch || '6/12',
-                  confidence: 0.75,
-                  userConfirmed: false,
-                }
+        const geoReady = centerLat != null && centerLng != null && feetPerPixel > 0
+        const toFrac = (la: number, ln: number): Pt =>
+          geoToFrac(la, ln, centerLat as number, centerLng as number, imageWidthPx, imageHeightPx, feetPerPixel)
+
+        if (geoReady) {
+          // Fetch BOTH sources in parallel (each cached server-side).
+          const [solarRes, fpRes] = await Promise.allSettled([
+            api.roofing.v2.getSolar(runId),
+            api.roofing.v2.getFootprint(runId),
+          ])
+          const solar = solarRes.status === 'fulfilled' && solarRes.value.available ? solarRes.value : null
+          const fp = fpRes.status === 'fulfilled' && fpRes.value.available ? fpRes.value : null
+          const segs = solar?.segments || []
+
+          // Footprint ring → image fractions, expanded for roof overhang.
+          // Offset happens in PIXEL space (fractions are anisotropic).
+          let fpFrac: Pt[] = []
+          if (fp?.ring && fp.ring.length >= 3) {
+            const px: Pt[] = fp.ring.map(p => {
+              const [fx, fy] = toFrac(p.lat, p.lng)
+              return [fx * imageWidthPx, fy * imageHeightPx]
+            })
+            const grown = offsetPolygon(px, OVERHANG_FT / feetPerPixel)
+            fpFrac = grown.map(([x, y]) => [
+              Math.max(0, Math.min(1, x / imageWidthPx)),
+              Math.max(0, Math.min(1, y / imageHeightPx)),
+            ])
+          }
+
+          // 1a. BEST: Solar planes clipped to the building outline — outer
+          //     edges land on the real roof edge, pitch stays measured.
+          if (segs.length > 0 && fpFrac.length >= 3) {
+            const facets: Facet[] = []
+            for (const s of segs.slice(0, LABELS.length)) {
+              const { sw, ne } = s.bbox
+              const c1 = toFrac(ne.lat, sw.lng), c2 = toFrac(ne.lat, ne.lng)
+              const c3 = toFrac(sw.lat, ne.lng), c4 = toFrac(sw.lat, sw.lng)
+              const xs = [c1[0], c2[0], c3[0], c4[0]], ys = [c1[1], c2[1], c3[1], c4[1]]
+              const clipped = clipPolygonToRect(fpFrac, Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys))
+              const poly: Pt[] = clipped.length >= 3 && polygonArea(clipped) >= MIN_FACET_AREA_FRAC
+                ? clipped
+                : [c1, c2, c3, c4]          // degenerate clip → keep the bbox
+              facets.push({
+                label: LABELS[facets.length],
+                polygon: poly,
+                pitch: s.pitch || '6/12',
+                confidence: 0.75,
+                userConfirmed: false,
               })
+            }
+            if (facets.length > 0) {
               await onAddFacets(facets)
               added = facets.length
-              source = `Google Solar — ${added} plane(s), measured pitch`
+              source = `Google Solar × building outline — ${added} plane(s), measured pitch, snapped to the roof edge`
             }
-          } catch { /* fall through */ }
+          }
 
-          // 1b. OSM building footprint (free, nationwide).
-          if (added === 0) {
-            try {
-              const fp = await api.roofing.v2.getFootprint(runId)
-              if (fp.available && fp.ring && fp.ring.length >= 3) {
-                const poly = fp.ring.map(p =>
-                  geoToFrac(p.lat, p.lng, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel))
-                await onAddFacets([{ label: LABELS[0], polygon: poly, pitch: '6/12', confidence: 0.6, userConfirmed: false }])
-                added = 1
-                source = 'Building outline (OpenStreetMap) — split it into planes'
+          // 1b. Solar only (no footprint coverage) → bbox rectangles.
+          if (added === 0 && segs.length > 0) {
+            const facets: Facet[] = segs.slice(0, LABELS.length).map((s, i) => {
+              const { sw, ne } = s.bbox
+              return {
+                label: LABELS[i],
+                polygon: [toFrac(ne.lat, sw.lng), toFrac(ne.lat, ne.lng), toFrac(sw.lat, ne.lng), toFrac(sw.lat, sw.lng)],
+                pitch: s.pitch || '6/12',
+                confidence: 0.7,
+                userConfirmed: false,
               }
-            } catch { /* fall through */ }
+            })
+            await onAddFacets(facets)
+            added = facets.length
+            source = `Google Solar — ${added} plane(s), measured pitch (no outline data here)`
+          }
+
+          // 1c. Footprint only (no Solar coverage) → whole-roof outline.
+          if (added === 0 && fpFrac.length >= 3) {
+            await onAddFacets([{ label: LABELS[0], polygon: fpFrac, pitch: '6/12', confidence: 0.6, userConfirmed: false }])
+            added = 1
+            source = 'Building outline (overhang-adjusted) — split it into planes'
           }
         }
 
-        // 1c. AI vision detection on the satellite tile.
+        // 1d. AI vision detection on the satellite tile.
         if (added === 0) {
           const res = await api.roofing.v2.suggestFacets(runId)
           const polys = (res.facets || []).filter(f => (f.polygon || []).length >= 3)
@@ -134,13 +188,27 @@ export default function AutoAnalyzePanel({
       await new Promise(r => setTimeout(r, 600))
       onAutoLabel()
       setStep('labels', { status: 'done', detail: 'Suggestions ready below — review & accept' })
-      toast.success('Auto-analysis complete — review the results, refine anything, accept the labels.')
+      toast.success('Auto-analysis complete — verify the planes, drag any vertex that needs it, accept the labels.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Auto-analysis failed')
     } finally {
       setRunning(false)
     }
   }, [running, facetCount, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel, runId, onAddFacets, onAutoLabel, setStep])
+
+  // ---- Zero-click start: run once per run when the roof is untraced --------
+  const runRef = useRef(run)
+  useEffect(() => { runRef.current = run }, [run])
+  useEffect(() => {
+    if (!autoStart || facetCount > 0) return
+    const key = `axis_autoanalyzed_${runId}`
+    try {
+      if (sessionStorage.getItem(key)) return
+      sessionStorage.setItem(key, '1')
+    } catch { /* private mode: still run, just without the guard */ }
+    const t = setTimeout(() => { void runRef.current() }, 800)
+    return () => clearTimeout(t)
+  }, [autoStart, facetCount, runId])
 
   const icon = (s: StepStatus) =>
     s === 'done' ? '✓' : s === 'running' ? '…' : s === 'failed' ? '✕' : s === 'skipped' ? '↷' : '·'
@@ -156,8 +224,9 @@ export default function AutoAnalyzePanel({
         <div>
           <h3 className="text-sm font-semibold text-slate-100">⚡ Auto-analyze this roof</h3>
           <p className="text-xs text-slate-400">
-            One click: detect the roof planes (Google Solar → building outline → AI vision) and
-            label every edge — then you just <strong>review</strong> instead of building from scratch.
+            {running
+              ? 'Drawing the roof for you — planes snapped to the building edge, pitch from solar data…'
+              : 'AI draws the roof (Solar planes clipped to the real building outline) and labels every edge — you just verify and nudge.'}
           </p>
         </div>
         <button

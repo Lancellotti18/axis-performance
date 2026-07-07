@@ -839,6 +839,7 @@ export default function RoofV2Page() {
             imageHeightPx={imagery.height_px ?? 1366}
             feetPerPixel={imagery.feet_per_pixel ?? 0}
             facetCount={facets.length}
+            autoStart
             onAddFacets={async (newFacets) => {
               const merged = [...facets, ...newFacets]
               setFacets(merged)
