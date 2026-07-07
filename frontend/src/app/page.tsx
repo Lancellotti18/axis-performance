@@ -147,29 +147,28 @@ function Capability({
       initial={{ opacity: 0, y: 30 }}
       animate={inView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      className="group relative rounded-3xl p-8 md:p-10 backdrop-blur-xl transition-transform duration-300 hover:-translate-y-1"
+      className="group relative rounded-3xl bg-white p-8 md:p-10 transition-transform duration-300 hover:-translate-y-1"
       style={{
-        background: 'linear-gradient(145deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012))',
-        border: '1px solid rgba(255,255,255,0.10)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 20px 50px -28px rgba(0,0,0,0.55)',
+        border: '1px solid rgba(15,23,42,0.08)',
+        boxShadow: '0 18px 50px -28px rgba(15,40,80,0.25)',
       }}
     >
       <div
-        className="text-blue-300/80 font-mono text-xs tracking-[0.3em] uppercase mb-5"
+        className="text-blue-600/80 font-mono text-xs tracking-[0.3em] uppercase mb-5"
       >
         {num}
       </div>
-      <h3 className="text-2xl md:text-[26px] font-semibold text-white mb-3.5 tracking-tight leading-tight">
+      <h3 className="text-2xl md:text-[26px] font-semibold text-slate-900 mb-3.5 tracking-tight leading-tight">
         {title}
       </h3>
-      <p className="text-white/60 text-[15px] md:text-base leading-relaxed font-light">
+      <p className="text-slate-500 text-[15px] md:text-base leading-relaxed font-light">
         {body}
       </p>
       {/* subtle hover glow */}
       <div
-        className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+        className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
         style={{
-          background: 'radial-gradient(ellipse at top, rgba(96,165,250,0.08), transparent 70%)',
+          background: 'radial-gradient(ellipse at top, rgba(59,130,246,0.07), transparent 70%)',
         }}
       />
     </motion.div>
@@ -250,7 +249,7 @@ export default function HomePage() {
   const [progress, setProgress] = useState(0)
 
   return (
-    <main className="bg-[#02060f] text-white font-sans selection:bg-blue-500/30">
+    <main className="bg-[#f7f9fc] text-slate-900 font-sans selection:bg-blue-500/20">
       {/* Global typography niceties — modern tech feel */}
       <style jsx global>{`
         html { scroll-behavior: auto; }
@@ -400,15 +399,18 @@ export default function HomePage() {
         </div>
       </HeroImageScene>
 
+      {/* Dark hero → light content transition band */}
+      <div className="h-32 w-full" style={{ background: 'linear-gradient(180deg, #02060f 0%, #f7f9fc 100%)' }} />
+
       {/* ─── Capabilities (below the cinematic hero) ─────────────────────── */}
-      <section className="relative px-6 md:px-10 py-32 md:py-40">
+      <section className="relative px-6 md:px-10 py-28 md:py-36">
         {/* Faint grid background */}
         <div
-          className="absolute inset-0 opacity-[0.04] pointer-events-none"
+          className="absolute inset-0 opacity-[0.05] pointer-events-none"
           style={{
             backgroundImage: `
-              linear-gradient(rgba(255,255,255,1) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)
+              linear-gradient(rgba(15,23,42,1) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(15,23,42,1) 1px, transparent 1px)
             `,
             backgroundSize: '64px 64px',
           }}
@@ -416,13 +418,13 @@ export default function HomePage() {
         <div className="relative max-w-6xl mx-auto">
           <FadeIn>
             <div className="text-center mb-20">
-              <div className="text-blue-300/80 text-[10px] font-mono tracking-[0.3em] uppercase mb-5">
+              <div className="text-blue-600/80 text-[10px] font-mono tracking-[0.3em] uppercase mb-5">
                 Capabilities
               </div>
-              <h2 className="font-display text-4xl md:text-6xl font-bold text-white tracking-tight leading-tight max-w-3xl mx-auto">
+              <h2 className="font-display text-4xl md:text-6xl font-bold text-slate-900 tracking-tight leading-tight max-w-3xl mx-auto">
                 Everything a contractor needs.
                 <br />
-                <span className="text-white/40">One platform.</span>
+                <span className="text-slate-400">One platform.</span>
               </h2>
             </div>
           </FadeIn>
@@ -463,7 +465,7 @@ export default function HomePage() {
       </section>
 
       {/* ─── Stats strip ─────────────────────────────────────────────────── */}
-      <section className="relative py-24 px-6 border-y border-white/[0.06]">
+      <section className="relative border-y border-slate-200 bg-white py-24 px-6">
         <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-16">
           {[
             { value: '< 2min', label: 'Full analysis' },
@@ -475,11 +477,11 @@ export default function HomePage() {
               <div className="text-center md:text-left">
                 <div
                   className="font-display text-4xl md:text-5xl font-bold text-transparent bg-clip-text mb-2"
-                  style={{ backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #4A90E2 130%)' }}
+                  style={{ backgroundImage: 'linear-gradient(180deg, #0f172a 0%, #2563eb 130%)' }}
                 >
                   {s.value}
                 </div>
-                <div className="text-white/40 text-xs md:text-sm font-mono tracking-widest uppercase">
+                <div className="text-slate-400 text-xs md:text-sm font-mono tracking-widest uppercase">
                   {s.label}
                 </div>
               </div>
@@ -492,10 +494,10 @@ export default function HomePage() {
       <section className="relative px-6 md:px-10 py-32 md:py-40">
         <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 md:gap-20 items-start">
           <FadeIn>
-            <div className="text-red-300/80 text-[10px] font-mono tracking-[0.3em] uppercase mb-5">
+            <div className="text-red-500/80 text-[10px] font-mono tracking-[0.3em] uppercase mb-5">
               Without Axis
             </div>
-            <h3 className="font-display text-3xl md:text-4xl font-bold text-white/55 mb-10 tracking-tight leading-tight">
+            <h3 className="font-display text-3xl md:text-4xl font-bold text-slate-400 mb-10 tracking-tight leading-tight">
               Hours of manual work.
             </h3>
             <ul className="space-y-4">
@@ -507,8 +509,8 @@ export default function HomePage() {
                 'Navigate complex permit portals',
                 'Re-submit rejected applications',
               ].map(item => (
-                <li key={item} className="flex items-start gap-3 text-white/45 text-[15px] font-light leading-relaxed">
-                  <span className="mt-2 w-3.5 h-px bg-red-400/40 flex-shrink-0" />
+                <li key={item} className="flex items-start gap-3 text-slate-500 text-[15px] font-light leading-relaxed">
+                  <span className="mt-2 w-3.5 h-px bg-red-400/60 flex-shrink-0" />
                   {item}
                 </li>
               ))}
@@ -516,12 +518,13 @@ export default function HomePage() {
           </FadeIn>
 
           <FadeIn delay={0.15}>
+            {/* Dark navy anchor card — deliberate contrast pop on the light page */}
             <div
-              className="relative rounded-3xl p-8 md:p-10 backdrop-blur-xl"
+              className="relative rounded-3xl p-8 md:p-10"
               style={{
-                background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(59,130,246,0.02))',
-                border: '1px solid rgba(96,165,250,0.20)',
-                boxShadow: '0 24px 60px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)',
+                background: 'linear-gradient(150deg, #0b1526 0%, #0e1f3f 100%)',
+                border: '1px solid rgba(96,165,250,0.25)',
+                boxShadow: '0 30px 70px -25px rgba(13,30,66,0.55), inset 0 1px 0 rgba(255,255,255,0.06)',
               }}
             >
               <div className="text-blue-300 text-[10px] font-mono tracking-[0.3em] uppercase mb-5">
@@ -554,14 +557,17 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ─── Final CTA ───────────────────────────────────────────────────── */}
-      <section className="relative px-6 py-32 md:py-44 overflow-hidden">
+      {/* ─── Final CTA — deep navy band anchoring the light page ─────────── */}
+      <section
+        className="relative px-6 py-32 md:py-44 overflow-hidden"
+        style={{ background: 'linear-gradient(165deg, #081226 0%, #0c1c3d 60%, #081226 100%)' }}
+      >
         {/* Ambient glow */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              'radial-gradient(ellipse 60% 70% at 50% 50%, rgba(59,130,246,0.18), transparent 60%)',
+              'radial-gradient(ellipse 60% 70% at 50% 50%, rgba(59,130,246,0.22), transparent 60%)',
           }}
         />
         <FadeIn>
@@ -576,7 +582,7 @@ export default function HomePage() {
                 per project.
               </span>
             </h2>
-            <p className="text-white/55 text-base md:text-lg font-light max-w-md mx-auto mb-10">
+            <p className="text-white/60 text-base md:text-lg font-light max-w-md mx-auto mb-10">
               Built for contractors who'd rather be building than filing.
             </p>
             <Link
@@ -594,8 +600,8 @@ export default function HomePage() {
       </section>
 
       {/* ─── Footer ──────────────────────────────────────────────────────── */}
-      <footer className="relative border-t border-white/[0.06] px-6 md:px-10 py-8 flex items-center justify-between text-white/30 text-xs">
-        <span className="font-semibold text-white/55">Axis Performance</span>
+      <footer className="relative border-t border-slate-200 bg-white px-6 md:px-10 py-8 flex items-center justify-between text-slate-400 text-xs">
+        <span className="font-semibold text-slate-700">Axis Performance</span>
         <span className="font-mono tracking-wide">© 2026 · Built for contractors</span>
       </footer>
     </main>
