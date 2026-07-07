@@ -120,6 +120,8 @@ class ImageryResult:
     warnings: list[str] = field(default_factory=list)
     providers_tried: list[Provider] = field(default_factory=list)
     cached: bool = False
+    sharpness: Optional[float] = None      # Laplacian-variance acutance (comparable per address)
+    providers_compared: int = 0            # >1 ⇒ this tile WON a sharpness comparison
 
     def to_dict(self, include_bytes: bool = False) -> dict:
         d = {
@@ -137,6 +139,8 @@ class ImageryResult:
             "warnings": self.warnings,
             "providers_tried": self.providers_tried,
             "cached": self.cached,
+            "sharpness": round(self.sharpness, 1) if self.sharpness is not None else None,
+            "providers_compared": self.providers_compared,
         }
         if include_bytes:
             import base64
@@ -473,6 +477,33 @@ async def _fetch_one(
     return None
 
 
+def _sharpness_score(data: bytes) -> Optional[float]:
+    """
+    Acutance (perceived sharpness) via Laplacian variance — the classic focus
+    measure. Providers image the SAME address with different sensors, seasons,
+    and capture dates, so at any given house one source is often visibly
+    crisper. Center-crop (the subject sits mid-tile) + fixed resize make the
+    number comparable across providers regardless of their pixel dimensions.
+    """
+    try:
+        import cv2
+        import numpy as np
+
+        img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            return None
+        h, w = img.shape
+        img = img[int(h * 0.2):int(h * 0.8), int(w * 0.2):int(w * 0.8)]
+        if img.size == 0:
+            return None
+        target_w = 640
+        target_h = max(1, int(target_w * img.shape[0] / img.shape[1]))
+        img = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_AREA)
+        return float(cv2.Laplacian(img, cv2.CV_64F).var())
+    except Exception:
+        return None
+
+
 async def fetch_satellite_image(
     lat: float,
     lng: float,
@@ -507,6 +538,42 @@ async def fetch_satellite_image(
     overall_best: ImageryResult | None = None
 
     async with httpx.AsyncClient() as client:
+        # ---- Best-tile race (the real clarity lever) -----------------------
+        # At the requested zoom, fetch EVERY configured provider in parallel
+        # and keep the SHARPEST healthy tile (Laplacian acutance). Providers
+        # differ per address by capture date/season/sensor — first-healthy-wins
+        # routinely served a blurrier tile than another source had on hand.
+        race_order: list[Provider] = list(_PROVIDER_ORDER)
+        if preferred and preferred in race_order:
+            race_order.remove(preferred)
+            race_order.insert(0, preferred)
+        try:
+            race = await asyncio.gather(
+                *(_fetch_one(client, p, lat, lng, zoom, width_px, height_px) for p in race_order),
+                return_exceptions=True,
+            )
+            candidates = [r for r in race if isinstance(r, ImageryResult)]
+            all_tried.extend(f"{p}@z{zoom}" for p in race_order)
+            healthy = [r for r in candidates if r.health_score >= FALLBACK_THRESHOLD]
+            if healthy:
+                for r in healthy:
+                    r.sharpness = _sharpness_score(r.image_bytes)
+                best = max(healthy, key=lambda r: (r.sharpness or 0.0))
+                best.providers_compared = len(healthy)
+                best.providers_tried = list(all_tried)
+                if len(healthy) > 1:
+                    best.warnings = list(best.warnings) + [
+                        f"sharpest of {len(healthy)} sources ({best.provider})"
+                    ]
+                return best
+            # Nothing healthy at the requested zoom — remember the least-bad
+            # candidate and fall through to the sequential zoom-descent chain.
+            for r in candidates:
+                if overall_best is None or r.health_score > overall_best.health_score:
+                    overall_best = r
+        except Exception as e:
+            logger.info("best-tile race failed (%s) — falling back to sequential chain", e)
+
         for try_zoom in zoom_chain:
             # Build provider order specific to this zoom level.
             # At high zoom (z21+) prefer MapTiler then Bing then Mapbox before

@@ -244,6 +244,7 @@ def _table_style(header_color=BRAND, alt_row=True) -> TableStyle:
 def _section_1_executive(
     project: dict, run: dict, aggregates: dict, facet_count: int,
     styles: dict, facets: list[dict] | None = None,
+    contractor: dict | None = None,
 ) -> list:
     """Executive Summary — top of the report."""
     flow: list = []
@@ -253,8 +254,30 @@ def _section_1_executive(
     if not full_address:
         full_address = project.get("name") or "Property"
 
-    flow.append(Paragraph("Axis Performance — Roof Report", styles["title"]))
+    # White-label header — the contractor's brand front and center; Axis is
+    # credited in the footer line of the methodology section instead.
+    c = contractor or {}
+    company = c.get("company_name") or "Axis Performance"
+    logo_bytes = c.get("logo_bytes")
+    if logo_bytes:
+        try:
+            img = Image(io.BytesIO(logo_bytes))
+            ratio = img.imageWidth / max(1, img.imageHeight)
+            img.drawHeight = 0.55 * inch
+            img.drawWidth = min(2.6 * inch, 0.55 * inch * ratio)
+            img.hAlign = "LEFT"
+            flow.append(img)
+            flow.append(Spacer(1, 4))
+        except Exception:
+            pass
+    flow.append(Paragraph(f"{company} — Roof Report", styles["title"]))
     flow.append(Paragraph(full_address, styles["subtitle"]))
+    prepared_bits = [b for b in [
+        f"License {c['license_number']}" if c.get("license_number") else None,
+        c.get("phone"), c.get("email"),
+    ] if b]
+    if prepared_bits:
+        flow.append(Paragraph(" · ".join(prepared_bits), styles["muted"]))
 
     # Hero cards
     conf_label, conf_color = _confidence_bucket(run.get("confidence") or 0)
@@ -463,6 +486,33 @@ def _section_4_flashing(
                 "(orientation or penetration size estimated from imagery).",
                 styles["small"] if "small" in styles else styles["body"],
             ))
+
+        # Field verification — cross-check against the contractor's own ground
+        # photos. A gap here means the photos saw a condition (chimney,
+        # skylight, dormer, wall abutment) this order doesn't cover yet.
+        gaps = (flashing or {}).get("gaps") or []
+        has_findings = bool((flashing or {}).get("ground_verified"))
+        flow.append(Spacer(1, 8))
+        flow.append(Paragraph("<b>Field verification (from ground photos)</b>", styles["body"]))
+        if gaps:
+            for g in gaps:
+                flow.append(Paragraph(
+                    f"⚠ <b>{str(g.get('type', '')).replace('_', ' ').title()}:</b> {g.get('message', '')}",
+                    styles["muted"],
+                ))
+        elif has_findings:
+            flow.append(Paragraph(
+                "✓ Every condition observed in the ground photos (chimneys, skylights, "
+                "dormers, wall abutments) is accounted for in this flashing order.",
+                styles["muted"],
+            ))
+        else:
+            flow.append(Paragraph(
+                "No ground photos analyzed for this run — upload 3–4 photos (gable end, "
+                "each corner, any chimney) in the editor to verify these flashing "
+                "conditions against the field before ordering.",
+                styles["muted"],
+            ))
         return _flashing_materials_tail(flow, material_lines, styles)
 
     # Fallback (legacy): no engine output supplied.
@@ -552,10 +602,69 @@ def _section_5_penetrations(penetrations: list[dict], styles: dict) -> list:
     return flow
 
 
+def _section_field_observations(run: dict, styles: dict) -> list:
+    """Field Observations — what the contractor's ground photos verified.
+    This is data a satellite cannot see (true pitch from a gable end, chimney
+    material, story count, roof material/color) and it's what separates a
+    verified report from a desktop-only estimate."""
+    flow = [_section_header("Field Observations (Ground Photos)", 6, styles)]
+    gf = run.get("ground_findings") or {}
+    if not gf:
+        flow.append(Paragraph(
+            "No ground photos were analyzed for this run. Photos of the gable end, "
+            "each corner, and any chimney/skylight let Axis verify pitch, penetrations, "
+            "and materials against the field — strengthening this report.",
+            styles["muted"],
+        ))
+        return flow
+
+    rows = [["Observation", "Value", "How it was read"]]
+    if gf.get("roof_pitch"):
+        method = {"gable_end": "measured off the gable-end triangle",
+                  "slope_angle": "estimated from the visible slope",
+                  "not_visible": "not visible"}.get(str(gf.get("pitch_method")), "from photo")
+        rows.append(["Roof pitch", f"{gf['roof_pitch']} ({gf.get('pitch_confidence', '—')} confidence)", method])
+    ch = gf.get("chimney") or {}
+    if ch.get("present"):
+        rows.append(["Chimney", f"{int(ch.get('count') or 1)} × {ch.get('height', 'medium')} ({ch.get('material', 'unknown')})",
+                     "visible in ground photos"])
+    if gf.get("skylights"):
+        rows.append(["Skylights", str(int(gf["skylights"])), "visible in ground photos"])
+    if gf.get("dormers"):
+        rows.append(["Dormers", str(int(gf["dormers"])), "visible in ground photos"])
+    if gf.get("stories"):
+        rows.append(["Stories", str(int(gf["stories"])), "counted from elevation view"])
+    if gf.get("roof_material") and gf.get("roof_material") != "unknown":
+        mat = str(gf["roof_material"]).replace("_", " ")
+        if gf.get("roof_color"):
+            mat += f" — {gf['roof_color']}"
+        rows.append(["Roof material", mat, "identified in photos"])
+    if gf.get("siding_material") and gf.get("siding_material") != "unknown":
+        rows.append(["Siding material", str(gf["siding_material"]).replace("_", " "), "identified in photos"])
+
+    if len(rows) == 1:
+        flow.append(Paragraph("Ground photos were analyzed but no roof-relevant details could be read.", styles["muted"]))
+        return flow
+
+    t = Table(rows, colWidths=[1.5 * inch, 2.4 * inch, 2.6 * inch])
+    t.setStyle(_table_style())
+    flow.append(t)
+    if gf.get("notes"):
+        flow.append(Spacer(1, 4))
+        flow.append(Paragraph(f"Analyst note: {str(gf['notes'])[:300]}", styles["muted"]))
+    flow.append(Spacer(1, 4))
+    flow.append(Paragraph(
+        "These observations come from the contractor's own ground-level photos and are "
+        "cross-checked against the flashing order in Section 4.",
+        styles["muted"],
+    ))
+    return flow
+
+
 def _section_6_materials(
     material_lines: list[MaterialLine], default_waste: int, styles: dict,
 ) -> list:
-    flow = [_section_header("Material Ordering Summary", 6, styles)]
+    flow = [_section_header("Material Ordering Summary", 7, styles)]
     if not material_lines:
         flow.append(Paragraph(
             "No materials were computed — confirm measurements and recompute aggregates first.",
@@ -624,7 +733,7 @@ def _section_6_materials(
 
 
 def _section_7_exterior(siding: list[dict], styles: dict) -> list:
-    flow = [_section_header("Exterior Measurements", 7, styles)]
+    flow = [_section_header("Exterior Measurements", 8, styles)]
     if not siding:
         flow.append(Paragraph(
             "No siding measurements have been recorded for this property. "
@@ -664,8 +773,8 @@ def _section_7_exterior(siding: list[dict], styles: dict) -> list:
     return flow
 
 
-def _section_8_methodology(run: dict, aggregates: dict, styles: dict) -> list:
-    flow = [_section_header("Methodology & Confidence", 8, styles)]
+def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibration: dict | None = None) -> list:
+    flow = [_section_header("Methodology & Confidence", 9, styles)]
 
     source = run.get("source") or "unknown"
     method_descriptions = {
@@ -725,9 +834,21 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict) -> list:
         for w in run.get("warnings") or []:
             flow.append(Paragraph(f"• {w}", styles["muted"]))
 
+    # Accuracy flywheel: real calibration from field-verified jobs. Only shown
+    # once there's enough data to be meaningful — never a made-up number.
+    if calibration and int(calibration.get("jobs") or 0) >= 3:
+        err = float(calibration.get("mean_abs_pct_error") or 0)
+        flow.append(Spacer(1, 6))
+        flow.append(Paragraph(
+            f"<b>Verified accuracy:</b> across {int(calibration['jobs'])} field-verified "
+            f"jobs, Axis roof-area measurements averaged within {err:.1f}% of the "
+            "crew's actual measurements.",
+            styles["body"],
+        ))
+
     flow.append(Spacer(1, 8))
     flow.append(Paragraph(
-        "Axis Performance — generated %s" % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "Measured with Axis Performance — generated %s" % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         styles["muted"],
     ))
     return flow
@@ -742,7 +863,7 @@ def _section_photos(run: dict, styles: dict) -> list:
     Real images only; downloads each and embeds two per row."""
     import urllib.request
 
-    flow = [_section_header("Property Photos", 9, styles)]
+    flow = [_section_header("Property Photos", 10, styles)]
     items: list[tuple[str, str]] = []
     if run.get("satellite_image_url"):
         items.append(("Aerial (satellite)", run["satellite_image_url"]))
@@ -800,21 +921,24 @@ def generate_v2_report(
     material_lines: list[MaterialLine],
     siding_measurements: list[dict],
     flashing: dict | None = None,
+    contractor: dict | None = None,     # white-label: company_name, license_number, phone, email, logo_bytes
+    calibration: dict | None = None,    # accuracy flywheel: {jobs, mean_abs_pct_error}
 ) -> bytes:
-    """Render the full 8-section PDF and return bytes."""
+    """Render the full report PDF and return bytes."""
     buf = io.BytesIO()
+    company = (contractor or {}).get("company_name") or "Axis Performance"
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
         topMargin=0.6 * inch, bottomMargin=0.6 * inch,
         leftMargin=0.6 * inch, rightMargin=0.6 * inch,
-        title="Axis Performance Roof Report",
-        author="Axis Performance",
+        title=f"{company} — Roof Report",
+        author=company,
     )
     styles = _styles()
     default_waste = int(run.get("waste_pct_default") or aggregates.get("waste_pct_default") or 12)
 
     story: list = []
-    story.extend(_section_1_executive(project, run, aggregates, len(facets), styles, facets))
+    story.extend(_section_1_executive(project, run, aggregates, len(facets), styles, facets, contractor))
     story.append(Spacer(1, 12))
     story.extend(_section_2_roof_summary(aggregates, facets, styles))
     story.append(PageBreak())
@@ -824,11 +948,13 @@ def generate_v2_report(
     story.append(PageBreak())
     story.extend(_section_5_penetrations(penetrations, styles))
     story.append(Spacer(1, 10))
+    story.extend(_section_field_observations(run, styles))
+    story.append(Spacer(1, 10))
     story.extend(_section_6_materials(material_lines, default_waste, styles))
     story.append(PageBreak())
     story.extend(_section_7_exterior(siding_measurements, styles))
     story.append(Spacer(1, 10))
-    story.extend(_section_8_methodology(run, aggregates, styles))
+    story.extend(_section_8_methodology(run, aggregates, styles, calibration))
     story.append(PageBreak())
     story.extend(_section_photos(run, styles))
 

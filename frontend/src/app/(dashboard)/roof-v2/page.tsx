@@ -31,6 +31,8 @@ import FlashingPanel from '@/components/roof-v2/FlashingPanel'
 import WallTransitionPanel from '@/components/roof-v2/WallTransitionPanel'
 import GroundPhotoPanel from '@/components/roof-v2/GroundPhotoPanel'
 import CollapsibleSection from '@/components/roof-v2/CollapsibleSection'
+import AutoAnalyzePanel from '@/components/roof-v2/AutoAnalyzePanel'
+import JobVerificationPanel from '@/components/roof-v2/JobVerificationPanel'
 import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
 import SolarAssistPanel from '@/components/roof-v2/SolarAssistPanel'
@@ -818,7 +820,47 @@ export default function RoofV2Page() {
                 ✨ AI-sharpened
               </span>
             )}
+            {(imagery.warnings || []).filter(w => w.includes('sharpest of')).map(w => (
+              <span key={w} title="All satellite sources were compared for this address and the crispest tile won"
+                className="rounded bg-blue-500/20 px-2 py-0.5 text-blue-300">
+                🎯 {w}
+              </span>
+            ))}
           </div>
+
+          {/* ⚡ One-button pipeline: planes (Solar→footprint→vision) + edge labels,
+              landing the contractor at review instead of build-from-scratch. */}
+          <AutoAnalyzePanel
+            runId={runId}
+            centerLat={imagery.lat}
+            centerLng={imagery.lng}
+            imageWidthPx={imagery.width_px ?? 2048}
+            imageHeightPx={imagery.height_px ?? 1366}
+            feetPerPixel={imagery.feet_per_pixel ?? 0}
+            facetCount={facets.length}
+            onAddFacets={async (newFacets) => {
+              const merged = [...facets, ...newFacets]
+              setFacets(merged)
+              const newEdges: typeof edges = newFacets.flatMap(nf =>
+                nf.polygon.map((_, i) => ({
+                  facetLabel: nf.label,
+                  vertexIndexStart: i,
+                  vertexIndexEnd: (i + 1) % nf.polygon.length,
+                  edgeType: 'unlabeled' as const,
+                  userConfirmed: false,
+                })),
+              )
+              const mergedEdges = [...edges, ...newEdges]
+              setEdges(mergedEdges)
+              setEditorSyncRev(r => r + 1)
+              await persistGeometry(merged, mergedEdges)
+            }}
+            onAutoLabel={() => {
+              setAutoLabelTrigger(t => t + 1)
+              setTimeout(() => document.getElementById('edge-label-panel')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+            }}
+          />
           <div className="h-[680px] overflow-hidden">
             <RoofFacetEditor
               imageUrl={imagery.url}
@@ -1054,6 +1096,9 @@ export default function RoofV2Page() {
             facets={facets}
             edges={edges}
           />
+
+          {/* Accuracy flywheel + white-label branding */}
+          {userId && <JobVerificationPanel runId={runId} userId={userId} />}
 
           {/* 3D viewer — temporarily hidden (geometry rebuild in progress).
               Component kept; re-enable when the connected-mesh version is ready.

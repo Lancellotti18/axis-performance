@@ -37,8 +37,9 @@ const FACET_LABELS = ['RF-1', 'RF-2', 'RF-3', 'RF-4', 'RF-5', 'RF-6', 'RF-7', 'R
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 
 /** Geographic point → image fraction, in the SAME basis the measurement
- *  pipeline uses (tile center + feet_per_pixel × native dims). */
-function geoToFrac(
+ *  pipeline uses (tile center + feet_per_pixel × native dims). Exported so the
+ *  one-button Auto-analyze pipeline reuses the exact same conversion. */
+export function geoToFrac(
   lat: number, lng: number, cLat: number, cLng: number,
   wPx: number, hPx: number, ftPerPx: number,
 ): [number, number] {

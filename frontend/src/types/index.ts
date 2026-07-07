@@ -214,6 +214,8 @@ export interface ContractorProfile {
   state: string
   zip_code: string
   insurance_policy?: string
+  /** White-label: shown at the top of generated reports. */
+  logo_url?: string
   updated_at?: string
 }
 

@@ -445,3 +445,56 @@ def _ft(decimal_feet: float) -> str:
     if inches == 12:
         return f"{feet + 1}' 0\""
     return f"{feet}' {inches}\""
+
+
+def ground_photo_gaps(
+    ground_findings: dict | None,
+    penetrations: list[dict],
+    inp: FlashingInput,
+) -> list[dict]:
+    """
+    Completeness cross-check between what the contractor's GROUND PHOTOS saw
+    and what the flashing order actually covers. Shared by the flashing
+    endpoint (live editor warnings) and the PDF report (field-verification
+    block) so both always agree.
+
+    Returns [{type, detected, present, message}] — empty when everything the
+    photos observed is accounted for.
+    """
+    gf = ground_findings or {}
+    gaps: list[dict] = []
+
+    det_ch = int((gf.get("chimney") or {}).get("count") or 0) if (gf.get("chimney") or {}).get("present") else 0
+    have_ch = sum(1 for p in penetrations if p.get("type") == "chimney")
+    if det_ch > have_ch:
+        gaps.append({
+            "type": "chimney", "detected": det_ch, "present": have_ch,
+            "message": f"Ground photos show {det_ch} chimney(s); {have_ch} added. "
+                       "Add the rest so chimney flashing is counted.",
+        })
+
+    det_sky = int(gf.get("skylights") or 0)
+    have_sky = sum(1 for p in penetrations if p.get("type") == "skylight")
+    if det_sky > have_sky:
+        gaps.append({
+            "type": "skylight", "detected": det_sky, "present": have_sky,
+            "message": f"Ground photos show {det_sky} skylight(s); {have_sky} added. "
+                       "Add the rest so skylight flashing is counted.",
+        })
+
+    if (gf.get("wall_abutment") or {}).get("present") and len(inp.wall_edges) == 0:
+        gaps.append({
+            "type": "wall_intersection", "detected": 1, "present": 0,
+            "message": "Ground photos show a roof-to-wall abutment, but no edge is labeled "
+                       "'wall intersection' yet — label it so step/counter flashing is added.",
+        })
+
+    det_dorm = int(gf.get("dormers") or 0)
+    if det_dorm > 0 and len(inp.wall_edges) < det_dorm:
+        gaps.append({
+            "type": "dormer", "detected": det_dorm, "present": len(inp.wall_edges),
+            "message": f"Ground photos show {det_dorm} dormer(s) — each dormer's roof-to-wall "
+                       "(cheek) edges need labeling so its step flashing is counted.",
+        })
+
+    return gaps

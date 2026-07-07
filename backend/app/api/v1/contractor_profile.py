@@ -15,6 +15,8 @@ class ContractorProfile(BaseModel):
     city: Optional[str] = ""
     state: Optional[str] = ""
     zip_code: Optional[str] = ""
+    # White-label: rendered at the top of generated reports.
+    logo_url: Optional[str] = ""
 
 
 @router.get("/{user_id}")

@@ -2909,25 +2909,9 @@ async def get_run_flashing(run_id: str, user: dict = Depends(require_user)) -> d
     # Completeness cross-check against the GROUND PHOTOS: surface anything the
     # photos detected that hasn't been added/labeled yet, so flashing is never
     # silently short a chimney/skylight/wall/dormer the contractor photographed.
-    gf = run.data.get("ground_findings") or {}
-    gaps: list[dict] = []
-    det_ch = int((gf.get("chimney") or {}).get("count") or 0) if (gf.get("chimney") or {}).get("present") else 0
-    have_ch = sum(1 for p in pens if p.get("type") == "chimney")
-    if det_ch > have_ch:
-        gaps.append({"type": "chimney", "detected": det_ch, "present": have_ch,
-                     "message": f"Ground photos show {det_ch} chimney(s); {have_ch} added. Add the rest so chimney flashing is counted."})
-    det_sky = int(gf.get("skylights") or 0)
-    have_sky = sum(1 for p in pens if p.get("type") == "skylight")
-    if det_sky > have_sky:
-        gaps.append({"type": "skylight", "detected": det_sky, "present": have_sky,
-                     "message": f"Ground photos show {det_sky} skylight(s); {have_sky} added. Add the rest so skylight flashing is counted."})
-    if (gf.get("wall_abutment") or {}).get("present") and len(inp.wall_edges) == 0:
-        gaps.append({"type": "wall_intersection", "detected": 1, "present": 0,
-                     "message": "Ground photos show a roof-to-wall abutment, but no edge is labeled 'wall intersection' yet — label it (roof-to-wall panel) so step/counter flashing is added."})
-    det_dorm = int(gf.get("dormers") or 0)
-    if det_dorm > 0 and len(inp.wall_edges) < det_dorm:
-        gaps.append({"type": "dormer", "detected": det_dorm, "present": len(inp.wall_edges),
-                     "message": f"Ground photos show {det_dorm} dormer(s) — each dormer's roof-to-wall (cheek) edges need labeling so its step flashing is counted."})
+    # (Shared with the PDF report's field-verification block.)
+    from app.services.flashing_engine import ground_photo_gaps
+    gaps = ground_photo_gaps(run.data.get("ground_findings"), pens, inp)
     payload["gaps"] = gaps
 
     n_conditions = len(inp.wall_edges) + len(inp.valley_edges) + len(inp.penetrations)
@@ -3067,6 +3051,98 @@ def _signed_report_url(run_id: str) -> Optional[str]:
     return None
 
 
+# ----------------------------------------------------------------------------
+# Accuracy flywheel — field-verified actuals + calibration
+# ----------------------------------------------------------------------------
+
+class ActualsIn(BaseModel):
+    actual_squares: float = Field(..., gt=0, lt=1000)
+    actual_ridge_hip_ft: Optional[float] = Field(None, ge=0, lt=10000)
+    actual_valley_ft: Optional[float] = Field(None, ge=0, lt=10000)
+    actual_eave_ft: Optional[float] = Field(None, ge=0, lt=10000)
+    notes: Optional[str] = Field(None, max_length=500)
+
+
+def _calibration_stats(db, user_id: str) -> Optional[dict]:
+    """Aggregate this contractor's field-verified jobs into calibration stats:
+    how far Axis's numbers were from what the crew actually measured. This is
+    the honest, earned accuracy number — never estimated, never made up."""
+    rows = db.table("roof_actuals").select(
+        "actual_squares, predicted_squares"
+    ).eq("user_id", user_id).execute().data or []
+    errs: list[float] = []
+    for r in rows:
+        a = float(r.get("actual_squares") or 0)
+        p = float(r.get("predicted_squares") or 0)
+        if a > 0 and p > 0:
+            errs.append((p - a) / a * 100.0)
+    if not errs:
+        return None
+    abs_errs = sorted(abs(e) for e in errs)
+    return {
+        "jobs": len(errs),
+        "mean_abs_pct_error": round(sum(abs_errs) / len(abs_errs), 1),
+        "median_abs_pct_error": round(abs_errs[len(abs_errs) // 2], 1),
+        # Signed bias: positive = Axis measures LARGE on average. This is the
+        # number that tells us what to correct in the pipeline.
+        "bias_pct": round(sum(errs) / len(errs), 1),
+    }
+
+
+@router.post("/runs/{run_id}/actuals")
+async def record_actuals(
+    run_id: str, payload: ActualsIn, user: dict = Depends(require_user),
+) -> dict:
+    """
+    After the job: record what the roof ACTUALLY measured. Snapshots Axis's
+    current prediction alongside it, so calibration always compares against
+    the number the contractor really ordered from.
+    """
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select("id, project_id").eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+
+    agg = _aggregate_run(run_id)
+    row = {
+        "run_id": run_id,
+        "project_id": run.data.get("project_id"),
+        "user_id": user["id"],
+        "actual_squares": payload.actual_squares,
+        "actual_ridge_hip_ft": payload.actual_ridge_hip_ft,
+        "actual_valley_ft": payload.actual_valley_ft,
+        "actual_eave_ft": payload.actual_eave_ft,
+        "predicted_squares": agg.get("squares"),
+        "predicted_ridge_hip_ft": (agg.get("ridges_ft") or 0) + (agg.get("hips_ft") or 0),
+        "predicted_valley_ft": agg.get("valleys_ft"),
+        "predicted_eave_ft": agg.get("eaves_ft"),
+        "notes": payload.notes,
+    }
+    ins = db.table("roof_actuals").insert({k: v for k, v in row.items() if v is not None}).execute()
+    if not ins.data:
+        raise HTTPException(status_code=500, detail="Could not record actuals.")
+
+    stats = _calibration_stats(db, user["id"])
+    pred = float(agg.get("squares") or 0)
+    diff_pct = round((pred - payload.actual_squares) / payload.actual_squares * 100.0, 1) if payload.actual_squares else None
+    return {
+        "recorded": True,
+        "this_job_diff_pct": diff_pct,
+        "calibration": stats,
+        "message": (
+            f"Recorded. This job: Axis {pred:.1f} sq vs actual {payload.actual_squares:.1f} sq"
+            + (f" ({diff_pct:+.1f}%)." if diff_pct is not None else ".")
+        ),
+    }
+
+
+@router.get("/calibration")
+async def get_calibration(user: dict = Depends(require_user)) -> dict:
+    """This contractor's verified-accuracy stats across all recorded jobs."""
+    stats = _calibration_stats(get_supabase(), user["id"])
+    return stats or {"jobs": 0}
+
+
 async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str]]:
     """Build the v2 roof-report PDF, persist it to storage (so it can be reopened /
     re-downloaded / shared from the Reports tab), and return (bytes, filename, url).
@@ -3111,22 +3187,54 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
     siding_res = db.table("manual_siding_measurements").select("*").eq("project_id", run["project_id"]).execute()
 
     try:
-        from app.services.flashing_engine import build_input_from_rows, compute_flashing
+        from app.services.flashing_engine import build_input_from_rows, compute_flashing, ground_photo_gaps
         from app.services.materials_engine import compute_flashing_material_lines
-        flashing_summary = compute_flashing(
-            build_input_from_rows(facets_res.data or [], edges, pens_res.data or [])
-        ).to_dict()
+        flashing_inp = build_input_from_rows(facets_res.data or [], edges, pens_res.data or [])
+        flashing_summary = compute_flashing(flashing_inp).to_dict()
         material_lines = material_lines + compute_flashing_material_lines(
             catalog, flashing_summary, default_waste_pct=default_waste,
         )
+        # Field verification: cross-check the order against the ground photos —
+        # the same gap engine the live editor shows, embedded in the PDF.
+        gf = run.get("ground_findings")
+        flashing_summary["gaps"] = ground_photo_gaps(gf, pens_res.data or [], flashing_inp)
+        flashing_summary["ground_verified"] = bool(gf)
     except Exception as e:
         logger.warning("flashing computation for report failed: %s", e)
         flashing_summary = None
+
+    # White-label branding: the contractor's company on THEIR report. Best-effort.
+    contractor: Optional[dict] = None
+    try:
+        owner = proj.data.get("user_id")
+        if owner:
+            prof = db.table("contractor_profiles").select("*").eq("user_id", owner).limit(1).execute()
+            if prof.data:
+                contractor = dict(prof.data[0])
+                logo_url = contractor.get("logo_url")
+                if logo_url:
+                    import httpx
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        lr = await client.get(logo_url, follow_redirects=True)
+                        if lr.status_code == 200 and len(lr.content) < 3_000_000:
+                            contractor["logo_bytes"] = lr.content
+    except Exception as e:
+        logger.info("contractor branding fetch failed: %s", e)
+
+    # Accuracy flywheel: calibration across this contractor's field-verified jobs.
+    calibration: Optional[dict] = None
+    try:
+        owner = proj.data.get("user_id")
+        if owner:
+            calibration = _calibration_stats(db, owner)
+    except Exception as e:
+        logger.info("calibration stats failed: %s", e)
 
     pdf_bytes = await asyncio.to_thread(
         generate_v2_report,
         proj.data, run, aggregates, facets_res.data or [], edges,
         pens_res.data or [], material_lines, siding_res.data or [], flashing_summary,
+        contractor, calibration,
     )
 
     slug = (proj.data.get("name") or "project").strip().lower()

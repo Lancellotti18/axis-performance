@@ -929,6 +929,27 @@ export const api = {
           }>
           count: number
         }>(`/api/v1/roofing/v2/catalog${region ? `?region=${encodeURIComponent(region)}` : ''}`),
+      // Accuracy flywheel — record what the roof ACTUALLY measured after the
+      // job; Axis snapshots its prediction and builds calibration stats.
+      recordActuals: (runId: string, payload: {
+        actual_squares: number
+        actual_ridge_hip_ft?: number
+        actual_valley_ft?: number
+        actual_eave_ft?: number
+        notes?: string
+      }) =>
+        apiRequest<{
+          recorded: boolean
+          this_job_diff_pct: number | null
+          calibration: { jobs: number; mean_abs_pct_error: number; median_abs_pct_error: number; bias_pct: number } | null
+          message: string
+        }>(`/api/v1/roofing/v2/runs/${runId}/actuals`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }),
+      getCalibration: () =>
+        apiRequest<{ jobs: number; mean_abs_pct_error?: number; median_abs_pct_error?: number; bias_pct?: number }>(
+          `/api/v1/roofing/v2/calibration`, undefined, 30000, 60000),
       getMaterials: (runId: string, wastePct = 12) =>
         apiRequest<{
           run_id: string

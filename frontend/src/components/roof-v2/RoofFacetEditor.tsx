@@ -469,6 +469,59 @@ export function RoofFacetEditor({
     })
   }, [spaceHeld, view.x, view.y])
 
+  // ---- Pinch-to-zoom (touch) ----
+  // Two fingers on the canvas zoom about their midpoint — the standard tablet
+  // gesture. Native capture-phase listeners so pinching never places vertices.
+  const touchPtsRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const pinchRef = useRef<{ startDist: number; startScale: number } | null>(null)
+  const viewScaleRef = useRef(1)
+  useEffect(() => { viewScaleRef.current = view.scale }, [view.scale])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const down = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'touch') return
+      touchPtsRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
+      if (touchPtsRef.current.size === 2) {
+        const [a, b] = [...touchPtsRef.current.values()]
+        pinchRef.current = {
+          startDist: Math.max(12, Math.hypot(a.x - b.x, a.y - b.y)),
+          startScale: viewScaleRef.current,
+        }
+      }
+    }
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'touch' || !touchPtsRef.current.has(ev.pointerId)) return
+      touchPtsRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
+      if (pinchRef.current && touchPtsRef.current.size === 2) {
+        ev.preventDefault()
+        const [a, b] = [...touchPtsRef.current.values()]
+        const dist = Math.max(12, Math.hypot(a.x - b.x, a.y - b.y))
+        const rect = el.getBoundingClientRect()
+        setViewClamped(
+          pinchRef.current.startScale * (dist / pinchRef.current.startDist),
+          (a.x + b.x) / 2 - rect.left,
+          (a.y + b.y) / 2 - rect.top,
+        )
+      }
+    }
+    const up = (ev: PointerEvent) => {
+      touchPtsRef.current.delete(ev.pointerId)
+      if (touchPtsRef.current.size < 2) pinchRef.current = null
+    }
+    el.addEventListener('pointerdown', down, { capture: true })
+    el.addEventListener('pointermove', move, { capture: true, passive: false })
+    el.addEventListener('pointerup', up, { capture: true })
+    el.addEventListener('pointercancel', up, { capture: true })
+    return () => {
+      el.removeEventListener('pointerdown', down, { capture: true } as EventListenerOptions)
+      el.removeEventListener('pointermove', move, { capture: true, passive: false } as EventListenerOptions)
+      el.removeEventListener('pointerup', up, { capture: true } as EventListenerOptions)
+      el.removeEventListener('pointercancel', up, { capture: true } as EventListenerOptions)
+    }
+  }, [setViewClamped])
+
   useEffect(() => {
     if (!panning) return
     const onMove = (ev: PointerEvent) => {
@@ -528,6 +581,8 @@ export function RoofFacetEditor({
   const onSvgPointerDown = useCallback((ev: React.PointerEvent<SVGSVGElement>) => {
     if (mode !== 'draw') return
     if (ev.button !== 0) return
+    // Two fingers = pinch zoom, never a vertex.
+    if (ev.pointerType === 'touch' && touchPtsRef.current.size >= 2) return
     const { pt } = resolvePoint(eventToFrac(ev))
 
     // Close polygon if the resolved point is near the first vertex. Threshold
@@ -914,7 +969,7 @@ export function RoofFacetEditor({
         {/* Canvas */}
         <div
           ref={containerRef}
-          className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-white/10 bg-black"
+          className="relative min-h-0 flex-1 touch-none overflow-hidden rounded-lg border border-white/10 bg-black"
           onKeyDown={(ev) => {
             if (ev.key === 'Enter' && mode === 'draw' && drawingPoly.length >= 3) {
               finalizeDrawingPoly()
