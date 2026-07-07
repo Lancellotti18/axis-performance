@@ -180,6 +180,9 @@ class LeadRequest(BaseModel):
     price_low: Optional[float] = Field(None, ge=0)
     price_high: Optional[float] = Field(None, ge=0)
     quote_source: Optional[str] = Field(None, max_length=20)
+    # Qualification context from the quote page (material interest, timeline,
+    # insurance) — folded into notes so the contractor sees it at a glance.
+    notes: Optional[str] = Field(None, max_length=600)
 
 
 @router.post("/w/{widget_key}/lead")
@@ -203,6 +206,7 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
         "squares_estimate": payload.squares_estimate,
         "price_low": payload.price_low, "price_high": payload.price_high,
         "quote_source": payload.quote_source or "none",
+        "notes": (payload.notes or "").strip() or None,
     }
     ins = db.table("widget_leads").insert({k: v for k, v in row.items() if v is not None}).execute()
     if not ins.data:

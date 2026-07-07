@@ -528,6 +528,7 @@ export const api = {
       name: string; phone?: string; email?: string; address: string
       lat?: number; lng?: number; squares_estimate?: number
       price_low?: number; price_high?: number; quote_source?: string
+      notes?: string
     }) =>
       apiRequest<{ ok: boolean; message: string }>(`/api/v1/instant-quote/w/${key}/lead`, {
         method: 'POST', body: JSON.stringify(payload),

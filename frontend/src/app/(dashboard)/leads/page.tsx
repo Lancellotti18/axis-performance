@@ -193,6 +193,19 @@ export default function LeadsPage() {
                       {l.price_low != null ? <>saw {money(l.price_low)}–{money(l.price_high)} · </> : null}
                       {l.quote_source === 'solar' ? 'solar-measured' : l.quote_source === 'footprint' ? 'outline-estimated' : 'not auto-measured'}
                     </div>
+                    {l.notes && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {l.notes.split(' · ').map(n => (
+                          <span key={n} className={`rounded px-1.5 py-0.5 text-[10px] ${
+                            n.toLowerCase().includes('insurance')
+                              ? 'bg-rose-500/15 font-semibold text-rose-300'
+                              : n.toLowerCase().includes('as soon as')
+                                ? 'bg-emerald-500/15 font-semibold text-emerald-300'
+                                : 'bg-slate-800 text-slate-400'
+                          }`}>{n}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                     {l.phone && (
