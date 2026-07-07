@@ -34,6 +34,7 @@ import CollapsibleSection from '@/components/roof-v2/CollapsibleSection'
 import AutoAnalyzePanel from '@/components/roof-v2/AutoAnalyzePanel'
 import JobVerificationPanel from '@/components/roof-v2/JobVerificationPanel'
 import ProposalPanel from '@/components/roof-v2/ProposalPanel'
+import ClientPortalPanel from '@/components/roof-v2/ClientPortalPanel'
 import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
 import SolarAssistPanel from '@/components/roof-v2/SolarAssistPanel'
@@ -920,6 +921,9 @@ export default function RoofV2Page() {
               imageUrl={imagery.url}
               lat={imagery.lat ?? location?.lat}
               lng={imagery.lng ?? location?.lng}
+              imageWidthPx={imagery.width_px ?? 2048}
+              imageHeightPx={imagery.height_px ?? 1366}
+              feetPerPixel={imagery.feet_per_pixel ?? 0}
               address={project ? [project.address, project.city, project.state, project.zip].filter(Boolean).join(', ') : undefined}
             />
           )}
@@ -1101,6 +1105,9 @@ export default function RoofV2Page() {
 
           {/* Good/Better/Best proposal — the last mile from measurement to signed job */}
           <ProposalPanel runId={runId} projectId={projectId} />
+
+          {/* Homeowner portal — one link with live status, proposal, report, photos */}
+          {projectId && <ClientPortalPanel projectId={projectId} />}
 
           {/* Accuracy flywheel + white-label branding */}
           {userId && <JobVerificationPanel runId={runId} userId={userId} />}

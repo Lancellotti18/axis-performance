@@ -569,6 +569,27 @@ export const api = {
         method: 'POST', body: JSON.stringify(payload),
       }),
   },
+  // ── Client portal (homeowner window into the job) ─────────────────────────
+  clientPortal: {
+    my: (projectId: string) =>
+      apiRequest<{ id: string; token: string; stage: string; enabled: boolean }>(
+        `/api/v1/client-portal/my/${projectId}`),
+    update: (projectId: string, patch: { stage?: string; enabled?: boolean }) =>
+      apiRequest<{ id: string; token: string; stage: string; enabled: boolean }>(
+        `/api/v1/client-portal/my/${projectId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+    publicGet: (token: string) =>
+      apiRequest<{
+        address: string
+        stage: string
+        stages: string[]
+        contractor: { company_name?: string; license_number?: string; phone?: string; email?: string; logo_url?: string }
+        roof: { squares?: number; total_roof_sqft?: number; predominant_pitch?: string }
+        photos: string[]
+        report_url: string | null
+        proposal: { token: string; status: string; accepted_tier?: string; price_low?: number; price_high?: number; valid_until?: string } | null
+        updated_at?: string
+      }>(`/api/v1/client-portal/public/${token}`),
+  },
   contractorProfile: {
     get: (userId: string) =>
       apiRequest<ContractorProfile | Record<string, never>>(`/api/v1/contractor-profile/${userId}`),
@@ -1005,10 +1026,10 @@ export const api = {
         }>(`/api/v1/roofing/v2/runs/${runId}/facets/suggest`, {}, 120000),
       // Save the contractor's "tap your house" point (image fractions 0..1) so
       // facet auto-detect locks onto the right building regardless of geocode.
-      setSubjectPoint: (runId: string, x: number, y: number) =>
+      setSubjectPoint: (runId: string, x: number, y: number, lat?: number, lng?: number) =>
         apiRequest<{ ok: boolean; subject_point: { x: number; y: number } }>(
           `/api/v1/roofing/v2/runs/${runId}/subject-point`,
-          { method: 'POST', body: JSON.stringify({ x, y }) },
+          { method: 'POST', body: JSON.stringify({ x, y, lat, lng }) },
         ),
       // Record AI facet suggestions the contractor REJECTED, as negative training
       // data. Fire-and-forget — must never block the editor flow.

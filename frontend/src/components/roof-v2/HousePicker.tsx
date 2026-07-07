@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
+import { fracToGeo } from './SolarAssistPanel'
 
 interface Props {
   runId: string
@@ -18,11 +19,20 @@ interface Props {
   lng?: number
   /** Formatted address, shown so the user knows which property this is. */
   address?: string
+  /** Tile meta — lets the tap be converted to lat/lng so Solar/footprint
+   *  lookups anchor on the RIGHT building, not the geocode. */
+  imageWidthPx?: number
+  imageHeightPx?: number
+  feetPerPixel?: number
   initialPoint?: { x: number; y: number } | null
   onConfirmed?: (p: { x: number; y: number }) => void
 }
 
-export default function HousePicker({ runId, imageUrl, lat, lng, address, initialPoint, onConfirmed }: Props) {
+export default function HousePicker({
+  runId, imageUrl, lat, lng, address,
+  imageWidthPx, imageHeightPx, feetPerPixel,
+  initialPoint, onConfirmed,
+}: Props) {
   const [point, setPoint] = useState<{ x: number; y: number }>(initialPoint ?? { x: 0.5, y: 0.5 })
   const [confirmed, setConfirmed] = useState<boolean>(!!initialPoint)
   const [saving, setSaving] = useState(false)
@@ -53,16 +63,23 @@ export default function HousePicker({ runId, imageUrl, lat, lng, address, initia
   const confirm = useCallback(async () => {
     setSaving(true)
     try {
-      await api.roofing.v2.setSubjectPoint(runId, point.x, point.y)
+      // Convert the tap to lat/lng when we have the tile meta — this anchors
+      // Google Solar + footprint lookups on the tapped house instead of the
+      // (often off-target) geocode.
+      let geo: { lat: number; lng: number } | undefined
+      if (lat != null && lng != null && imageWidthPx && imageHeightPx && feetPerPixel) {
+        geo = fracToGeo(point.x, point.y, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel)
+      }
+      await api.roofing.v2.setSubjectPoint(runId, point.x, point.y, geo?.lat, geo?.lng)
       setConfirmed(true)
       onConfirmed?.(point)
-      toast.success('Locked onto your house — auto-detect will use this spot')
+      toast.success('Locked onto your house — auto-detect + Solar will use this spot')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save the location')
     } finally {
       setSaving(false)
     }
-  }, [runId, point, onConfirmed])
+  }, [runId, point, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel, onConfirmed])
 
   if (!imageUrl) return null
 

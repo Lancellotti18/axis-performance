@@ -1374,16 +1374,28 @@ async def get_run_solar(run_id: str, user: dict = Depends(require_user)) -> dict
 
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
-        "satellite_lat, satellite_lng"
+        "satellite_lat, satellite_lng, subject_point"
     ).eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
-    lat = run.data.get("satellite_lat")
-    lng = run.data.get("satellite_lng")
+    lat, lng = _run_lookup_coords(run.data)
     if lat is None or lng is None:
         return {"available": False, "reason": "This run has no coordinates to look up."}
 
     return await solar_service.get_building_insights(float(lat), float(lng))
+
+
+def _run_lookup_coords(run_row: dict) -> tuple[Optional[float], Optional[float]]:
+    """Coordinates to anchor building lookups on. The contractor's tapped
+    'this is my house' point beats the geocode — geocodes routinely land on
+    the street or the neighbor's parcel, which made Solar/footprint return
+    the WRONG building."""
+    sp = run_row.get("subject_point") or {}
+    if sp.get("lat") is not None and sp.get("lng") is not None:
+        return float(sp["lat"]), float(sp["lng"])
+    lat, lng = run_row.get("satellite_lat"), run_row.get("satellite_lng")
+    return (float(lat) if lat is not None else None,
+            float(lng) if lng is not None else None)
 
 
 @router.get("/runs/{run_id}/ground-findings")
@@ -1403,6 +1415,11 @@ async def get_run_ground_findings(run_id: str, user: dict = Depends(require_user
 class SubjectPointRequest(BaseModel):
     x: float = Field(..., ge=0.0, le=1.0)
     y: float = Field(..., ge=0.0, le=1.0)
+    # Geographic anchor of the tapped point, computed CLIENT-side (the client
+    # has the full tile meta). Solar/footprint lookups prefer this over the
+    # geocode — geocodes routinely land on the street or the neighbor's parcel.
+    lat: Optional[float] = Field(None, ge=-90, le=90)
+    lng: Optional[float] = Field(None, ge=-180, le=180)
 
 
 @router.post("/runs/{run_id}/subject-point")
@@ -1416,7 +1433,10 @@ async def set_subject_point(
     run = db.table("roof_measurement_runs").select("id").eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
-    point = {"x": round(req.x, 4), "y": round(req.y, 4)}
+    point: dict = {"x": round(req.x, 4), "y": round(req.y, 4)}
+    if req.lat is not None and req.lng is not None:
+        point["lat"] = round(req.lat, 7)
+        point["lng"] = round(req.lng, 7)
     try:
         db.table("roof_measurement_runs").update({"subject_point": point}).eq("id", run_id).execute()
     except Exception as e:
@@ -1443,12 +1463,11 @@ async def get_run_footprint(run_id: str, user: dict = Depends(require_user)) -> 
 
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
-        "satellite_lat, satellite_lng"
+        "satellite_lat, satellite_lng, subject_point"
     ).eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
-    lat = run.data.get("satellite_lat")
-    lng = run.data.get("satellite_lng")
+    lat, lng = _run_lookup_coords(run.data)
     if lat is None or lng is None:
         return {"available": False, "reason": "This run has no coordinates to look up."}
 

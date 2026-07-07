@@ -53,6 +53,21 @@ export function geoToFrac(
   return [clamp01(fx), clamp01(fy)]
 }
 
+/** Inverse of geoToFrac: image fraction → geographic point. Used to anchor
+ *  building lookups on the contractor's tapped "this is my house" point. */
+export function fracToGeo(
+  fx: number, fy: number, cLat: number, cLng: number,
+  wPx: number, hPx: number, ftPerPx: number,
+): { lat: number; lng: number } {
+  const mpp = ftPerPx * 0.3048
+  const eastM = (fx - 0.5) * (wPx * mpp)
+  const northM = (0.5 - fy) * (hPx * mpp)   // image y grows downward
+  return {
+    lat: cLat + northM / 111320,
+    lng: cLng + eastM / (111320 * Math.cos((cLat * Math.PI) / 180)),
+  }
+}
+
 type Footprint = Awaited<ReturnType<typeof api.roofing.v2.getFootprint>>
 
 export default function SolarAssistPanel({

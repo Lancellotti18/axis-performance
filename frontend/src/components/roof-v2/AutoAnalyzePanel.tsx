@@ -48,6 +48,12 @@ interface Props {
 const LABELS = ['RF-1', 'RF-2', 'RF-3', 'RF-4', 'RF-5', 'RF-6', 'RF-7', 'RF-8', 'RF-9', 'RF-10', 'RF-11', 'RF-12']
 const OVERHANG_FT = 1.5           // typical eave overhang past the wall line
 const MIN_FACET_AREA_FRAC = 0.0002   // ≈ 90 ft² on a standard tile — rejects clip slivers
+// Wrong-building guard: geocodes drift onto streets/neighbors, and Solar/OSM
+// return whichever building is nearest that drifted point. The subject house
+// sits at (near) the tile center after auto-centering, so geometry whose
+// centroid lands farther than this is treated as the WRONG building and the
+// source is skipped rather than drawn.
+const MAX_OFF_CENTER_FT = 90
 
 export default function AutoAnalyzePanel({
   runId, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel,
@@ -75,9 +81,16 @@ export default function AutoAnalyzePanel({
         setStep('facets', { status: 'skipped', detail: `${facetCount} facet(s) already traced — keeping yours` })
       } else {
         let source = ''
+        let rejectedNote = ''
         const geoReady = centerLat != null && centerLng != null && feetPerPixel > 0
         const toFrac = (la: number, ln: number): Pt =>
           geoToFrac(la, ln, centerLat as number, centerLng as number, imageWidthPx, imageHeightPx, feetPerPixel)
+        const offCenterFt = (pts: Pt[]): number => {
+          let cx = 0, cy = 0
+          for (const [x, y] of pts) { cx += x; cy += y }
+          cx /= pts.length; cy /= pts.length
+          return Math.hypot((cx - 0.5) * imageWidthPx * feetPerPixel, (cy - 0.5) * imageHeightPx * feetPerPixel)
+        }
 
         if (geoReady) {
           // Fetch BOTH sources in parallel (each cached server-side).
@@ -102,13 +115,34 @@ export default function AutoAnalyzePanel({
               Math.max(0, Math.min(1, x / imageWidthPx)),
               Math.max(0, Math.min(1, y / imageHeightPx)),
             ])
+            // Wrong-building guard: outline centered somewhere else → not ours.
+            const off = offCenterFt(fpFrac)
+            if (off > MAX_OFF_CENTER_FT) {
+              fpFrac = []
+              rejectedNote = `outline found ${Math.round(off)} ft off-center (likely a neighbor) — skipped; `
+                + 'tap YOUR house in the House Picker below, then re-run'
+            }
+          }
+
+          // Same guard for Solar: findClosest can return the neighbor.
+          let solarSegs = segs
+          if (solarSegs.length > 0) {
+            const corners: Pt[] = solarSegs.flatMap(s => [
+              toFrac(s.bbox.ne.lat, s.bbox.sw.lng), toFrac(s.bbox.sw.lat, s.bbox.ne.lng),
+            ])
+            const off = offCenterFt(corners)
+            if (off > MAX_OFF_CENTER_FT) {
+              solarSegs = []
+              rejectedNote += `${rejectedNote ? ' · ' : ''}Solar returned a building ${Math.round(off)} ft off-center (likely a neighbor) — skipped; `
+                + 'tap YOUR house in the House Picker below, then re-run'
+            }
           }
 
           // 1a. BEST: Solar planes clipped to the building outline — outer
           //     edges land on the real roof edge, pitch stays measured.
-          if (segs.length > 0 && fpFrac.length >= 3) {
+          if (solarSegs.length > 0 && fpFrac.length >= 3) {
             const facets: Facet[] = []
-            for (const s of segs.slice(0, LABELS.length)) {
+            for (const s of solarSegs.slice(0, LABELS.length)) {
               const { sw, ne } = s.bbox
               const c1 = toFrac(ne.lat, sw.lng), c2 = toFrac(ne.lat, ne.lng)
               const c3 = toFrac(sw.lat, ne.lng), c4 = toFrac(sw.lat, sw.lng)
@@ -133,8 +167,8 @@ export default function AutoAnalyzePanel({
           }
 
           // 1b. Solar only (no footprint coverage) → bbox rectangles.
-          if (added === 0 && segs.length > 0) {
-            const facets: Facet[] = segs.slice(0, LABELS.length).map((s, i) => {
+          if (added === 0 && solarSegs.length > 0) {
+            const facets: Facet[] = solarSegs.slice(0, LABELS.length).map((s, i) => {
               const { sw, ne } = s.bbox
               return {
                 label: LABELS[i],
@@ -173,13 +207,13 @@ export default function AutoAnalyzePanel({
             added = facets.length
             source = `AI vision — ${added} plane(s) detected`
           } else {
-            setStep('facets', { status: 'failed', detail: res.reason || 'Nothing detected — trace the roof manually (it takes ~a minute)' })
+            setStep('facets', { status: 'failed', detail: [rejectedNote, res.reason].filter(Boolean).join(' · ') || 'Nothing detected — trace the roof manually (it takes ~a minute)' })
             setStep('labels', { status: 'skipped', detail: 'Needs facets first' })
             setRunning(false)
             return
           }
         }
-        setStep('facets', { status: 'done', detail: source })
+        setStep('facets', { status: 'done', detail: rejectedNote ? `${source} · (${rejectedNote})` : source })
       }
 
       // ---- Step 2: edge labels ----------------------------------------------
