@@ -21,10 +21,14 @@ import { api } from '@/lib/api'
 
 interface Suggestion {
   type: string
-  pos_x_frac: number
-  pos_y_frac: number
+  // Position is only present for satellite-vision hits; ground-photo
+  // suggestions (chimney/skylight seen in the contractor's photos) have none.
+  pos_x_frac?: number
+  pos_y_frac?: number
   confidence: number
   note: string
+  count?: number
+  source?: string
 }
 
 interface ConfirmedPenetration {
@@ -108,7 +112,7 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
     try {
       await api.roofing.v2.addPenetration(runId, {
         type: s.type,
-        count: 1,
+        count: s.count ?? 1,
         pos_x_frac: s.pos_x_frac,
         pos_y_frac: s.pos_y_frac,
         ai_suggested: true,
@@ -169,7 +173,9 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    <MarkerPreview x={s.pos_x_frac} y={s.pos_y_frac} color={TYPE_COLORS[s.type] || '#cbd5e1'} imageUrl={imageUrl} />
+                    {s.pos_x_frac != null && s.pos_y_frac != null && (
+                      <MarkerPreview x={s.pos_x_frac} y={s.pos_y_frac} color={TYPE_COLORS[s.type] || '#cbd5e1'} imageUrl={imageUrl} />
+                    )}
                     <div>
                       <div className="font-medium text-slate-100">
                         <span className="inline-block h-2 w-2 rounded-full" style={{ background: TYPE_COLORS[s.type] || '#cbd5e1' }} />{' '}
@@ -180,7 +186,9 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
                       </div>
                       <div className="text-xs text-slate-400">{s.note}</div>
                       <div className="text-[10px] text-slate-500">
-                        Position: {(s.pos_x_frac * 100).toFixed(0)}%, {(s.pos_y_frac * 100).toFixed(0)}% of tile
+                        {s.pos_x_frac != null && s.pos_y_frac != null
+                          ? <>Position: {(s.pos_x_frac * 100).toFixed(0)}%, {(s.pos_y_frac * 100).toFixed(0)}% of tile</>
+                          : <>📷 From your ground photos</>}
                       </div>
                     </div>
                   </div>

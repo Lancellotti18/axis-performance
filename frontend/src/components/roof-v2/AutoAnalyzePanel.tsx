@@ -22,7 +22,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
-import { clipPolygonToRect, offsetPolygon, polygonArea, type Pt } from '@/lib/polyclip'
+import { clipPolygonToRect, offsetPolygon, polygonArea, weldPolygons, type Pt } from '@/lib/polyclip'
 import type { Facet } from './RoofFacetEditor'
 import { geoToFrac } from './SolarAssistPanel'
 
@@ -46,6 +46,9 @@ interface Props {
   /** Bump to force a re-run (e.g. after the contractor taps their house —
    *  the lookup anchor changed, so the sources must be re-queried). */
   trigger?: number
+  /** House not confirmed yet — hold auto-analysis and say why. Drawing the
+   *  neighbor's roof is worse than waiting one tap. */
+  awaitingHouse?: boolean
 }
 
 const LABELS = ['RF-1', 'RF-2', 'RF-3', 'RF-4', 'RF-5', 'RF-6', 'RF-7', 'RF-8', 'RF-9', 'RF-10', 'RF-11', 'RF-12']
@@ -60,7 +63,7 @@ const MAX_OFF_CENTER_FT = 90
 
 export default function AutoAnalyzePanel({
   runId, centerLat, centerLng, imageWidthPx, imageHeightPx, feetPerPixel,
-  facetCount, onAddFacets, onAutoLabel, autoStart = false, trigger,
+  facetCount, onAddFacets, onAutoLabel, autoStart = false, trigger, awaitingHouse = false,
 }: Props) {
   const [running, setRunning] = useState(false)
   const [steps, setSteps] = useState<StepState[]>([])
@@ -163,8 +166,18 @@ export default function AutoAnalyzePanel({
               })
             }
             if (facets.length > 0) {
-              await onAddFacets(facets)
-              added = facets.length
+              // Weld near-coincident seam vertices (±3.5 ft) so adjacent
+              // planes truly SHARE edges — the edge auto-labeler's shared-edge
+              // and corner-angle logic depends on exact coincidence, and
+              // sloppy seams were the source of hip↔eave / ridge↔rake slips.
+              const tolX = 3.5 / feetPerPixel / imageWidthPx
+              const tolY = 3.5 / feetPerPixel / imageHeightPx
+              const welded = weldPolygons(facets.map(f => f.polygon as Pt[]), tolX, tolY)
+              const cleaned = facets
+                .map((f, i) => ({ ...f, polygon: welded[i] }))
+                .filter(f => f.polygon.length >= 3)
+              await onAddFacets(cleaned)
+              added = cleaned.length
               source = `Google Solar × building outline — ${added} plane(s), measured pitch, snapped to the roof edge`
             }
           }
@@ -269,16 +282,19 @@ export default function AutoAnalyzePanel({
         <div>
           <h3 className="text-sm font-semibold text-slate-100">⚡ Auto-analyze this roof</h3>
           <p className="text-xs text-slate-400">
-            {running
-              ? 'Drawing the roof for you — planes snapped to the building edge, pitch from solar data…'
-              : 'AI draws the roof (Solar planes clipped to the real building outline) and labels every edge — you just verify and nudge.'}
+            {awaitingHouse
+              ? <>⬆ <strong className="text-blue-200">Confirm your house above first.</strong> Analysis starts automatically the moment you lock it in — that tap is what guarantees we measure YOUR roof, not the neighbor&apos;s.</>
+              : running
+                ? 'Drawing the roof for you — planes snapped to the building edge, pitch from solar data…'
+                : 'AI draws the roof (Solar planes clipped to the real building outline) and labels every edge — you just verify and nudge.'}
           </p>
         </div>
         <button
           onClick={run}
-          disabled={running}
+          disabled={running || awaitingHouse}
+          title={awaitingHouse ? 'Confirm your house in the picker above first' : undefined}
           className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(59,130,246,0.4)] transition hover:bg-blue-500 disabled:opacity-50"
-        >{running ? 'Analyzing…' : facetCount > 0 ? '⚡ Re-run analysis' : '⚡ Auto-analyze'}</button>
+        >{running ? 'Analyzing…' : awaitingHouse ? 'Waiting for house…' : facetCount > 0 ? '⚡ Re-run analysis' : '⚡ Auto-analyze'}</button>
       </div>
 
       {steps.length > 0 && (

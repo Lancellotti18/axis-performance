@@ -81,7 +81,23 @@ async def create_from_run(
         raise HTTPException(status_code=404, detail="Run not found.")
     squares = float(run.data.get("squares") or 0)
     if squares <= 0:
-        raise HTTPException(status_code=422, detail="Measure the roof first — this run has no square footage yet.")
+        # Facets may be drawn but aggregates never recomputed (e.g. the
+        # contractor jumped straight to the report step). Recompute once
+        # before giving up — "didn't work at all" is not an acceptable UX.
+        try:
+            from app.api.v1.roofing_v2 import _aggregate_run
+            agg = _aggregate_run(run_id)
+            squares = float(agg.get("squares") or 0)
+            run.data["squares"] = squares
+            run.data["total_roof_sqft"] = agg.get("total_roof_sqft")
+            run.data["predominant_pitch"] = agg.get("predominant_pitch")
+        except Exception as e:
+            logger.info("proposal aggregate recompute failed: %s", e)
+    if squares <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="This roof has no measured area yet — draw (or auto-analyze) the facets in the editor, then come back.",
+        )
 
     # Ownership: the run's project must belong to the caller.
     address = None

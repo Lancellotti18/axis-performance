@@ -131,3 +131,33 @@ export function offsetPolygon(poly: Pt[], d: number): Pt[] {
   }
   return out
 }
+
+/**
+ * Weld nearly-coincident vertices ACROSS polygons to identical coordinates.
+ * Auto-generated facets (Solar bboxes clipped to the footprint) have seams
+ * that are close but not exact — and the edge classifier's shared-edge +
+ * corner-angle logic depends on coincidence. Welding within `tol` makes
+ * adjacent planes truly share edges, which is what fixes occasional
+ * hip↔eave / ridge↔rake mislabels on auto-traced roofs.
+ *
+ * Pass PIXEL-space tolerance via tolX/tolY converted per axis by the caller.
+ * First occurrence of a cluster wins; later vertices snap to it exactly.
+ */
+export function weldPolygons(polys: Pt[][], tolX: number, tolY: number): Pt[][] {
+  const canon: Pt[] = []
+  const snap = (p: Pt): Pt => {
+    for (const c of canon) {
+      if (Math.abs(c[0] - p[0]) <= tolX && Math.abs(c[1] - p[1]) <= tolY) return [c[0], c[1]]
+    }
+    canon.push([p[0], p[1]])
+    return [p[0], p[1]]
+  }
+  return polys.map(poly => {
+    const out = poly.map(snap)
+    // Welding can collapse consecutive vertices — drop exact duplicates.
+    return out.filter((p, i) => {
+      const q = out[(i + 1) % out.length]
+      return p[0] !== q[0] || p[1] !== q[1]
+    })
+  })
+}

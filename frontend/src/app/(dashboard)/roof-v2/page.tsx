@@ -110,6 +110,9 @@ export default function RoofV2Page() {
   const [editorSyncRev, setEditorSyncRev] = useState(0)   // bump to push external edits into the editor canvas
   const [autoLabelTrigger, setAutoLabelTrigger] = useState(0)   // editor toolbar → run edge auto-label
   const [analyzeTrigger, setAnalyzeTrigger] = useState(0)       // house tapped → re-run auto-analyze
+  // The contractor's confirmed "this is my house" tap. Loaded from the run on
+  // resume; auto-analyze WAITS for it so we never draw the neighbor's roof.
+  const [subjectPoint, setSubjectPoint] = useState<{ x: number; y: number } | null>(null)
   const [step, setStep] = useState<Step>('project')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -174,6 +177,8 @@ export default function RoofV2Page() {
         if (run_id) {
           const data = await api.roofing.v2.getRun(run_id)
           const run = data.run as Record<string, unknown>
+          const sp = run.subject_point as { x: number; y: number } | null
+          setSubjectPoint(sp && typeof sp.x === 'number' ? { x: sp.x, y: sp.y } : null)
           const url = (run.satellite_image_url as string) || ''
           if (url) {
             const lat = Number(run.satellite_lat) || 0
@@ -831,6 +836,30 @@ export default function RoofV2Page() {
             ))}
           </div>
 
+          {/* STEP 1 — confirm the house. Everything downstream (Solar, footprint,
+              auto-analyze) anchors on this tap, so it comes FIRST. */}
+          {imagery?.url && (
+            <HousePicker
+              runId={runId}
+              imageUrl={imagery.url}
+              lat={imagery.lat ?? location?.lat}
+              lng={imagery.lng ?? location?.lng}
+              imageWidthPx={imagery.width_px ?? 2048}
+              imageHeightPx={imagery.height_px ?? 1366}
+              feetPerPixel={imagery.feet_per_pixel ?? 0}
+              address={project ? [project.address, project.city, project.state, project.zip].filter(Boolean).join(', ') : undefined}
+              initialPoint={subjectPoint}
+              onConfirmed={(pt) => {
+                setSubjectPoint(pt)
+                if (facets.length > 0) {
+                  toast('House locked. If the drawn facets are on the wrong building, delete them, then hit \u26a1 Re-run.', { icon: '\ud83c\udfaf' })
+                } else {
+                  setAnalyzeTrigger(t => t + 1)   // house confirmed → analyze now
+                }
+              }}
+            />
+          )}
+
           {/* ⚡ One-button pipeline: planes (Solar→footprint→vision) + edge labels,
               landing the contractor at review instead of build-from-scratch. */}
           <AutoAnalyzePanel
@@ -841,7 +870,8 @@ export default function RoofV2Page() {
             imageHeightPx={imagery.height_px ?? 1366}
             feetPerPixel={imagery.feet_per_pixel ?? 0}
             facetCount={facets.length}
-            autoStart
+            autoStart={subjectPoint != null}
+            awaitingHouse={subjectPoint == null}
             trigger={analyzeTrigger}
             onAddFacets={async (newFacets) => {
               const merged = [...facets, ...newFacets]
@@ -916,26 +946,6 @@ export default function RoofV2Page() {
             onForceSave={async () => { await persistGeometry(facets, edges) }}
           />
 
-          {/* Tap your house FIRST so auto-detect locks onto the right building. */}
-          {imagery?.url && (
-            <HousePicker
-              runId={runId}
-              imageUrl={imagery.url}
-              lat={imagery.lat ?? location?.lat}
-              lng={imagery.lng ?? location?.lng}
-              imageWidthPx={imagery.width_px ?? 2048}
-              imageHeightPx={imagery.height_px ?? 1366}
-              feetPerPixel={imagery.feet_per_pixel ?? 0}
-              address={project ? [project.address, project.city, project.state, project.zip].filter(Boolean).join(', ') : undefined}
-              onConfirmed={() => {
-                if (facets.length > 0) {
-                  toast('House locked. If the drawn facets are on the wrong building, delete them, then hit \u26a1 Re-run.', { icon: '\ud83c\udfaf' })
-                } else {
-                  setAnalyzeTrigger(t => t + 1)   // re-query Solar/footprint from the tapped anchor
-                }
-              }}
-            />
-          )}
 
           {/* Guided workflow — recommended top-to-bottom order. The editor above
               is always your manual canvas; reject any AI suggestion and draw by hand. */}

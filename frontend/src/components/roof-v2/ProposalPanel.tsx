@@ -26,6 +26,7 @@ const STATUS_TONE: Record<string, string> = {
 export default function ProposalPanel({ runId, projectId }: Props) {
   const [proposals, setProposals] = useState<RoofProposal[]>([])
   const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [editingPrices, setEditingPrices] = useState<Record<string, string[]>>({})
 
   const refresh = useCallback(async () => {
@@ -39,12 +40,15 @@ export default function ProposalPanel({ runId, projectId }: Props) {
 
   const create = useCallback(async () => {
     setCreating(true)
+    setError(null)
     try {
       await api.roofProposals.createFromRun(runId)
       await refresh()
       toast.success('Proposal created — adjust prices, then copy the link for your customer.')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message.replace(/\[HTTP \d+\]\s*/, '') : 'Could not create proposal')
+      const msg = e instanceof Error ? e.message.replace(/\[HTTP \d+\]\s*/, '') : 'Could not create proposal'
+      setError(msg)      // inline too — a toast alone is easy to miss
+      toast.error(msg)
     } finally {
       setCreating(false)
     }
@@ -85,6 +89,8 @@ export default function ProposalPanel({ runId, projectId }: Props) {
           className="rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
         >{creating ? 'Creating…' : '+ Create proposal'}</button>
       </div>
+
+      {error && <p className="mt-2 rounded border border-rose-400/30 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-300">{error}</p>}
 
       {proposals.length > 0 && (
         <ul className="mt-3 space-y-2">

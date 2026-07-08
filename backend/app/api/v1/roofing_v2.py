@@ -1535,29 +1535,66 @@ If nothing is clearly visible, return []. Do NOT invent penetrations to seem tho
 Every item in this array is treated as a SUGGESTION the contractor must confirm
 before it enters the material order. Coordinates are image fractions 0..1 (top-left origin).
 """
+    suggestions: list[dict] = []
+    vision_note = ""
     try:
         text = await llm_vision(img_bytes, mt, prompt, max_tokens=800)
-        text = text.strip()
+        text = (text or "").strip()
         text = _re.sub(r"^```(?:json)?\s*", "", text, flags=_re.MULTILINE)
         text = _re.sub(r"\s*```\s*$", "", text)
         a, b = text.find("["), text.rfind("]")
-        if a < 0 or b < 0:
-            return {"suggestions": [], "message": "Vision returned no JSON array."}
-        suggestions = json.loads(text[a:b + 1])
+        if a >= 0 and b > a:
+            suggestions = [s for s in json.loads(text[a:b + 1]) if isinstance(s, dict)]
+        else:
+            vision_note = "satellite scan returned nothing readable"
     except Exception as e:
-        return {"suggestions": [], "message": f"Vision analysis error: {e}"}
+        vision_note = f"satellite scan error: {str(e)[:80]}"
+
+    # Merge the GROUND-PHOTO findings — a contractor's own eye-level photos are
+    # a far more reliable source for chimneys/skylights than a top-down tile
+    # where a vent is 2 pixels wide. Anything the photos saw that satellite
+    # vision missed gets added as its own (clearly sourced) suggestion.
+    try:
+        gf_row = db.table("roof_measurement_runs").select("ground_findings").eq("id", run_id).single().execute()
+        gf = (gf_row.data or {}).get("ground_findings") or {}
+        have = {str(s.get("type")) for s in suggestions}
+        ch = gf.get("chimney") or {}
+        if ch.get("present") and "chimney" not in have:
+            suggestions.append({
+                "type": "chimney", "confidence": 0.85, "count": int(ch.get("count") or 1),
+                "note": f"Seen in your ground photos ({ch.get('height', 'medium')}, {ch.get('material', 'unknown')}) — tap Add to include chimney flashing.",
+                "source": "ground_photo",
+            })
+        if int(gf.get("skylights") or 0) > 0 and "skylight" not in have:
+            suggestions.append({
+                "type": "skylight", "confidence": 0.85, "count": int(gf["skylights"]),
+                "note": f"{int(gf['skylights'])} skylight(s) seen in your ground photos — tap Add to include skylight flashing.",
+                "source": "ground_photo",
+            })
+    except Exception as e:
+        logger.info("ground-findings merge failed: %s", e)
 
     # Tag each suggestion so the frontend can render an "AI-suggested, please verify" badge.
     for s in suggestions:
         s["ai_suggested"] = True
         s["user_confirmed"] = False
-    return {
-        "suggestions": suggestions,
-        "message": (
-            f"{len(suggestions)} penetration(s) suggested by AI vision. Contractor must "
-            "confirm each one before it enters the material order."
-        ),
-    }
+
+    if suggestions:
+        message = (
+            f"{len(suggestions)} penetration(s) suggested "
+            f"({sum(1 for s in suggestions if s.get('source') == 'ground_photo')} from your ground photos, "
+            f"{sum(1 for s in suggestions if s.get('source') != 'ground_photo')} from satellite). "
+            "Confirm each one before it enters the material order."
+        )
+    else:
+        message = (
+            "Nothing detected from the satellite tile — vents are only a couple of pixels at this "
+            "resolution, so that's common. The reliable way: upload ground photos of any chimney/"
+            "skylight (Ground-photo intelligence above) and suggestions will appear here; or add "
+            "penetrations manually below."
+            + (f" ({vision_note}.)" if vision_note else "")
+        )
+    return {"suggestions": suggestions, "message": message}
 
 
 # ----------------------------------------------------------------------------
