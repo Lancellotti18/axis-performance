@@ -119,7 +119,7 @@ def _centered_lines(draw, cx, cy, lines, font, fontb) -> None:
         y += h + 5
 
 
-def _crop_image_to_facets(img_bytes: bytes, facets: list[dict], margin: float = 0.22) -> bytes | None:
+def _crop_image_to_facets(img_bytes: bytes, facets: list[dict], margin: float = 0.22, subject_point: dict | None = None) -> bytes | None:
     """Crop the aerial to the subject roof so the report shows ONLY this house,
     not the neighbors. Robust to a stray vertex: centers on the MEDIAN of the
     facet vertices and drops outliers far from that center before taking the box,
@@ -132,7 +132,14 @@ def _crop_image_to_facets(img_bytes: bytes, facets: list[dict], margin: float = 
                for p in (f.get("polygon") or [])
                if isinstance(p, (list, tuple)) and len(p) >= 2]
         if len(pts) < 3:
-            return None
+            # No usable facets — fall back to a window around the contractor's
+            # confirmed "this is my house" tap, so the report can NEVER show
+            # the full tile with neighbors/wrong buildings.
+            sp = subject_point or {}
+            if sp.get("x") is not None and sp.get("y") is not None:
+                pts = [(float(sp["x"]), float(sp["y"]))] * 3
+            else:
+                return None
         # Median center + 75th-percentile half-extent — robust: a stray vertex
         # is past the 75th percentile, so it never inflates the window.
         cx = sorted(p[0] for p in pts)[len(pts) // 2]
@@ -331,7 +338,7 @@ def _section_1_executive(
             try:
                 # Crop to the subject roof so the report shows only THIS house,
                 # not the neighbors (the contractor already confirmed the house).
-                cropped = _crop_image_to_facets(data, facets or []) if facets else None
+                cropped = _crop_image_to_facets(data, facets or [], subject_point=run.get("subject_point"))
                 shown = cropped or data
                 flow.append(Image(io.BytesIO(shown), width=6.5 * inch, height=4.0 * inch, kind="proportional"))
                 provider = (run.get("satellite_provider") or "satellite").lower()

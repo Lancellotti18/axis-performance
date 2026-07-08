@@ -63,6 +63,9 @@ interface Props {
   runId: string
   geometryStamp: number       // bump to trigger a recompute (debounced)
   onConfidenceChange?: (c: number) => void
+  /** Edges still unlabeled. While > 0 the confidence badge shows a neutral
+   *  'Labeling…' state — a mid-workflow 40% is accurate but reads as failure. */
+  unlabeledCount?: number
   onForceSave?: () => void | Promise<void>   // optional: lets the parent force-save + recompute
 }
 
@@ -114,6 +117,16 @@ function exportSupplierCsv(materials: MaterialsResponse, wastePct: number) {
   setTimeout(() => URL.revokeObjectURL(url), 5000)
 }
 
+/** One-click buy: deep-link each line to real retail search pages. Roofers buy
+ *  supply-house items via the CSV export; retail links cover the rest (boots,
+ *  sealant, drip edge) and make every line actionable. */
+function buyUrl(itemName: string, retailer: 'hd' | 'lowes'): string {
+  const q = encodeURIComponent(itemName.replace(/\(.*?\)/g, '').trim())
+  return retailer === 'hd'
+    ? `https://www.homedepot.com/s/${q}`
+    : `https://www.lowes.com/search?searchTerm=${q}`
+}
+
 function confidenceTag(c: number | undefined) {
   const v = (c ?? 0) * 100
   if (v >= 80) return { label: 'High', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40' }
@@ -121,7 +134,7 @@ function confidenceTag(c: number | undefined) {
   return { label: 'Low', cls: 'bg-rose-500/20 text-rose-300 border-rose-400/40' }
 }
 
-export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave }: Props) {
+export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave, unlabeledCount = 0 }: Props) {
   const [aggregates, setAggregates] = useState<Aggregates | null>(null)
   const [materials, setMaterials] = useState<MaterialsResponse | null>(null)
   const [wastePct, setWastePct] = useState<number>(12)
@@ -175,7 +188,9 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
     }
   }, [runId])
 
-  const conf = confidenceTag(aggregates?.confidence)
+  const conf = unlabeledCount > 0
+    ? { label: 'Labeling…', cls: 'bg-slate-600/30 text-slate-300 border-slate-500/40' }
+    : confidenceTag(aggregates?.confidence)
   const hasNoData = aggregates && (aggregates.facet_count ?? 0) === 0 && !loading
 
   const lineBars = useMemo(() => {
@@ -329,7 +344,15 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                   <tr key={line.sku} className="border-b border-white/5 text-slate-200">
                     <td className="px-2 py-2 font-mono text-[10px] text-slate-400">{line.sku}</td>
                     <td className="px-2 py-2">
-                      <div>{line.item_name}</div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span>{line.item_name}</span>
+                        <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer"
+                          title="Shop this item at Home Depot"
+                          className="rounded bg-orange-600/20 px-1.5 py-0.5 text-[9px] font-bold text-orange-300 hover:bg-orange-600/40">HD ↗</a>
+                        <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer"
+                          title="Shop this item at Lowe's"
+                          className="rounded bg-blue-600/20 px-1.5 py-0.5 text-[9px] font-bold text-blue-300 hover:bg-blue-600/40">LOWE&apos;S ↗</a>
+                      </div>
                       <div className="text-[10px] text-slate-500">{line.computation_trace}</div>
                     </td>
                     <td className="px-2 py-2 text-right font-mono">{line.base_quantity.toFixed(2)}</td>

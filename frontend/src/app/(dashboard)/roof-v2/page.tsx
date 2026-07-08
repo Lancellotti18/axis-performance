@@ -943,6 +943,7 @@ export default function RoofV2Page() {
             runId={runId}
             geometryStamp={geometryStamp}
             onConfidenceChange={setConfidence}
+            unlabeledCount={edges.filter(e => e.edgeType === 'unlabeled').length}
             onForceSave={async () => { await persistGeometry(facets, edges) }}
           />
 
@@ -1147,7 +1148,7 @@ export default function RoofV2Page() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Stat label="Facets" value={facets.length.toString()} />
               <Stat label="Edges labeled" value={edges.filter(e => e.edgeType !== 'unlabeled').length.toString()} />
-              <Stat label="Confidence" value={`${Math.round(confidence * 100)}%`} />
+              <Stat label="Confidence" value={edges.some(e => e.edgeType === 'unlabeled') ? '…' : `${Math.round(confidence * 100)}%`} />
               <Stat label="Imagery" value={`${Math.round((imagery?.health_score ?? 0) * 100)}%`} />
             </div>
             <p className="mt-3 text-xs text-slate-400">

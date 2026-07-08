@@ -38,6 +38,20 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
   const [brandOpen, setBrandOpen] = useState(false)
   const [profile, setProfile] = useState<Partial<ContractorProfile>>({})
   const [brandSaving, setBrandSaving] = useState(false)
+  const [logoUploading, setLogoUploading] = useState(false)
+
+  const uploadLogo = useCallback(async (file: File) => {
+    setLogoUploading(true)
+    try {
+      const res = await api.contractorProfile.uploadLogo(userId, file)
+      setProfile(p => ({ ...p, logo_url: res.logo_url }))
+      toast.success('Logo cleaned up and saved — it appears on your next report.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not upload the logo')
+    } finally {
+      setLogoUploading(false)
+    }
+  }, [userId])
 
   useEffect(() => {
     void api.roofing.v2.getCalibration().then(c => setCalibration(c as Calibration)).catch(() => {})
@@ -130,7 +144,6 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
               ['license_number', 'License #'],
               ['phone', 'Phone'],
               ['email', 'Email'],
-              ['logo_url', 'Logo URL (PNG/JPG)'],
             ] as [keyof ContractorProfile, string][]).map(([key, label]) => (
               <label key={key} className={`text-[11px] text-slate-400 ${key === 'logo_url' ? 'sm:col-span-2' : ''}`}>
                 {label}
@@ -142,6 +155,24 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
                 />
               </label>
             ))}
+            {/* Logo: upload a file — Axis preps it (trim, center, pad, hi-res). */}
+            <div className="sm:col-span-2">
+              <div className="text-[11px] text-slate-400">Company logo</div>
+              <div className="mt-1 flex items-center gap-3">
+                {profile.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={profile.logo_url} alt="logo" className="h-10 max-w-40 rounded bg-white object-contain p-1" />
+                ) : (
+                  <span className="text-[11px] text-slate-500">No logo yet</span>
+                )}
+                <label className="cursor-pointer rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">
+                  {logoUploading ? 'Preparing…' : profile.logo_url ? 'Replace logo' : 'Upload logo'}
+                  <input type="file" accept="image/*" hidden disabled={logoUploading}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) void uploadLogo(f); e.target.value = '' }} />
+                </label>
+                <span className="text-[10px] text-slate-500">PNG/JPG — we auto-trim, center and size it for the report.</span>
+              </div>
+            </div>
             <div className="sm:col-span-2">
               <button
                 onClick={saveBrand} disabled={brandSaving}

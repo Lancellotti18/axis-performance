@@ -622,6 +622,23 @@ export const api = {
       }>(`/api/v1/client-portal/public/${token}`),
   },
   contractorProfile: {
+    uploadLogo: async (userId: string, file: File) => {
+      const session = await getCachedSession()
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetchWithTimeout(`${API_BASE}/api/v1/contractor-profile/${userId}/logo`, {
+        method: 'POST',
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        body: fd,
+      }, 60000)
+      if (!res.ok) {
+        const text = await res.text()
+        let detail = text
+        try { detail = JSON.parse(text).detail ?? text } catch { /* raw */ }
+        throw new Error(String(detail))
+      }
+      return res.json() as Promise<{ ok: boolean; logo_url: string }>
+    },
     get: (userId: string) =>
       apiRequest<ContractorProfile | Record<string, never>>(`/api/v1/contractor-profile/${userId}`),
     save: (userId: string, profile: Partial<ContractorProfile>) =>

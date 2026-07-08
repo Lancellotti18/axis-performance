@@ -193,6 +193,12 @@ def _base_quantity_for(
         qty = lf / cov
         return qty, f"({totals.ridges_ft:.1f} ridge + {totals.hips_ft:.1f} hip) = {lf:.1f} lf ÷ {cov:g} = {qty:.2f}"
 
+    if coverage_basis == "per_lf_ridge_only":
+        # Ridge vent runs along RIDGES only — hips are capped, never vented.
+        lf = totals.ridges_ft
+        qty = lf / cov
+        return qty, f"{lf:.1f} ridge lf (hips excluded) ÷ {cov:g} = {qty:.2f}"
+
     if coverage_basis == "per_lf_valleys":
         lf = totals.valleys_ft
         qty = lf / cov
@@ -227,6 +233,8 @@ def _should_include(item: dict, totals: RoofTotals, penetrations: PenetrationSum
         return (totals.wall_intersection_ft > 0) or (totals.stories > 1)
     if cat == "vent_boot":
         return penetrations.vent_boots_required > 0
+    if item.get("sku") == "RIDGE-VENT-4":
+        return totals.ridges_ft > 0
     if cat == "valley_metal":
         return totals.valleys_ft > 0
     if cat == "ridge_cap":
