@@ -57,6 +57,7 @@ interface MaterialsResponse {
   totals_input: Record<string, number | string>
   waste_table: number[]
   waste_pct: number
+  my_prices?: Record<string, number>
 }
 
 interface Props {
@@ -67,6 +68,8 @@ interface Props {
    *  'Labeling…' state — a mid-workflow 40% is accurate but reads as failure. */
   unlabeledCount?: number
   onForceSave?: () => void | Promise<void>   // optional: lets the parent force-save + recompute
+  /** Project ZIP — regionalizes live price checks. */
+  zip?: string
 }
 
 const COLORS: Record<string, string> = {
@@ -134,13 +137,39 @@ function confidenceTag(c: number | undefined) {
   return { label: 'Low', cls: 'bg-rose-500/20 text-rose-300 border-rose-400/40' }
 }
 
-export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave, unlabeledCount = 0 }: Props) {
+export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave, unlabeledCount = 0, zip }: Props) {
   const [aggregates, setAggregates] = useState<Aggregates | null>(null)
   const [materials, setMaterials] = useState<MaterialsResponse | null>(null)
   const [wastePct, setWastePct] = useState<number>(12)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const lastStampRef = useRef<number>(-1)
+  // Price book editing + live price checks (per SKU)
+  const [priceEdit, setPriceEdit] = useState<{ sku: string; value: string } | null>(null)
+  const [liveChecks, setLiveChecks] = useState<Record<string, { loading?: boolean; price?: number; source?: string; url?: string; isLive?: boolean }>>({})
+
+  const saveMyPrice = useCallback(async (sku: string, value: string) => {
+    const v = value.trim() === '' ? null : parseFloat(value)
+    if (v !== null && (!Number.isFinite(v) || v < 0)) return
+    try {
+      await api.roofing.v2.setMyPrice(sku, v)
+      setPriceEdit(null)
+      await fetchAllRef.current?.()
+    } catch { /* surfaced via refetch state */ }
+  }, [])
+
+  const checkLive = useCallback(async (sku: string, item: string, basePrice: number) => {
+    setLiveChecks(prev => ({ ...prev, [sku]: { loading: true } }))
+    try {
+      const r = await api.roofing.v2.liveMaterialPrice(item, basePrice, zip)
+      setLiveChecks(prev => ({ ...prev, [sku]: {
+        price: r.adjusted_price, source: r.source, url: r.source_url, isLive: r.is_live,
+      } }))
+    } catch {
+      setLiveChecks(prev => ({ ...prev, [sku]: {} }))
+    }
+  }, [zip])
+  const fetchAllRef = useRef<(() => Promise<void>) | null>(null)
 
   const fetchAll = useCallback(async (waste: number) => {
     if (!runId) return
@@ -164,6 +193,8 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
       setLoading(false)
     }
   }, [runId, onConfidenceChange])
+
+  useEffect(() => { fetchAllRef.current = () => fetchAll(wastePct) }, [fetchAll, wastePct])
 
   // Debounced recompute on geometry change
   useEffect(() => {
@@ -358,7 +389,51 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                     <td className="px-2 py-2 text-right font-mono">{line.base_quantity.toFixed(2)}</td>
                     <td className="px-2 py-2 text-right font-mono">{line.waste_quantities[wastePct] ?? '—'}</td>
                     <td className="px-2 py-2">{line.unit}</td>
-                    <td className="px-2 py-2 text-right font-mono">{fmt$(line.unit_cost)}</td>
+                    <td className="px-2 py-2 text-right font-mono">
+                      {priceEdit?.sku === line.sku ? (
+                        <input
+                          autoFocus
+                          type="number" step="0.01" min="0"
+                          value={priceEdit.value}
+                          onChange={e => setPriceEdit({ sku: line.sku, value: e.target.value })}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') void saveMyPrice(line.sku, priceEdit.value)
+                            if (e.key === 'Escape') setPriceEdit(null)
+                          }}
+                          onBlur={() => void saveMyPrice(line.sku, priceEdit.value)}
+                          className="w-20 rounded border border-blue-500 bg-slate-800 px-1 py-0.5 text-right text-white"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => setPriceEdit({ sku: line.sku, value: String(line.unit_cost) })}
+                          title={materials.my_prices?.[line.sku] != null
+                            ? 'YOUR price (from your price book) — click to change, clear to reset'
+                            : 'National average — click to set YOUR dealer price'}
+                          className="group inline-flex items-center gap-1 hover:text-blue-300"
+                        >
+                          {fmt$(line.unit_cost)}
+                          {materials.my_prices?.[line.sku] != null
+                            ? <span className="rounded bg-emerald-500/20 px-1 text-[8px] font-bold text-emerald-300">MY $</span>
+                            : <span className="opacity-0 transition group-hover:opacity-100 text-[9px]">✎</span>}
+                        </button>
+                      )}
+                      <div className="mt-0.5">
+                        {liveChecks[line.sku]?.loading ? (
+                          <span className="text-[9px] text-blue-300">checking…</span>
+                        ) : liveChecks[line.sku]?.price != null ? (
+                          <a href={liveChecks[line.sku].url} target="_blank" rel="noreferrer"
+                            className="text-[9px] text-slate-400 hover:text-blue-300"
+                            title={liveChecks[line.sku].isLive ? 'Live fetched price — click for source' : 'National estimate — click for source'}>
+                            {liveChecks[line.sku].isLive ? '🌐' : '≈'} {fmt$(liveChecks[line.sku].price)} ↗
+                          </a>
+                        ) : (
+                          <button onClick={() => void checkLive(line.sku, line.item_name, line.unit_cost)}
+                            className="text-[9px] text-slate-500 hover:text-blue-300" title="Fetch a live market price for this item">
+                            💲 check live
+                          </button>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-2 py-2 text-right font-mono">{fmt$((line.waste_quantities[wastePct] ?? 0) * line.unit_cost)}</td>
                   </tr>
                 ))}

@@ -1153,6 +1153,25 @@ export const api = {
       getCalibration: () =>
         apiRequest<{ jobs: number; mean_abs_pct_error?: number; median_abs_pct_error?: number; bias_pct?: number }>(
           `/api/v1/roofing/v2/calibration`, undefined, 30000, 60000),
+      // Price book: save/clear MY price for a SKU (dealer-desk rates)
+      setMyPrice: (sku: string, unitCost: number | null) =>
+        apiRequest<{ ok: boolean }>(`/api/v1/roofing/v2/materials/my-price`, {
+          method: 'POST', body: JSON.stringify({ sku, unit_cost: unitCost }),
+        }),
+      // Live fetched-price check for one material line (Tavily-sourced)
+      liveMaterialPrice: (item: string, basePrice: number, zip?: string) =>
+        apiRequest<{
+          material: string
+          live_price: number
+          adjusted_price: number
+          regional_mult: number
+          source: string
+          source_url: string
+          retrieved_at: string
+          is_live: boolean
+          note: string
+        }>(`/api/v1/roofing/v2/materials/live-price?item=${encodeURIComponent(item)}&base_price=${basePrice}${zip ? `&zip_code=${zip}` : ''}`,
+          undefined, 45000, 3600000),
       getMaterials: (runId: string, wastePct = 12) =>
         apiRequest<{
           run_id: string

@@ -2993,6 +2993,62 @@ async def get_run_flashing(run_id: str, user: dict = Depends(require_user)) -> d
     return payload
 
 
+class MyPriceIn(BaseModel):
+    sku: str = Field(..., min_length=1, max_length=40)
+    unit_cost: Optional[float] = Field(None, ge=0, le=100000)   # None clears the override
+
+
+@router.post("/materials/my-price")
+async def set_my_price(payload: MyPriceIn, user: dict = Depends(require_user)) -> dict:
+    """Price book: save the contractor's real (dealer-desk) price for a SKU —
+    or clear it back to the national average with unit_cost=null."""
+    db = get_supabase()
+    try:
+        if payload.unit_cost is None:
+            db.table("user_material_prices").delete().eq("user_id", user["id"]).eq("sku", payload.sku).execute()
+            return {"ok": True, "cleared": True}
+        db.table("user_material_prices").upsert({
+            "user_id": user["id"], "sku": payload.sku,
+            "unit_cost": round(float(payload.unit_cost), 2), "updated_at": "now()",
+        }, on_conflict="user_id,sku").execute()
+        return {"ok": True, "sku": payload.sku, "unit_cost": payload.unit_cost}
+    except Exception as e:
+        msg = str(e)
+        if "user_material_prices" in msg or "schema cache" in msg.lower():
+            raise HTTPException(status_code=400, detail="Run migration 20260708_price_book.sql first.")
+        raise HTTPException(status_code=500, detail="Could not save your price.")
+
+
+@router.get("/materials/live-price")
+async def material_live_price(
+    item: str = Query(..., min_length=3, max_length=120),
+    base_price: float = Query(0, ge=0),
+    zip_code: str = Query("", max_length=10),
+    user: dict = Depends(require_user),
+) -> dict:
+    """Live fetched-price check for one material line: Tavily-sourced retail
+    price with source URL + retrieval date, regionally adjusted (RSMeans).
+    Honest labeling — is_live=false means it's the national estimate."""
+    from app.services.live_pricing_service import get_live_price
+    return await asyncio.to_thread(get_live_price, item, base_price, zip_code)
+
+
+def _apply_price_book(db, catalog: list[dict], user_id: str) -> dict[str, float]:
+    """Overlay the contractor's own negotiated prices (their price book) onto
+    the catalog before quantities are computed. Returns {sku: my_price} so the
+    UI can badge which lines use YOUR pricing vs national averages."""
+    overrides: dict[str, float] = {}
+    try:
+        rows = db.table("user_material_prices").select("sku, unit_cost").eq("user_id", user_id).execute().data or []
+        overrides = {r["sku"]: float(r["unit_cost"]) for r in rows}
+        for item in catalog:
+            if item.get("sku") in overrides:
+                item["unit_cost"] = overrides[item["sku"]]
+    except Exception as e:
+        logger.info("price book lookup failed (table may not exist yet): %s", e)
+    return overrides
+
+
 @router.get("/runs/{run_id}/materials")
 async def get_run_materials(
     run_id: str,
@@ -3018,6 +3074,7 @@ async def get_run_materials(
     region = (proj.data or {}).get("region")
 
     catalog_q = db.table("materials_catalog").select("*").eq("active", True).execute()
+    my_prices = _apply_price_book(db, catalog_q.data or [], user["id"])
     catalog = catalog_q.data or []
     if region:
         by_sku: dict[str, dict] = {}
@@ -3066,6 +3123,7 @@ async def get_run_materials(
         "run_id": run_id,
         "waste_pct": waste_pct,
         "waste_table": STANDARD_WASTE_PCTS,
+        "my_prices": my_prices,
         "lines": [l.to_dict() for l in lines],
         "summary": materials_summary(lines),
         "grand_total_at_selected_waste": grand_total(lines, waste_pct),
@@ -3224,6 +3282,9 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
     aggregates = _aggregate_run(run_id)
 
     catalog = db.table("materials_catalog").select("*").eq("active", True).execute().data or []
+    # Reports price with the contractor's own price book too.
+    if proj.data.get("user_id"):
+        _apply_price_book(db, catalog, proj.data["user_id"])
     totals = RoofTotals(
         total_roof_sqft=float(aggregates["total_roof_sqft"] or 0),
         squares=float(aggregates["squares"] or 0),
