@@ -25,8 +25,17 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Public Overpass endpoint. Fair-use; we cache aggressively and time out fast.
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Public Overpass endpoints, tried in order. The primary (overpass-api.de)
+# aggressively throttles CLOUD egress IPs — from Render it frequently rejects
+# every request even though the same query works from a laptop, which made
+# footprints silently unavailable in production. The mirrors accept cloud
+# traffic far more reliably; we cache 24h per address to stay well inside
+# everyone's fair-use.
+OVERPASS_MIRRORS = [
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+]
 _SEARCH_RADIUS_M = 60
 _CACHE_TTL_SECONDS = 24 * 3600
 _cache: dict[str, tuple[float, dict]] = {}
@@ -87,15 +96,21 @@ async def get_building_footprint(lat: float, lng: float) -> dict:
         f'(way["building"](around:{_SEARCH_RADIUS_M},{lat:.7f},{lng:.7f}););'
         f"out geom;"
     )
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.post(OVERPASS_URL, data={"data": query})
-            r.raise_for_status()
-            data = r.json()
-    except Exception as e:
-        logger.info("overpass footprint lookup failed: %s", e)
+    data = None
+    last_err = "no mirror reachable"
+    async with httpx.AsyncClient(timeout=18, headers={"User-Agent": "axis-performance/1.0"}) as client:
+        for mirror in OVERPASS_MIRRORS:
+            try:
+                r = await client.post(mirror, data={"data": query})
+                r.raise_for_status()
+                data = r.json()
+                break
+            except Exception as e:
+                last_err = f"{mirror.split('/')[2]}: {str(e)[:80]}"
+                logger.info("overpass mirror failed (%s) — trying next", last_err)
+    if data is None:
         # Don't cache transient failures.
-        return {"available": False, "reason": f"Footprint service unreachable: {str(e)[:120]}"}
+        return {"available": False, "reason": f"Footprint service unreachable ({last_err})"}
 
     elements = [e for e in (data.get("elements") or []) if e.get("type") == "way"]
     candidates: list[list[dict]] = []
