@@ -351,6 +351,11 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
             <span className="text-sm font-semibold text-emerald-300">{fmt$(materials?.grand_total_at_selected_waste)}</span>
           </div>
         </div>
+        {materials && materials.lines.length > 0 && (
+          <p className="mb-2 text-[10px] text-slate-500">
+            Click a price to set your dealer rate (<span className="mx-0.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 align-middle" /> = yours) · hover a row for buy links &amp; live price
+          </p>
+        )}
         {!materials && (
           <p className="text-xs text-slate-500">
             Once facet edges are labeled and totals are non-zero, materials appear here.
@@ -372,17 +377,34 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
               </thead>
               <tbody>
                 {materials.lines.map(line => (
-                  <tr key={line.sku} className="border-b border-white/5 text-slate-200">
+                  <tr key={line.sku} className="group border-b border-white/5 text-slate-200">
                     <td className="px-2 py-2 font-mono text-[10px] text-slate-400">{line.sku}</td>
                     <td className="px-2 py-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span>{line.item_name}</span>
-                        <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer"
-                          title="Shop this item at Home Depot"
-                          className="rounded bg-orange-600/20 px-1.5 py-0.5 text-[9px] font-bold text-orange-300 hover:bg-orange-600/40">HD ↗</a>
-                        <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer"
-                          title="Shop this item at Lowe's"
-                          className="rounded bg-blue-600/20 px-1.5 py-0.5 text-[9px] font-bold text-blue-300 hover:bg-blue-600/40">LOWE&apos;S ↗</a>
+                        {/* Secondary actions stay out of the way until the row is hovered. */}
+                        <span className="flex items-center gap-1.5 opacity-25 transition-opacity duration-150 group-hover:opacity-100">
+                          <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer"
+                            title="Shop at Home Depot"
+                            className="text-[9px] font-semibold text-orange-300/90 hover:underline">HD↗</a>
+                          <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer"
+                            title="Shop at Lowe's"
+                            className="text-[9px] font-semibold text-blue-300/90 hover:underline">Lowe&apos;s↗</a>
+                          {liveChecks[line.sku]?.loading ? (
+                            <span className="text-[9px] text-blue-300">…</span>
+                          ) : liveChecks[line.sku]?.price == null && (
+                            <button onClick={() => void checkLive(line.sku, line.item_name, line.unit_cost)}
+                              className="text-[9px] text-slate-400 hover:text-blue-300 hover:underline"
+                              title="Fetch a live market price for this item">live $</button>
+                          )}
+                        </span>
+                        {liveChecks[line.sku]?.price != null && (
+                          <a href={liveChecks[line.sku].url} target="_blank" rel="noreferrer"
+                            className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-300 hover:text-blue-300"
+                            title={liveChecks[line.sku].isLive ? 'Live fetched price — click for source' : 'National estimate — click for source'}>
+                            {liveChecks[line.sku].isLive ? '🌐' : '≈'} {fmt$(liveChecks[line.sku].price)} ↗
+                          </a>
+                        )}
                       </div>
                       <div className="text-[10px] text-slate-500">{line.computation_trace}</div>
                     </td>
@@ -407,32 +429,17 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                         <button
                           onClick={() => setPriceEdit({ sku: line.sku, value: String(line.unit_cost) })}
                           title={materials.my_prices?.[line.sku] != null
-                            ? 'YOUR price (from your price book) — click to change, clear to reset'
+                            ? 'Your price (from your price book) — click to change, clear to reset'
                             : 'National average — click to set YOUR dealer price'}
-                          className="group inline-flex items-center gap-1 hover:text-blue-300"
+                          className="group/price inline-flex items-center gap-1 hover:text-blue-300"
                         >
+                          {materials.my_prices?.[line.sku] != null && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="Your price" />
+                          )}
                           {fmt$(line.unit_cost)}
-                          {materials.my_prices?.[line.sku] != null
-                            ? <span className="rounded bg-emerald-500/20 px-1 text-[8px] font-bold text-emerald-300">MY $</span>
-                            : <span className="opacity-0 transition group-hover:opacity-100 text-[9px]">✎</span>}
+                          <span className="w-3 text-[9px] opacity-0 transition-opacity group-hover:opacity-60">✎</span>
                         </button>
                       )}
-                      <div className="mt-0.5">
-                        {liveChecks[line.sku]?.loading ? (
-                          <span className="text-[9px] text-blue-300">checking…</span>
-                        ) : liveChecks[line.sku]?.price != null ? (
-                          <a href={liveChecks[line.sku].url} target="_blank" rel="noreferrer"
-                            className="text-[9px] text-slate-400 hover:text-blue-300"
-                            title={liveChecks[line.sku].isLive ? 'Live fetched price — click for source' : 'National estimate — click for source'}>
-                            {liveChecks[line.sku].isLive ? '🌐' : '≈'} {fmt$(liveChecks[line.sku].price)} ↗
-                          </a>
-                        ) : (
-                          <button onClick={() => void checkLive(line.sku, line.item_name, line.unit_cost)}
-                            className="text-[9px] text-slate-500 hover:text-blue-300" title="Fetch a live market price for this item">
-                            💲 check live
-                          </button>
-                        )}
-                      </div>
                     </td>
                     <td className="px-2 py-2 text-right font-mono">{fmt$((line.waste_quantities[wastePct] ?? 0) * line.unit_cost)}</td>
                   </tr>
