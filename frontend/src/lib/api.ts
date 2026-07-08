@@ -42,6 +42,13 @@ export interface WidgetLead {
   status: 'new' | 'contacted' | 'quoted' | 'won' | 'lost'
   notes: string | null
   created_at: string
+  roof_age?: string | null
+  stories?: number | null
+  issues?: string[] | null
+  lead_score?: number | null
+  score_reasons?: string[] | null
+  report_token?: string | null
+  report_opens?: number | null
 }
 
 export interface ProposalTier {
@@ -526,7 +533,18 @@ export const api = {
     // Public (homeowner-facing; no auth required)
     widgetConfig: (key: string) =>
       apiRequest<{ company_name: string; phone: string }>(`/api/v1/instant-quote/w/${key}`),
-    quote: (key: string, address: string) =>
+    locate: (key: string, payload: { address?: string; lat?: number; lng?: number }) =>
+      apiRequest<{
+        found: boolean
+        lat?: number
+        lng?: number
+        address?: string
+        message?: string
+        imagery?: { url: string; width_px: number; height_px: number; feet_per_pixel: number } | null
+      }>(`/api/v1/instant-quote/w/${key}/locate`, {
+        method: 'POST', body: JSON.stringify(payload),
+      }, 45000),
+    quote: (key: string, address: string, lat?: number, lng?: number) =>
       apiRequest<{
         found: boolean
         measured?: boolean
@@ -540,15 +558,42 @@ export const api = {
         source?: string
         message?: string
       }>(`/api/v1/instant-quote/w/${key}/quote`, {
-        method: 'POST', body: JSON.stringify({ address }),
+        method: 'POST', body: JSON.stringify({ address, lat, lng }),
       }, 45000),
+    trackEvent: (key: string, sessionId: string, event: string) =>
+      apiRequest<{ ok: boolean }>(`/api/v1/instant-quote/w/${key}/event`, {
+        method: 'POST', body: JSON.stringify({ session_id: sessionId, event }),
+      }).catch(() => ({ ok: false })),   // analytics never blocks the flow
+    report: (token: string) =>
+      apiRequest<{
+        first_name: string
+        address: string | null
+        created_at: string
+        company_name: string
+        company_phone: string
+        roof_sqft: number | null
+        squares: number | null
+        price_low: number | null
+        price_high: number | null
+        source: string | null
+        roof_confirmed: boolean
+        imagery_url: string | null
+        roof_age: string | null
+        stories: number | null
+        issues: string[]
+      }>(`/api/v1/instant-quote/report/${token}`),
+    analytics: () =>
+      apiRequest<{ funnel: Record<string, number>; leads_30d: number; avg_score: number | null }>(
+        `/api/v1/instant-quote/analytics`, undefined, 30000, 60000),
     submitLead: (key: string, payload: {
       name: string; phone?: string; email?: string; address: string
       lat?: number; lng?: number; squares_estimate?: number
       price_low?: number; price_high?: number; quote_source?: string
       notes?: string
+      roof_age?: string; stories?: number; issues?: string[]
+      roof_confirmed?: boolean; roof_sqft?: number; imagery_url?: string
     }) =>
-      apiRequest<{ ok: boolean; message: string }>(`/api/v1/instant-quote/w/${key}/lead`, {
+      apiRequest<{ ok: boolean; message: string; report_url?: string | null }>(`/api/v1/instant-quote/w/${key}/lead`, {
         method: 'POST', body: JSON.stringify(payload),
       }),
     // Contractor

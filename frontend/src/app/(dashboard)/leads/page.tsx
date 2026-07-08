@@ -35,6 +35,7 @@ export default function LeadsPage() {
   const [filter, setFilter] = useState<string>('all')
   const [loading, setLoading] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [analytics, setAnalytics] = useState<{ funnel: Record<string, number>; leads_30d: number; avg_score: number | null } | null>(null)
   const [priceLow, setPriceLow] = useState('450')
   const [priceHigh, setPriceHigh] = useState('650')
 
@@ -55,6 +56,7 @@ export default function LeadsPage() {
       } catch { /* widget optional */ }
       await refresh()
       setLoading(false)
+      void api.instantQuote.analytics().then(setAnalytics).catch(() => {})
     })()
     const t = setInterval(refresh, 30000)   // speed-to-lead: keep the inbox fresh
     return () => clearInterval(t)
@@ -148,6 +150,40 @@ export default function LeadsPage() {
         )}
       </section>
 
+      {/* 30-day funnel */}
+      {analytics && (analytics.leads_30d > 0 || Object.keys(analytics.funnel).length > 0) && (
+        <section className="rounded-xl border border-white/10 bg-slate-900/50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-100">📈 Last 30 days</h2>
+            {analytics.avg_score != null && (
+              <span className="text-xs text-slate-400">avg lead quality <strong className="text-white">{analytics.avg_score}</strong>/100</span>
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            {([
+              ['view', 'Views'],
+              ['address_entered', 'Addresses'],
+              ['roof_confirmed', 'Roofs confirmed'],
+              ['qualified', 'Qualified'],
+              ['lead_captured', 'Leads'],
+            ] as [string, string][]).map(([k, label], i, arr) => (
+              <span key={k} className="flex items-center gap-2">
+                <span className="rounded-lg bg-slate-800/70 px-3 py-1.5 text-center">
+                  <span className="block text-base font-bold text-white">{analytics.funnel[k] ?? 0}</span>
+                  <span className="text-[10px] uppercase tracking-wide text-slate-500">{label}</span>
+                </span>
+                {i < arr.length - 1 && <span className="text-slate-600">→</span>}
+              </span>
+            ))}
+            {(analytics.funnel.view ?? 0) > 0 && (
+              <span className="ml-1 text-[11px] text-slate-500">
+                {Math.round(((analytics.funnel.lead_captured ?? 0) / (analytics.funnel.view || 1)) * 100)}% completion
+              </span>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Pipeline filter chips */}
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setFilter('all')}
@@ -186,6 +222,16 @@ export default function LeadsPage() {
                       {l.status === 'new' && Date.now() - new Date(l.created_at).getTime() < 30 * 60000 && (
                         <span className="animate-pulse rounded bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-bold text-rose-300">CALL NOW</span>
                       )}
+                      {l.lead_score != null && (
+                        <span
+                          title={(l.score_reasons || []).join('\n') || 'Lead quality score'}
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                            l.lead_score >= 80 ? 'bg-rose-500/20 text-rose-300'
+                              : l.lead_score >= 60 ? 'bg-amber-500/20 text-amber-300'
+                              : 'bg-slate-600/30 text-slate-400'
+                          }`}
+                        >{l.lead_score >= 80 ? '🔥 ' : ''}{l.lead_score}</span>
+                      )}
                     </div>
                     <div className="mt-1 text-xs text-slate-300">{l.address}</div>
                     <div className="mt-1 text-[11px] text-slate-500">
@@ -193,6 +239,24 @@ export default function LeadsPage() {
                       {l.price_low != null ? <>saw {money(l.price_low)}–{money(l.price_high)} · </> : null}
                       {l.quote_source === 'solar' ? 'solar-measured' : l.quote_source === 'footprint' ? 'outline-estimated' : 'not auto-measured'}
                     </div>
+                    {(l.roof_age || l.stories || (l.issues || []).length > 0 || l.report_token) && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {l.roof_age && <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">roof {l.roof_age} yrs</span>}
+                        {l.stories && <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">{l.stories} stories</span>}
+                        {(l.issues || []).map(i => (
+                          <span key={i} className={`rounded px-1.5 py-0.5 text-[10px] ${
+                            i === 'leak' || i === 'storm_damage' ? 'bg-rose-500/15 font-semibold text-rose-300' : 'bg-slate-800 text-slate-400'
+                          }`}>{i.replace(/_/g, ' ')}</span>
+                        ))}
+                        {l.report_token && (
+                          <a href={`/r/${l.report_token}`} target="_blank" rel="noreferrer"
+                            className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300 hover:bg-blue-500/30"
+                            title="The report the homeowner saw">
+                            📄 Report{(l.report_opens ?? 0) > 0 ? ` · ${l.report_opens} open${l.report_opens === 1 ? '' : 's'}` : ''}
+                          </a>
+                        )}
+                      </div>
+                    )}
                     {l.notes && (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {l.notes.split(' · ').map(n => (
