@@ -5,10 +5,10 @@
  * One link, no account: status timeline, proposal, report, photos, and the
  * contractor's contact card. Light theme, matching /q and /p.
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 
-import { api } from '@/lib/api'
+import { api, type PortalMessage } from '@/lib/api'
 
 type Portal = Awaited<ReturnType<typeof api.clientPortal.publicGet>>
 
@@ -27,10 +27,49 @@ export default function ClientPortalPage() {
   const [p, setP] = useState<Portal | null>(null)
   const [notFound, setNotFound] = useState(false)
 
+  // Two-way messages
+  const [messages, setMessages] = useState<PortalMessage[]>([])
+  const [draft, setDraft] = useState('')
+  const [myName, setMyName] = useState('')
+  const [sending, setSending] = useState(false)
+  const threadRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (!token) return
     api.clientPortal.publicGet(token).then(setP).catch(() => setNotFound(true))
+    try { setMyName(localStorage.getItem('axis_portal_name') || '') } catch { /* ignore */ }
   }, [token])
+
+  const loadMessages = useCallback(() => {
+    if (!token) return
+    api.clientPortal.publicMessages(token)
+      .then(r => setMessages(r.messages))
+      .catch(() => { /* portal may pre-date messaging */ })
+  }, [token])
+
+  useEffect(() => {
+    loadMessages()
+    const t = setInterval(loadMessages, 25000)
+    return () => clearInterval(t)
+  }, [loadMessages])
+
+  useEffect(() => {
+    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight })
+  }, [messages.length])
+
+  const send = useCallback(async () => {
+    const body = draft.trim()
+    if (!body || sending) return
+    setSending(true)
+    try {
+      const res = await api.clientPortal.sendPublicMessage(token, body, myName.trim() || undefined)
+      setMessages(prev => [...prev, res.message])
+      setDraft('')
+      try { if (myName.trim()) localStorage.setItem('axis_portal_name', myName.trim()) } catch { /* ignore */ }
+    } catch { /* keep the draft so nothing is lost */ } finally {
+      setSending(false)
+    }
+  }, [draft, myName, sending, token])
 
   const money = (v?: number | null) => v == null ? '—' : v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 
@@ -168,6 +207,56 @@ export default function ClientPortalPage() {
             </div>
           </section>
         )}
+
+        {/* Messages — two-way thread with the contractor */}
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-1 text-sm font-semibold">💬 Messages</div>
+          <p className="mb-3 text-xs text-slate-500">
+            Ask a question or leave an update — {c.company_name || 'your contractor'} sees it right away.
+          </p>
+          <div ref={threadRef} className="max-h-72 space-y-2 overflow-y-auto rounded-lg bg-slate-50 p-3 ring-1 ring-slate-100">
+            {messages.length === 0 && (
+              <p className="py-4 text-center text-xs text-slate-400">No messages yet — say hello 👋</p>
+            )}
+            {messages.map(m => (
+              <div key={m.id} className={`flex ${m.sender === 'homeowner' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
+                  m.sender === 'homeowner'
+                    ? 'rounded-br-md bg-blue-600 text-white'
+                    : 'rounded-bl-md bg-white text-slate-800 ring-1 ring-slate-200'
+                }`}>
+                  <div className="whitespace-pre-wrap break-words">{m.body}</div>
+                  <div className={`mt-1 text-[10px] ${m.sender === 'homeowner' ? 'text-blue-200' : 'text-slate-400'}`}>
+                    {m.sender === 'homeowner' ? (m.sender_name || 'You') : (c.company_name || 'Contractor')}
+                    {' · '}{new Date(m.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 grid gap-2">
+            {!myName && (
+              <input
+                type="text" value={myName} onChange={e => setMyName(e.target.value)}
+                placeholder="Your name (shown with your messages)"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+            )}
+            <div className="flex gap-2">
+              <input
+                type="text" value={draft} onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') void send() }}
+                placeholder="Type a message…"
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+              <button
+                onClick={send} disabled={sending || !draft.trim()}
+                className="shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-40"
+                style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)' }}
+              >{sending ? '…' : 'Send'}</button>
+            </div>
+          </div>
+        </section>
 
         {/* Contact */}
         {(c.phone || c.email) && (

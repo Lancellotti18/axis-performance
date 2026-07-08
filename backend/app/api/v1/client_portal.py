@@ -17,7 +17,7 @@ import logging
 import secrets
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.core.auth import require_user
@@ -165,3 +165,95 @@ async def public_portal(token: str) -> dict:
         "proposal": proposal,
         "updated_at": portal.get("updated_at"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Two-way messaging — contractor ⇄ homeowner, scoped by the portal
+# ---------------------------------------------------------------------------
+
+import time as _time
+
+# Light per-IP limiter for the PUBLIC reply endpoint.
+_MSG_RATE: dict[str, list[float]] = {}
+
+
+def _msg_rate_ok(ip: str, max_per_hour: int = 30) -> bool:
+    now = _time.time()
+    hits = [t for t in _MSG_RATE.get(ip, []) if now - t < 3600]
+    if len(hits) >= max_per_hour:
+        _MSG_RATE[ip] = hits
+        return False
+    hits.append(now)
+    _MSG_RATE[ip] = hits
+    return True
+
+
+def _message_rows(db, portal_id: str) -> list[dict]:
+    rows = db.table("portal_messages").select(
+        "id, sender, sender_name, body, created_at"
+    ).eq("portal_id", portal_id).order("created_at", desc=False).limit(200).execute().data or []
+    return rows
+
+
+class MessageIn(BaseModel):
+    body: str = Field(..., min_length=1, max_length=2000)
+    name: Optional[str] = Field(None, max_length=120)
+
+
+@router.get("/my/{project_id}/messages")
+async def my_messages(project_id: str, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    _own_project(db, project_id, user["id"])
+    portal = db.table("client_portals").select("id").eq("project_id", project_id).limit(1).execute()
+    if not portal.data:
+        return {"messages": []}
+    return {"messages": _message_rows(db, portal.data[0]["id"])}
+
+
+@router.post("/my/{project_id}/messages")
+async def post_my_message(
+    project_id: str, payload: MessageIn, user: dict = Depends(require_user),
+) -> dict:
+    db = get_supabase()
+    _own_project(db, project_id, user["id"])
+    portal = db.table("client_portals").select("id").eq("project_id", project_id).limit(1).execute()
+    if not portal.data:
+        raise HTTPException(status_code=404, detail="No portal for this project yet — open the Client Portal panel first.")
+    ins = db.table("portal_messages").insert({
+        "portal_id": portal.data[0]["id"],
+        "sender": "contractor",
+        "sender_name": payload.name,
+        "body": payload.body.strip(),
+    }).execute()
+    if not ins.data:
+        raise HTTPException(status_code=500, detail="Could not send the message.")
+    return {"ok": True, "message": ins.data[0]}
+
+
+@router.get("/public/{token}/messages")
+async def public_messages(token: str) -> dict:
+    db = get_supabase()
+    res = db.table("client_portals").select("id, enabled").eq("token", token).limit(1).execute()
+    if not res.data or not res.data[0].get("enabled"):
+        raise HTTPException(status_code=404, detail="Portal not found.")
+    return {"messages": _message_rows(db, res.data[0]["id"])}
+
+
+@router.post("/public/{token}/messages")
+async def post_public_message(token: str, payload: MessageIn, request: Request) -> dict:
+    ip = (request.client.host if request.client else "?") or "?"
+    if not _msg_rate_ok(ip):
+        raise HTTPException(status_code=429, detail="Too many messages — please try again in a bit.")
+    db = get_supabase()
+    res = db.table("client_portals").select("id, enabled").eq("token", token).limit(1).execute()
+    if not res.data or not res.data[0].get("enabled"):
+        raise HTTPException(status_code=404, detail="Portal not found.")
+    ins = db.table("portal_messages").insert({
+        "portal_id": res.data[0]["id"],
+        "sender": "homeowner",
+        "sender_name": (payload.name or "").strip() or None,
+        "body": payload.body.strip(),
+    }).execute()
+    if not ins.data:
+        raise HTTPException(status_code=500, detail="Could not send — please call the contractor instead.")
+    return {"ok": True, "message": ins.data[0]}

@@ -68,6 +68,14 @@ export interface RoofProposal {
   created_at: string
 }
 
+export interface PortalMessage {
+  id: string
+  sender: 'contractor' | 'homeowner'
+  sender_name: string | null
+  body: string
+  created_at: string
+}
+
 export interface PublicProposal {
   company_name: string
   license_number: string | null
@@ -587,6 +595,19 @@ export const api = {
     update: (projectId: string, patch: { stage?: string; enabled?: boolean }) =>
       apiRequest<{ id: string; token: string; stage: string; enabled: boolean }>(
         `/api/v1/client-portal/my/${projectId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+    // Two-way messaging (contractor ⇄ homeowner)
+    myMessages: (projectId: string) =>
+      apiRequest<{ messages: PortalMessage[] }>(`/api/v1/client-portal/my/${projectId}/messages`),
+    sendMyMessage: (projectId: string, body: string) =>
+      apiRequest<{ ok: boolean; message: PortalMessage }>(
+        `/api/v1/client-portal/my/${projectId}/messages`,
+        { method: 'POST', body: JSON.stringify({ body }) }),
+    publicMessages: (token: string) =>
+      apiRequest<{ messages: PortalMessage[] }>(`/api/v1/client-portal/public/${token}/messages`),
+    sendPublicMessage: (token: string, body: string, name?: string) =>
+      apiRequest<{ ok: boolean; message: PortalMessage }>(
+        `/api/v1/client-portal/public/${token}/messages`,
+        { method: 'POST', body: JSON.stringify({ body, name }) }),
     publicGet: (token: string) =>
       apiRequest<{
         address: string
