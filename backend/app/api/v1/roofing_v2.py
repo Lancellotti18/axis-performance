@@ -154,6 +154,7 @@ _PROXY_ALLOWED_HOSTS = (
 
 @router.get("/imagery/proxy")
 async def imagery_proxy(url: str = Query(..., min_length=10)):
+    import httpx
     """
     Same-origin tile proxy. Some providers don't send CORS headers, which makes
     their tiles unreadable from a <canvas> (tainted-canvas SecurityError) — that
