@@ -18,6 +18,16 @@
 --    'per_lf_ridge_only' coverage basis.
 -- ============================================================================
 
+-- The catalog's coverage_basis CHECK predates per_lf_ridge_only — widen it
+-- before the ridge-vent insert.
+ALTER TABLE materials_catalog DROP CONSTRAINT IF EXISTS materials_catalog_coverage_basis_check;
+ALTER TABLE materials_catalog ADD CONSTRAINT materials_catalog_coverage_basis_check
+  CHECK (coverage_basis IN (
+    'per_square', 'per_lf', 'per_lf_perimeter',
+    'per_lf_ridges', 'per_lf_ridge_only', 'per_lf_valleys',
+    'per_eave_iwshield', 'per_unit'
+  ));
+
 UPDATE materials_catalog SET
   coverage_value = 41,
   notes = 'Wall intersections; 100 pcs × ~5in exposure ≈ 41 lf per box'
