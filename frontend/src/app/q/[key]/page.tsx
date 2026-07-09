@@ -8,7 +8,7 @@
  *   2. CONFIRM  — satellite tile, tap-to-place pin ("is this your roof?").
  *                 The confirmed pin anchors measurement on the RIGHT building.
  *   3. QUALIFY  — roof age / stories / issues (chip taps, educational lines)
- *   4. TEASER   — the measured size FREE; the price range gated behind contact
+ *   4. CAPTURE  — \"you're almost there\" — contact info BEFORE any reveal
  *   5. RESULT   — full estimate: materials, financing, disclaimer, report link
  *
  * Funnel events fire at each step for the contractor's analytics.
@@ -20,7 +20,7 @@ import { api } from '@/lib/api'
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
-type Step = 'address' | 'confirm' | 'qualify' | 'teaser' | 'result'
+type Step = 'address' | 'confirm' | 'qualify' | 'capture' | 'result'
 
 const MATERIALS = [
   { key: 'arch', label: 'Architectural asphalt', note: 'Most common', mult: 1.0 },
@@ -82,6 +82,8 @@ export default function RoofIQPage() {
 
   // quote + contact
   const [quote, setQuote] = useState<Awaited<ReturnType<typeof api.instantQuote.quote>> | null>(null)
+  const quoteRef = useRef<typeof quote>(null)
+  useEffect(() => { quoteRef.current = quote }, [quote])
   const [material, setMaterial] = useState<typeof MATERIALS[number]['key']>('arch')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -150,33 +152,35 @@ export default function RoofIQPage() {
     setStep('qualify')
   }, [track])
 
-  // ---- step 3 → 4: quote runs while they read the teaser ----
-  const finishQualify = useCallback(async () => {
+  // ---- step 3 → 4: measurement runs SILENTLY while they enter contact info.
+  // Fully gated by design: no numbers (and no measurement hiccups) are shown
+  // until after capture — the reveal happens on the result screen.
+  const quotePromiseRef = useRef<Promise<void> | null>(null)
+  const finishQualify = useCallback(() => {
     track('qualified')
-    setStep('teaser')
-    setBusy(true)
-    try {
-      const at = pinLatLng() || located
-      const q = await api.instantQuote.quote(widgetKey, at?.address || address, at?.lat, at?.lng)
-      setQuote(q)
-    } catch { /* teaser still shows; result handles missing quote */ } finally {
-      setBusy(false)
-    }
+    setStep('capture')
+    const at = pinLatLng() || located
+    quotePromiseRef.current = api.instantQuote.quote(widgetKey, at?.address || address, at?.lat, at?.lng)
+      .then(q => setQuote(q))
+      .catch(() => { /* result screen handles a missing quote gracefully */ })
   }, [track, pinLatLng, located, widgetKey, address])
 
-  // ---- step 4 → 5: capture ----
+  // ---- step 4 → 5: capture, then reveal ----
   const unlock = useCallback(async () => {
     if (name.trim().length < 2) { setError('Please enter your name.'); return }
     if (!phone.trim() && !email.trim()) { setError('A phone number or email is needed to send your report.'); return }
     setBusy(true); setError(null)
     try {
+      // Make sure the background measurement finished before we submit + reveal.
+      if (quotePromiseRef.current) await quotePromiseRef.current
+      const q = quoteRef.current
       const res = await api.instantQuote.submitLead(widgetKey, {
         name: name.trim(), phone: phone.trim() || undefined, email: email.trim() || undefined,
         address: located?.address || address,
         lat: located?.lat, lng: located?.lng,
-        squares_estimate: quote?.squares, roof_sqft: quote?.roof_sqft,
-        price_low: quote?.price_low, price_high: quote?.price_high,
-        quote_source: quote?.source,
+        squares_estimate: q?.squares, roof_sqft: q?.roof_sqft,
+        price_low: q?.price_low, price_high: q?.price_high,
+        quote_source: q?.source,
         roof_age: age || undefined, stories: stories || undefined, issues,
         roof_confirmed: confirmed,
         imagery_url: imagery?.url,
@@ -197,7 +201,7 @@ export default function RoofIQPage() {
   }, [name, phone, email, located, address, quote, age, stories, issues, confirmed, imagery, widgetKey, track])
 
   const money = (v?: number | null) => v == null ? '—' : v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-  const stepIndex = ['address', 'confirm', 'qualify', 'teaser', 'result'].indexOf(step)
+  const stepIndex = ['address', 'confirm', 'qualify', 'capture', 'result'].indexOf(step)
 
   if (notFound) {
     return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-slate-600">This quote tool isn&apos;t available. Please contact the contractor directly.</main>
@@ -330,53 +334,38 @@ export default function RoofIQPage() {
             </>
           )}
 
-          {/* ── 4. TEASER (size free, price gated) ── */}
-          {step === 'teaser' && (
+          {/* ── 4. CAPTURE — "you're almost there" (fully gated reveal) ── */}
+          {step === 'capture' && (
             <>
-              {busy || !quote ? (
-                <div className="flex flex-col items-center py-8">
-                  <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-blue-500 border-t-transparent" />
-                  <p className="mt-3 text-sm text-slate-500">Measuring your roof from satellite + solar data…</p>
+              <div className="text-center">
+                <div className="text-2xl">🛰</div>
+                <div className="mt-1 text-sm font-semibold">You&apos;re almost there, {located ? 'your report is being generated' : 'one last step'}.</div>
+                <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500">
+                  We&apos;re analyzing satellite and solar data for <strong className="text-slate-700">{located?.address}</strong> right now.
+                  Just a few details so we can personalize your report and send your copy.
+                </p>
+              </div>
+
+              {/* subtle working indicator — never a failure message pre-capture */}
+              <div className="mx-auto mt-3 flex w-fit items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-100">
+                <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                Analyzing roof geometry…
+              </div>
+
+              <div className="mt-4 grid gap-2">
+                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" className={inputCls} />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone" className={inputCls} />
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className={inputCls} />
                 </div>
-              ) : (
-                <>
-                  {quote.measured ? (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">✓ Roof measured</div>
-                      <div className="mt-1 text-3xl font-bold text-slate-900">{quote.roof_sqft?.toLocaleString()} ft²</div>
-                      <div className="text-xs text-slate-500">≈ {quote.squares} roofing squares · {quote.source === 'solar' ? 'solar-grade measurement' : 'aerial outline measurement'}</div>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-center text-sm text-amber-800">
-                      We located the home but couldn&apos;t auto-measure it — {company || 'the contractor'} will measure it for you, free.
-                    </div>
-                  )}
-
-                  {/* blurred price + unlock */}
-                  {quote.measured && (
-                    <div className="relative mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
-                      <div className="select-none text-2xl font-bold text-slate-900 blur-md">{money(quote.price_low)}–{money(quote.price_high)}</div>
-                      <div className="text-[10px] uppercase tracking-wide text-slate-400">Estimated range</div>
-                    </div>
-                  )}
-
-                  <div className="mt-4">
-                    <div className="text-sm font-semibold">{quote.measured ? 'Unlock your full Roof Intelligence Report — free' : 'Get your free measurement + report'}</div>
-                    <p className="mt-0.5 text-xs text-slate-500">Your price range, material options, and a shareable report. {company || 'The contractor'} will follow up — no obligation.</p>
-                    <div className="mt-3 grid gap-2">
-                      <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" className={inputCls} />
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone" className={inputCls} />
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className={inputCls} />
-                      </div>
-                      {error && <p className="text-xs text-rose-600">{error}</p>}
-                      <button onClick={() => void unlock()} disabled={busy}
-                        className="rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(5,150,105,0.3)] hover:bg-emerald-500 disabled:opacity-50"
-                      >{busy ? 'One moment…' : '🔓 Show my report'}</button>
-                    </div>
-                  </div>
-                </>
-              )}
+                {error && <p className="text-xs text-rose-600">{error}</p>}
+                <button onClick={() => void unlock()} disabled={busy}
+                  className="rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(5,150,105,0.3)] hover:bg-emerald-500 disabled:opacity-50"
+                >{busy ? 'Finalizing your report…' : '📄 Generate my report'}</button>
+                <p className="text-center text-[10px] text-slate-400">
+                  Free · no obligation · {company || 'the contractor'} will follow up with a precise proposal
+                </p>
+              </div>
             </>
           )}
 
@@ -388,6 +377,17 @@ export default function RoofIQPage() {
                 <div className="mt-1 text-sm font-semibold">Here&apos;s your estimate, {name.split(' ')[0]}</div>
                 <div className="text-xs text-slate-500">{located?.address}</div>
               </div>
+
+              {!quote?.measured && (
+                <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-center">
+                  <div className="text-sm font-semibold text-slate-800">Your roof needs a professional touch 🛠</div>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                    Satellite data couldn&apos;t fully resolve this roof automatically (tree cover and
+                    coverage gaps do this). The good news: <strong>{company || 'the contractor'} will complete
+                    your measurement personally — free</strong> — and your report will be updated with exact numbers.
+                  </p>
+                </div>
+              )}
 
               {quote?.measured && (() => {
                 const mult = MATERIALS.find(m => m.key === material)?.mult ?? 1
@@ -458,7 +458,7 @@ export default function RoofIQPage() {
             </>
           )}
 
-          {error && step !== 'teaser' && <p className="mt-3 text-xs text-rose-600">{error}</p>}
+          {error && step !== 'capture' && <p className="mt-3 text-xs text-rose-600">{error}</p>}
         </div>
 
         {!embedded && (
