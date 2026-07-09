@@ -33,7 +33,6 @@ const NAV_GROUPS: { title: string; items: { href: string; label: string; icon: (
   {
     title: 'Business',
     items: [
-      { href: '/leads',   label: 'Leads',   icon: IconCRM },
       { href: '/crm',     label: 'CRM',     icon: IconCRM },
       { href: '/reports', label: 'Reports', icon: IconReports },
       { href: '/permits', label: 'Permits', icon: IconPermits },

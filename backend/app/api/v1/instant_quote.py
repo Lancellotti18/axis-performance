@@ -342,6 +342,35 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
         report_token = None
     if not ins.data:
         raise HTTPException(status_code=500, detail="Could not save your request — please call instead.")
+
+    # One pipeline, not two: every RoofIQ lead also lands in the contractor's
+    # CRM kanban (stage "new") with the intelligence packed into notes.
+    # Best-effort — CRM hiccups must never lose the lead itself.
+    try:
+        est = None
+        if payload.price_low and payload.price_high:
+            est = round((float(payload.price_low) + float(payload.price_high)) / 2)
+        crm_notes = " · ".join(x for x in [
+            f"🎯 RoofIQ lead — score {score}/100" if score else "🎯 RoofIQ lead",
+            f"roof age {payload.roof_age}" if payload.roof_age else None,
+            f"{payload.stories} stories" if payload.stories else None,
+            ("issues: " + ", ".join(sorted(set(payload.issues or []) & _VALID_ISSUES))) if payload.issues else None,
+            f"saw ${payload.price_low:,.0f}–${payload.price_high:,.0f}" if payload.price_low and payload.price_high else None,
+            f"report: /r/{report_token}" if report_token else None,
+        ] if x)
+        db.table("crm_leads").insert({
+            "user_id": w["user_id"],
+            "name": payload.name.strip(),
+            "phone": (payload.phone or "").strip(),
+            "email": (payload.email or "").strip(),
+            "address": payload.address.strip(),
+            "stage": "new",
+            "notes": crm_notes,
+            "estimated_value": est or 0,
+        }).execute()
+    except Exception as e:
+        logger.info("crm auto-import failed (lead still captured): %s", e)
+
     return {
         "ok": True,
         "report_url": f"/r/{report_token}" if report_token else None,
