@@ -31,10 +31,16 @@ logger = logging.getLogger(__name__)
 # footprints silently unavailable in production. The mirrors accept cloud
 # traffic far more reliably; we cache 24h per address to stay well inside
 # everyone's fair-use.
+# Individual mirrors flake (kumi + private.coffee both timed out on a random
+# Tuesday while overpass-api.de throttled our cloud IP) — so we RACE them all
+# concurrently and take the first good answer instead of a slow serial ladder.
+# 24h per-address caching keeps our total load tiny and fair.
 OVERPASS_MIRRORS = [
     "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.osm.jp/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
 ]
 _SEARCH_RADIUS_M = 60
 _CACHE_TTL_SECONDS = 24 * 3600
@@ -77,6 +83,35 @@ def _ring_from_way(el: dict) -> list[dict]:
     return ring
 
 
+async def _race_mirrors(query: str, budget_s: float = 14.0) -> dict | None:
+    """Fire the query at every mirror concurrently; first valid JSON wins.
+    A serial ladder took ~40s when two mirrors hung — the race answers in the
+    time of the FASTEST healthy mirror."""
+    import asyncio
+
+    async def one(client: httpx.AsyncClient, mirror: str):
+        r = await client.post(mirror, data={"data": query})
+        r.raise_for_status()
+        return r.json()
+
+    async with httpx.AsyncClient(timeout=budget_s, headers={"User-Agent": "axis-performance/1.0"}) as client:
+        tasks = [asyncio.create_task(one(client, m)) for m in OVERPASS_MIRRORS]
+        try:
+            for fut in asyncio.as_completed(tasks, timeout=budget_s):
+                try:
+                    data = await fut
+                    if isinstance(data, dict) and "elements" in data:
+                        return data
+                except Exception as e:
+                    logger.info("overpass mirror failed in race: %s", str(e)[:80])
+        except asyncio.TimeoutError:
+            logger.info("overpass race hit the %.0fs budget", budget_s)
+        finally:
+            for t in tasks:
+                t.cancel()
+    return None
+
+
 async def get_building_footprint(lat: float, lng: float) -> dict:
     """
     Return the subject building's footprint polygon near (lat, lng).
@@ -96,21 +131,10 @@ async def get_building_footprint(lat: float, lng: float) -> dict:
         f'(way["building"](around:{_SEARCH_RADIUS_M},{lat:.7f},{lng:.7f}););'
         f"out geom;"
     )
-    data = None
-    last_err = "no mirror reachable"
-    async with httpx.AsyncClient(timeout=18, headers={"User-Agent": "axis-performance/1.0"}) as client:
-        for mirror in OVERPASS_MIRRORS:
-            try:
-                r = await client.post(mirror, data={"data": query})
-                r.raise_for_status()
-                data = r.json()
-                break
-            except Exception as e:
-                last_err = f"{mirror.split('/')[2]}: {str(e)[:80]}"
-                logger.info("overpass mirror failed (%s) — trying next", last_err)
+    data = await _race_mirrors(query)
     if data is None:
         # Don't cache transient failures.
-        return {"available": False, "reason": f"Footprint service unreachable ({last_err})"}
+        return {"available": False, "reason": "Footprint service unreachable (all mirrors failed)"}
 
     elements = [e for e in (data.get("elements") or []) if e.get("type") == "way"]
     candidates: list[list[dict]] = []

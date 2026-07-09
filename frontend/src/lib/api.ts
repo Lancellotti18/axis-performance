@@ -592,6 +592,7 @@ export const api = {
       notes?: string
       roof_age?: string; stories?: number; issues?: string[]
       roof_confirmed?: boolean; roof_sqft?: number; imagery_url?: string
+      website?: string   // honeypot
     }) =>
       apiRequest<{ ok: boolean; message: string; report_url?: string | null }>(`/api/v1/instant-quote/w/${key}/lead`, {
         method: 'POST', body: JSON.stringify(payload),

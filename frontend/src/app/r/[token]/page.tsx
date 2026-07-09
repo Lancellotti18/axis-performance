@@ -142,6 +142,16 @@ export default function ReportPage() {
           </p>
         </section>
 
+        {/* What happens next */}
+        <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-sm font-semibold">What happens next</div>
+          <ul className="mt-2 space-y-1.5 text-xs text-slate-600">
+            <li>✓ <strong>{r.company_name}</strong> has your request and will reach out to schedule a <strong>free, precise on-site quote</strong> — this report is a rough instant estimate, not a final price.</li>
+            <li>✓ Ready sooner? Call or text below to get on the schedule first.</li>
+            <li>✓ Keep this link — your report updates if anything changes.</li>
+          </ul>
+        </section>
+
         {/* CTAs */}
         <section className="mb-6 grid gap-2 print:hidden">
           {r.company_phone && (

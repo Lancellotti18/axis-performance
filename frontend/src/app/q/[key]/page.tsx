@@ -89,6 +89,7 @@ export default function RoofIQPage() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [reportUrl, setReportUrl] = useState<string | null>(null)
+  const [website, setWebsite] = useState('')   // honeypot — humans never see or fill this
   const [factorsOpen, setFactorsOpen] = useState(false)
 
   const sessionId = useMemo(() => `s-${Math.random().toString(36).slice(2, 12)}`, [])
@@ -184,6 +185,7 @@ export default function RoofIQPage() {
         roof_age: age || undefined, stories: stories || undefined, issues,
         roof_confirmed: confirmed,
         imagery_url: imagery?.url,
+        website: website || undefined,
         notes: [
           age ? `Roof age: ${age}` : null,
           stories ? `${stories} stories` : null,
@@ -353,6 +355,10 @@ export default function RoofIQPage() {
               </div>
 
               <div className="mt-4 grid gap-2">
+                {/* honeypot — visually hidden, tab-skipped; bots auto-fill it */}
+                <input type="text" value={website} onChange={e => setWebsite(e.target.value)} name="website"
+                  autoComplete="off" tabIndex={-1} aria-hidden="true"
+                  className="absolute -left-[9999px] h-0 w-0 opacity-0" />
                 <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" className={inputCls} />
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone" className={inputCls} />
@@ -440,6 +446,16 @@ export default function RoofIQPage() {
                   </ul>
                 )}
                 <p className="mt-1 text-[10px] text-amber-900/50">*Financing example: 9.9% APR, 120 mo, subject to credit approval.</p>
+              </div>
+
+              {/* What happens next — explicit, professional */}
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What happens next</div>
+                <ul className="mt-1.5 space-y-1 text-xs text-slate-600">
+                  <li>✓ Your details are with <strong>{company || 'the contractor'}</strong> — they&apos;ll reach out to schedule your <strong>free, precise on-site quote</strong>.</li>
+                  <li>✓ Serious about moving forward? Calling now gets you on the schedule fastest.</li>
+                  <li>✓ Your report link below is yours to keep and share.</li>
+                </ul>
               </div>
 
               <div className="mt-4 grid gap-2">

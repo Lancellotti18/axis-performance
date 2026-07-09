@@ -86,14 +86,27 @@ def _widget_by_key(db, widget_key: str) -> dict:
 # Public (homeowner-facing)
 # ---------------------------------------------------------------------------
 
+def _branding_for(db, w: dict) -> dict:
+    """Company branding, LIVE from the contractor profile when set (single
+    source of truth — onboarding/profile edits personalize everything at
+    once), falling back to widget-level values."""
+    company, phone = w.get("company_name"), w.get("phone")
+    try:
+        prof = db.table("contractor_profiles").select("company_name, phone").eq("user_id", w["user_id"]).limit(1).execute()
+        if prof.data:
+            company = prof.data[0].get("company_name") or company
+            phone = prof.data[0].get("phone") or phone
+    except Exception:
+        pass
+    return {"company_name": company or "Your local roofing pro", "phone": phone or ""}
+
+
 @router.get("/w/{widget_key}")
 async def widget_config(widget_key: str) -> dict:
     """Branding for the public quote page — never leaks pricing internals."""
-    w = _widget_by_key(get_supabase(), widget_key)
-    return {
-        "company_name": w.get("company_name") or "Your local roofing pro",
-        "phone": w.get("phone") or "",
-    }
+    db = get_supabase()
+    w = _widget_by_key(db, widget_key)
+    return _branding_for(db, w)
 
 
 class LocateRequest(BaseModel):
@@ -250,6 +263,9 @@ class LeadRequest(BaseModel):
     roof_confirmed: bool = False                                  # homeowner tapped the pin
     roof_sqft: Optional[float] = Field(None, ge=0)
     imagery_url: Optional[str] = Field(None, max_length=800)      # proxied tile shown at confirm
+    # Honeypot: a CSS-hidden field humans never fill. Bots do. If it has a
+    # value we return a fake success and store NOTHING.
+    website: Optional[str] = Field(None, max_length=200)
 
 
 _VALID_ISSUES = {"leak", "storm_damage", "missing_shingles", "sagging", "planning"}
@@ -295,6 +311,9 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
     ip = (request.client.host if request.client else "?") or "?"
     if not _rate_ok(ip):
         raise HTTPException(status_code=429, detail="Please try again later.")
+    if payload.website:
+        # Honeypot tripped — swallow silently so the bot thinks it worked.
+        return {"ok": True, "report_url": None, "message": "Thanks! The team will reach out shortly."}
     if not payload.phone and not payload.email:
         raise HTTPException(status_code=422, detail="A phone number or email is required so the contractor can reach you.")
 
@@ -467,11 +486,14 @@ async def update_lead(lead_id: str, payload: LeadPatch, user: dict = Depends(req
 # ---------------------------------------------------------------------------
 
 @router.get("/report/{token}")
-async def homeowner_report(token: str) -> dict:
+async def homeowner_report(token: str, request: Request) -> dict:
     """The homeowner's shareable Roof Intelligence Report (web, not PDF —
     live CTAs, mobile-first, and every open is a speed-to-lead signal)."""
     if not token or len(token) > 64:
         raise HTTPException(status_code=404, detail="Report not found.")
+    ip = (request.client.host if request.client else "?") or "?"
+    if not _rate_ok(f"rp-{ip}"):
+        raise HTTPException(status_code=429, detail="Too many requests — try again shortly.")
     db = get_supabase()
     res = db.table("widget_leads").select("*").eq("report_token", token).limit(1).execute()
     if not res.data:

@@ -7,6 +7,7 @@ import { PrecisionToggle } from '@/components/axis'
 import { ChatContextProvider } from '@/lib/chat-context'
 import AxisChat from '@/components/AxisChat'
 import GlobalSearch from '@/components/GlobalSearch'
+import BusinessProfileBanner from '@/components/BusinessProfileBanner'
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
@@ -362,6 +363,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {initials}
           </Link>
         </header>
+
+        {/* Onboarding: brand everything from one profile */}
+        {user?.id && <BusinessProfileBanner userId={user.id} />}
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">
