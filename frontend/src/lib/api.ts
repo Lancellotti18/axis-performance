@@ -581,6 +581,14 @@ export const api = {
         roof_age: string | null
         stories: number | null
         issues: string[]
+        details: {
+          work_type?: string | null
+          condition?: string | null
+          rooftop_items?: string[] | null
+          chimney_skylights?: boolean | null
+          attic?: boolean | null
+          drainage?: string | null
+        }
       }>(`/api/v1/instant-quote/report/${token}`),
     analytics: () =>
       apiRequest<{ funnel: Record<string, number>; leads_30d: number; avg_score: number | null }>(
@@ -591,6 +599,8 @@ export const api = {
       price_low?: number; price_high?: number; quote_source?: string
       notes?: string
       roof_age?: string; stories?: number; issues?: string[]
+      work_type?: string; condition?: string; rooftop_items?: string[]
+      chimney_skylights?: boolean; attic?: boolean; drainage?: string
       roof_confirmed?: boolean; roof_sqft?: number; imagery_url?: string
       website?: string   // honeypot
     }) =>

@@ -263,9 +263,19 @@ class LeadRequest(BaseModel):
     roof_confirmed: bool = False                                  # homeowner tapped the pin
     roof_sqft: Optional[float] = Field(None, ge=0)
     imagery_url: Optional[str] = Field(None, max_length=800)      # proxied tile shown at confirm
+    # Qualification v3 — the questions a real estimator asks.
+    work_type: Optional[str] = Field(None, pattern="^(replace|repair|unsure)$")
+    condition: Optional[str] = Field(None, pattern="^(no_damage|visible_damage|unsure)$")
+    rooftop_items: Optional[list[str]] = None      # satellite_dish/solar_panels/hvac/antenna/nothing/unsure
+    chimney_skylights: Optional[bool] = None
+    attic: Optional[bool] = None
+    drainage: Optional[str] = Field(None, pattern="^(external_gutters|internal_gutters|none|unsure)$")
     # Honeypot: a CSS-hidden field humans never fill. Bots do. If it has a
     # value we return a fake success and store NOTHING.
     website: Optional[str] = Field(None, max_length=200)
+
+
+_VALID_ROOFTOP = {"satellite_dish", "solar_panels", "hvac", "antenna", "nothing", "unsure"}
 
 
 _VALID_ISSUES = {"leak", "storm_damage", "missing_shingles", "sagging", "planning"}
@@ -303,6 +313,16 @@ def _score_lead(p: "LeadRequest") -> tuple[int, list[str]]:
         score += 10; reasons.append("Possible insurance claim (+10)")
     if p.quote_source in ("solar", "footprint"):
         score += 5; reasons.append("Roof auto-measured (+5)")
+    if p.work_type == "replace":
+        score += 15; reasons.append("Wants full replacement (+15)")
+    elif p.work_type == "repair":
+        score += 5; reasons.append("Wants a repair (+5)")
+    if p.condition == "visible_damage":
+        score += 12; reasons.append("Reports visible damage (+12)")
+    if p.chimney_skylights:
+        score += 4; reasons.append("Chimney/skylights — flashing scope (+4)")
+    if "solar_panels" in set(p.rooftop_items or []):
+        score += 4; reasons.append("Solar panels — detach/reset scope (+4)")
     return min(100, score), reasons
 
 
@@ -336,6 +356,14 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
         "roof_age": payload.roof_age,
         "stories": payload.stories,
         "issues": sorted(set(payload.issues or []) & _VALID_ISSUES) or None,
+        "details": {
+            "work_type": payload.work_type,
+            "condition": payload.condition,
+            "rooftop_items": sorted(set(payload.rooftop_items or []) & _VALID_ROOFTOP) or None,
+            "chimney_skylights": payload.chimney_skylights,
+            "attic": payload.attic,
+            "drainage": payload.drainage,
+        },
         "lead_score": score,
         "score_reasons": reasons,
         "report_token": report_token,
@@ -371,6 +399,12 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
             est = round((float(payload.price_low) + float(payload.price_high)) / 2)
         crm_notes = " · ".join(x for x in [
             f"🎯 RoofIQ lead — score {score}/100" if score else "🎯 RoofIQ lead",
+            {"replace": "wants REPLACEMENT", "repair": "wants repair"}.get(payload.work_type or ""),
+            "visible damage" if payload.condition == "visible_damage" else None,
+            "chimney/skylights" if payload.chimney_skylights else None,
+            ("on roof: " + ", ".join(sorted((set(payload.rooftop_items or []) & _VALID_ROOFTOP) - {"nothing", "unsure"})))
+                if set(payload.rooftop_items or []) & _VALID_ROOFTOP - {"nothing", "unsure"} else None,
+            {"internal_gutters": "internal gutters", "none": "no gutters"}.get(payload.drainage or ""),
             f"roof age {payload.roof_age}" if payload.roof_age else None,
             f"{payload.stories} stories" if payload.stories else None,
             ("issues: " + ", ".join(sorted(set(payload.issues or []) & _VALID_ISSUES))) if payload.issues else None,
@@ -529,6 +563,7 @@ async def homeowner_report(token: str, request: Request) -> dict:
         "roof_age": lead.get("roof_age"),
         "stories": lead.get("stories"),
         "issues": lead.get("issues") or [],
+        "details": lead.get("details") or {},
     }
 
 

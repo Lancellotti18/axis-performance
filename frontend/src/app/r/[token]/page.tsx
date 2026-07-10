@@ -34,6 +34,21 @@ const ISSUE_LABELS: Record<string, string> = {
   sagging: '📉 Sagging', planning: '📋 Planning ahead',
 }
 
+const WORK_LABELS: Record<string, string> = {
+  replace: '🏠 Full replacement', repair: '🔧 Repair', unsure: '🤔 Deciding',
+}
+const CONDITION_LABELS: Record<string, string> = {
+  no_damage: '✅ No visible damage', visible_damage: '⚠️ Visible damage', unsure: '🤔 Unsure',
+}
+const ROOFTOP_LABELS: Record<string, string> = {
+  satellite_dish: '📡 Satellite dish', solar_panels: '☀️ Solar panels', hvac: '❄️ HVAC unit',
+  antenna: '📶 Antenna', nothing: 'Nothing on roof', unsure: 'Unsure',
+}
+const DRAINAGE_LABELS: Record<string, string> = {
+  external_gutters: '🌧 External gutters', internal_gutters: '🌧 Internal gutters',
+  none: 'No gutters', unsure: 'Unsure',
+}
+
 export default function ReportPage() {
   const params = useParams<{ token: string }>()
   const token = params.token
@@ -54,7 +69,7 @@ export default function ReportPage() {
     return <main className="flex min-h-screen items-center justify-center bg-slate-50"><span className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" /></main>
   }
 
-  const urgent = r.issues.includes('leak') || r.issues.includes('storm_damage') || r.roof_age === '25+'
+  const urgent = r.issues.includes('leak') || r.issues.includes('storm_damage') || r.roof_age === '25+' || r.details?.condition === 'visible_damage'
 
   return (
     <main className="min-h-screen px-4 py-10 text-slate-900 print:bg-white print:py-2 sm:px-8"
@@ -116,6 +131,8 @@ export default function ReportPage() {
         <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="text-sm font-semibold">Your roof&apos;s situation</div>
           <div className="mt-2 flex flex-wrap gap-1.5">
+            {r.details?.work_type && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-800">{WORK_LABELS[r.details.work_type] || r.details.work_type}</span>}
+            {r.details?.condition && <span className={`rounded-full px-2.5 py-1 text-[11px] ${r.details.condition === 'visible_damage' ? 'bg-rose-50 font-semibold text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{CONDITION_LABELS[r.details.condition] || r.details.condition}</span>}
             {r.roof_age && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">Age: {r.roof_age} yrs</span>}
             {r.stories && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">{r.stories} stor{r.stories === 1 ? 'y' : 'ies'}</span>}
             {r.issues.map(i => (
@@ -123,6 +140,12 @@ export default function ReportPage() {
                 {ISSUE_LABELS[i] || i}
               </span>
             ))}
+            {(r.details?.rooftop_items || []).filter(x => x !== 'nothing' && x !== 'unsure').map(x => (
+              <span key={x} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">{ROOFTOP_LABELS[x] || x}</span>
+            ))}
+            {r.details?.chimney_skylights && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">🧱 Chimney / skylights</span>}
+            {r.details?.attic === true && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">🏚 Attic</span>}
+            {r.details?.drainage && r.details.drainage !== 'unsure' && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">{DRAINAGE_LABELS[r.details.drainage] || r.details.drainage}</span>}
           </div>
           {r.roof_age && <p className="mt-3 text-xs leading-relaxed text-slate-600">💡 {AGE_INSIGHT[r.roof_age]}</p>}
           {urgent && (

@@ -44,6 +44,35 @@ const ISSUES = [
   { key: 'planning', label: '📋 Just planning ahead' },
 ] as const
 
+const WORK_TYPES = [
+  { key: 'replace', label: 'Full replacement' },
+  { key: 'repair', label: 'Repair' },
+  { key: 'unsure', label: 'Not sure yet' },
+] as const
+
+const CONDITIONS: { key: string; label: string; insight?: string }[] = [
+  { key: 'no_damage', label: 'No visible damage' },
+  { key: 'visible_damage', label: 'Visible damage', insight: 'Good to know — we’ll prioritize a closer look at those areas.' },
+  { key: 'unsure', label: 'Not sure' },
+]
+
+// Multi-select. "Nothing" / "Not sure" are mutually exclusive with real items.
+const ROOFTOP_ITEMS: { key: string; label: string; insight?: string }[] = [
+  { key: 'satellite_dish', label: '📡 Satellite dish' },
+  { key: 'solar_panels', label: '☀️ Solar panels', insight: 'Solar affects the job — panels are detached and reset around the new roof.' },
+  { key: 'hvac', label: '❄️ HVAC unit' },
+  { key: 'antenna', label: '📶 Antenna' },
+  { key: 'nothing', label: 'Nothing' },
+  { key: 'unsure', label: 'Not sure' },
+]
+
+const DRAINAGE = [
+  { key: 'external_gutters', label: 'External gutters' },
+  { key: 'internal_gutters', label: 'Internal gutters' },
+  { key: 'none', label: 'None' },
+  { key: 'unsure', label: 'Not sure' },
+] as const
+
 function monthly(principal: number): number {
   const r = 0.099 / 12, n = 120
   return principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
@@ -79,6 +108,21 @@ export default function RoofIQPage() {
   const [age, setAge] = useState<string>('')
   const [stories, setStories] = useState<number>(0)
   const [issues, setIssues] = useState<string[]>([])
+  const [qualifyPage, setQualifyPage] = useState<1 | 2>(1)
+  const [workType, setWorkType] = useState<string>('')
+  const [condition, setCondition] = useState<string>('')
+  const [rooftopItems, setRooftopItems] = useState<string[]>([])
+  const [chimneySky, setChimneySky] = useState<boolean | null>(null)
+  const [attic, setAttic] = useState<boolean | null>(null)
+  const [drainage, setDrainage] = useState<string>('')
+
+  const toggleRooftop = useCallback((k: string) => {
+    setRooftopItems(prev => {
+      if (k === 'nothing' || k === 'unsure') return prev.includes(k) ? [] : [k]
+      const base = prev.filter(x => x !== 'nothing' && x !== 'unsure')
+      return base.includes(k) ? base.filter(x => x !== k) : [...base, k]
+    })
+  }, [])
 
   // quote + contact
   const [quote, setQuote] = useState<Awaited<ReturnType<typeof api.instantQuote.quote>> | null>(null)
@@ -183,13 +227,25 @@ export default function RoofIQPage() {
         price_low: q?.price_low, price_high: q?.price_high,
         quote_source: q?.source,
         roof_age: age || undefined, stories: stories || undefined, issues,
+        work_type: workType || undefined,
+        condition: condition || undefined,
+        rooftop_items: rooftopItems.length ? rooftopItems : undefined,
+        chimney_skylights: chimneySky ?? undefined,
+        attic: attic ?? undefined,
+        drainage: drainage || undefined,
         roof_confirmed: confirmed,
         imagery_url: imagery?.url,
         website: website || undefined,
         notes: [
+          workType ? `Work: ${workType}` : null,
+          condition ? `Condition: ${condition}` : null,
           age ? `Roof age: ${age}` : null,
           stories ? `${stories} stories` : null,
           issues.length ? `Issues: ${issues.join(', ')}` : null,
+          rooftopItems.length ? `On roof: ${rooftopItems.join(', ')}` : null,
+          chimneySky != null ? `Chimney/skylights: ${chimneySky ? 'yes' : 'no'}` : null,
+          attic != null ? `Attic: ${attic ? 'yes' : 'no'}` : null,
+          drainage ? `Drainage: ${drainage}` : null,
         ].filter(Boolean).join(' · '),
       })
       setReportUrl(res.report_url || null)
@@ -200,7 +256,7 @@ export default function RoofIQPage() {
     } finally {
       setBusy(false)
     }
-  }, [name, phone, email, located, address, quote, age, stories, issues, confirmed, imagery, widgetKey, track])
+  }, [name, phone, email, located, address, age, stories, issues, workType, condition, rooftopItems, chimneySky, attic, drainage, confirmed, imagery, widgetKey, track])
 
   const money = (v?: number | null) => v == null ? '—' : v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
   const stepIndex = ['address', 'confirm', 'qualify', 'capture', 'result'].indexOf(step)
@@ -293,46 +349,132 @@ export default function RoofIQPage() {
             </>
           )}
 
-          {/* ── 3. QUALIFY ── */}
+          {/* ── 3. QUALIFY — two quick chip screens ── */}
           {step === 'qualify' && (
             <>
-              <div className="text-sm font-semibold">A few quick details</div>
-              <p className="mt-0.5 text-xs text-slate-500">These sharpen your estimate — 3 taps.</p>
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">A few quick details</div>
+                <div className="font-mono text-[10px] uppercase tracking-wide text-slate-400">Step {qualifyPage} of 2</div>
+              </div>
+              <p className="mt-0.5 text-xs text-slate-500">These sharpen your estimate — just a few taps.</p>
 
-              <div className="mt-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">How old is the roof?</div>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {AGES.map(a => (
-                    <button key={a.key} onClick={() => setAge(a.key)} className={chipCls(age === a.key)}>{a.label}</button>
-                  ))}
-                </div>
-                {age && <p className="mt-1.5 text-[11px] text-blue-700/80">💡 {AGES.find(a => a.key === age)?.insight}</p>}
+              {/* sub-progress */}
+              <div className="mt-2 flex gap-1.5">
+                {[1, 2].map(p => (
+                  <span key={p} className={`h-1 flex-1 rounded-full transition-all ${p <= qualifyPage ? 'bg-blue-500' : 'bg-slate-200'}`} />
+                ))}
               </div>
 
-              <div className="mt-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">How many stories?</div>
-                <div className="mt-1.5 flex gap-1.5">
-                  {[1, 2, 3].map(n => (
-                    <button key={n} onClick={() => setStories(n)} className={chipCls(stories === n)}>{n === 3 ? '3+' : n}</button>
-                  ))}
-                </div>
-              </div>
+              {/* ---- page 1: work + condition + age + stories ---- */}
+              {qualifyPage === 1 && (
+                <>
+                  <div className="mt-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What work do you need?</div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {WORK_TYPES.map(w => (
+                        <button key={w.key} onClick={() => setWorkType(w.key)} className={chipCls(workType === w.key)}>{w.label}</button>
+                      ))}
+                    </div>
+                  </div>
 
-              <div className="mt-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Anything going on with it?</div>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {ISSUES.map(i => (
-                    <button key={i.key}
-                      onClick={() => setIssues(prev => prev.includes(i.key) ? prev.filter(x => x !== i.key) : [...prev, i.key])}
-                      className={chipCls(issues.includes(i.key))}>{i.label}</button>
-                  ))}
-                </div>
-              </div>
+                  <div className="mt-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What condition is the roof in?</div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {CONDITIONS.map(c => (
+                        <button key={c.key} onClick={() => setCondition(c.key)} className={chipCls(condition === c.key)}>{c.label}</button>
+                      ))}
+                    </div>
+                    {condition && CONDITIONS.find(c => c.key === condition)?.insight &&
+                      <p className="mt-1.5 text-[11px] text-blue-700/80">💡 {CONDITIONS.find(c => c.key === condition)?.insight}</p>}
+                  </div>
 
-              <button onClick={() => void finishQualify()}
-                className="mt-5 w-full rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
-                style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
-              >Measure my roof →</button>
+                  <div className="mt-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">How old is the roof?</div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {AGES.map(a => (
+                        <button key={a.key} onClick={() => setAge(a.key)} className={chipCls(age === a.key)}>{a.label}</button>
+                      ))}
+                    </div>
+                    {age && <p className="mt-1.5 text-[11px] text-blue-700/80">💡 {AGES.find(a => a.key === age)?.insight}</p>}
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">How many stories?</div>
+                    <div className="mt-1.5 flex gap-1.5">
+                      {[1, 2, 3].map(n => (
+                        <button key={n} onClick={() => setStories(n)} className={chipCls(stories === n)}>{n === 3 ? '3+' : n}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button onClick={() => setQualifyPage(2)}
+                    className="mt-5 w-full rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
+                    style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
+                  >Continue →</button>
+                </>
+              )}
+
+              {/* ---- page 2: issues + rooftop items + chimney/skylights + attic + drainage ---- */}
+              {qualifyPage === 2 && (
+                <>
+                  <div className="mt-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Anything going on with it?</div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {ISSUES.map(i => (
+                        <button key={i.key}
+                          onClick={() => setIssues(prev => prev.includes(i.key) ? prev.filter(x => x !== i.key) : [...prev, i.key])}
+                          className={chipCls(issues.includes(i.key))}>{i.label}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Anything on the roof? <span className="font-normal normal-case text-slate-400">(select any)</span></div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {ROOFTOP_ITEMS.map(r => (
+                        <button key={r.key} onClick={() => toggleRooftop(r.key)} className={chipCls(rooftopItems.includes(r.key))}>{r.label}</button>
+                      ))}
+                    </div>
+                    {rooftopItems.includes('solar_panels') &&
+                      <p className="mt-1.5 text-[11px] text-blue-700/80">💡 {ROOFTOP_ITEMS.find(r => r.key === 'solar_panels')?.insight}</p>}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Chimneys or skylights?</div>
+                      <div className="mt-1.5 flex gap-1.5">
+                        <button onClick={() => setChimneySky(true)} className={chipCls(chimneySky === true)}>Yes</button>
+                        <button onClick={() => setChimneySky(false)} className={chipCls(chimneySky === false)}>No</button>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Does it have an attic?</div>
+                      <div className="mt-1.5 flex gap-1.5">
+                        <button onClick={() => setAttic(true)} className={chipCls(attic === true)}>Yes</button>
+                        <button onClick={() => setAttic(false)} className={chipCls(attic === false)}>No</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What drainage does it have?</div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {DRAINAGE.map(d => (
+                        <button key={d.key} onClick={() => setDrainage(d.key)} className={chipCls(drainage === d.key)}>{d.label}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex gap-2">
+                    <button onClick={() => setQualifyPage(1)}
+                      className="rounded-lg bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200">← Back</button>
+                    <button onClick={() => void finishQualify()}
+                      className="flex-1 rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
+                      style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
+                    >Measure my roof →</button>
+                  </div>
+                </>
+              )}
             </>
           )}
 
