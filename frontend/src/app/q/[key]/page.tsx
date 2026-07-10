@@ -268,14 +268,21 @@ export default function RoofIQPage() {
   return (
     <main
       className={`min-h-screen text-slate-900 ${embedded ? 'p-3' : 'flex items-start justify-center p-4 pt-8 sm:items-center sm:p-8'}`}
-      style={{ background: 'linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)' }}
+      style={{ background: 'radial-gradient(1100px 420px at 50% -8%, #dcebff 0%, rgba(220,235,255,0) 62%), linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)' }}
     >
       <div className="w-full max-w-xl">
         {/* Header */}
         <div className="mb-5 text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl text-3xl shadow-[0_8px_24px_-8px_rgba(37,99,235,0.5)] ring-1 ring-white/60"
+            style={{ background: 'linear-gradient(150deg, #eff6ff 0%, #dbeafe 100%)' }}>🏠</div>
           <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.28em] text-blue-600/80">Instant Roof Intelligence</div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{company || '…'}</h1>
-          <p className="mt-1.5 text-sm text-slate-500">Your free AI-powered roof report — about 60 seconds.</p>
+          <p className="mt-1.5 text-sm text-slate-500">Hi there 👋 Let&apos;s get you a free roof estimate — it takes about a minute.</p>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+            {['🆓 100% free', '⏱️ ~60 seconds', '🔒 No spam, ever'].map(t => (
+              <span key={t} className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70 backdrop-blur">{t}</span>
+            ))}
+          </div>
         </div>
 
         {/* Progress dots */}
@@ -290,7 +297,10 @@ export default function RoofIQPage() {
           {/* ── 1. ADDRESS ── */}
           {step === 'address' && (
             <>
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Where&apos;s the roof?</label>
+              <div className="mb-3 text-center">
+                <div className="text-base font-semibold text-slate-800">Where&apos;s your home? 🛰️</div>
+                <p className="mt-0.5 text-xs text-slate-500">Pop in your address and we&apos;ll pull up your roof from above.</p>
+              </div>
               <div className="mt-2 flex gap-2">
                 <input
                   type="text" value={address} onChange={e => setAddress(e.target.value)}
@@ -304,9 +314,10 @@ export default function RoofIQPage() {
                 >{busy ? 'Finding…' : 'Continue →'}</button>
               </div>
               <button onClick={useMyLocation} disabled={busy}
-                className="mt-2 text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50">
+                className="mt-2.5 flex w-full items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 py-2 text-xs font-semibold text-blue-600 transition hover:bg-slate-100 disabled:opacity-50">
                 📍 Use my current location
               </button>
+              <p className="mt-3 text-center text-[11px] text-slate-400">No calls unless you want one · your info stays with {company || 'your local roofer'}</p>
             </>
           )}
 
@@ -353,10 +364,10 @@ export default function RoofIQPage() {
           {step === 'qualify' && (
             <>
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold">A few quick details</div>
+                <div className="text-sm font-semibold">Tell us about your roof 🏡</div>
                 <div className="font-mono text-[10px] uppercase tracking-wide text-slate-400">Step {qualifyPage} of 2</div>
               </div>
-              <p className="mt-0.5 text-xs text-slate-500">These sharpen your estimate — just a few taps.</p>
+              <p className="mt-0.5 text-xs text-slate-500">A few quick taps sharpen your estimate — no wrong answers.</p>
 
               {/* sub-progress */}
               <div className="mt-2 flex gap-1.5">
