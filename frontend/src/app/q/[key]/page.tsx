@@ -132,6 +132,7 @@ export default function RoofIQPage() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
+  const [smsConsent, setSmsConsent] = useState(true)   // TCPA: explicit, logged consent to be texted
   const [reportUrl, setReportUrl] = useState<string | null>(null)
   const [website, setWebsite] = useState('')   // honeypot — humans never see or fill this
   const [factorsOpen, setFactorsOpen] = useState(false)
@@ -235,6 +236,7 @@ export default function RoofIQPage() {
         drainage: drainage || undefined,
         roof_confirmed: confirmed,
         imagery_url: imagery?.url,
+        sms_consent: phone.trim() ? smsConsent : false,
         website: website || undefined,
         notes: [
           workType ? `Work: ${workType}` : null,
@@ -256,7 +258,7 @@ export default function RoofIQPage() {
     } finally {
       setBusy(false)
     }
-  }, [name, phone, email, located, address, age, stories, issues, workType, condition, rooftopItems, chimneySky, attic, drainage, confirmed, imagery, widgetKey, track])
+  }, [name, phone, email, smsConsent, located, address, age, stories, issues, workType, condition, rooftopItems, chimneySky, attic, drainage, confirmed, imagery, widgetKey, track])
 
   const money = (v?: number | null) => v == null ? '—' : v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
   const stepIndex = ['address', 'confirm', 'qualify', 'capture', 'result'].indexOf(step)
@@ -517,6 +519,16 @@ export default function RoofIQPage() {
                   <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone" className={inputCls} />
                   <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className={inputCls} />
                 </div>
+                {phone.trim() && (
+                  <label className="flex items-start gap-2 px-1 text-left text-[11px] leading-snug text-slate-500">
+                    <input type="checkbox" checked={smsConsent} onChange={e => setSmsConsent(e.target.checked)}
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                    <span>
+                      It&apos;s OK to text me about my roof quote. Message/data rates may apply; reply STOP to opt out.
+                      This isn&apos;t a condition of getting your estimate.
+                    </span>
+                  </label>
+                )}
                 {error && <p className="text-xs text-rose-600">{error}</p>}
                 <button onClick={() => void unlock()} disabled={busy}
                   className="rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(5,150,105,0.3)] hover:bg-emerald-500 disabled:opacity-50"

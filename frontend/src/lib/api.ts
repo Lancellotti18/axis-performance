@@ -646,6 +646,7 @@ export const api = {
       work_type?: string; condition?: string; rooftop_items?: string[]
       chimney_skylights?: boolean; attic?: boolean; drainage?: string
       roof_confirmed?: boolean; roof_sqft?: number; imagery_url?: string
+      sms_consent?: boolean   // TCPA: homeowner's logged consent to be texted
       website?: string   // honeypot
     }) =>
       apiRequest<{ ok: boolean; message: string; report_url?: string | null }>(`/api/v1/instant-quote/w/${key}/lead`, {

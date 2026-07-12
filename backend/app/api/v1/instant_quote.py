@@ -374,6 +374,9 @@ class LeadRequest(BaseModel):
     roof_confirmed: bool = False                                  # homeowner tapped the pin
     roof_sqft: Optional[float] = Field(None, ge=0)
     imagery_url: Optional[str] = Field(None, max_length=800)      # proxied tile shown at confirm
+    # TCPA: the homeowner's explicit consent to be texted. Defaults False so a
+    # legacy/omitting client never triggers an outbound SMS without a record.
+    sms_consent: bool = False
     # Qualification v3 — the questions a real estimator asks.
     work_type: Optional[str] = Field(None, pattern="^(replace|repair|unsure)$")
     condition: Optional[str] = Field(None, pattern="^(no_damage|visible_damage|unsure)$")
@@ -448,10 +451,12 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
     if not payload.phone and not payload.email:
         raise HTTPException(status_code=422, detail="A phone number or email is required so the contractor can reach you.")
 
+    from datetime import datetime, timezone
     db = get_supabase()
     w = _widget_by_key(db, widget_key)
     score, reasons = _score_lead(payload)
     report_token = secrets.token_urlsafe(12)
+    has_sms_consent = bool(payload.sms_consent and payload.phone)
     row = {
         "user_id": w["user_id"],
         "widget_key": widget_key,
@@ -474,6 +479,10 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
             "chimney_skylights": payload.chimney_skylights,
             "attic": payload.attic,
             "drainage": payload.drainage,
+            # Consent proof for TCPA: whether the homeowner agreed to be texted,
+            # captured at submission time (with the phone they consented for).
+            "sms_consent": has_sms_consent,
+            "sms_consent_at": datetime.now(timezone.utc).isoformat() if has_sms_consent else None,
         },
         "lead_score": score,
         "score_reasons": reasons,
@@ -557,7 +566,10 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
             branding = _branding_for(db, w)
             asyncio.create_task(notify_new_lead(
                 contractor_phone=branding.get("phone"),
-                homeowner_phone=payload.phone,
+                # Homeowner is texted ONLY with logged TCPA consent. The
+                # contractor alert (a business notifying itself about its own
+                # lead) always fires — that's not consumer solicitation.
+                homeowner_phone=payload.phone if has_sms_consent else None,
                 company_name=branding.get("company_name") or "Your roofing contractor",
                 lead_name=payload.name.strip(),
                 address=payload.address.strip(),
