@@ -1,6 +1,8 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from app.core.auth import require_user
+from app.core.ownership import require_owned_project
 from app.core.supabase import get_supabase
 import json
 
@@ -10,11 +12,12 @@ router = APIRouter()
 
 
 @router.post("/{project_id}/parse3d")
-async def parse_blueprint_3d(project_id: str):
+async def parse_blueprint_3d(project_id: str, user: dict = Depends(require_user)):
     """Parse the project blueprint with Claude Vision. Returns detailed 3D scene data."""
     from app.services.blueprint_vision_service import parse_blueprint_3d as _parse
 
     db = get_supabase()
+    require_owned_project(db, project_id, user)
 
     # Get latest blueprint for this project
     bp = db.table("blueprints").select("id, file_type, status").eq("project_id", project_id).order("created_at", desc=True).limit(1).execute()
@@ -44,9 +47,10 @@ async def parse_blueprint_3d(project_id: str):
 
 
 @router.get("/{project_id}/model3d")
-async def get_model3d(project_id: str):
+async def get_model3d(project_id: str, user: dict = Depends(require_user)):
     """Get cached 3D scene data for a project."""
     db = get_supabase()
+    require_owned_project(db, project_id, user)
 
     bp = db.table("blueprints").select("id").eq("project_id", project_id).order("created_at", desc=True).limit(1).execute()
     if not bp.data:

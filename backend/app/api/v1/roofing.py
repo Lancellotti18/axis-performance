@@ -9,10 +9,13 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
+from app.core.auth import require_user
+from app.core.ownership import require_owned_blueprint, require_owned_project
+from app.core.ratelimit import rate_ok
 from app.core.supabase import get_supabase
 from app.services.roofing_service import analyze_roof_image, calculate_shingle_materials
 
@@ -34,11 +37,12 @@ class ConfirmMeasurements(BaseModel):
 
 
 @router.post("/{blueprint_id}/measure")
-async def measure_roof(blueprint_id: str):
+async def measure_roof(blueprint_id: str, user: dict = Depends(require_user)):
     """
     Run AI vision analysis on the blueprint image to extract roof measurements.
     Saves raw (unconfirmed) measurements to the database.
     """
+    require_owned_blueprint(get_supabase(), blueprint_id, user)
     db = get_supabase()
 
     # Get blueprint record to find the image URL
@@ -95,11 +99,12 @@ async def measure_roof(blueprint_id: str):
 
 
 @router.post("/{blueprint_id}/confirm")
-async def confirm_measurements(blueprint_id: str, payload: ConfirmMeasurements):
+async def confirm_measurements(blueprint_id: str, payload: ConfirmMeasurements, user: dict = Depends(require_user)):
     """
     User reviews AI measurements and confirms (or adjusts) them.
     Marks the record as confirmed so the shingle estimator can use it.
     """
+    require_owned_blueprint(get_supabase(), blueprint_id, user)
     db = get_supabase()
 
     record = {
@@ -133,8 +138,9 @@ async def confirm_measurements(blueprint_id: str, payload: ConfirmMeasurements):
 
 
 @router.get("/{blueprint_id}/measurements")
-async def get_measurements(blueprint_id: str):
+async def get_measurements(blueprint_id: str, user: dict = Depends(require_user)):
     """Get stored roof measurements for a blueprint."""
+    require_owned_blueprint(get_supabase(), blueprint_id, user)
     db = get_supabase()
     try:
         result = db.table("roof_measurements").select("*").eq("blueprint_id", blueprint_id).single().execute()
@@ -145,11 +151,12 @@ async def get_measurements(blueprint_id: str):
 
 
 @router.get("/project/{project_id}/shingle-estimate")
-async def get_shingle_estimate(project_id: str):
+async def get_shingle_estimate(project_id: str, user: dict = Depends(require_user)):
     """
     Return the full roofing material list based on confirmed measurements.
     If measurements not confirmed yet, returns empty with a flag.
     """
+    require_owned_project(get_supabase(), project_id, user)
     db = get_supabase()
 
     try:
@@ -193,12 +200,13 @@ async def get_shingle_estimate(project_id: str):
 
 
 @router.get("/project/{project_id}/pdf-report")
-async def roof_pdf_report(project_id: str):
+async def roof_pdf_report(project_id: str, user: dict = Depends(require_user)):
     """
     Generate an EagleView-style professional roof report PDF for a project.
     Pulls confirmed measurements + satellite imagery + shingle materials and
     returns a downloadable PDF.
     """
+    require_owned_project(get_supabase(), project_id, user)
     from app.services.roof_report_pdf import generate_roof_report_pdf
 
     db = get_supabase()
@@ -295,7 +303,7 @@ class StormRiskRequest(BaseModel):
 
 
 @router.post("/aerial-report")
-async def aerial_roof_report(payload: AerialReportRequest):
+async def aerial_roof_report(payload: AerialReportRequest, user: dict = Depends(require_user)):
     """
     Get aerial roof measurements for a property address (project-linked).
     Uses Google Solar API if configured, otherwise Tavily + Claude estimate.
@@ -332,7 +340,7 @@ async def aerial_roof_report(payload: AerialReportRequest):
 
 
 @router.post("/aerial-report/standalone")
-async def aerial_roof_report_standalone(payload: StandaloneAerialRequest):
+async def aerial_roof_report_standalone(payload: StandaloneAerialRequest, user: dict = Depends(require_user)):
     """
     Standalone aerial roof report — no project required.
     Pass the full address (street, city, state, zip) and get roof measurements.
@@ -385,7 +393,7 @@ class RoofOutlineRequest(BaseModel):
 
 
 @router.post("/outline")
-async def detect_roof_outline_endpoint(payload: RoofOutlineRequest):
+async def detect_roof_outline_endpoint(payload: RoofOutlineRequest, user: dict = Depends(require_user)):
     """
     EagleView-style: trace the primary building's roof outline on a satellite
     image. Returns a closed polygon in image-fraction coords plus an estimated
@@ -427,7 +435,7 @@ class AerialDamageRequest(BaseModel):
 
 
 @router.post("/aerial-damage")
-async def aerial_damage_analysis(payload: AerialDamageRequest):
+async def aerial_damage_analysis(payload: AerialDamageRequest, user: dict = Depends(require_user)):
     """
     Two-part analysis run automatically after every aerial report:
       1. AI vision: download satellite image → Claude/Gemini vision → real damage zones
@@ -579,6 +587,7 @@ from typing import List as TypingList
 async def analyze_uploaded_photos(
     photos: TypingList[UploadFile] = File(...),
     address: str = Form(""),
+    user: dict = Depends(require_user),
 ):
     """
     AI vision analysis of user-uploaded property photos (up to 20).
@@ -684,7 +693,7 @@ If the image is unusable (blurry, wrong subject, etc.), set usable to false and 
 
 
 @router.post("/storm-risk")
-async def storm_risk_standalone(payload: StormRiskRequest):
+async def storm_risk_standalone(payload: StormRiskRequest, user: dict = Depends(require_user)):
     """
     Standalone storm / hail / wind risk report for any city + state.
     No project required.

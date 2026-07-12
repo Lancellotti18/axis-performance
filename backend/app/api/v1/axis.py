@@ -21,10 +21,12 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+from app.core.auth import require_user
+from app.core.ownership import require_owned_project
 from app.core.supabase import get_supabase
 
 router = APIRouter()
@@ -342,6 +344,7 @@ async def run_axis_pipeline(
     project_id:       str,
     request:          RunRequest,
     background_tasks: BackgroundTasks,
+    user:             dict = Depends(require_user),
 ):
     """
     Trigger the AXIS performance pipeline for a project.
@@ -349,6 +352,7 @@ async def run_axis_pipeline(
     Returns a job_id to poll for status.
     """
     db = get_supabase()
+    require_owned_project(db, project_id, user)
 
     # Get blueprint file path
     bp = db.table("blueprints").select("id, file_url, file_type")\
@@ -472,8 +476,9 @@ async def run_axis_pipeline(
 
 
 @router.get("/{project_id}/status")
-async def get_axis_status(project_id: str, job_id: Optional[str] = None):
+async def get_axis_status(project_id: str, job_id: Optional[str] = None, user: dict = Depends(require_user)):
     """Poll pipeline status."""
+    require_owned_project(get_supabase(), project_id, user)
     if job_id:
         job = _jobs.get(job_id)
         if not job or job["project_id"] != project_id:
@@ -507,8 +512,9 @@ async def get_axis_status(project_id: str, job_id: Optional[str] = None):
 
 
 @router.get("/{project_id}/cloud-status")
-async def get_cloud_render_status(project_id: str, job_id: Optional[str] = None):
+async def get_cloud_render_status(project_id: str, job_id: Optional[str] = None, user: dict = Depends(require_user)):
     """Poll RunPod cloud render status for a job."""
+    require_owned_project(get_supabase(), project_id, user)
     # Find the job
     if job_id:
         job = _jobs.get(job_id)
@@ -525,8 +531,9 @@ async def get_cloud_render_status(project_id: str, job_id: Optional[str] = None)
 
 
 @router.post("/{project_id}/cloud-cancel")
-async def cancel_cloud_render(project_id: str, job_id: Optional[str] = None):
+async def cancel_cloud_render(project_id: str, job_id: Optional[str] = None, user: dict = Depends(require_user)):
     """Cancel a queued or in-progress RunPod render job."""
+    require_owned_project(get_supabase(), project_id, user)
     if job_id:
         job = _jobs.get(job_id)
     else:
@@ -541,15 +548,16 @@ async def cancel_cloud_render(project_id: str, job_id: Optional[str] = None):
 
 
 @router.get("/cloud-health")
-async def check_cloud_render_health():
+async def check_cloud_render_health(user: dict = Depends(require_user)):
     """Check if RunPod is configured and the endpoint is reachable."""
     from app.services.render_queue_service import check_endpoint_health
     return check_endpoint_health()
 
 
 @router.get("/{project_id}/results")
-async def get_axis_results(project_id: str):
+async def get_axis_results(project_id: str, user: dict = Depends(require_user)):
     """Get all AXIS pipeline outputs for a project."""
+    require_owned_project(get_supabase(), project_id, user)
     out_dir = _output_dir(project_id)
 
     def _load(name):
@@ -599,8 +607,9 @@ async def get_axis_results(project_id: str):
 
 
 @router.get("/{project_id}/render/{filename}")
-async def serve_render(project_id: str, filename: str):
+async def serve_render(project_id: str, filename: str, user: dict = Depends(require_user)):
     """Serve a rendered image file."""
+    require_owned_project(get_supabase(), project_id, user)
     # Sanitize filename
     filename = os.path.basename(filename)
     if not filename.endswith(".png"):
@@ -616,8 +625,9 @@ async def serve_render(project_id: str, filename: str):
 
 
 @router.get("/{project_id}/report")
-async def serve_report(project_id: str):
+async def serve_report(project_id: str, user: dict = Depends(require_user)):
     """Download the generated PDF report."""
+    require_owned_project(get_supabase(), project_id, user)
     out_dir     = _output_dir(project_id)
     reports_dir = os.path.join(out_dir, "reports")
 

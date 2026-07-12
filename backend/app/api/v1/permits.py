@@ -1,8 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
+from app.core.auth import require_user
 from app.core.config import settings
+from app.core.ownership import require_owned_project
+from app.core.ratelimit import rate_ok
 from app.core.supabase import get_supabase
 import logging, json, io, re, httpx, requests as _requests
 
@@ -49,6 +52,7 @@ async def search_permit_portal(
     city: str = Query(...),
     state: str = Query(...),
     project_type: str = Query(default="residential"),
+    user: dict = Depends(require_user),
 ):
     """Search for the official building permit portal for a city using LLM-assisted URL selection."""
     from app.services.jurisdiction_service import detect_jurisdiction
@@ -142,6 +146,7 @@ async def analyze_requirements(
     project_id: str = Form(...),
     notes: str = Form(default=""),
     files: List[UploadFile] = File(default=[]),
+    user: dict = Depends(require_user),
 ):
     """
     Process uploaded requirement documents (PDFs, images, screenshots) + text notes.
@@ -149,6 +154,9 @@ async def analyze_requirements(
     to standard permit field values. Returns extracted field values ready to
     pre-fill the permit form.
     """
+    require_owned_project(get_supabase(), project_id, user)
+    if not rate_ok(f"permit-llm-{user['id']}", max_per_hour=30):
+        raise HTTPException(status_code=429, detail="Too many permit analyses — try again in a bit.")
     from app.services.llm import llm_vision, llm_text
     import asyncio
 
@@ -295,13 +303,14 @@ Rules:
 # ── Fetch & Analyze Form ────────────────────────────────────────────────────
 
 @router.post("/fetch-form/{project_id}")
-async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormRequest()):
+async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormRequest(), user: dict = Depends(require_user)):
     """
     1. Load project data (city, state, sqft, type, estimate).
     2. Check permit_form_cache for this city/state/type.
     3. If not cached: Tavily → find PDF form URL → download → Claude Vision extracts fields.
     4. Return fields pre-filled with known project data.
     """
+    require_owned_project(get_supabase(), project_id, user)
     db = get_supabase()
 
     # Load project
@@ -463,7 +472,7 @@ async def fetch_permit_form(project_id: str, body: FetchFormRequest = FetchFormR
 # ── Blueprint Scan for Permit Fields ───────────────────────────────────────
 
 @router.post("/scan-blueprint/{project_id}")
-async def scan_blueprint_for_permit(project_id: str):
+async def scan_blueprint_for_permit(project_id: str, user: dict = Depends(require_user)):
     """
     Run LLM Vision over the project's blueprint and extract permit-relevant data:
     sqft, room counts, project description, dimensions, story count, occupancy hints.
@@ -472,6 +481,9 @@ async def scan_blueprint_for_permit(project_id: str):
     shows these to the user for review before applying — Vision OCR can mis-read
     floorplan callouts, so values come back tagged confidence='medium'.
     """
+    require_owned_project(get_supabase(), project_id, user)
+    if not rate_ok(f"permit-llm-{user['id']}", max_per_hour=30):
+        raise HTTPException(status_code=429, detail="Too many permit analyses — try again in a bit.")
     import asyncio as _asyncio
     from app.services.llm import llm_vision
     from app.services.blueprint_vision_service import _download_blueprint
@@ -648,12 +660,13 @@ Rules:
 # ── Confirm Permit Form ────────────────────────────────────────────────────
 
 @router.post("/confirm-form/{project_id}")
-async def confirm_permit_form(project_id: str, body: ConfirmFormRequest):
+async def confirm_permit_form(project_id: str, body: ConfirmFormRequest, user: dict = Depends(require_user)):
     """
     Mark the current permit form as confirmed by the user. If `form_url` is set
     and differs from cache, replace the cached URL (handles the 'this isn't the
     right form, here's the real one' escape hatch).
     """
+    require_owned_project(get_supabase(), project_id, user)
     from datetime import datetime, timezone
     db = get_supabase()
 
@@ -695,6 +708,7 @@ async def fees_timeline_estimate(
     state: str = Query(...),
     project_type: str = Query(default="residential"),
     estimated_cost: Optional[float] = Query(default=None),
+    user: dict = Depends(require_user),
 ):
     """Quick LLM estimate of permit fees and review timeline for the jurisdiction.
     Cached on permit_form_cache so we don't re-call the LLM on every page load."""
@@ -797,7 +811,7 @@ If you don't know a specific jurisdiction, give the typical range for that state
 # ── Pre-flight Validation ──────────────────────────────────────────────────
 
 @router.post("/preflight")
-async def preflight_check(body: PreflightRequest):
+async def preflight_check(body: PreflightRequest, user: dict = Depends(require_user)):
     """Check submitted field values for missing required fields. Used right
     before PDF download to warn the contractor."""
     missing_required = [
@@ -1116,9 +1130,11 @@ async def upload_requirement_attachment(
     project_id: str,
     index: int = Form(...),
     file: UploadFile = File(...),
+    user: dict = Depends(require_user),
 ):
     """Upload a document for a specific permit-requirement slot. Replaces any
     prior file or text attachment at the same (project_id, index)."""
+    require_owned_project(get_supabase(), project_id, user)
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
@@ -1189,9 +1205,10 @@ async def upload_requirement_attachment(
 
 
 @router.post("/{project_id}/requirements/text")
-async def save_requirement_text(project_id: str, body: RequirementTextBody):
+async def save_requirement_text(project_id: str, body: RequirementTextBody, user: dict = Depends(require_user)):
     """Save typed-in documentation for a requirement slot (e.g. contractor
     fills in a narrative rather than uploading a doc)."""
+    require_owned_project(get_supabase(), project_id, user)
     text = (body.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text is empty")
@@ -1238,8 +1255,9 @@ async def save_requirement_text(project_id: str, body: RequirementTextBody):
 
 
 @router.get("/{project_id}/attachments")
-async def list_requirement_attachments(project_id: str):
+async def list_requirement_attachments(project_id: str, user: dict = Depends(require_user)):
     """Return every attachment row for a project, ordered by requirement_index."""
+    require_owned_project(get_supabase(), project_id, user)
     db = get_supabase()
     try:
         result = (
@@ -1256,8 +1274,9 @@ async def list_requirement_attachments(project_id: str):
 
 
 @router.delete("/{project_id}/requirements/{index}/attachment")
-async def delete_requirement_attachment(project_id: str, index: int):
+async def delete_requirement_attachment(project_id: str, index: int, user: dict = Depends(require_user)):
     """Delete the attachment (file or text) for a requirement slot."""
+    require_owned_project(get_supabase(), project_id, user)
     db = get_supabase()
     try:
         existing = (
@@ -1283,12 +1302,13 @@ async def delete_requirement_attachment(project_id: str, index: int):
 # ── Generate PDF ────────────────────────────────────────────────────────────
 
 @router.post("/generate-pdf/{project_id}")
-async def generate_permit_pdf(project_id: str, payload: GeneratePDFRequest):
+async def generate_permit_pdf(project_id: str, payload: GeneratePDFRequest, user: dict = Depends(require_user)):
     """
     Fill the permit form fields and return a PDF.
     - If form_url provided and use_web_form=False: download original PDF, overlay values
     - Otherwise: generate a clean professional PDF with reportlab
     """
+    require_owned_project(get_supabase(), project_id, user)
     fields = payload.fields
     form_url = payload.form_url
     use_web_form = payload.use_web_form
@@ -1503,7 +1523,7 @@ def _generate_clean_pdf(fields: list, project_id: str, attachments: Optional[lis
 
 
 @router.post("/package/{project_id}")
-async def generate_permit_package(project_id: str):
+async def generate_permit_package(project_id: str, user: dict = Depends(require_user)):
     """
     Generate a complete permit package ZIP containing:
       01_permit_application.pdf   — pre-filled with real project + contractor data
@@ -1518,6 +1538,7 @@ async def generate_permit_package(project_id: str):
     - AXIS pipeline outputs (Claude Vision parse + live pricing)
     - Tavily search of official .gov building department websites
     """
+    require_owned_project(get_supabase(), project_id, user)
     import json as _json
     db = get_supabase()
 
@@ -1585,7 +1606,7 @@ async def generate_permit_package(project_id: str):
 
 
 @router.post("/validate-link")
-async def validate_product_link(payload: dict):
+async def validate_product_link(payload: dict, user: dict = Depends(require_user)):
     """Validate a product URL: verify it's a real product page with matching price."""
     from app.services.link_validator import validate_product_url
     url = payload.get("url", "")

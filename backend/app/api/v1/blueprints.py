@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, Query, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, BackgroundTasks
+from app.core.auth import require_user
+from app.core.ownership import require_owned_blueprint, require_owned_project
 from app.core.supabase import get_supabase
 from app.core.config import settings
 import logging
@@ -31,8 +33,10 @@ async def get_upload_url(
     project_id: str = Query(...),
     filename: str = Query(...),
     content_type: str = Query(...),
+    user: dict = Depends(require_user),
 ):
     """Return a presigned URL for direct browser upload to S3/R2 or Supabase Storage."""
+    require_owned_project(get_supabase(), project_id, user)
     # Sanitize filename — Supabase rejects keys with spaces or special chars
     import re
     safe_filename = re.sub(r'[^\w.\-]', '_', filename)
@@ -78,7 +82,7 @@ async def get_upload_url(
 
 
 @router.put("/dev-upload/{key:path}")
-async def dev_upload(key: str, request: Request):
+async def dev_upload(key: str, request: Request, user: dict = Depends(require_user)):
     """Dev-mode file receiver — stores uploaded file to local disk shared with worker."""
     file_path = os.path.join(UPLOAD_DIR, key)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -94,9 +98,11 @@ async def create_blueprint(
     file_key: str = Query(...),
     file_type: str = Query(...),
     file_size_kb: int = Query(...),
+    user: dict = Depends(require_user),
 ):
     """Register a blueprint after upload completes."""
     db = get_supabase()
+    require_owned_project(db, project_id, user)
     result = db.table("blueprints").insert({
         "project_id": project_id,
         "file_url": file_key,
@@ -108,8 +114,9 @@ async def create_blueprint(
 
 
 @router.get("/debug/test-ai")
-async def test_ai():
-    """Verify the AI provider is working. Must be defined BEFORE /{blueprint_id} routes."""
+async def test_ai(user: dict = Depends(require_user)):
+    """Verify the AI provider is working (auth-gated: spends real LLM tokens).
+    Must be defined BEFORE /{blueprint_id} routes."""
     from app.services.llm import llm_text
     try:
         result = await llm_text("Reply with exactly: OK", max_tokens=10)
@@ -119,9 +126,10 @@ async def test_ai():
 
 
 @router.post("/{blueprint_id}/analyze")
-async def trigger_analysis(blueprint_id: str, background_tasks: BackgroundTasks):
+async def trigger_analysis(blueprint_id: str, background_tasks: BackgroundTasks, user: dict = Depends(require_user)):
     """Kick off blueprint AI analysis in the background and return immediately."""
     db = get_supabase()
+    require_owned_blueprint(db, blueprint_id, user)
     db.table("blueprints").update({"status": "processing"}).eq("id", blueprint_id).execute()
     background_tasks.add_task(_run_analysis_bg, blueprint_id)
     return {"status": "processing", "job_id": blueprint_id}
@@ -181,9 +189,10 @@ def _run_analysis_bg(blueprint_id: str):
 
 
 @router.post("/{blueprint_id}/retry")
-async def retry_analysis(blueprint_id: str, background_tasks: BackgroundTasks):
+async def retry_analysis(blueprint_id: str, background_tasks: BackgroundTasks, user: dict = Depends(require_user)):
     """Retry a failed blueprint analysis without re-uploading."""
     db = get_supabase()
+    require_owned_blueprint(db, blueprint_id, user)
     db.table("blueprints").update({"status": "processing"}).eq("id", blueprint_id).execute()
     background_tasks.add_task(_run_analysis_bg, blueprint_id)
     return {"status": "processing", "job_id": blueprint_id}
@@ -192,7 +201,7 @@ async def retry_analysis(blueprint_id: str, background_tasks: BackgroundTasks):
 
 
 @router.get("/{blueprint_id}/view")
-async def view_blueprint(blueprint_id: str):
+async def view_blueprint(blueprint_id: str, user: dict = Depends(require_user)):
     """
     Proxy the blueprint file from Supabase storage using the service role key.
     Works regardless of whether the bucket is public or private.
@@ -202,6 +211,7 @@ async def view_blueprint(blueprint_id: str):
     from fastapi.responses import Response
 
     db = get_supabase()
+    require_owned_blueprint(db, blueprint_id, user)
     result = (
         db.table("blueprints")
         .select("file_url, file_type")
@@ -256,8 +266,9 @@ async def view_blueprint(blueprint_id: str):
 
 
 @router.get("/{blueprint_id}/status")
-async def get_status(blueprint_id: str):
+async def get_status(blueprint_id: str, user: dict = Depends(require_user)):
     db = get_supabase()
+    require_owned_blueprint(db, blueprint_id, user)
     result = (
         db.table("blueprints")
         .select("*")
@@ -269,7 +280,7 @@ async def get_status(blueprint_id: str):
 
 
 @router.get("/{blueprint_id}/takeoff")
-async def blueprint_takeoff(blueprint_id: str):
+async def blueprint_takeoff(blueprint_id: str, user: dict = Depends(require_user)):
     """
     Togal-style takeoff: read the cached scene_3d and return contractor-ready
     quantities (per-room flooring, wall LF by type, drywall sheets, framing,
@@ -283,6 +294,7 @@ async def blueprint_takeoff(blueprint_id: str):
     from app.services.blueprint_takeoff_service import compute_takeoff, takeoff_to_material_rows
 
     db = get_supabase()
+    require_owned_blueprint(db, blueprint_id, user)
 
     # Blueprint lookup — avoid .single() because it raises an APIError for 0
     # rows that bubbles up as a generic 500.
@@ -364,7 +376,7 @@ async def blueprint_takeoff(blueprint_id: str):
 
 
 @router.post("/{blueprint_id}/takeoff/apply")
-async def apply_takeoff_to_materials(blueprint_id: str):
+async def apply_takeoff_to_materials(blueprint_id: str, user: dict = Depends(require_user)):
     """
     One-click: run the takeoff, then upsert each derived row into
     project_materials so the Materials tab picks them up. Existing manually-
@@ -386,7 +398,7 @@ async def apply_takeoff_to_materials(blueprint_id: str):
     # Reuse the GET endpoint logic by calling the helper directly.
     # That runs the vision pass inline if needed, so by the time we insert
     # we know an analysis row exists for this blueprint.
-    result = await blueprint_takeoff(blueprint_id)
+    result = await blueprint_takeoff(blueprint_id, user)
     rows: list[dict] = result.get("material_rows") or []
 
     # Rows live on material_estimates (keyed by analysis_id), matching the

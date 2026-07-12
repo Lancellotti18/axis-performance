@@ -24,8 +24,11 @@ import logging
 import re
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
+
+from app.core.auth import require_user
+from app.core.ratelimit import rate_ok
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -217,6 +220,7 @@ async def check_uploaded_material_list(
     state:        str            = Form(...),
     county:       str            = Form(""),
     project_type: str            = Form("residential"),
+    user:         dict           = Depends(require_user),
 ):
     """
     Upload a material list file (CSV, Excel, or plain text) and check it
@@ -234,6 +238,8 @@ async def check_uploaded_material_list(
 
     Returns the same schema as /compliance/materials-check.
     """
+    if not rate_ok(f"matcheck-{user['id']}", max_per_hour=20):
+        raise HTTPException(status_code=429, detail="Too many compliance checks — try again in a bit.")
     if not city.strip():
         raise HTTPException(status_code=422, detail="City is required.")
     if not state.strip():
@@ -280,7 +286,7 @@ async def check_uploaded_material_list(
 
 
 @router.post("/text")
-async def check_text_material_list(body: TextCheckRequest):
+async def check_text_material_list(body: TextCheckRequest, user: dict = Depends(require_user)):
     """
     Run a compliance check on a material list provided as JSON or raw text.
 
@@ -291,6 +297,8 @@ async def check_text_material_list(body: TextCheckRequest):
     Compliance check uses the same engine as the file upload endpoint:
     Tavily code research + Claude claude-opus-4-6 evaluation against IRC/IBC.
     """
+    if not rate_ok(f"matcheck-{user['id']}", max_per_hour=20):
+        raise HTTPException(status_code=429, detail="Too many compliance checks — try again in a bit.")
     if not body.city.strip():
         raise HTTPException(status_code=422, detail="City is required.")
     if not body.state.strip():

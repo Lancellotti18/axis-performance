@@ -12,7 +12,10 @@ class Settings(BaseSettings):
     # When set and AUTH_ENFORCE_SIGNATURE=true, tokens are verified for real.
     # When empty, auth runs in legacy (unsafe) mode — logs a warning on every request.
     SUPABASE_JWT_SECRET: str = ""
-    AUTH_ENFORCE_SIGNATURE: bool = False  # flip to true once shadow logs are clean
+    # Enforced by default: forged/unsigned tokens are rejected whenever the
+    # JWT secret is configured. Set to false only for a temporary shadow-mode
+    # log sweep. (Flipped 2026-07-12 after the overnight security review.)
+    AUTH_ENFORCE_SIGNATURE: bool = True
 
     REDIS_URL: str = "redis://redis:6379/0"
 
@@ -41,8 +44,23 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str = ""
     REPLICATE_API_KEY: str = ""
     GOOGLE_SOLAR_API_KEY: str = ""
+
+    # Stripe — checkout is only offered when the secret key AND all price IDs
+    # are configured; otherwise /billing/subscribe returns 503 and the pricing
+    # page falls back to a "talk to us" CTA. Never ship placeholder IDs.
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_SOLO: str = ""        # $49/mo price id
+    STRIPE_PRICE_PRO: str = ""         # $149/mo price id
+    STRIPE_PRICE_ENTERPRISE: str = ""  # $499/mo price id
+
+    # Public site origin used for Stripe redirects + links in outbound SMS.
+    FRONTEND_URL: str = "http://localhost:3000"
+
+    # Twilio — speed-to-lead SMS. All three must be set or SMS quietly no-ops.
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM_NUMBER: str = ""       # E.164, e.g. +19105551234
 
     # Satellite imagery providers (Esri is primary and free; the others are
     # optional fallbacks that the imagery_service uses when Esri fails or

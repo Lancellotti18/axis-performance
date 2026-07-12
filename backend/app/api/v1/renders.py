@@ -31,10 +31,13 @@ import re
 import urllib.parse
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.core.auth import require_user
 from app.core.config import settings
+from app.core.ownership import require_owned_project
+from app.core.ratelimit import rate_ok
 from app.core.supabase import get_supabase
 
 router = APIRouter()
@@ -735,14 +738,13 @@ async def _generate_image(prompt: str, seed: int = 0) -> str:
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
 @router.post("/{project_id}/generate")
-async def generate_renders(project_id: str, request: RenderRequest):
+async def generate_renders(project_id: str, request: RenderRequest, user: dict = Depends(require_user)):
 
     db = get_supabase()
 
-    proj_row = db.table("projects").select("*").eq("id", project_id).limit(1).execute()
-    if not proj_row.data:
-        raise HTTPException(status_code=404, detail="Project not found.")
-    project = proj_row.data[0]
+    project = require_owned_project(db, project_id, user)
+    if not rate_ok(f"renders-{user['id']}", max_per_hour=20):
+        raise HTTPException(status_code=429, detail="Too many render jobs — try again in a bit.")
 
     bp_row = (
         db.table("blueprints")

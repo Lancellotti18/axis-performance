@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from app.core.auth import require_user
+from app.core.ownership import require_owned_project
 from app.core.supabase import get_supabase
 import logging, json
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -50,21 +52,21 @@ def _get_tavily_client():
 
 
 @router.post("/{project_id}/add")
-async def add_material(project_id: str, item: MaterialItem):
+async def add_material(project_id: str, item: MaterialItem, user: dict = Depends(require_user)):
     """Add a new material item to a project's estimate.
 
     Runs a vendor search immediately so the new row already has
     product-page retail links (when found) plus trade-distributor quote
     links. Retail rows without a real product page are never invented.
     """
+    db = get_supabase()
+    proj_row = require_owned_project(db, project_id, user)
+
     analysis_id = _get_analysis_id(project_id)
     if not analysis_id:
         raise HTTPException(status_code=404, detail="No analysis found for project")
 
-    db = get_supabase()
-
-    proj = db.table("projects").select("region, city").eq("id", project_id).single().execute()
-    city = (proj.data or {}).get("city", "") or ""
+    city = proj_row.get("city", "") or ""
 
     from app.services.pricing_service import search_vendor_options
     tavily = _get_tavily_client()
@@ -84,9 +86,10 @@ async def add_material(project_id: str, item: MaterialItem):
 
 
 @router.patch("/{project_id}/items/{item_id}")
-async def update_material(project_id: str, item_id: str, item: MaterialItem):
+async def update_material(project_id: str, item_id: str, item: MaterialItem, user: dict = Depends(require_user)):
     """Update a material item."""
     db = get_supabase()
+    require_owned_project(db, project_id, user)
     result = db.table("material_estimates").update({
         "item_name":  item.item_name,
         "category":   item.category,
@@ -101,15 +104,16 @@ async def update_material(project_id: str, item_id: str, item: MaterialItem):
 
 
 @router.delete("/{project_id}/items/{item_id}")
-async def delete_material(project_id: str, item_id: str):
+async def delete_material(project_id: str, item_id: str, user: dict = Depends(require_user)):
     """Delete a material item."""
     db = get_supabase()
+    require_owned_project(db, project_id, user)
     db.table("material_estimates").delete().eq("id", item_id).execute()
     return {"success": True}
 
 
 @router.post("/search-prices")
-async def search_prices(req: PriceSearchRequest):
+async def search_prices(req: PriceSearchRequest, user: dict = Depends(require_user)):
     """Search for real-time product-page prices for a specific material."""
     from app.services.pricing_service import search_vendor_options
     tavily = _get_tavily_client()
@@ -118,7 +122,7 @@ async def search_prices(req: PriceSearchRequest):
 
 
 @router.post("/{project_id}/refresh-all-prices")
-async def refresh_all_prices(project_id: str):
+async def refresh_all_prices(project_id: str, user: dict = Depends(require_user)):
     """
     Refresh vendor pricing for every material in a project.
     Runs per-item product-page searches in parallel and saves updated
@@ -128,8 +132,8 @@ async def refresh_all_prices(project_id: str):
 
     db = get_supabase()
 
-    proj = db.table("projects").select("region, city").eq("id", project_id).single().execute()
-    city = (proj.data or {}).get("city", "") if proj.data else ""
+    proj_row = require_owned_project(db, project_id, user)
+    city = proj_row.get("city", "") or ""
 
     analysis_id = _get_analysis_id(project_id)
     if not analysis_id:
@@ -176,7 +180,7 @@ async def refresh_all_prices(project_id: str):
 
 
 @router.post("/validate-link")
-async def validate_material_link(payload: dict):
+async def validate_material_link(payload: dict, user: dict = Depends(require_user)):
     """Validate a vendor product URL."""
     from app.services.link_validator import validate_product_url
     url = payload.get("url", "")

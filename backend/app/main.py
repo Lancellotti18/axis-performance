@@ -10,10 +10,16 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_IS_PROD = settings.ENVIRONMENT == "production"
+
 app = FastAPI(
-    title="BuildAI API",
-    description="AI-powered blueprint analysis and construction estimating",
-    version="0.1.0",
+    title="Axis Performance API",
+    description="Instant satellite roof quotes, scored exclusive leads, and a roofing CRM.",
+    version="0.2.0",
+    # No public API map in production — Swagger/UI stays available in dev.
+    docs_url=None if _IS_PROD else "/docs",
+    redoc_url=None if _IS_PROD else "/redoc",
+    openapi_url=None if _IS_PROD else "/openapi.json",
 )
 
 app.add_middleware(
@@ -42,13 +48,20 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.include_router(api_router, prefix="/api/v1")
 
+if _IS_PROD and not settings.SUPABASE_JWT_SECRET:
+    logger.critical(
+        "SUPABASE_JWT_SECRET is not set in production — JWTs are NOT being "
+        "verified (legacy mode). Set it in Render immediately."
+    )
+
 
 @app.get("/diag/gemini")
-async def diag_gemini():
+async def diag_gemini(user: dict = Depends(require_user)):
     """Tests every configured Gemini key against every fallback model and
     reports which (key, model) pairs work. Read-only, no secrets — returns
     only boolean success + a truncated error, plus the last 4 chars of each
-    key so you can map them to what Render has."""
+    key so you can map them to what Render has. Auth-gated: each call spends
+    a real token per (key, model), and key suffixes are fingerprintable."""
     import asyncio as _asyncio
     from app.services.llm import GEMINI_FALLBACKS, GEMINI_MODEL, _gemini_keys
 
@@ -92,25 +105,20 @@ async def diag_gemini():
 
 @app.get("/health")
 async def health():
-    # Include key counts (no secrets) so ops can verify Render picked up the
-    # env vars without shelling into the container. Only counts, never values.
-    def _suffix(v: str) -> str:
-        return v[-4:] if v and len(v) >= 4 else ("(empty)" if not v else "****")
-
-    gemini_keys = [
-        ("GEMINI_API_KEY",   settings.GEMINI_API_KEY),
-        ("GEMINI_API_KEY_2", settings.GEMINI_API_KEY_2),
-        ("GEMINI_API_KEY_3", settings.GEMINI_API_KEY_3),
-    ]
-    loaded = [
-        {"name": name, "loaded": bool(val), "suffix": _suffix(val)}
-        for name, val in gemini_keys
-    ]
+    # Booleans/counts only — never key material, not even suffixes (they let
+    # an outsider fingerprint which keys rotate). Detailed per-key probing
+    # lives behind auth at /diag/gemini.
+    if settings.SUPABASE_JWT_SECRET:
+        auth_mode = "strict" if settings.AUTH_ENFORCE_SIGNATURE else "shadow"
+    else:
+        auth_mode = "legacy"
     return {
         "status": "ok",
-        "version": "0.1.0",
-        "gemini_keys_loaded": sum(1 for k in loaded if k["loaded"]),
-        "gemini_keys": loaded,
+        "version": "0.2.0",
+        "auth_mode": auth_mode,
+        "gemini_keys_loaded": sum(bool(k) for k in (
+            settings.GEMINI_API_KEY, settings.GEMINI_API_KEY_2, settings.GEMINI_API_KEY_3,
+        )),
         "groq_configured": bool(settings.GROQ_API_KEY),
         "anthropic_configured": bool(settings.ANTHROPIC_API_KEY),
     }

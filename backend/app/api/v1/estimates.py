@@ -1,8 +1,10 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from app.core.auth import require_user
+from app.core.ownership import require_owned_project
 from app.core.supabase import get_supabase
 
 logger = logging.getLogger(__name__)
@@ -17,8 +19,9 @@ class EstimateAdjust(BaseModel):
 
 
 @router.get("/{project_id}")
-async def get_estimate(project_id: str):
+async def get_estimate(project_id: str, user: dict = Depends(require_user)):
     db = get_supabase()
+    require_owned_project(db, project_id, user)
     try:
         result = db.table("cost_estimates").select("*").eq("project_id", project_id).single().execute()
         if not result.data:
@@ -42,8 +45,9 @@ async def get_estimate(project_id: str):
 
 
 @router.patch("/{project_id}")
-async def update_estimate(project_id: str, payload: EstimateAdjust):
+async def update_estimate(project_id: str, payload: EstimateAdjust, user: dict = Depends(require_user)):
     db = get_supabase()
+    require_owned_project(db, project_id, user)
     update_data = {k: v for k, v in payload.dict().items() if v is not None}
     result = db.table("cost_estimates").update(update_data).eq("project_id", project_id).execute()
     return result.data[0]

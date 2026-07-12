@@ -3,6 +3,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional
+from app.core.auth import require_user
+from app.core.ownership import require_owned_project
 from app.core.supabase import get_supabase
 
 logger = logging.getLogger(__name__)
@@ -20,10 +22,14 @@ class ProjectCreate(BaseModel):
 
 
 @router.get("/")
-async def list_projects(user_id: str = Query(...), include_archived: bool = Query(default=False)):
+async def list_projects(
+    user_id: Optional[str] = Query(None),   # legacy param — ignored, token wins
+    include_archived: bool = Query(default=False),
+    user: dict = Depends(require_user),
+):
     db = get_supabase()
     try:
-        query = db.table("projects").select("*").eq("user_id", user_id)
+        query = db.table("projects").select("*").eq("user_id", user["id"])
         if not include_archived:
             query = query.eq("archived", False)
         result = query.order("created_at", desc=True).execute()
@@ -31,7 +37,7 @@ async def list_projects(user_id: str = Query(...), include_archived: bool = Quer
     except Exception:
         logger.debug("projects archived filter failed, falling back to unfiltered", exc_info=True)
         # archived column may not exist yet — fall back to unfiltered query
-        result = db.table("projects").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        result = db.table("projects").select("*").eq("user_id", user["id"]).order("created_at", desc=True).execute()
         rows = result.data or []
     # If include_archived=False but column doesn't exist, filter client-side (archived defaults to False)
     if not include_archived:
@@ -64,12 +70,16 @@ async def list_projects(user_id: str = Query(...), include_archived: bool = Quer
 
 
 @router.post("/")
-async def create_project(payload: ProjectCreate, user_id: str = Query(...)):
+async def create_project(
+    payload: ProjectCreate,
+    user_id: Optional[str] = Query(None),   # legacy param — ignored, token wins
+    user: dict = Depends(require_user),
+):
     db = get_supabase()
     # Ensure profile exists (auto-create if missing)
-    db.table("profiles").upsert({"id": user_id}, on_conflict="id").execute()
+    db.table("profiles").upsert({"id": user["id"]}, on_conflict="id").execute()
     result = db.table("projects").insert({
-        "user_id": user_id,
+        "user_id": user["id"],
         "name": payload.name,
         "description": payload.description,
         "region": payload.region,
@@ -82,8 +92,9 @@ async def create_project(payload: ProjectCreate, user_id: str = Query(...)):
 
 
 @router.get("/{project_id}")
-async def get_project(project_id: str):
+async def get_project(project_id: str, user: dict = Depends(require_user)):
     db = get_supabase()
+    require_owned_project(db, project_id, user)
     result = (
         db.table("projects")
         .select("*, blueprints(*)")
@@ -97,8 +108,9 @@ async def get_project(project_id: str):
 
 
 @router.patch("/{project_id}")
-async def update_project(project_id: str, payload: dict):
+async def update_project(project_id: str, payload: dict, user: dict = Depends(require_user)):
     db = get_supabase()
+    require_owned_project(db, project_id, user)
     allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region", "city", "zip_code", "archived")}
     if not allowed:
         raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -109,14 +121,15 @@ async def update_project(project_id: str, payload: dict):
 
 
 @router.delete("/{project_id}")
-async def delete_project(project_id: str):
+async def delete_project(project_id: str, user: dict = Depends(require_user)):
     db = get_supabase()
+    require_owned_project(db, project_id, user)
     db.table("projects").delete().eq("id", project_id).execute()
     return {"success": True}
 
 
 @router.get("/{project_id}/risk-score")
-async def get_project_risk_score(project_id: str):
+async def get_project_risk_score(project_id: str, user: dict = Depends(require_user)):
     """
     Generate a storm/hail/wind risk assessment for the project's location.
     Uses Tavily weather data + Claude analysis.
@@ -124,13 +137,11 @@ async def get_project_risk_score(project_id: str):
     from app.services.risk_score_service import get_risk_score
     db = get_supabase()
 
-    proj = db.table("projects").select("city, region, zip_code").eq("id", project_id).single().execute()
-    if not proj.data:
-        raise HTTPException(status_code=404, detail="Project not found")
+    proj = require_owned_project(db, project_id, user)
 
-    city = proj.data.get("city", "")
-    region = proj.data.get("region", "US-TX")
-    zip_code = proj.data.get("zip_code", "")
+    city = proj.get("city", "")
+    region = proj.get("region", "US-TX")
+    zip_code = proj.get("zip_code", "")
     state = region.replace("US-", "") if region else "TX"
 
     if not city:

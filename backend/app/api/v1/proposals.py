@@ -20,10 +20,12 @@ import logging
 import os
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
+from app.core.auth import require_user
+from app.core.ownership import require_owned_project
 from app.core.supabase import get_supabase
 
 router = APIRouter()
@@ -124,7 +126,7 @@ def _load_materials_and_pricing(project_id: str, db) -> tuple[list[dict], dict]:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/{project_id}/generate")
-async def generate_proposal(project_id: str, body: ProposalRequest):
+async def generate_proposal(project_id: str, body: ProposalRequest, user: dict = Depends(require_user)):
     """
     Generate a contractor proposal PDF from real project data.
 
@@ -137,11 +139,8 @@ async def generate_proposal(project_id: str, body: ProposalRequest):
     """
     db = get_supabase()
 
-    # ── Fetch project ──────────────────────────────────────────────────────────
-    proj_r = db.table("projects").select("*").eq("id", project_id).limit(1).execute()
-    if not proj_r.data:
-        raise HTTPException(status_code=404, detail="Project not found")
-    project = proj_r.data[0]
+    # ── Fetch project (owner only — proposals carry client PII + pricing) ─────
+    project = require_owned_project(db, project_id, user)
 
     # ── Fetch contractor profile ───────────────────────────────────────────────
     user_id = project.get("user_id", "")
@@ -212,7 +211,16 @@ async def generate_proposal(project_id: str, body: ProposalRequest):
         valid_days=body.valid_days,
     )
 
-    # ── Cache to disk for re-download ──────────────────────────────────────────
+    # ── Persist for re-download ────────────────────────────────────────────────
+    # Supabase storage is the durable copy (Render's disk is ephemeral and
+    # per-instance); /tmp remains a same-instance fast path.
+    try:
+        db.storage.from_("blueprints").upload(
+            f"proposals/{project_id}_latest.pdf", pdf_bytes,
+            {"content-type": "application/pdf", "upsert": "true"},
+        )
+    except Exception:
+        log.warning("proposal storage upload failed (tmp cache only)", exc_info=True)
     os.makedirs(PROPOSAL_CACHE_DIR, exist_ok=True)
     cache_path = os.path.join(PROPOSAL_CACHE_DIR, f"{project_id}_latest.pdf")
     with open(cache_path, "wb") as f:
@@ -229,27 +237,36 @@ async def generate_proposal(project_id: str, body: ProposalRequest):
 
 
 @router.get("/{project_id}/download")
-async def download_latest_proposal(project_id: str):
-    """Download the most recently generated proposal PDF."""
+async def download_latest_proposal(project_id: str, user: dict = Depends(require_user)):
+    """Download the most recently generated proposal PDF (owner only)."""
+    db = get_supabase()
+    project = require_owned_project(db, project_id, user)
+    filename = f"proposal_{(project.get('name') or 'proposal').lower().replace(' ', '_')}.pdf"
+
     cache_path = os.path.join(PROPOSAL_CACHE_DIR, f"{project_id}_latest.pdf")
-    if not os.path.exists(cache_path):
+    if os.path.exists(cache_path):
+        def _iter():
+            with open(cache_path, "rb") as f:
+                while chunk := f.read(65536):
+                    yield chunk
+        return StreamingResponse(
+            _iter(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # Cold instance / restarted container — fall back to the durable copy.
+    try:
+        pdf_bytes = db.storage.from_("blueprints").download(f"proposals/{project_id}_latest.pdf")
+    except Exception:
+        pdf_bytes = None
+    if not pdf_bytes:
         raise HTTPException(
             status_code=404,
             detail="No proposal generated yet. POST to /{project_id}/generate first.",
         )
-
-    db = get_supabase()
-    proj_r = db.table("projects").select("name").eq("id", project_id).limit(1).execute()
-    name = proj_r.data[0]["name"] if proj_r.data else "proposal"
-    filename = f"proposal_{name.lower().replace(' ', '_')}.pdf"
-
-    def _iter():
-        with open(cache_path, "rb") as f:
-            while chunk := f.read(65536):
-                yield chunk
-
-    return StreamingResponse(
-        _iter(),
+    return Response(
+        content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

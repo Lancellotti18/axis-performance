@@ -49,6 +49,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.auth import require_user
+from app.core.ownership import require_owned_project, require_owned_run
 from app.core.supabase import get_supabase
 from app.services import geometry_service as geo
 from app.services import imagery_service
@@ -595,6 +596,7 @@ class CreateRunRequest(BaseModel):
 @router.post("/runs")
 async def create_run(req: CreateRunRequest, user: dict = Depends(require_user)) -> dict:
     db = get_supabase()
+    require_owned_project(db, req.project_id, user)
     record = req.model_dump(exclude_none=True)
     record["measurement_unverified"] = True
     record["confirmed"] = False
@@ -609,6 +611,7 @@ async def latest_run_for_project(project_id: str, user: dict = Depends(require_u
     """The most recent measurement run for a project, so reopening a project can
     RESUME the contractor's saved roof (facets/edges) instead of starting over."""
     db = get_supabase()
+    require_owned_project(db, project_id, user)
     res = (
         db.table("roof_measurement_runs")
         .select("id, created_at")
@@ -623,6 +626,7 @@ async def latest_run_for_project(project_id: str, user: dict = Depends(require_u
 
 @router.get("/runs/{run_id}")
 async def get_run(run_id: str, user: dict = Depends(require_user)) -> dict:
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     run = db.table("roof_measurement_runs").select("*").eq("id", run_id).single().execute()
     if not run.data:
@@ -660,6 +664,7 @@ class UpdateRunRequest(BaseModel):
 
 @router.patch("/runs/{run_id}")
 async def update_run(run_id: str, req: UpdateRunRequest, user: dict = Depends(require_user)) -> dict:
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     updates = {k: v for k, v in req.model_dump(exclude_none=True).items()}
     if "confirmed" in updates and updates["confirmed"]:
@@ -713,6 +718,7 @@ async def put_facets(
     and pitch_degrees are computed server-side so the contractor can't
     accidentally store a wrong number.
     """
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
 
     # Make sure the run exists (RLS will reject otherwise)
@@ -795,6 +801,7 @@ async def put_edges(
     slope_adjusted_ft are computed from the parent facet's polygon and pitch
     (deterministic — no LLM, no guesses).
     """
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
 
     facets_res = db.table("roof_facets").select("id, facet_label, polygon, pitch").eq(
@@ -1015,6 +1022,7 @@ def _aggregate_run(run_id: str) -> dict:
 @router.get("/runs/{run_id}/recompute")
 async def recompute_run(run_id: str, user: dict = Depends(require_user)) -> dict:
     """Recompute aggregates from current facets+edges. Idempotent."""
+    require_owned_run(get_supabase(), run_id, user)
     return _aggregate_run(run_id)
 
 
@@ -1042,6 +1050,7 @@ class PenetrationIn(BaseModel):
 async def add_penetration(
     run_id: str, p: PenetrationIn, user: dict = Depends(require_user),
 ) -> dict:
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     row = {"run_id": run_id, **p.model_dump(exclude_none=True)}
     res = db.table("roof_penetrations").insert(row).execute()
@@ -1054,6 +1063,7 @@ async def add_penetration(
 async def delete_penetration(
     run_id: str, pid: str, user: dict = Depends(require_user),
 ) -> dict:
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     db.table("roof_penetrations").delete().eq("id", pid).eq("run_id", run_id).execute()
     return {"status": "deleted", "id": pid}
@@ -1264,6 +1274,7 @@ async def analyze_ground_photo(
     Returns {results: [{page, findings, message}], ...}. Writes nothing —
     applying a finding (set pitch / add chimney) is a separate action.
     """
+    require_owned_run(get_supabase(), run_id, user)
     import asyncio
 
     raw = await file.read()
@@ -1371,6 +1382,7 @@ async def get_run_solar(run_id: str, user: dict = Depends(require_user)) -> dict
     (with a reason) when the key is missing or Google has no coverage here, so
     the frontend silently falls back to the satellite-tracing flow.
     """
+    require_owned_run(get_supabase(), run_id, user)
     from app.services import solar_service
 
     db = get_supabase()
@@ -1404,6 +1416,7 @@ async def get_run_ground_findings(run_id: str, user: dict = Depends(require_user
     """Return the consolidated ground-photo findings persisted on the run (pitch,
     chimney, dormers, wall_abutment, roof_shape, …) so other panels — e.g. the
     flashing-edge suggester — can corroborate against what the photos saw."""
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
         "ground_findings"
@@ -1430,6 +1443,7 @@ async def set_subject_point(
     """Record the contractor's 'tap your house' point (image fractions 0..1) on
     the run. Facet auto-detect anchors its mask/crop on this so it locks onto the
     right building regardless of geocode offset."""
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     run = db.table("roof_measurement_runs").select("id").eq("id", run_id).single().execute()
     if not run.data:
@@ -1460,6 +1474,7 @@ async def get_run_footprint(run_id: str, user: dict = Depends(require_user)) -> 
     outline ring so the frontend can drop it on the tile as a starter facet.
     available=false (with a reason) when nothing is mapped here.
     """
+    require_owned_run(get_supabase(), run_id, user)
     from app.services import footprint_service
 
     db = get_supabase()
@@ -1485,6 +1500,7 @@ async def suggest_penetrations(
     user_confirmed=false — the contractor must explicitly add each one to
     make it count toward materials. We never claim these are measurements.
     """
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
         "satellite_image_url, satellite_lat, satellite_lng, satellite_zoom"
@@ -2100,6 +2116,7 @@ async def suggest_facets(
     NEVER auto-applies. Every accepted facet is added to the manual facet list
     and the user can then drag vertices, set pitch, and label edges as usual.
     """
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
         "satellite_image_url, satellite_zoom, satellite_lat, satellite_lng, ground_findings, subject_point"
@@ -2506,6 +2523,7 @@ async def record_facet_rejections(
     capture_source='ai_rejected' so the future segmentation model learns what is
     NOT a roof plane. Accepts (and accept-then-edit) are captured on save, not
     here, to avoid duplicate rows."""
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
         "satellite_image_url, satellite_lat, satellite_lng, satellite_zoom, satellite_provider"
@@ -2580,6 +2598,7 @@ async def suggest_edge_labels(
     Returns suggestions with confidence + reasoning. Frontend renders these as
     pre-selected dropdowns the contractor can accept or override per edge.
     """
+    require_owned_run(get_supabase(), run_id, user)
     # Always available: deterministic geometry suggestion (shared edges, angles)
     geom_suggestions = geo.auto_suggest_edge_types(req.facets)
     geom_index: dict[tuple[str, int], dict] = {}
@@ -2817,6 +2836,7 @@ async def detect_wall_transitions(run_id: str, user: dict = Depends(require_user
     re-labels it 'wall_intersection', which the flashing engine then consumes.
     Nothing here writes to the DB — every finding is a reviewable suggestion.
     """
+    require_owned_run(get_supabase(), run_id, user)
     import json as _json
     import re as _re
     from app.services.llm import llm_vision
@@ -2945,6 +2965,7 @@ async def get_run_flashing(run_id: str, user: dict = Depends(require_user)) -> d
     traces back to a specific edge/penetration so the contractor can see exactly
     why it was added, then accept or adjust it.
     """
+    require_owned_run(get_supabase(), run_id, user)
     from app.services.flashing_engine import build_input_from_rows, compute_flashing
 
     db = get_supabase()
@@ -3060,6 +3081,7 @@ async def get_run_materials(
     Full material list for a run at the selected waste %, plus the per-waste
     table so the contractor can see every option at once.
     """
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     run = db.table("roof_measurement_runs").select("*").eq("id", run_id).single().execute()
     if not run.data:
@@ -3213,6 +3235,7 @@ async def record_actuals(
     current prediction alongside it, so calibration always compares against
     the number the contractor really ordered from.
     """
+    require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     run = db.table("roof_measurement_runs").select("id, project_id").eq("id", run_id).single().execute()
     if not run.data:
@@ -3374,6 +3397,7 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
 @router.get("/runs/{run_id}/report")
 async def get_run_report(run_id: str, user: dict = Depends(require_user)):
     """Redesigned 8-section roof report PDF (also stored for the Reports tab)."""
+    require_owned_run(get_supabase(), run_id, user)
     pdf_bytes, filename, _ = await _build_and_store_report(run_id)
     return Response(
         content=pdf_bytes,
@@ -3386,6 +3410,7 @@ async def get_run_report(run_id: str, user: dict = Depends(require_user)):
 async def get_run_report_url(run_id: str, user: dict = Depends(require_user)) -> dict:
     """A shareable signed URL for the run's report — returns the stored one if it
     exists, otherwise builds + stores it first."""
+    require_owned_run(get_supabase(), run_id, user)
     url = _signed_report_url(run_id)
     if not url:
         _, _, url = await _build_and_store_report(run_id)
@@ -3395,11 +3420,12 @@ async def get_run_report_url(run_id: str, user: dict = Depends(require_user)) ->
 
 
 @router.get("/reports")
-async def list_roof_reports(user_id: str = Query(...), user: dict = Depends(require_user)) -> dict:
+async def list_roof_reports(user_id: Optional[str] = Query(None), user: dict = Depends(require_user)) -> dict:
     """Every roof report available across a user's projects — any run that has a
-    traced roof. Includes a signed pdf_url when one has already been generated."""
+    traced roof. Includes a signed pdf_url when one has already been generated.
+    The legacy user_id param is accepted but ignored; the token is the tenant."""
     db = get_supabase()
-    projects = db.table("projects").select("id, name, address, city").eq("user_id", user_id).execute().data or []
+    projects = db.table("projects").select("id, name, address, city").eq("user_id", user["id"]).execute().data or []
     pmap = {p["id"]: p for p in projects}
     if not pmap:
         return {"reports": []}
@@ -3474,6 +3500,7 @@ async def add_siding_measurement(
     region on a ground-level photo and provides a scale reference (door
     height). Area is computed from pixel area × scale².
     """
+    require_owned_project(get_supabase(), payload.project_id, user)
     if len(payload.region_polygon) < 3:
         raise HTTPException(status_code=422, detail="region_polygon must have at least 3 vertices")
 
@@ -3521,6 +3548,7 @@ async def add_siding_measurement(
 async def list_siding_measurements(
     project_id: str = Query(...), user: dict = Depends(require_user),
 ) -> dict:
+    require_owned_project(get_supabase(), project_id, user)
     db = get_supabase()
     res = db.table("manual_siding_measurements").select("*").eq("project_id", project_id).execute()
     rows = res.data or []

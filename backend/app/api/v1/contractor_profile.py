@@ -1,9 +1,15 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from app.core.auth import require_user
 from app.core.supabase import get_supabase
 
 router = APIRouter()
+
+# NOTE: the {user_id} path segment is kept for URL compatibility with older
+# frontends, but it is IGNORED — the authenticated token decides whose
+# profile is read or written. Profiles hold license numbers, phone, email,
+# and branding; none of that is public.
 
 
 class ContractorProfile(BaseModel):
@@ -20,19 +26,19 @@ class ContractorProfile(BaseModel):
 
 
 @router.get("/{user_id}")
-async def get_contractor_profile(user_id: str):
+async def get_contractor_profile(user_id: str, user: dict = Depends(require_user)):
     db = get_supabase()
-    result = db.table("contractor_profiles").select("*").eq("user_id", user_id).limit(1).execute()
+    result = db.table("contractor_profiles").select("*").eq("user_id", user["id"]).limit(1).execute()
     if not result.data:
         return {}
     return result.data[0]
 
 
 @router.post("/{user_id}")
-async def save_contractor_profile(user_id: str, payload: ContractorProfile):
+async def save_contractor_profile(user_id: str, payload: ContractorProfile, user: dict = Depends(require_user)):
     db = get_supabase()
     data = {
-        "user_id": user_id,
+        "user_id": user["id"],
         **{k: v for k, v in payload.dict().items() if v is not None},
         "updated_at": "now()",
     }
@@ -87,7 +93,7 @@ def _prep_logo(raw: bytes) -> bytes:
 
 
 @router.post("/{user_id}/logo")
-async def upload_logo(user_id: str, file: UploadFile = File(...)):
+async def upload_logo(user_id: str, file: UploadFile = File(...), user: dict = Depends(require_user)):
     """Upload a logo image; Axis preps it (trim, center, pad, constrain,
     transparency-safe) and saves the URL to the profile for reports/proposals."""
     raw = await file.read()
@@ -102,7 +108,7 @@ async def upload_logo(user_id: str, file: UploadFile = File(...)):
 
     db = _get_sb()
     bucket = db.storage.from_("blueprints")
-    key = f"logos/{user_id}.png"
+    key = f"logos/{user['id']}.png"
     try:
         bucket.upload(key, cleaned, {"content-type": "image/png", "upsert": "true"})
         signed = bucket.create_signed_url(key, 31_536_000)
@@ -119,6 +125,6 @@ async def upload_logo(user_id: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Could not store the logo: {str(e)[:100]}")
 
     db.table("contractor_profiles").upsert(
-        {"user_id": user_id, "logo_url": url, "updated_at": "now()"}, on_conflict="user_id",
+        {"user_id": user["id"], "logo_url": url, "updated_at": "now()"}, on_conflict="user_id",
     ).execute()
     return {"ok": True, "logo_url": url}

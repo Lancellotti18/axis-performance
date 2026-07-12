@@ -1,16 +1,22 @@
 """
 CRM endpoints for lead management + activity notes.
-GET    /crm/leads?user_id=...        — list all leads
+
+All routes require a verified JWT; the tenant is ALWAYS the token's user —
+the legacy `user_id` query param is accepted for old clients but ignored.
+
+GET    /crm/leads                    — list this user's leads
 POST   /crm/leads                    — create a lead
-PATCH  /crm/leads/{lead_id}          — update a lead
-DELETE /crm/leads/{lead_id}          — delete a lead
+PATCH  /crm/leads/{lead_id}          — update a lead (owner only)
+DELETE /crm/leads/{lead_id}          — delete a lead (owner only)
 GET    /crm/leads/{lead_id}/notes    — get activity notes for a lead
 POST   /crm/leads/{lead_id}/notes    — add a note to a lead
 DELETE /crm/leads/{lead_id}/notes/{note_id} — delete a note
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
+from app.core.auth import require_user
+from app.core.ownership import require_owned_crm_lead
 from app.core.supabase import get_supabase
 
 router = APIRouter()
@@ -46,29 +52,29 @@ class LeadUpdate(BaseModel):
 
 class NoteCreate(BaseModel):
     text: str
-    user_id: str
+    user_id: Optional[str] = None   # legacy field — ignored, token wins
 
 
 # ── Leads ─────────────────────────────────────────────────────────────────────
 
 @router.get("/leads")
-async def list_leads(user_id: str = Query(...)):
+async def list_leads(user_id: Optional[str] = Query(None), user: dict = Depends(require_user)):
     db = get_supabase()
     try:
-        result = db.table("crm_leads").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        result = db.table("crm_leads").select("*").eq("user_id", user["id"]).order("created_at", desc=True).execute()
         return result.data or []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch leads: {str(e)}")
 
 
 @router.post("/leads")
-async def create_lead(payload: LeadCreate, user_id: str = Query(...)):
+async def create_lead(payload: LeadCreate, user_id: Optional[str] = Query(None), user: dict = Depends(require_user)):
     db = get_supabase()
     if payload.stage not in VALID_STAGES:
         payload.stage = "new"
     try:
         result = db.table("crm_leads").insert({
-            "user_id": user_id,
+            "user_id": user["id"],
             "name": payload.name,
             "phone": payload.phone,
             "email": payload.email,
@@ -86,15 +92,16 @@ async def create_lead(payload: LeadCreate, user_id: str = Query(...)):
 
 
 @router.patch("/leads/{lead_id}")
-async def update_lead(lead_id: str, payload: LeadUpdate):
+async def update_lead(lead_id: str, payload: LeadUpdate, user: dict = Depends(require_user)):
     db = get_supabase()
+    require_owned_crm_lead(db, lead_id, user)
     update = {k: v for k, v in payload.dict().items() if v is not None}
     if not update:
         raise HTTPException(status_code=400, detail="No fields to update")
     if "stage" in update and update["stage"] not in VALID_STAGES:
         raise HTTPException(status_code=400, detail=f"Invalid stage. Must be one of: {', '.join(VALID_STAGES)}")
     try:
-        result = db.table("crm_leads").update(update).eq("id", lead_id).execute()
+        result = db.table("crm_leads").update(update).eq("id", lead_id).eq("user_id", user["id"]).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Lead not found")
         return result.data[0]
@@ -105,10 +112,11 @@ async def update_lead(lead_id: str, payload: LeadUpdate):
 
 
 @router.delete("/leads/{lead_id}")
-async def delete_lead(lead_id: str):
+async def delete_lead(lead_id: str, user: dict = Depends(require_user)):
     db = get_supabase()
+    require_owned_crm_lead(db, lead_id, user)
     try:
-        db.table("crm_leads").delete().eq("id", lead_id).execute()
+        db.table("crm_leads").delete().eq("id", lead_id).eq("user_id", user["id"]).execute()
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete lead: {str(e)}")
@@ -117,8 +125,9 @@ async def delete_lead(lead_id: str):
 # ── Activity Notes ────────────────────────────────────────────────────────────
 
 @router.get("/leads/{lead_id}/notes")
-async def get_lead_notes(lead_id: str):
+async def get_lead_notes(lead_id: str, user: dict = Depends(require_user)):
     db = get_supabase()
+    require_owned_crm_lead(db, lead_id, user)
     try:
         result = (
             db.table("crm_lead_notes")
@@ -133,14 +142,15 @@ async def get_lead_notes(lead_id: str):
 
 
 @router.post("/leads/{lead_id}/notes")
-async def add_lead_note(lead_id: str, payload: NoteCreate):
+async def add_lead_note(lead_id: str, payload: NoteCreate, user: dict = Depends(require_user)):
     if not payload.text.strip():
         raise HTTPException(status_code=422, detail="Note text cannot be empty.")
     db = get_supabase()
+    require_owned_crm_lead(db, lead_id, user)
     try:
         result = db.table("crm_lead_notes").insert({
             "lead_id": lead_id,
-            "user_id": payload.user_id,
+            "user_id": user["id"],
             "text": payload.text.strip(),
         }).execute()
         return result.data[0]
@@ -149,8 +159,9 @@ async def add_lead_note(lead_id: str, payload: NoteCreate):
 
 
 @router.delete("/leads/{lead_id}/notes/{note_id}")
-async def delete_lead_note(lead_id: str, note_id: str):
+async def delete_lead_note(lead_id: str, note_id: str, user: dict = Depends(require_user)):
     db = get_supabase()
+    require_owned_crm_lead(db, lead_id, user)
     try:
         db.table("crm_lead_notes").delete().eq("id", note_id).eq("lead_id", lead_id).execute()
         return {"success": True}

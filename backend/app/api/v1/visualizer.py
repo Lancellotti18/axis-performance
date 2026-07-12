@@ -6,7 +6,9 @@ POST /visualizer/generate  — multipart: image file + description + city + stat
 from __future__ import annotations
 
 import logging
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+
+from app.core.auth import require_user
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -20,6 +22,7 @@ async def generate_home_visualization(
     description: str        = Form(...),
     city:        str        = Form(""),
     state:       str        = Form(""),
+    user:        dict       = Depends(require_user),
 ):
     """
     Upload a property photo and describe the changes you want to see.

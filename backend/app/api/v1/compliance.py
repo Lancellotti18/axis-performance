@@ -195,18 +195,14 @@ async def get_project_compliance(
 
 
 @router.post("/materials-check")
-async def check_project_materials(project_id: str = Query(...)):
+async def check_project_materials(project_id: str = Query(...), user: dict = Depends(get_current_user)):
     """
     Cross-reference the project's generated materials list against local building codes.
     Returns exact rule citations, violations, and fix suggestions.
     """
+    from app.core.ownership import require_owned_project
     supabase = get_supabase()
-
-    # Get project info for location
-    proj = supabase.table("projects").select("*").eq("id", project_id).single().execute()
-    if not proj.data:
-        raise HTTPException(status_code=404, detail="Project not found")
-    project = proj.data
+    project = require_owned_project(supabase, project_id, user)
 
     city = project.get("city", "")
     county = project.get("county", "")
