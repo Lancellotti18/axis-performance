@@ -223,6 +223,12 @@ function Nav() {
         </div>
         <div className="flex items-center gap-2">
           <Link
+            href="/pricing"
+            className="hidden sm:block text-white/60 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-white/5 transition-all"
+          >
+            Pricing
+          </Link>
+          <Link
             href="/portal"
             className="hidden sm:block text-white/60 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-white/5 transition-all"
             title="Homeowners: open the project link your contractor sent you"
@@ -282,13 +288,13 @@ export default function HomePage() {
         >
           <div className="inline-flex items-center gap-2 text-[10px] font-bold tracking-[0.3em] uppercase text-blue-300/90 mb-6 font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-            AI Blueprint & Permit Platform
+            The Roofing Growth Platform
           </div>
           <h1
             className="font-display font-bold text-white text-5xl sm:text-7xl md:text-8xl leading-[0.95] mb-6"
             style={{ textShadow: '0 4px 60px rgba(0,0,0,0.6)' }}
           >
-            Build smarter.
+            Stop buying leads.
             <br />
             <span
               className="text-transparent bg-clip-text"
@@ -296,13 +302,13 @@ export default function HomePage() {
                 backgroundImage: 'linear-gradient(180deg, #BFE6FF 0%, #4A90E2 100%)',
               }}
             >
-              Permit faster.
+              Start owning them.
             </span>
           </h1>
           <p className="text-white/65 text-base md:text-lg max-w-xl mx-auto font-light leading-relaxed mb-10">
-            Upload a blueprint. Get instant room detection, material lists,
-            cost estimates, code compliance, and automatic permit filing —
-            in under two minutes.
+            Homeowners get an instant, satellite-verified roof quote on
+            <em> your</em> website — and you get a scored, exclusive lead in
+            your CRM. No shared leads. No per-seat tax. Free to start.
           </p>
           <div className="pointer-events-auto flex flex-col sm:flex-row gap-3">
             <Link
@@ -439,33 +445,33 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Capability
               num="01"
-              title="Blueprint analysis"
-              body="Drop any PDF or image. Vision AI identifies rooms, walls, dimensions, openings, and structural elements — instantly."
+              title="Instant quote widget"
+              body="A homeowner types their address on your site, confirms their roof on the satellite image, and sees a real price range in seconds — the tool competitors sell for $125+/mo, free here."
             />
             <Capability
               num="02"
-              title="Material takeoff"
-              body="Quantities for lumber, drywall, concrete, fixtures, and finishings — broken out by category with live regional pricing."
+              title="Scored, exclusive leads"
+              body="Every quote becomes a lead with a 0–100 score and plain-English reasons — active leak, roof age, wants full replacement. Yours alone, never resold."
             />
             <Capability
               num="03"
-              title="Cost estimation"
-              body="Region-adjusted cost projections grounded in real material prices, labor estimates, and project complexity."
+              title="Roofing CRM"
+              body="A pipeline built for roofers: kanban stages, one-tap call and text, stale-lead alerts, voice notes from the truck. Unlimited seats, flat price."
             />
             <Capability
               num="04"
-              title="Code compliance"
-              body="Plans cross-checked against the relevant local building codes. Failures flagged with specific reasoning and citations."
+              title="Aerial measurement"
+              body="Trace any roof on high-res satellite imagery — squares, pitch, ridges, hips, valleys, eaves — then send an EagleView-class branded report for a fraction of the cost."
             />
             <Capability
               num="05"
-              title="Permit packaging"
-              body="Permit applications pre-filled from your project + contractor profile. Required documents attached and ready to submit."
+              title="One-click proposals"
+              body="Good / better / best proposals priced from the measured roof, with financing shown. The homeowner accepts online — no 48-hour quote gap."
             />
             <Capability
               num="06"
-              title="Aerial roofing"
-              body="Trace the property's roof on a satellite tile for accurate square footage, perimeter, and pitch — without leaving the office."
+              title="Permits & compliance"
+              body="Local permit portals, pre-filled applications, and material code checks for the jobs that need them — without leaving Axis."
             />
           </div>
         </div>
@@ -475,10 +481,10 @@ export default function HomePage() {
       <section className="relative border-y border-slate-200 bg-white py-24 px-6">
         <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-16">
           {[
-            { value: '< 2min', label: 'Full analysis' },
-            { value: '90%', label: 'Less admin work' },
-            { value: '100+', label: 'Codes checked' },
-            { value: '24/7', label: 'AI on call' },
+            { value: 'Seconds', label: 'Address → quote' },
+            { value: '0–100', label: 'Every lead scored' },
+            { value: '$0', label: 'Per shared lead' },
+            { value: '24/7', label: 'Your site sells' },
           ].map((s, i) => (
             <FadeIn key={s.label} delay={i * 0.08}>
               <div className="text-center md:text-left">
@@ -505,16 +511,16 @@ export default function HomePage() {
               Without Axis
             </div>
             <h3 className="font-display text-3xl md:text-4xl font-bold text-slate-400 mb-10 tracking-tight leading-tight">
-              Hours of manual work.
+              Renting leads. Chasing quotes.
             </h3>
             <ul className="space-y-4">
               {[
-                'Manually review blueprints page by page',
-                'Build material spreadsheets from scratch',
-                'Calculate cost estimates by hand',
-                'Research local building codes',
-                'Navigate complex permit portals',
-                'Re-submit rejected applications',
+                'Pay $80–450 per shared lead sold to 3–5 other roofers',
+                'Race to call before the other guys do',
+                'Drive out just to measure the roof',
+                'Make homeowners wait days for a quote',
+                'Pay per seat for the office admin to see the CRM',
+                'Pay again for every measurement report',
               ].map(item => (
                 <li key={item} className="flex items-start gap-3 text-slate-500 text-[15px] font-light leading-relaxed">
                   <span className="mt-2 w-3.5 h-px bg-red-400/60 flex-shrink-0" />
@@ -542,12 +548,12 @@ export default function HomePage() {
               </h3>
               <ul className="space-y-4">
                 {[
-                  'AI reads and interprets blueprints instantly',
-                  'Material lists generated automatically',
-                  'Cost projections in real time',
-                  'All building codes checked automatically',
-                  'Permit applications filed for you',
-                  'Accurate submissions, fewer rejections',
+                  'Your website quotes roofs instantly, 24/7',
+                  'Every lead is exclusive — and scored 0–100',
+                  'Roof measured from satellite before you call',
+                  'Good/better/best proposal in one click',
+                  'Whole crew on one flat price, unlimited seats',
+                  'Unlimited reports, your branding on every one',
                 ].map(item => (
                   <li key={item} className="flex items-start gap-3 text-white/80 text-[15px] font-light leading-relaxed">
                     <span className="mt-1.5 w-4 h-4 rounded-full bg-blue-500/15 border border-blue-400/40 flex items-center justify-center flex-shrink-0">
@@ -580,17 +586,18 @@ export default function HomePage() {
         <FadeIn>
           <div className="relative max-w-2xl mx-auto text-center">
             <h2 className="font-display text-4xl md:text-6xl font-bold text-white tracking-tight leading-[1.05] mb-6">
-              Save hours
+              See it quote
               <br />
               <span
                 className="text-transparent bg-clip-text"
                 style={{ backgroundImage: 'linear-gradient(180deg, #BFE6FF 0%, #4A90E2 100%)' }}
               >
-                per project.
+                your own house.
               </span>
             </h2>
             <p className="text-white/60 text-base md:text-lg font-light max-w-md mx-auto mb-10">
-              Built for contractors who'd rather be building than filing.
+              Create a free account, type your address, and watch RoofIQ measure
+              your roof — that&apos;s the demo. No credit card.
             </p>
             <Link
               href="/register"

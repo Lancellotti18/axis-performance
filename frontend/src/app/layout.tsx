@@ -6,13 +6,17 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Axis Performance — AI Blueprint & Permit Platform',
-  description: 'Upload blueprints, get instant room detection, material lists, cost estimates, compliance checks, and automated permit filing.',
-  keywords: ['blueprint analysis', 'permit filing', 'construction estimating', 'AI', 'material takeoff'],
+  title: {
+    default: 'Axis Performance — Instant Roof Quotes & Roofing CRM',
+    template: '%s · Axis Performance',
+  },
+  description:
+    'Turn your website into your best salesperson: instant satellite-verified roof quotes that become scored, exclusive leads in your CRM. Flat pricing, unlimited seats.',
+  keywords: ['roofing CRM', 'instant roof quote', 'roof measurement software', 'Roofr alternative', 'roofing leads', 'satellite roof measurement'],
   authors: [{ name: 'Axis Performance' }],
   openGraph: {
-    title: 'Axis Performance — AI Blueprint & Permit Platform',
-    description: 'Analyze blueprints in minutes. File permits automatically.',
+    title: 'Axis Performance — Instant Roof Quotes & Roofing CRM',
+    description: 'Instant satellite roof quotes → scored, exclusive leads → your CRM. Stop buying leads. Start owning them.',
     type: 'website',
   },
 }
