@@ -4,6 +4,7 @@ measurement run. The last mile from "measurement" to "signed job".
 
 Contractor (JWT):
     POST  /api/v1/roof-proposals/from-run/{run_id}   — create (auto-priced tiers)
+    POST  /api/v1/roof-proposals/from-lead/{lead_id} — one click: RoofIQ lead → live proposal
     GET   /api/v1/roof-proposals?project_id=          — list mine
     PATCH /api/v1/roof-proposals/{proposal_id}        — edit tiers / status
 Public (homeowner, by share token):
@@ -20,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.auth import require_user
+from app.core.ownership import require_owned_widget_lead
 from app.core.supabase import get_supabase
 
 logger = logging.getLogger(__name__)
@@ -99,14 +101,17 @@ async def create_from_run(
             detail="This roof has no measured area yet — draw (or auto-analyze) the facets in the editor, then come back.",
         )
 
-    # Ownership: the run's project must belong to the caller.
+    # Ownership: the run's project must belong to the caller. Orphan runs
+    # (no project) are rejected outright — otherwise anyone could snapshot
+    # and price a run they don't own by guessing its id.
     address = None
-    if run.data.get("project_id"):
-        proj = db.table("projects").select("user_id, address, city, state, zip, name").eq("id", run.data["project_id"]).single().execute()
-        if not proj.data or proj.data.get("user_id") != user["id"]:
-            raise HTTPException(status_code=403, detail="This measurement belongs to another account.")
-        parts = [proj.data.get("address"), proj.data.get("city"), proj.data.get("state")]
-        address = ", ".join(p for p in parts if p) or proj.data.get("name")
+    if not run.data.get("project_id"):
+        raise HTTPException(status_code=404, detail="Run not found.")
+    proj = db.table("projects").select("user_id, address, city, state, zip, name").eq("id", run.data["project_id"]).single().execute()
+    if not proj.data or proj.data.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    parts = [proj.data.get("address"), proj.data.get("city"), proj.data.get("state")]
+    address = ", ".join(p for p in parts if p) or proj.data.get("name")
 
     order_sq = squares * 1.10   # waste
     tiers = []
@@ -130,6 +135,84 @@ async def create_from_run(
         "squares": round(squares, 1),
         "total_roof_sqft": run.data.get("total_roof_sqft"),
         "predominant_pitch": run.data.get("predominant_pitch"),
+        "tiers": tiers,
+        "status": "draft",
+        "valid_until": (date.today() + timedelta(days=payload.valid_days)).isoformat(),
+    }
+    ins = db.table("roof_proposals").insert({k: v for k, v in row.items() if v is not None}).execute()
+    if not ins.data:
+        raise HTTPException(status_code=500, detail="Could not create proposal.")
+    return ins.data[0]
+
+
+@router.post("/from-lead/{lead_id}")
+async def create_from_lead(
+    lead_id: str, payload: CreateProposalIn, user: dict = Depends(require_user),
+) -> dict:
+    """One click: a RoofIQ widget lead becomes a live good/better/best proposal
+    using the squares already measured at quote time. Kills the 24–48h quote
+    wait — the homeowner gets a real proposal minutes after asking.
+
+    Good/Best are priced at the contractor's own widget $/sq rates (the same
+    numbers the homeowner already saw), Better at the midpoint.
+
+    Accepts either the widget-lead UUID or its report token — the CRM only
+    carries the report token (packed into the lead's notes), so the pipeline
+    drawer can one-click a proposal without a schema change."""
+    db = get_supabase()
+    lead = None
+    try:
+        lead = require_owned_widget_lead(db, lead_id, user)
+    except Exception:
+        res = (
+            db.table("widget_leads").select("*")
+            .eq("report_token", lead_id).eq("user_id", user["id"]).limit(1).execute()
+        )
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Lead not found.")
+        lead = res.data[0]
+
+    q = lead.get("quote") or {}
+    squares = float(q.get("squares") or lead.get("squares_estimate") or 0)
+    if squares <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="This lead has no measured roof size — open the address in the roof editor to measure it first.",
+        )
+
+    rate_low, rate_high = None, None
+    try:
+        w = db.table("quote_widgets").select("price_low, price_high").eq("user_id", user["id"]).limit(1).execute()
+        if w.data:
+            rate_low = float(w.data[0].get("price_low") or 0) or None
+            rate_high = float(w.data[0].get("price_high") or 0) or None
+    except Exception:
+        pass
+
+    order_sq = squares * 1.10
+    rates = [
+        rate_low or DEFAULT_TIERS[0]["rate"],
+        ((rate_low or DEFAULT_TIERS[0]["rate"]) + (rate_high or DEFAULT_TIERS[2]["rate"])) / 2,
+        rate_high or DEFAULT_TIERS[2]["rate"],
+    ]
+    tiers = []
+    for t, rate in zip(DEFAULT_TIERS, rates):
+        tiers.append({
+            "name": t["name"],
+            "headline": t["headline"],
+            "description": t["description"],
+            "features": t["features"],
+            "price": round(order_sq * rate / 50.0) * 50,
+        })
+
+    from datetime import date, timedelta
+    row = {
+        "user_id": user["id"],
+        "token": secrets.token_urlsafe(16),
+        **_snapshot_contractor(db, user["id"]),
+        "address": lead.get("address"),
+        "squares": round(squares, 1),
+        "total_roof_sqft": q.get("roof_sqft"),
         "tiers": tiers,
         "status": "draft",
         "valid_until": (date.today() + timedelta(days=payload.valid_days)).isoformat(),

@@ -58,6 +58,43 @@ function timeAgo(ts: string) {
   return new Date(ts).toLocaleDateString()
 }
 
+// RoofIQ intelligence is packed into the auto-imported lead's notes
+// ("🎯 RoofIQ lead — score 87/100 … report: /r/abc123"). Parse it back out
+// so the pipeline can show the score as a first-class signal.
+function parseRoofIQ(notes?: string): { score: number | null; reportToken: string | null } {
+  if (!notes) return { score: null, reportToken: null }
+  const score = notes.match(/score (\d{1,3})\/100/)
+  const report = notes.match(/report: \/r\/([A-Za-z0-9_-]+)/)
+  return {
+    score: score ? Math.min(100, parseInt(score[1], 10)) : null,
+    reportToken: report ? report[1] : null,
+  }
+}
+
+function ScoreBadge({ score, size = 'sm' }: { score: number; size?: 'sm' | 'lg' }) {
+  const cls = score >= 70
+    ? 'bg-orange-500/15 text-orange-400 border-orange-400/30'
+    : score >= 40
+      ? 'bg-amber-500/15 text-amber-400 border-amber-400/30'
+      : 'bg-white/[0.06] text-slate-400 border-white/15'
+  const label = score >= 70 ? 'Hot' : score >= 40 ? 'Warm' : 'Cool'
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border font-bold ${cls} ${size === 'lg' ? 'px-2.5 py-1 text-xs' : 'px-1.5 py-0.5 text-[10px]'}`}>
+      {score >= 70 && '🔥'} {score} · {label}
+    </span>
+  )
+}
+
+// A lead that sits untouched goes cold fast — 78% of homeowners hire the
+// first responder. New leads flag after 2 days, other active stages after 7.
+function staleDays(lead: Lead): number | null {
+  if (['won', 'lost'].includes(lead.stage)) return null
+  const ts = lead.updated_at || lead.created_at
+  const days = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000)
+  const limit = lead.stage === 'new' ? 2 : 7
+  return days >= limit ? days : null
+}
+
 const cardStyle = { boxShadow: '0 8px 32px rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.10)' }
 const EMPTY_FORM = { name: '', phone: '', email: '', address: '', city: '', state: '', job_type: 'residential', stage: 'new' as Stage, notes: '', estimated_value: '' }
 const inputCls = 'w-full bg-white/[0.06] border border-white/15 focus:border-blue-400/60 focus:bg-white/[0.09] rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none transition-colors text-sm [&>option]:bg-slate-900 [&>option]:text-white'
@@ -70,6 +107,8 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
   onOpen: () => void; onDelete: () => void; onMove: (dir: 'left' | 'right') => void
 }) {
   const stageIdx = STAGES.findIndex(s => s.key === lead.stage)
+  const roofIQ = parseRoofIQ(lead.notes)
+  const stale = staleDays(lead)
   return (
     <div
       draggable onDragStart={onDragStart} onDragEnd={onDragEnd}
@@ -81,11 +120,39 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
         <div className="text-white font-semibold text-sm leading-tight">{lead.name}</div>
         {(lead.estimated_value ?? 0) > 0 && <span className="text-emerald-600 font-black text-xs flex-shrink-0">{fmt(lead.estimated_value!)}</span>}
       </div>
+      {(roofIQ.score !== null || stale !== null) && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+          {roofIQ.score !== null && <ScoreBadge score={roofIQ.score} />}
+          {stale !== null && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/30 bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-400">
+              ⏰ {stale}d no touch
+            </span>
+          )}
+        </div>
+      )}
       {(lead.city || lead.state) && <div className="text-slate-400 text-xs mb-1">{[lead.city, lead.state].filter(Boolean).join(', ')}</div>}
       {lead.job_type && <div className="inline-block text-[10px] font-semibold bg-white/[0.06] text-slate-500 px-2 py-0.5 rounded-full mb-2 capitalize">{lead.job_type}</div>}
       {lead.notes && <p className="text-slate-400 text-xs line-clamp-2 mb-2 italic">{lead.notes}</p>}
       <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
         <div className="flex items-center gap-1">
+          {lead.phone && (
+            <>
+              <a href={`tel:${lead.phone}`} onClick={e => e.stopPropagation()} title="Call"
+                className="p-1 rounded hover:bg-emerald-500/10 text-emerald-500 transition-colors">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.63A2 2 0 012 .18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.09a16 16 0 006 9.91"/></svg>
+              </a>
+              <a href={`sms:${lead.phone}`} onClick={e => e.stopPropagation()} title="Text"
+                className="p-1 rounded hover:bg-blue-500/10 text-blue-400 transition-colors">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              </a>
+            </>
+          )}
+          {roofIQ.reportToken && (
+            <a href={`/r/${roofIQ.reportToken}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title="Open roof report"
+              className="p-1 rounded hover:bg-violet-500/10 text-violet-400 transition-colors">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 3h7v7"/><path d="M21 3l-9 9"/><path d="M21 14v5a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h5"/></svg>
+            </a>
+          )}
           {stageIdx > 0 && (
             <button onClick={e => { e.stopPropagation(); onMove('left') }} className="p-1 rounded hover:bg-white/[0.06] text-slate-400 hover:text-slate-600 transition-colors">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
@@ -108,10 +175,16 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
 // ── List row ──────────────────────────────────────────────────────────────────
 function ListRow({ lead, onStageChange, onOpen, onDelete }: { lead: Lead; onStageChange: (id: string, s: Stage) => void; onOpen: () => void; onDelete: (id: string) => void }) {
   const stage = STAGE_MAP[lead.stage] || STAGE_MAP.new
+  const roofIQ = parseRoofIQ(lead.notes)
+  const stale = staleDays(lead)
   return (
     <div onClick={onOpen} className="bg-white/[0.04] rounded-2xl px-5 py-4 flex items-center gap-4 hover:shadow-md transition-all cursor-pointer" style={cardStyle}>
       <div className="flex-1 min-w-0">
-        <div className="text-white font-semibold text-sm">{lead.name}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-white font-semibold text-sm">{lead.name}</div>
+          {roofIQ.score !== null && <ScoreBadge score={roofIQ.score} />}
+          {stale !== null && <span className="rounded-full border border-rose-400/30 bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-400">⏰ {stale}d</span>}
+        </div>
         <div className="text-slate-400 text-xs mt-0.5">{[lead.city, lead.state, lead.job_type].filter(Boolean).join(' · ')}</div>
       </div>
       <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border flex-shrink-0 ${stage.bg} ${stage.color}`}>
@@ -144,8 +217,26 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
   const [noteText, setNoteText] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [loadingNotes, setLoadingNotes] = useState(true)
+  const [proposing, setProposing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const stage = STAGE_MAP[lead.stage] || STAGE_MAP.new
+  const roofIQ = parseRoofIQ(lead.notes)
+
+  // One click: RoofIQ lead → live good/better/best proposal (uses the squares
+  // measured at quote time; opens the shareable homeowner page).
+  async function handleInstantProposal() {
+    if (!roofIQ.reportToken || proposing) return
+    setProposing(true)
+    try {
+      const proposal = await api.roofProposals.createFromLead(roofIQ.reportToken)
+      window.open(`/p/${proposal.token}`, '_blank')
+      if (lead.stage === 'new' || lead.stage === 'contacted') onStageChange(lead.id, 'estimate_sent')
+    } catch (err: any) {
+      alert(err?.message || 'Could not create the proposal — the lead may not have a measured roof size.')
+    } finally {
+      setProposing(false)
+    }
+  }
 
   // Voice recorder state — record audio, send to /photos/transcribe, append text.
   const [recording, setRecording]     = useState(false)
@@ -324,6 +415,28 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
               </div>
             )}
           </div>
+
+          {/* RoofIQ intelligence + instant proposal */}
+          {(roofIQ.score !== null || roofIQ.reportToken) && (
+            <div className="px-5 py-4 border-b space-y-3" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+              <div className="flex items-center gap-2">
+                {roofIQ.score !== null && <ScoreBadge score={roofIQ.score} size="lg" />}
+                {roofIQ.reportToken && (
+                  <a href={`/r/${roofIQ.reportToken}`} target="_blank" rel="noreferrer"
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all">
+                    View roof report ↗
+                  </a>
+                )}
+              </div>
+              {roofIQ.reportToken && (
+                <button onClick={handleInstantProposal} disabled={proposing}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #10b981, #047857)', boxShadow: '0 4px 14px rgba(16,185,129,0.25)' }}>
+                  {proposing ? 'Building proposal…' : '⚡ Instant proposal — good/better/best from their measured roof'}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Stage + value */}
           <div className="px-5 py-4 flex items-center gap-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>

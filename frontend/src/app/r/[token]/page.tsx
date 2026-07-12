@@ -95,7 +95,7 @@ export default function ReportPage() {
         )}
 
         {/* Measurement */}
-        <section className="mb-5 grid grid-cols-2 gap-3">
+        <section className="mb-2 grid grid-cols-2 gap-3">
           <div className="rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
             <div className="text-2xl font-bold">{r.roof_sqft ? Math.round(r.roof_sqft).toLocaleString() : '—'} ft²</div>
             <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Measured roof area</div>
@@ -106,8 +106,37 @@ export default function ReportPage() {
           </div>
         </section>
 
-        {/* Price scenarios */}
-        {r.price_low != null && (
+        {/* Honest band — say HOW it was measured, in plain English */}
+        {r.band && (
+          <p className={`mb-5 rounded-lg px-3 py-2 text-[11px] leading-relaxed ring-1 ${r.band.level === 'tight' ? 'bg-emerald-50 text-emerald-800 ring-emerald-100' : 'bg-slate-50 text-slate-600 ring-slate-100'}`}>
+            {r.band.level === 'tight' ? '🎯 ' : 'ℹ️ '}{r.band.how}
+          </p>
+        )}
+
+        {/* Good / Better / Best */}
+        {r.tiers && r.tiers.length > 0 ? (
+          <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-sm font-semibold">Your options</div>
+            <p className="mt-0.5 text-[11px] text-slate-500">Three ways to do this job — your exact price follows a free on-site review.</p>
+            <div className="mt-3 space-y-2">
+              {r.tiers.map((t, i) => (
+                <div key={t.name} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 ring-1 ${i === 1 ? 'bg-blue-50/60 ring-blue-200' : 'bg-slate-50 ring-slate-100'}`}>
+                  <div>
+                    <div className="text-sm font-semibold">{t.name} — {t.headline}{i === 1 && <span className="ml-1.5 rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Popular</span>}</div>
+                    <div className="text-[11px] text-slate-500">{t.detail}</div>
+                  </div>
+                  <div className="shrink-0 text-right text-sm font-bold text-slate-800">{money(t.price)}</div>
+                </div>
+              ))}
+            </div>
+            {r.financing && (
+              <p className="mt-3 text-center text-xs font-semibold text-emerald-700">
+                💳 From {money(r.financing.from_per_month)}/mo
+                <span className="mt-0.5 block text-[10px] font-normal text-slate-400">{r.financing.disclaimer}</span>
+              </p>
+            )}
+          </section>
+        ) : r.price_low != null && (
           <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="text-sm font-semibold">Estimated investment by material</div>
             <p className="mt-0.5 text-[11px] text-slate-500">Rough ranges — your exact price follows a free on-site review.</p>
@@ -125,6 +154,32 @@ export default function ReportPage() {
               ))}
             </div>
           </section>
+        )}
+
+        {/* Show the math — verify me, don't trust me */}
+        {r.math && (
+          <details className="mb-5 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <summary className="cursor-pointer select-none text-sm font-semibold text-slate-700">🧮 How we got this number</summary>
+            <div className="mt-3 space-y-1.5 text-xs text-slate-600">
+              <div className="flex justify-between"><span>Measured roof area</span><strong>{r.math.roof_sqft.toLocaleString()} ft²</strong></div>
+              <div className="flex justify-between"><span>÷ 100 = roofing squares</span><strong>{r.math.squares}</strong></div>
+              <div className="flex justify-between"><span>+ {r.math.waste_pct}% cut waste (industry standard)</span><strong>{r.math.order_squares} squares to order</strong></div>
+              {r.math.rate_low_per_sq && r.math.rate_high_per_sq && (
+                <div className="flex justify-between"><span>× installed rate per square</span><strong>{money(r.math.rate_low_per_sq)}–{money(r.math.rate_high_per_sq)}</strong></div>
+              )}
+              <div className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+                <strong>How it was measured:</strong>{' '}
+                {r.math.method === 'solar'
+                  ? 'True 3D roof geometry from Google aerial solar data (real area + pitch).'
+                  : r.math.method === 'footprint'
+                    ? <>Building footprint from map data × {r.math.slope_factor} typical-pitch factor (plan-view estimate).</>
+                    : 'Automatic measurement unavailable — placeholder range.'}
+              </div>
+              {r.math.calibration && (
+                <div className="rounded-md bg-emerald-50 px-2.5 py-1.5 text-[11px] text-emerald-800">✓ {r.math.calibration.note}</div>
+              )}
+            </div>
+          </details>
         )}
 
         {/* What you told us + insight */}

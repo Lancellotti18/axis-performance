@@ -29,6 +29,34 @@ export interface QuoteWidget {
   price_high: number
 }
 
+// RoofIQ quote presentation — good/better/best tiers, financing teaser,
+// the honest measurement band, and the show-the-math breakdown.
+export interface QuoteTier {
+  name: string
+  headline: string
+  detail: string
+  price: number
+}
+export interface QuoteFinancing {
+  from_per_month: number
+  disclaimer: string
+}
+export interface QuoteBand {
+  level: 'tight' | 'wider' | 'unknown'
+  how: string
+}
+export interface QuoteMath {
+  roof_sqft: number
+  squares: number
+  waste_pct: number
+  order_squares: number
+  rate_low_per_sq: number | null
+  rate_high_per_sq: number | null
+  method: string
+  slope_factor: number | null
+  calibration?: { jobs: number; adjust_pct: number; note: string } | null
+}
+
 export interface WidgetLead {
   id: string
   name: string
@@ -471,14 +499,16 @@ export const api = {
       if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
       return res.blob()
     },
-    analyzeRequirements: (projectId: string, notes: string, files: File[]) => {
+    analyzeRequirements: async (projectId: string, notes: string, files: File[]) => {
       const form = new FormData()
       form.append('project_id', projectId)
       form.append('notes', notes)
       for (const f of files) form.append('files', f)
+      const session = await getCachedSession()
+      const token = session?.access_token
       return fetchWithTimeout(
         `${API_BASE}/api/v1/permits/analyze-requirements`,
-        { method: 'POST', body: form },
+        { method: 'POST', body: form, headers: token ? { Authorization: `Bearer ${token}` } : {} },
         120000,
       ).then(async res => {
         if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
@@ -518,15 +548,21 @@ export const api = {
         `/api/v1/permits/preflight`,
         { method: 'POST', body: JSON.stringify({ fields }) },
       ),
-    generatePdf: (projectId: string, fields: PermitField[], formUrl: string | null, useWebForm: boolean): Promise<Blob> =>
-      fetch(`${API_BASE}/api/v1/permits/generate-pdf/${projectId}`, {
+    generatePdf: async (projectId: string, fields: PermitField[], formUrl: string | null, useWebForm: boolean): Promise<Blob> => {
+      const session = await getCachedSession()
+      const token = session?.access_token
+      return fetch(`${API_BASE}/api/v1/permits/generate-pdf/${projectId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ fields, form_url: formUrl, use_web_form: useWebForm }),
       }).then(async res => {
         if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
         return res.blob()
-      }),
+      })
+    },
   },
   // ── Growth engine: instant quote widget + lead inbox ─────────────────────
   instantQuote: {
@@ -557,6 +593,10 @@ export const api = {
         price_high?: number
         source?: string
         message?: string
+        tiers?: QuoteTier[]
+        financing?: QuoteFinancing
+        band?: QuoteBand
+        math?: QuoteMath
       }>(`/api/v1/instant-quote/w/${key}/quote`, {
         method: 'POST', body: JSON.stringify({ address, lat, lng }),
       }, 45000),
@@ -589,6 +629,10 @@ export const api = {
           attic?: boolean | null
           drainage?: string | null
         }
+        tiers?: QuoteTier[]
+        financing?: QuoteFinancing
+        band?: QuoteBand
+        math?: QuoteMath
       }>(`/api/v1/instant-quote/report/${token}`),
     analytics: () =>
       apiRequest<{ funnel: Record<string, number>; leads_30d: number; avg_score: number | null }>(
@@ -628,6 +672,11 @@ export const api = {
       apiRequest<RoofProposal>(`/api/v1/roof-proposals/from-run/${runId}`, {
         method: 'POST', body: JSON.stringify({ valid_days: validDays }),
       }),
+    // One click: a RoofIQ lead (already measured at quote time) → live proposal
+    createFromLead: (leadId: string, validDays = 30) =>
+      apiRequest<RoofProposal>(`/api/v1/roof-proposals/from-lead/${leadId}`, {
+        method: 'POST', body: JSON.stringify({ valid_days: validDays }),
+      }, 30000),
     list: (projectId?: string) =>
       apiRequest<{ proposals: RoofProposal[] }>(
         `/api/v1/roof-proposals${projectId ? `?project_id=${projectId}` : ''}`),

@@ -40,6 +40,101 @@ router = APIRouter()
 FOOTPRINT_SLOPE_FACTOR = 1.12
 WASTE_FACTOR = 1.10
 
+# Financing teaser: typical unsecured home-improvement terms. Presentation
+# only — clearly labeled an estimate, never a lending offer.
+FINANCING_APR = 0.0999
+FINANCING_MONTHS = 120
+
+
+def _monthly_payment(principal: float) -> int:
+    r = FINANCING_APR / 12.0
+    n = FINANCING_MONTHS
+    return max(1, round(principal * r / (1.0 - (1.0 + r) ** -n)))
+
+
+def _calibration_for_user(db, user_id: str) -> Optional[dict]:
+    """Per-contractor field-verified bias (from roof_actuals). Only trusted
+    with 3+ verified jobs; correction capped at ±10%. Returns None when we
+    don't have enough data to responsibly adjust anything."""
+    try:
+        from app.api.v1.roofing_v2 import _calibration_stats
+        stats = _calibration_stats(db, user_id)
+    except Exception:
+        return None
+    if not stats or (stats.get("jobs") or 0) < 3:
+        return None
+    bias = max(-10.0, min(10.0, float(stats.get("bias_pct") or 0.0)))
+    if abs(bias) < 0.5:
+        return None
+    return {"jobs": stats["jobs"], "bias_pct": bias}
+
+
+def _quote_presentation(
+    squares: float,
+    price_low: float,
+    price_high: float,
+    source: str,
+    calibration: Optional[dict] = None,
+) -> dict:
+    """Good/better/best tiers + financing teaser + show-the-math breakdown +
+    the honest band. Pure presentation over already-measured numbers — the
+    only value adjustment is the (capped, disclosed) field calibration."""
+    good = round(price_low / 50.0) * 50
+    best = round(price_high / 50.0) * 50
+    better = round((price_low + price_high) / 2.0 / 50.0) * 50
+    tiers = [
+        {"name": "Good", "headline": "Quality architectural shingles",
+         "detail": "Solid, code-compliant replacement with a standard workmanship warranty.",
+         "price": good},
+        {"name": "Better", "headline": "Upgraded shingles + extended warranty",
+         "detail": "Thicker architectural shingles, upgraded underlayment, longer coverage.",
+         "price": better},
+        {"name": "Best", "headline": "Premium / designer system",
+         "detail": "Top-line shingles, full system warranty, premium ventilation package.",
+         "price": best},
+    ]
+
+    order_squares = squares * WASTE_FACTOR
+    if source == "solar":
+        band = {
+            "level": "tight",
+            "how": "Measured in true 3D from Google's aerial solar data — real roof area and pitch, the same data solar installers use.",
+        }
+    elif source == "footprint":
+        band = {
+            "level": "wider",
+            "how": "Measured from the building footprint with a typical roof pitch assumed. Accurate for most homes, but a steep or complex roof can move the final number — that's why the range is wider.",
+        }
+    else:
+        band = {"level": "unknown", "how": "This roof couldn't be measured automatically — the range is a placeholder until a free detailed measurement."}
+
+    math_steps = {
+        "roof_sqft": round(squares * 100),
+        "squares": round(squares, 1),
+        "waste_pct": round((WASTE_FACTOR - 1) * 100),
+        "order_squares": round(order_squares, 1),
+        "rate_low_per_sq": round(price_low / order_squares) if order_squares else None,
+        "rate_high_per_sq": round(price_high / order_squares) if order_squares else None,
+        "method": source,
+        "slope_factor": FOOTPRINT_SLOPE_FACTOR if source == "footprint" else None,
+    }
+    if calibration:
+        math_steps["calibration"] = {
+            "jobs": calibration["jobs"],
+            "adjust_pct": -calibration["bias_pct"],
+            "note": f"Adjusted {-calibration['bias_pct']:+.1f}% based on {calibration['jobs']} field-verified jobs by this contractor.",
+        }
+
+    return {
+        "tiers": tiers,
+        "financing": {
+            "from_per_month": _monthly_payment(good),
+            "disclaimer": f"Estimated payment at {FINANCING_APR*100:.2f}% APR over {FINANCING_MONTHS//12} years. Subject to credit approval — not a lending offer.",
+        },
+        "band": band,
+        "math": math_steps,
+    }
+
 # Light in-memory abuse guard for the public quote endpoint (best-effort on a
 # single instance): per-IP sliding hourly cap.
 _RATE: dict[str, list[float]] = {}
@@ -225,9 +320,24 @@ async def instant_quote(widget_key: str, payload: QuoteRequest, request: Request
             "message": "We located the home but couldn't measure the roof automatically — leave your info and we'll measure it for you (free).",
         }
 
+    # Calibrated Squares: if this contractor has 3+ field-verified jobs on
+    # record, correct the measurement by their earned bias (capped ±10%) —
+    # accuracy that compounds with use, disclosed in the math breakdown.
+    calibration = _calibration_for_user(db, w["user_id"])
+    if calibration:
+        squares = squares / (1.0 + calibration["bias_pct"] / 100.0)
+
     order_squares = squares * WASTE_FACTOR
     lo = round(order_squares * float(w.get("price_low") or 450) / 50.0) * 50
     hi = round(order_squares * float(w.get("price_high") or 650) / 50.0) * 50
+
+    # Honest band: a footprint-based measure presents a wider range than a
+    # true-3D solar measure, and says why in plain English.
+    if source == "footprint":
+        lo = round(lo * 0.93 / 50.0) * 50
+        hi = round(hi * 1.07 / 50.0) * 50
+
+    presentation = _quote_presentation(squares, lo, hi, source, calibration)
     return {
         "found": True,
         "measured": True,
@@ -238,6 +348,7 @@ async def instant_quote(widget_key: str, payload: QuoteRequest, request: Request
         "price_low": lo,
         "price_high": hi,
         "source": source,
+        **presentation,
         "message": "Estimated from aerial + solar measurement data. Final quote follows an on-site or detailed remote measurement.",
     }
 
@@ -379,14 +490,27 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
     }
     try:
         ins = db.table("widget_leads").insert({k: v for k, v in row.items() if v is not None}).execute()
-    except Exception:
-        # Pre-RoofIQ schema (migration not run yet) — degrade to the base row
-        # rather than losing the lead.
-        base = {k: row[k] for k in ("user_id", "widget_key", "name", "phone", "email", "address",
-                                    "lat", "lng", "squares_estimate", "price_low", "price_high",
-                                    "quote_source", "notes") if row.get(k) is not None}
-        ins = db.table("widget_leads").insert(base).execute()
-        report_token = None
+    except Exception as e:
+        # Only degrade to the base row when the failure is clearly a missing
+        # RoofIQ column (pre-migration schema). A transient DB error must NOT
+        # silently strip the score/report/details — retry the full row once,
+        # then surface the failure honestly.
+        msg = str(e).lower()
+        schema_gap = ("column" in msg and ("does not exist" in msg or "could not find" in msg)) or "pgrst204" in msg
+        if schema_gap:
+            logger.error("widget_leads is missing RoofIQ columns — run supabase/migrations/20260710_roofiq_details.sql. Degrading lead %s", payload.name)
+            base = {k: row[k] for k in ("user_id", "widget_key", "name", "phone", "email", "address",
+                                        "lat", "lng", "squares_estimate", "price_low", "price_high",
+                                        "quote_source", "notes") if row.get(k) is not None}
+            ins = db.table("widget_leads").insert(base).execute()
+            report_token = None
+        else:
+            logger.warning("widget_leads insert failed (transient?), retrying once: %s", e)
+            try:
+                ins = db.table("widget_leads").insert({k: v for k, v in row.items() if v is not None}).execute()
+            except Exception:
+                logger.exception("widget_leads insert failed twice — lead NOT captured")
+                raise HTTPException(status_code=500, detail="Could not save your request — please call instead.")
     if not ins.data:
         raise HTTPException(status_code=500, detail="Could not save your request — please call instead.")
 
@@ -423,6 +547,27 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
         }).execute()
     except Exception as e:
         logger.info("crm auto-import failed (lead still captured): %s", e)
+
+    # Speed-to-lead SMS: fire-and-forget — never delays or breaks capture.
+    # No-ops entirely unless Twilio env vars are configured.
+    try:
+        from app.services.sms_service import notify_new_lead, sms_configured
+        if sms_configured():
+            import asyncio
+            branding = _branding_for(db, w)
+            asyncio.create_task(notify_new_lead(
+                contractor_phone=branding.get("phone"),
+                homeowner_phone=payload.phone,
+                company_name=branding.get("company_name") or "Your roofing contractor",
+                lead_name=payload.name.strip(),
+                address=payload.address.strip(),
+                score=score,
+                price_low=payload.price_low,
+                price_high=payload.price_high,
+                report_token=report_token,
+            ))
+    except Exception as e:
+        logger.info("speed-to-lead sms skipped: %s", e)
 
     return {
         "ok": True,
@@ -520,9 +665,11 @@ async def update_lead(lead_id: str, payload: LeadPatch, user: dict = Depends(req
 # ---------------------------------------------------------------------------
 
 @router.get("/report/{token}")
-async def homeowner_report(token: str, request: Request) -> dict:
+async def homeowner_report(token: str, request: Request, count: bool = True) -> dict:
     """The homeowner's shareable Roof Intelligence Report (web, not PDF —
-    live CTAs, mobile-first, and every open is a speed-to-lead signal)."""
+    live CTAs, mobile-first, and every open is a speed-to-lead signal).
+    `count=false` is used by the OG-image/metadata generators so link
+    previews don't inflate the re-open signal."""
     if not token or len(token) > 64:
         raise HTTPException(status_code=404, detail="Report not found.")
     ip = (request.client.host if request.client else "?") or "?"
@@ -537,16 +684,30 @@ async def homeowner_report(token: str, request: Request) -> dict:
     company = (w.data[0] if w.data else {})
 
     # Every open counts — the contractor inbox surfaces "re-opened their report".
-    try:
-        db.table("widget_leads").update({"report_opens": int(lead.get("report_opens") or 0) + 1}).eq("id", lead["id"]).execute()
-        db.table("widget_events").insert({
-            "widget_key": lead["widget_key"], "session_id": f"report-{token[:8]}",
-            "event": "report_opened",
-        }).execute()
-    except Exception:
-        pass
+    if count:
+        try:
+            db.table("widget_leads").update({"report_opens": int(lead.get("report_opens") or 0) + 1}).eq("id", lead["id"]).execute()
+            db.table("widget_events").insert({
+                "widget_key": lead["widget_key"], "session_id": f"report-{token[:8]}",
+                "event": "report_opened",
+            }).execute()
+        except Exception:
+            pass
 
     q = lead.get("quote") or {}
+
+    # Same tiers / financing / honest-band / math the quote page showed —
+    # recomputed from the stored snapshot so the report never drifts from
+    # what the homeowner was quoted.
+    presentation = None
+    try:
+        sq = float(q.get("squares") or 0)
+        p_lo, p_hi = float(q.get("price_low") or 0), float(q.get("price_high") or 0)
+        if sq > 0 and p_lo > 0 and p_hi > 0:
+            presentation = _quote_presentation(sq, p_lo, p_hi, q.get("source") or "none")
+    except Exception:
+        presentation = None
+
     return {
         "first_name": (lead.get("name") or "").split(" ")[0],
         "address": lead.get("address"),
@@ -564,6 +725,7 @@ async def homeowner_report(token: str, request: Request) -> dict:
         "stories": lead.get("stories"),
         "issues": lead.get("issues") or [],
         "details": lead.get("details") or {},
+        **(presentation or {}),
     }
 
 
