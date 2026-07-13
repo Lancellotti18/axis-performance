@@ -522,9 +522,13 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
                 raise HTTPException(status_code=500, detail="Could not save your request — please call instead.")
     if not ins.data:
         raise HTTPException(status_code=500, detail="Could not save your request — please call instead.")
+    widget_lead_id = ins.data[0].get("id")
 
-    # One pipeline, not two: every RoofIQ lead also lands in the contractor's
-    # CRM kanban (stage "new") with the intelligence packed into notes.
+    # One pipeline, not two. crm_leads is the pipeline system-of-record;
+    # widget_leads is the immutable capture log. We LINK them (widget_lead_id +
+    # first-class lead_score/report_token on the CRM row) so the kanban reads
+    # the RoofIQ intelligence directly instead of re-parsing a notes string,
+    # and the two records can never silently drift.
     # Best-effort — CRM hiccups must never lose the lead itself.
     try:
         est = None
@@ -544,7 +548,7 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
             f"saw ${payload.price_low:,.0f}–${payload.price_high:,.0f}" if payload.price_low and payload.price_high else None,
             f"report: /r/{report_token}" if report_token else None,
         ] if x)
-        db.table("crm_leads").insert({
+        crm_row = {
             "user_id": w["user_id"],
             "name": payload.name.strip(),
             "phone": (payload.phone or "").strip(),
@@ -553,7 +557,25 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
             "stage": "new",
             "notes": crm_notes,
             "estimated_value": est or 0,
-        }).execute()
+            # Linkage + first-class intelligence (needs 20260712_crm_lead_link).
+            "source": "roofiq",
+            "widget_lead_id": widget_lead_id,
+            "lead_score": score,
+            "report_token": report_token,
+        }
+        try:
+            db.table("crm_leads").insert(crm_row).execute()
+        except Exception as e:
+            msg = str(e).lower()
+            if ("column" in msg and ("does not exist" in msg or "could not find" in msg)) or "pgrst204" in msg:
+                # Pre-migration crm_leads — the report_token is still embedded in
+                # notes, so the CRM keeps working (score/report parsed from text).
+                logger.warning("crm_leads missing link columns — run 20260712_crm_lead_link.sql; inserting base row")
+                for k in ("source", "widget_lead_id", "lead_score", "report_token"):
+                    crm_row.pop(k, None)
+                db.table("crm_leads").insert(crm_row).execute()
+            else:
+                raise
     except Exception as e:
         logger.info("crm auto-import failed (lead still captured): %s", e)
 

@@ -23,6 +23,11 @@ interface Lead {
   created_at: string
   updated_at?: string
   user_id?: string
+  // RoofIQ linkage (first-class since 20260712_crm_lead_link; falls back to
+  // parsing notes for rows created before the migration).
+  source?: string
+  lead_score?: number | null
+  report_token?: string | null
 }
 
 interface Note {
@@ -58,17 +63,25 @@ function timeAgo(ts: string) {
   return new Date(ts).toLocaleDateString()
 }
 
-// RoofIQ intelligence is packed into the auto-imported lead's notes
-// ("🎯 RoofIQ lead — score 87/100 … report: /r/abc123"). Parse it back out
-// so the pipeline can show the score as a first-class signal.
-function parseRoofIQ(notes?: string): { score: number | null; reportToken: string | null } {
-  if (!notes) return { score: null, reportToken: null }
-  const score = notes.match(/score (\d{1,3})\/100/)
-  const report = notes.match(/report: \/r\/([A-Za-z0-9_-]+)/)
-  return {
-    score: score ? Math.min(100, parseInt(score[1], 10)) : null,
-    reportToken: report ? report[1] : null,
+// RoofIQ intelligence: prefer the first-class columns (crm_leads.lead_score /
+// report_token, linked to the capture log). For rows created before the
+// migration it's still embedded in the notes string, so parse that as a
+// fallback ("🎯 RoofIQ lead — score 87/100 … report: /r/abc123").
+function roofIQOf(lead: Lead): { score: number | null; reportToken: string | null } {
+  let score = lead.lead_score ?? null
+  let reportToken = lead.report_token ?? null
+  if (score == null || reportToken == null) {
+    const notes = lead.notes || ''
+    if (score == null) {
+      const m = notes.match(/score (\d{1,3})\/100/)
+      if (m) score = Math.min(100, parseInt(m[1], 10))
+    }
+    if (reportToken == null) {
+      const m = notes.match(/report: \/r\/([A-Za-z0-9_-]+)/)
+      if (m) reportToken = m[1]
+    }
   }
+  return { score, reportToken }
 }
 
 function ScoreBadge({ score, size = 'sm' }: { score: number; size?: 'sm' | 'lg' }) {
@@ -107,7 +120,7 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
   onOpen: () => void; onDelete: () => void; onMove: (dir: 'left' | 'right') => void
 }) {
   const stageIdx = STAGES.findIndex(s => s.key === lead.stage)
-  const roofIQ = parseRoofIQ(lead.notes)
+  const roofIQ = roofIQOf(lead)
   const stale = staleDays(lead)
   return (
     <div
@@ -175,7 +188,7 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
 // ── List row ──────────────────────────────────────────────────────────────────
 function ListRow({ lead, onStageChange, onOpen, onDelete }: { lead: Lead; onStageChange: (id: string, s: Stage) => void; onOpen: () => void; onDelete: (id: string) => void }) {
   const stage = STAGE_MAP[lead.stage] || STAGE_MAP.new
-  const roofIQ = parseRoofIQ(lead.notes)
+  const roofIQ = roofIQOf(lead)
   const stale = staleDays(lead)
   return (
     <div onClick={onOpen} className="bg-white/[0.04] rounded-2xl px-5 py-4 flex items-center gap-4 hover:shadow-md transition-all cursor-pointer" style={cardStyle}>
@@ -220,7 +233,7 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
   const [proposing, setProposing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const stage = STAGE_MAP[lead.stage] || STAGE_MAP.new
-  const roofIQ = parseRoofIQ(lead.notes)
+  const roofIQ = roofIQOf(lead)
 
   // One click: RoofIQ lead → live good/better/best proposal (uses the squares
   // measured at quote time; opens the shareable homeowner page).
