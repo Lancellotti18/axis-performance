@@ -55,6 +55,25 @@ export default function ReportPage() {
   const [r, setR] = useState<Report | null>(null)
   const [notFound, setNotFound] = useState(false)
 
+  // Inspection booking
+  const [bookDate, setBookDate] = useState('')
+  const [bookWindow, setBookWindow] = useState('anytime')
+  const [bookNote, setBookNote] = useState('')
+  const [booking, setBooking] = useState(false)
+  const [booked, setBooked] = useState(false)
+  const [bookErr, setBookErr] = useState<string | null>(null)
+  const [hp, setHp] = useState('')   // honeypot
+
+  const submitBooking = () => {
+    if (!token) return
+    if (!bookDate) { setBookErr('Pick a day that works for you.'); return }
+    setBooking(true); setBookErr(null)
+    api.instantQuote.bookInspection(token, { preferred_date: bookDate, time_window: bookWindow, note: bookNote.trim() || undefined, website: hp || undefined })
+      .then(res => { if (res.ok) setBooked(true); else setBookErr('Could not book — please call instead.') })
+      .catch((e: unknown) => setBookErr(e instanceof Error ? e.message.replace(/\[HTTP \d+\]\s*/, '') : 'Could not book — please call instead.'))
+      .finally(() => setBooking(false))
+  }
+
   useEffect(() => {
     if (!token) return
     api.instantQuote.report(token).then(setR).catch(() => setNotFound(true))
@@ -210,6 +229,29 @@ export default function ReportPage() {
           )}
         </section>
 
+        {/* Trust & Verify — pre-empt "is this roofer legit / is this a scam?" */}
+        <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px]">
+            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
+              <span className="text-emerald-500">✓</span> Satellite-verified measurement
+            </span>
+            {r.company_license && (
+              <span className="inline-flex items-center gap-1.5 font-medium text-slate-600">
+                <span className="text-blue-500">✓</span> Licensed #{r.company_license}
+              </span>
+            )}
+            {r.service_area && (
+              <span className="inline-flex items-center gap-1.5 font-medium text-slate-600">
+                <span className="text-blue-500">📍</span> Serving {r.service_area}
+              </span>
+            )}
+          </div>
+          <p className="mt-2.5 border-t border-slate-100 pt-2.5 text-[11px] leading-relaxed text-slate-500">
+            🔒 Your details went to <strong className="text-slate-700">{r.company_name}</strong> only — not five call
+            centers. No door-knock, no pressure, no shared leads.
+          </p>
+        </section>
+
         {/* Disclaimer */}
         <section className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-[11px] leading-relaxed text-amber-900/80">
@@ -230,14 +272,58 @@ export default function ReportPage() {
           </ul>
         </section>
 
+        {/* Book a free inspection — self-serve, lands on the contractor's calendar */}
+        <section className="mb-5 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm print:hidden">
+          <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)' }}>
+            <div className="text-sm font-semibold">📅 Book your free on-site inspection</div>
+            <div className="text-[11px] text-blue-50/90">Pick a day and {r.company_name} will confirm — no charge, no obligation.</div>
+          </div>
+          {booked ? (
+            <div className="p-5 text-center">
+              <div className="text-2xl">✅</div>
+              <div className="mt-1 text-sm font-semibold text-slate-800">You&apos;re on the schedule!</div>
+              <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500">
+                {r.company_name} has your request for <strong>{new Date(bookDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</strong>
+                {bookWindow !== 'anytime' && <> ({bookWindow})</>} and will reach out to confirm. {r.company_phone && <>Need it sooner? Call {r.company_phone}.</>}
+              </p>
+            </div>
+          ) : (
+            <div className="p-5">
+              {/* honeypot */}
+              <input type="text" value={hp} onChange={e => setHp(e.target.value)} name="website" autoComplete="off" tabIndex={-1} aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Preferred day</label>
+              <input type="date" value={bookDate} min={new Date().toISOString().slice(0, 10)}
+                onChange={e => setBookDate(e.target.value)}
+                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+
+              <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Time that works best</div>
+              <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+                {[['anytime', 'Anytime'], ['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening']].map(([k, lbl]) => (
+                  <button key={k} onClick={() => setBookWindow(k)}
+                    className={`rounded-lg border px-2 py-2 text-xs font-medium transition ${bookWindow === k ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>{lbl}</button>
+                ))}
+              </div>
+
+              <input type="text" value={bookNote} onChange={e => setBookNote(e.target.value)}
+                placeholder="Anything we should know? (optional)"
+                className="mt-3 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+
+              {bookErr && <p className="mt-2 text-xs text-rose-600">{bookErr}</p>}
+              <button onClick={submitBooking} disabled={booking}
+                className="mt-3 w-full rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(5,150,105,0.3)] transition hover:bg-emerald-500 disabled:opacity-50">
+                {booking ? 'Booking…' : 'Request my free inspection'}
+              </button>
+            </div>
+          )}
+        </section>
+
         {/* CTAs */}
         <section className="mb-6 grid gap-2 print:hidden">
           {r.company_phone && (
             <>
               <a href={`tel:${r.company_phone}`}
-                className="rounded-lg py-3.5 text-center text-sm font-semibold text-white transition hover:scale-[1.01]"
-                style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
-              >📅 Book my free inspection — {r.company_phone}</a>
+                className="rounded-lg bg-slate-100 py-3 text-center text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-200"
+              >📞 Prefer to call? {r.company_phone}</a>
               <a href={`sms:${r.company_phone}`}
                 className="rounded-lg bg-emerald-600 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-500"
               >💬 Text {r.company_name}</a>

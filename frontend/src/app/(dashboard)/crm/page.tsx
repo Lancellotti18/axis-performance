@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import RoofIQTools from '@/components/RoofIQTools'
+import InspectionsPanel from '@/components/InspectionsPanel'
 import { useRouter } from 'next/navigation'
 import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
@@ -727,8 +728,9 @@ export default function CRMPage() {
       </div>
 
       {/* RoofIQ lead machine — leads it captures land in this pipeline automatically */}
-      <div className="px-6 pt-4 flex-shrink-0">
+      <div className="px-6 pt-4 flex-shrink-0 space-y-4">
         <RoofIQTools />
+        <InspectionsPanel />
       </div>
 
       {/* Stats */}

@@ -717,6 +717,20 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
     w = db.table("quote_widgets").select("company_name, phone").eq("widget_key", lead["widget_key"]).limit(1).execute()
     company = (w.data[0] if w.data else {})
 
+    # Trust & Verify: the contractor profile is the single source of truth for
+    # verifiable credentials (license #, service area). Falls back to the
+    # widget-level company name/phone when the profile is sparse.
+    prof: dict = {}
+    try:
+        pr = db.table("contractor_profiles").select(
+            "company_name, phone, license_number, city, state"
+        ).eq("user_id", lead["user_id"]).limit(1).execute()
+        if pr.data:
+            prof = pr.data[0]
+    except Exception:
+        pass
+    service_area = ", ".join(x for x in [prof.get("city"), prof.get("state")] if x) or None
+
     # Every open counts — the contractor inbox surfaces "re-opened their report".
     if count:
         try:
@@ -746,8 +760,10 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
         "first_name": (lead.get("name") or "").split(" ")[0],
         "address": lead.get("address"),
         "created_at": lead.get("created_at"),
-        "company_name": company.get("company_name") or "Your roofing contractor",
-        "company_phone": company.get("phone") or "",
+        "company_name": prof.get("company_name") or company.get("company_name") or "Your roofing contractor",
+        "company_phone": prof.get("phone") or company.get("phone") or "",
+        "company_license": prof.get("license_number") or None,
+        "service_area": service_area,
         "roof_sqft": q.get("roof_sqft"),
         "squares": q.get("squares"),
         "price_low": q.get("price_low"),
@@ -761,6 +777,11 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
         "details": lead.get("details") or {},
         **(presentation or {}),
     }
+
+
+# Inspection booking + the contractor calendar live in their own router
+# (app/api/v1/appointments.py) — homeowner books from /r/{token}, it lands on
+# the contractor's calendar and advances the linked CRM lead to site_visit.
 
 
 class EventIn(BaseModel):

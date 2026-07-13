@@ -56,6 +56,21 @@ export interface QuoteMath {
   slope_factor: number | null
   calibration?: { jobs: number; adjust_pct: number; note: string } | null
 }
+export type AppointmentStatus = 'requested' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+export interface Appointment {
+  id: string
+  report_token: string | null
+  homeowner_name: string | null
+  homeowner_phone: string | null
+  homeowner_email: string | null
+  address: string | null
+  preferred_date: string
+  time_window: 'morning' | 'afternoon' | 'evening' | 'anytime'
+  homeowner_note: string | null
+  status: AppointmentStatus
+  contractor_note: string | null
+  created_at: string
+}
 
 export interface WidgetLead {
   id: string
@@ -564,6 +579,15 @@ export const api = {
       })
     },
   },
+  // ── Inspection appointments (homeowner books → contractor calendar) ──────
+  appointments: {
+    list: (upcoming = false) =>
+      apiRequest<{ appointments: Appointment[] }>(`/api/v1/appointments${upcoming ? '?upcoming=1' : ''}`),
+    update: (id: string, patch: { status?: AppointmentStatus; preferred_date?: string; time_window?: string; contractor_note?: string }) =>
+      apiRequest<Appointment>(`/api/v1/appointments/${id}`, {
+        method: 'PATCH', body: JSON.stringify(patch),
+      }),
+  },
   // ── Growth engine: instant quote widget + lead inbox ─────────────────────
   instantQuote: {
     // Public (homeowner-facing; no auth required)
@@ -611,6 +635,8 @@ export const api = {
         created_at: string
         company_name: string
         company_phone: string
+        company_license?: string | null
+        service_area?: string | null
         roof_sqft: number | null
         squares: number | null
         price_low: number | null
@@ -634,6 +660,10 @@ export const api = {
         band?: QuoteBand
         math?: QuoteMath
       }>(`/api/v1/instant-quote/report/${token}`),
+    bookInspection: (token: string, body: { preferred_date: string; time_window: string; note?: string; website?: string }) =>
+      apiRequest<{ ok: boolean; status: string; preferred_date?: string; time_window?: string }>(`/api/v1/appointments/book/${token}`, {
+        method: 'POST', body: JSON.stringify(body),
+      }),
     analytics: () =>
       apiRequest<{ funnel: Record<string, number>; leads_30d: number; avg_score: number | null }>(
         `/api/v1/instant-quote/analytics`, undefined, 30000, 60000),

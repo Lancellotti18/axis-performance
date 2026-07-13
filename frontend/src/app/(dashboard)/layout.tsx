@@ -34,9 +34,10 @@ const NAV_GROUPS: { title: string; items: { href: string; label: string; icon: (
   {
     title: 'Business',
     items: [
-      { href: '/crm',     label: 'CRM',     icon: IconCRM },
-      { href: '/reports', label: 'Reports', icon: IconReports },
-      { href: '/permits', label: 'Permits', icon: IconPermits },
+      { href: '/crm',      label: 'CRM',      icon: IconCRM },
+      { href: '/schedule', label: 'Schedule', icon: IconSchedule },
+      { href: '/reports',  label: 'Reports',  icon: IconReports },
+      { href: '/permits',  label: 'Permits',  icon: IconPermits },
     ],
   },
 ]
@@ -140,6 +141,16 @@ function IconCRM({ active }: { active: boolean }) {
       <circle cx="9" cy="7" r="4"/>
       <path d="M23 21v-2a4 4 0 00-3-3.87"/>
       <path d="M16 3.13a4 4 0 010 7.75"/>
+    </svg>
+  )
+}
+
+function IconSchedule({ active }: { active: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#bfe6ff' : '#94a3b8'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2"/>
+      <path d="M16 2v4M8 2v4M3 10h18"/>
+      <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>
     </svg>
   )
 }
