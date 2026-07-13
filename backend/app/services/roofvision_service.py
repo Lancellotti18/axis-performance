@@ -48,6 +48,26 @@ SHINGLE_OPTIONS = [
 
 # Keep cost bounded: render this many colors per lead by default.
 DEFAULT_RENDER_COUNT = 3
+# Hard ceiling regardless of a contractor's palette size (cost guard).
+MAX_RENDER_COUNT = 5
+
+_BY_KEY = {o["key"]: o for o in SHINGLE_OPTIONS}
+
+
+def catalog() -> list[dict]:
+    """The full pickable shingle catalog (key/name/tier) for the settings UI."""
+    return [{"key": o["key"], "name": o["name"], "tier": o["tier"]} for o in SHINGLE_OPTIONS]
+
+
+def resolve_palette(palette: list[str] | None) -> list[dict]:
+    """Turn a contractor's chosen color keys into catalog entries (order
+    preserved, unknown keys dropped, capped). Falls back to the default first
+    few when no valid palette is configured."""
+    if palette:
+        chosen = [_BY_KEY[k] for k in palette if k in _BY_KEY][:MAX_RENDER_COUNT]
+        if chosen:
+            return chosen
+    return SHINGLE_OPTIONS[:DEFAULT_RENDER_COUNT]
 
 
 def roofvision_enabled() -> bool:
@@ -88,17 +108,19 @@ async def _fetch_tile(lat: float, lng: float) -> tuple[bytes, str] | None:
 
 
 async def render_roof_options(
-    lat: float, lng: float, colors: int = DEFAULT_RENDER_COUNT,
+    lat: float, lng: float, palette: list[str] | None = None,
 ) -> list[dict]:
-    """Render the roof in the first `colors` palette options. Returns
-    [{key, name, tier, image_url}] — only the options that succeeded. Never
-    raises; returns [] when disabled, no imagery, or every provider fails."""
+    """Render the roof in the contractor's chosen shingle colors (or the default
+    palette). Returns [{key, name, tier, image_url}] — only the options that
+    succeeded. Never raises; returns [] when disabled, no imagery, or every
+    provider fails."""
     if not roofvision_enabled():
         return []
     anchor = await _fetch_tile(lat, lng)
     if not anchor:
         return []
     img_bytes, mime = anchor
+    options = resolve_palette(palette)
 
     from app.services.visualizer_service import _generate_image
 
@@ -110,5 +132,5 @@ async def render_roof_options(
             logger.info("roofvision render failed for %s: %s", opt["key"], e)
             return None
 
-    results = await asyncio.gather(*[_one(o) for o in SHINGLE_OPTIONS[:max(1, colors)]])
+    results = await asyncio.gather(*[_one(o) for o in options])
     return [r for r in results if r]

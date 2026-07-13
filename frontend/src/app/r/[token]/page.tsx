@@ -54,10 +54,17 @@ type Render = { key: string; name: string; tier: string; image_url: string }
 // RoofVision — the emotional close: the homeowner's OWN roof rendered in the
 // shingle colors the contractor installs, each tagged to its price tier. A
 // color-swatch picker swaps the hero image instantly.
-function RoofVision({ renders, company, apiBase }: { renders: Render[]; company: string; apiBase: string }) {
+function RoofVision({ renders, company, apiBase, token }: { renders: Render[]; company: string; apiBase: string; token: string }) {
   const [sel, setSel] = useState(0)
   const active = renders[Math.min(sel, renders.length - 1)]
   const src = (u: string) => (u.startsWith('http') ? u : `${apiBase}${u}`)
+
+  // Record the homeowner's pick so the contractor knows what to lead with and
+  // the instant proposal opens on this exact color. Best-effort, non-blocking.
+  const pick = (i: number) => {
+    setSel(i)
+    void api.instantQuote.selectColor(token, renders[i].key).catch(() => {})
+  }
   return (
     <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="px-5 py-3">
@@ -76,7 +83,7 @@ function RoofVision({ renders, company, apiBase }: { renders: Render[]; company:
       </div>
       <div className="flex flex-wrap gap-2 p-4">
         {renders.map((rn, i) => (
-          <button key={rn.key} onClick={() => setSel(i)}
+          <button key={rn.key} onClick={() => pick(i)}
             className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${i === sel ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
             {rn.name}
           </button>
@@ -152,7 +159,7 @@ export default function ReportPage() {
 
         {/* RoofVision — your own roof in the shingle colors {company} installs */}
         {(r.details?.renders?.length ?? 0) > 0 && (
-          <RoofVision renders={r.details!.renders!} company={r.company_name} apiBase={API_BASE} />
+          <RoofVision renders={r.details!.renders!} company={r.company_name} apiBase={API_BASE} token={token} />
         )}
 
         {/* Measurement */}

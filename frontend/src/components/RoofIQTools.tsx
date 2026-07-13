@@ -16,14 +16,29 @@ export default function RoofIQTools() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [priceLow, setPriceLow] = useState('450')
   const [priceHigh, setPriceHigh] = useState('650')
+  const [catalog, setCatalog] = useState<{ key: string; name: string; tier: string }[]>([])
+  const [palette, setPalette] = useState<string[]>([])
 
   useEffect(() => {
     api.instantQuote.myWidget().then(w => {
       setWidget(w)
       setPriceLow(String(w.price_low)); setPriceHigh(String(w.price_high))
+      setPalette(w.roofvision_palette || [])
     }).catch(() => {})
     api.instantQuote.analytics().then(setAnalytics).catch(() => {})
+    api.instantQuote.roofvisionCatalog().then(r => setCatalog(r.catalog)).catch(() => {})
   }, [])
+
+  const toggleColor = (key: string) =>
+    setPalette(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+
+  const savePalette = useCallback(async () => {
+    try {
+      const w = await api.instantQuote.updateWidget({ roofvision_palette: palette })
+      setWidget(w); setPalette(w.roofvision_palette || palette)
+      toast.success('RoofVision colors saved')
+    } catch { toast.error('Could not save colors') }
+  }, [palette])
 
   const saveSettings = useCallback(async () => {
     const lo = parseFloat(priceLow), hi = parseFloat(priceHigh)
@@ -81,6 +96,28 @@ export default function RoofIQTools() {
           </label>
           <button onClick={saveSettings} className="rounded bg-emerald-600 px-3 py-1.5 font-semibold text-white hover:bg-emerald-500">Save</button>
           <span className="text-slate-500">A 25-square roof at $450–650/sq shows ≈ $12,400–17,900.</span>
+
+          {catalog.length > 0 && (
+            <div className="mt-1 w-full border-t border-white/10 pt-3">
+              <div className="mb-1 font-semibold text-slate-300">✨ RoofVision shingle colors</div>
+              <p className="mb-2 text-[11px] text-slate-500">
+                Pick the colors homeowners see their own roof rendered in — only the shingles you install.
+                {palette.length === 0 && ' None selected uses a default palette.'}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {catalog.map(c => {
+                  const on = palette.includes(c.key)
+                  return (
+                    <button key={c.key} onClick={() => toggleColor(c.key)}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${on ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-600'}`}>
+                      {on ? '✓ ' : ''}{c.name} <span className="text-slate-500">· {c.tier}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <button onClick={savePalette} className="mt-2 rounded bg-emerald-600 px-3 py-1.5 font-semibold text-white hover:bg-emerald-500">Save colors</button>
+            </div>
+          )}
         </div>
       )}
 

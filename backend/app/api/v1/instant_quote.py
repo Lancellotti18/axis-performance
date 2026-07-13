@@ -612,7 +612,7 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
         from app.services.roofvision_service import roofvision_enabled
         if roofvision_enabled() and widget_lead_id and payload.lat is not None and payload.lng is not None:
             import asyncio
-            asyncio.create_task(_render_roofvision(widget_lead_id, payload.lat, payload.lng))
+            asyncio.create_task(_render_roofvision(widget_lead_id, payload.lat, payload.lng, w.get("roofvision_palette")))
     except Exception as e:
         logger.info("roofvision skipped: %s", e)
 
@@ -623,12 +623,12 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
     }
 
 
-async def _render_roofvision(widget_lead_id: str, lat: float, lng: float) -> None:
-    """Background: render the roof in shingle colors and merge them into the
-    lead's details.renders. Best-effort — swallows everything."""
+async def _render_roofvision(widget_lead_id: str, lat: float, lng: float, palette=None) -> None:
+    """Background: render the roof in the contractor's shingle colors and merge
+    them into the lead's details.renders. Best-effort — swallows everything."""
     try:
         from app.services.roofvision_service import render_roof_options
-        renders = await render_roof_options(lat, lng)
+        renders = await render_roof_options(lat, lng, palette if isinstance(palette, list) else None)
         if not renders:
             return
         db = get_supabase()
@@ -672,12 +672,21 @@ async def my_widget(user: dict = Depends(require_user)) -> dict:
     return ins.data[0]
 
 
+@router.get("/roofvision/catalog")
+async def roofvision_catalog(user: dict = Depends(require_user)) -> dict:
+    """The pickable shingle catalog for the palette-curation setting."""
+    from app.services.roofvision_service import catalog
+    return {"catalog": catalog()}
+
+
 class WidgetSettings(BaseModel):
     enabled: Optional[bool] = None
     company_name: Optional[str] = Field(None, max_length=120)
     phone: Optional[str] = Field(None, max_length=32)
     price_low: Optional[float] = Field(None, ge=50, le=5000)
     price_high: Optional[float] = Field(None, ge=50, le=5000)
+    # RoofVision palette — ordered catalog keys the contractor wants rendered.
+    roofvision_palette: Optional[list[str]] = Field(None, max_length=8)
 
 
 @router.patch("/my-widget")
@@ -686,8 +695,23 @@ async def update_widget(payload: WidgetSettings, user: dict = Depends(require_us
     patch = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not patch:
         raise HTTPException(status_code=422, detail="Nothing to update.")
+    # Validate the palette against the real catalog (drop unknowns, keep order).
+    if "roofvision_palette" in patch:
+        from app.services.roofvision_service import resolve_palette
+        patch["roofvision_palette"] = [o["key"] for o in resolve_palette(patch["roofvision_palette"])]
     patch["updated_at"] = "now()"
-    res = db.table("quote_widgets").update(patch).eq("user_id", user["id"]).execute()
+    try:
+        res = db.table("quote_widgets").update(patch).eq("user_id", user["id"]).execute()
+    except Exception as e:
+        # Pre-migration schema (no roofvision_palette column) — retry without it
+        # so price/branding edits still save; palette lights up post-migration.
+        msg = str(e).lower()
+        if "roofvision_palette" in patch and (("column" in msg and "does not exist" in msg) or "pgrst204" in msg):
+            logger.warning("quote_widgets missing roofvision_palette — run 20260713_roofvision_palette.sql")
+            patch.pop("roofvision_palette", None)
+            res = db.table("quote_widgets").update(patch).eq("user_id", user["id"]).execute()
+        else:
+            raise
     if not res.data:
         raise HTTPException(status_code=404, detail="No widget yet — load it first.")
     return res.data[0]
@@ -812,6 +836,36 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
 # Inspection booking + the contractor calendar live in their own router
 # (app/api/v1/appointments.py) — homeowner books from /r/{token}, it lands on
 # the contractor's calendar and advances the linked CRM lead to site_visit.
+
+
+class ColorChoice(BaseModel):
+    key: str = Field(..., min_length=1, max_length=40)
+
+
+@router.post("/report/{token}/select-color")
+async def select_color(token: str, payload: ColorChoice, request: Request) -> dict:
+    """Record the RoofVision color the homeowner picked on their report, so the
+    contractor knows what to lead with and the instant proposal features it.
+    Only accepts a key that was actually rendered for this lead."""
+    ip = (request.client.host if request.client else "?") or "?"
+    if not _rate_ok(f"sc-{ip}"):
+        return {"ok": False}
+    if not token or len(token) > 64:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    db = get_supabase()
+    res = db.table("widget_leads").select("id, details").eq("report_token", token).limit(1).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    details = res.data[0].get("details") or {}
+    valid_keys = {r.get("key") for r in (details.get("renders") or [])}
+    if payload.key not in valid_keys:
+        raise HTTPException(status_code=422, detail="That color isn't available for this report.")
+    details["chosen_render"] = payload.key
+    try:
+        db.table("widget_leads").update({"details": details}).eq("id", res.data[0]["id"]).execute()
+    except Exception:
+        return {"ok": False}
+    return {"ok": True, "chosen": payload.key}
 
 
 class EventIn(BaseModel):

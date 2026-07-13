@@ -143,10 +143,26 @@ export default function PublicProposalPage() {
                       : 'border-slate-200 shadow-[0_8px_30px_-14px_rgba(15,40,80,0.15)]'
                   }`}
                 >
-                  {i === popularIdx && (
+                  {i === popularIdx && !t.homeowner_pick && (
                     <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-blue-600 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                       Most popular
                     </span>
+                  )}
+                  {t.homeowner_pick && (
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-emerald-600 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                      ★ Your pick
+                    </span>
+                  )}
+                  {t.render_url && (
+                    <div className="mb-3 overflow-hidden rounded-xl ring-1 ring-slate-200">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={t.render_url} alt={`Your roof in ${t.color_name || t.name}`} className="block aspect-[4/3] w-full object-cover" />
+                      {t.color_name && (
+                        <div className="bg-slate-900/80 px-2 py-1 text-center text-[10px] font-medium text-white">
+                          Your home in {t.color_name}
+                        </div>
+                      )}
+                    </div>
                   )}
                   <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-600/80">{t.name}</div>
                   <div className="mt-1 text-base font-semibold text-slate-900">{t.headline}</div>

@@ -27,6 +27,7 @@ export interface QuoteWidget {
   phone: string | null
   price_low: number
   price_high: number
+  roofvision_palette?: string[] | null
 }
 
 // RoofIQ quote presentation — good/better/best tiers, financing teaser,
@@ -100,6 +101,10 @@ export interface ProposalTier {
   description: string
   features: string[]
   price: number
+  // RoofVision: the homeowner's own roof rendered in this tier's shingle color.
+  render_url?: string | null
+  color_name?: string | null
+  homeowner_pick?: boolean
 }
 
 export interface RoofProposal {
@@ -665,6 +670,12 @@ export const api = {
       apiRequest<{ ok: boolean; status: string; preferred_date?: string; time_window?: string }>(`/api/v1/appointments/book/${token}`, {
         method: 'POST', body: JSON.stringify(body),
       }),
+    selectColor: (token: string, key: string) =>
+      apiRequest<{ ok: boolean; chosen?: string }>(`/api/v1/instant-quote/report/${token}/select-color`, {
+        method: 'POST', body: JSON.stringify({ key }),
+      }),
+    roofvisionCatalog: () =>
+      apiRequest<{ catalog: { key: string; name: string; tier: string }[] }>(`/api/v1/instant-quote/roofvision/catalog`),
     analytics: () =>
       apiRequest<{ funnel: Record<string, number>; leads_30d: number; avg_score: number | null }>(
         `/api/v1/instant-quote/analytics`, undefined, 30000, 60000),
@@ -686,7 +697,7 @@ export const api = {
     // Contractor
     myWidget: () =>
       apiRequest<QuoteWidget>(`/api/v1/instant-quote/my-widget`),
-    updateWidget: (patch: Partial<Pick<QuoteWidget, 'enabled' | 'company_name' | 'phone' | 'price_low' | 'price_high'>>) =>
+    updateWidget: (patch: Partial<Pick<QuoteWidget, 'enabled' | 'company_name' | 'phone' | 'price_low' | 'price_high' | 'roofvision_palette'>>) =>
       apiRequest<QuoteWidget>(`/api/v1/instant-quote/my-widget`, {
         method: 'PATCH', body: JSON.stringify(patch),
       }),

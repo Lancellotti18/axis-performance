@@ -195,15 +195,37 @@ async def create_from_lead(
         ((rate_low or DEFAULT_TIERS[0]["rate"]) + (rate_high or DEFAULT_TIERS[2]["rate"])) / 2,
         rate_high or DEFAULT_TIERS[2]["rate"],
     ]
+    # RoofVision: the homeowner already saw their own roof in these colors on
+    # the report. Carry the renders onto the matching-tier proposal cards, and
+    # spotlight the color they chose — so the proposal opens on the exact look
+    # they fell for, not a generic price sheet.
+    details = lead.get("details") or {}
+    renders = details.get("renders") or []
+    chosen_key = details.get("chosen_render")
+    chosen = next((r for r in renders if r.get("key") == chosen_key), None)
+    by_tier: dict[str, dict] = {}
+    for r in renders:
+        # Prefer the chosen color for its tier; otherwise first render of that tier.
+        t = r.get("tier")
+        if t and (t not in by_tier or r.get("key") == chosen_key):
+            by_tier[t] = r
+
     tiers = []
     for t, rate in zip(DEFAULT_TIERS, rates):
-        tiers.append({
+        tier = {
             "name": t["name"],
             "headline": t["headline"],
             "description": t["description"],
             "features": t["features"],
             "price": round(order_sq * rate / 50.0) * 50,
-        })
+        }
+        rv = by_tier.get(t["name"])
+        if rv:
+            tier["render_url"] = rv.get("image_url")
+            tier["color_name"] = rv.get("name")
+            if chosen and rv.get("key") == chosen.get("key"):
+                tier["homeowner_pick"] = True
+        tiers.append(tier)
 
     from datetime import date, timedelta
     row = {
