@@ -49,6 +49,43 @@ const DRAINAGE_LABELS: Record<string, string> = {
   none: 'No gutters', unsure: 'Unsure',
 }
 
+type Render = { key: string; name: string; tier: string; image_url: string }
+
+// RoofVision — the emotional close: the homeowner's OWN roof rendered in the
+// shingle colors the contractor installs, each tagged to its price tier. A
+// color-swatch picker swaps the hero image instantly.
+function RoofVision({ renders, company, apiBase }: { renders: Render[]; company: string; apiBase: string }) {
+  const [sel, setSel] = useState(0)
+  const active = renders[Math.min(sel, renders.length - 1)]
+  const src = (u: string) => (u.startsWith('http') ? u : `${apiBase}${u}`)
+  return (
+    <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="px-5 py-3">
+        <div className="text-sm font-semibold">✨ See your home in a new roof</div>
+        <p className="mt-0.5 text-[11px] text-slate-500">Your actual house, rendered in shingle colors {company} installs. Tap a color.</p>
+      </div>
+      <div className="relative bg-slate-100">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src(active.image_url)} alt={`Your roof in ${active.name}`} className="block w-full" />
+        <div className="absolute left-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">
+          {active.name} · {active.tier}
+        </div>
+        <div className="absolute bottom-2 right-3 rounded bg-black/50 px-1.5 py-0.5 text-[9px] text-white/80 backdrop-blur">
+          ✨ AI preview — actual color may vary
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 p-4">
+        {renders.map((rn, i) => (
+          <button key={rn.key} onClick={() => setSel(i)}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${i === sel ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
+            {rn.name}
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export default function ReportPage() {
   const params = useParams<{ token: string }>()
   const token = params.token
@@ -111,6 +148,11 @@ export default function ReportPage() {
               <div className="bg-emerald-50 px-3 py-1.5 text-center text-[11px] font-semibold text-emerald-700">✓ Roof location confirmed by you</div>
             )}
           </div>
+        )}
+
+        {/* RoofVision — your own roof in the shingle colors {company} installs */}
+        {(r.details?.renders?.length ?? 0) > 0 && (
+          <RoofVision renders={r.details!.renders!} company={r.company_name} apiBase={API_BASE} />
         )}
 
         {/* Measurement */}

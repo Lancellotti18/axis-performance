@@ -654,6 +654,7 @@ export const api = {
           chimney_skylights?: boolean | null
           attic?: boolean | null
           drainage?: string | null
+          renders?: { key: string; name: string; tier: string; image_url: string }[] | null
         }
         tiers?: QuoteTier[]
         financing?: QuoteFinancing

@@ -603,11 +603,41 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
     except Exception as e:
         logger.info("speed-to-lead sms skipped: %s", e)
 
+    # RoofVision: render the homeowner's own roof in the shingle colors the
+    # contractor sells. Fire-and-forget (each render spends image-gen budget and
+    # takes 15–90s) — it must never slow capture. Off unless ROOFVISION_ENABLED
+    # and an image provider is set; results land on the lead's details.renders
+    # for both the report and the contractor to reuse.
+    try:
+        from app.services.roofvision_service import roofvision_enabled
+        if roofvision_enabled() and widget_lead_id and payload.lat is not None and payload.lng is not None:
+            import asyncio
+            asyncio.create_task(_render_roofvision(widget_lead_id, payload.lat, payload.lng))
+    except Exception as e:
+        logger.info("roofvision skipped: %s", e)
+
     return {
         "ok": True,
         "report_url": f"/r/{report_token}" if report_token else None,
         "message": f"Thanks {payload.name.split(' ')[0]}! {w.get('company_name') or 'The team'} will reach out shortly.",
     }
+
+
+async def _render_roofvision(widget_lead_id: str, lat: float, lng: float) -> None:
+    """Background: render the roof in shingle colors and merge them into the
+    lead's details.renders. Best-effort — swallows everything."""
+    try:
+        from app.services.roofvision_service import render_roof_options
+        renders = await render_roof_options(lat, lng)
+        if not renders:
+            return
+        db = get_supabase()
+        cur = db.table("widget_leads").select("details").eq("id", widget_lead_id).limit(1).execute()
+        details = (cur.data[0].get("details") if cur.data else None) or {}
+        details["renders"] = renders
+        db.table("widget_leads").update({"details": details}).eq("id", widget_lead_id).execute()
+    except Exception as e:
+        logger.info("roofvision background render failed: %s", e)
 
 
 # ---------------------------------------------------------------------------

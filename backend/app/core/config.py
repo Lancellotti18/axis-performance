@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # Image generation — fal.ai FLUX.1.1-pro (~$0.03/image, no rate limits, photorealistic)
     FAL_API_KEY: str = ""  # get at fal.ai — set as FAL_KEY env var too
 
+    # RoofVision — render the homeowner's own measured roof in the shingle colors
+    # the contractor sells, at quote time. Off by default: each render spends a
+    # real image-gen call, so it stays dark until explicitly enabled AND an image
+    # provider (fal.ai preferred) is configured.
+    ROOFVISION_ENABLED: bool = False
+
     # Free tier (primary) — get keys at aistudio.google.com and console.groq.com
     # Multi-key Gemini: add up to 3 free keys from DIFFERENT Google accounts.
     # When one key hits a 503 / quota wall, we rotate to the next. Each free
