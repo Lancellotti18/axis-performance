@@ -14,8 +14,8 @@ export default function RoofIQTools() {
   const [widget, setWidget] = useState<QuoteWidget | null>(null)
   const [analytics, setAnalytics] = useState<{ funnel: Record<string, number>; leads_30d: number; avg_score: number | null } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [priceLow, setPriceLow] = useState('450')
-  const [priceHigh, setPriceHigh] = useState('650')
+  const [priceLow, setPriceLow] = useState('425')
+  const [priceHigh, setPriceHigh] = useState('550')
   const [catalog, setCatalog] = useState<{ key: string; name: string; tier: string }[]>([])
   const [palette, setPalette] = useState<string[]>([])
 
@@ -95,7 +95,7 @@ export default function RoofIQTools() {
               className="mt-1 block w-28 rounded border border-slate-700 bg-slate-800 px-2 py-1.5 text-white" />
           </label>
           <button onClick={saveSettings} className="rounded bg-emerald-600 px-3 py-1.5 font-semibold text-white hover:bg-emerald-500">Save</button>
-          <span className="text-slate-500">A 25-square roof at $450–650/sq shows ≈ $12,400–17,900.</span>
+          <span className="text-slate-500">A 25-square roof at $425–550/sq shows ≈ $11,700–15,100.</span>
 
           {catalog.length > 0 && (
             <div className="mt-1 w-full border-t border-white/10 pt-3">

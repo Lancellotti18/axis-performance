@@ -124,12 +124,46 @@ async def list_appointments(
     user: dict = Depends(require_user),
 ) -> dict:
     """The contractor's inspection calendar. `upcoming=1` returns only
-    future, non-cancelled appointments (the default calendar view)."""
+    future, non-cancelled appointments. Each appointment is enriched with the
+    homeowner's roof intelligence (age, issues, work type, quote) so the
+    contractor sees the whole picture on the day panel without a second click."""
     db = get_supabase()
     q = db.table("inspection_appointments").select("*").eq("user_id", user["id"])
     if upcoming:
         q = q.gte("preferred_date", date.today().isoformat()).neq("status", "cancelled")
     rows = q.order("preferred_date", desc=False).limit(500).execute().data or []
+
+    # Batch-attach the source RoofIQ lead's details (single query).
+    lead_ids = [r["widget_lead_id"] for r in rows if r.get("widget_lead_id")]
+    leads_by_id: dict = {}
+    if lead_ids:
+        try:
+            lr = db.table("widget_leads").select(
+                "id, roof_age, stories, issues, details, quote, lead_score, report_token, notes"
+            ).in_("id", list(set(lead_ids))).execute()
+            for lead in (lr.data or []):
+                d = lead.get("details") or {}
+                q_ = lead.get("quote") or {}
+                leads_by_id[lead["id"]] = {
+                    "roof_age": lead.get("roof_age"),
+                    "stories": lead.get("stories"),
+                    "issues": lead.get("issues") or [],
+                    "work_type": d.get("work_type"),
+                    "condition": d.get("condition"),
+                    "rooftop_items": d.get("rooftop_items") or [],
+                    "chimney_skylights": d.get("chimney_skylights"),
+                    "drainage": d.get("drainage"),
+                    "squares": q_.get("squares"),
+                    "roof_sqft": q_.get("roof_sqft"),
+                    "price_low": q_.get("price_low"),
+                    "price_high": q_.get("price_high"),
+                    "lead_score": lead.get("lead_score"),
+                    "report_token": lead.get("report_token"),
+                }
+        except Exception:
+            pass
+    for r in rows:
+        r["lead"] = leads_by_id.get(r.get("widget_lead_id"))
     return {"appointments": rows}
 
 
@@ -189,4 +223,89 @@ async def update_appointment(
             db.table("crm_leads").update({"stage": new_stage}).eq("id", crm_lead_id).eq("user_id", user["id"]).execute()
         except Exception:
             pass
+
+    # Auto-confirm text: when the contractor confirms, the homeowner gets an
+    # instant "you're confirmed" SMS (env-gated, best-effort — never blocks).
+    if payload.status == "confirmed":
+        _notify_homeowner(db, user["id"], appt, kind="confirmed")
+
     return appt
+
+
+def _notify_homeowner(db, user_id: str, appt: dict, *, kind: str, proposed: list | None = None) -> None:
+    """Fire an SMS to the homeowner about their inspection. Best-effort +
+    env-gated (no-op unless Twilio is configured). Never raises."""
+    try:
+        from app.services.sms_service import sms_configured, send_sms
+        if not sms_configured():
+            return
+        phone = appt.get("homeowner_phone")
+        if not phone:
+            return
+        prof = db.table("contractor_profiles").select("company_name, phone").eq("user_id", user_id).limit(1).execute()
+        company = (prof.data[0].get("company_name") if prof.data else None) or "your roofing contractor"
+        cphone = (prof.data[0].get("phone") if prof.data else None) or ""
+        first = (appt.get("homeowner_name") or "there").split(" ")[0]
+        import asyncio
+
+        if kind == "confirmed":
+            d = date.fromisoformat(appt["preferred_date"]).strftime("%A, %B %-d")
+            win = "" if appt.get("time_window") in (None, "anytime") else f" ({appt['time_window']})"
+            body = (f"Hi {first}, your free roof inspection with {company} is CONFIRMED for {d}{win}. "
+                    f"We'll see you then!" + (f" Questions? Call {cphone}." if cphone else ""))
+        elif kind == "propose" and proposed:
+            days = ", ".join(date.fromisoformat(p).strftime("%a %b %-d") for p in proposed[:4])
+            body = (f"Hi {first}, {company} would like to schedule your free roof inspection. "
+                    f"Which of these works: {days}? Reply with your pick"
+                    + (f" or call {cphone}." if cphone else "."))
+        else:
+            return
+        asyncio.create_task(send_sms(phone, body))
+    except Exception:
+        pass
+
+
+class ProposeDatesRequest(BaseModel):
+    dates: list[str] = Field(..., min_length=1, max_length=4)   # ISO YYYY-MM-DD
+    note: Optional[str] = Field(None, max_length=300)
+
+
+@router.post("/{appointment_id}/propose")
+async def propose_alternative_dates(
+    appointment_id: str, payload: ProposeDatesRequest, user: dict = Depends(require_user),
+) -> dict:
+    """The contractor can't make the requested day — propose a few that work
+    and text them to the homeowner to choose from. Records the proposal on the
+    appointment note; the homeowner replies/calls to lock one in."""
+    db = get_supabase()
+    existing = (
+        db.table("inspection_appointments").select("*")
+        .eq("id", appointment_id).eq("user_id", user["id"]).limit(1).execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Appointment not found.")
+
+    valid: list[str] = []
+    for d in payload.dates:
+        try:
+            iso = date.fromisoformat(d)
+        except ValueError:
+            continue
+        if iso >= date.today():
+            valid.append(iso.isoformat())
+    if not valid:
+        raise HTTPException(status_code=422, detail="Pick at least one valid future date.")
+
+    days_label = ", ".join(date.fromisoformat(d).strftime("%a %b %-d") for d in valid)
+    note = f"Proposed alternative days to homeowner: {days_label}"
+    if payload.note:
+        note += f" — {payload.note.strip()}"
+    res = (
+        db.table("inspection_appointments").update({
+            "contractor_note": note,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", appointment_id).eq("user_id", user["id"]).execute()
+    )
+    appt = res.data[0] if res.data else existing.data[0]
+    _notify_homeowner(db, user["id"], appt, kind="propose", proposed=valid)
+    return {"ok": True, "proposed": valid, "texted": bool(appt.get("homeowner_phone"))}

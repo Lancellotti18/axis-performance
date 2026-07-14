@@ -764,6 +764,7 @@ export default function RoofV2Page() {
             onConfidenceChange={setConfidence}
             unlabeledCount={edges.filter(e => e.edgeType === 'unlabeled').length}
             zip={project?.zip}
+            city={project?.city}
             onForceSave={async () => { await persistGeometry(facets, edges) }}
           />
 

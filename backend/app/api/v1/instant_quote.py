@@ -328,8 +328,11 @@ async def instant_quote(widget_key: str, payload: QuoteRequest, request: Request
         squares = squares / (1.0 + calibration["bias_pct"] / 100.0)
 
     order_squares = squares * WASTE_FACTOR
-    lo = round(order_squares * float(w.get("price_low") or 450) / 50.0) * 50
-    hi = round(order_squares * float(w.get("price_high") or 650) / 50.0) * 50
+    # Default $/square when the contractor hasn't set their own rate. Kept
+    # deliberately moderate ($425–$550 installed) so out-of-box quotes don't
+    # read as steep; contractors tune this in RoofIQ settings.
+    lo = round(order_squares * float(w.get("price_low") or 425) / 50.0) * 50
+    hi = round(order_squares * float(w.get("price_high") or 550) / 50.0) * 50
 
     # Honest band: a footprint-based measure presents a wider range than a
     # true-3D solar measure, and says why in plain English.

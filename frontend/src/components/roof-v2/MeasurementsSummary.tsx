@@ -13,8 +13,9 @@
  * Server is the source of truth for every number shown. Client only triggers
  * the recompute and renders results — no math happens here.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
+import type { VendorOption } from '@/types'
 
 interface Aggregates {
   total_plan_sqft?: number
@@ -70,6 +71,8 @@ interface Props {
   onForceSave?: () => void | Promise<void>   // optional: lets the parent force-save + recompute
   /** Project ZIP — regionalizes live price checks. */
   zip?: string
+  /** Project city — localizes the "compare prices" vendor search. */
+  city?: string
 }
 
 const COLORS: Record<string, string> = {
@@ -137,7 +140,7 @@ function confidenceTag(c: number | undefined) {
   return { label: 'Low', cls: 'bg-rose-500/20 text-rose-300 border-rose-400/40' }
 }
 
-export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave, unlabeledCount = 0, zip }: Props) {
+export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave, unlabeledCount = 0, zip, city }: Props) {
   const [aggregates, setAggregates] = useState<Aggregates | null>(null)
   const [materials, setMaterials] = useState<MaterialsResponse | null>(null)
   const [wastePct, setWastePct] = useState<number>(12)
@@ -157,6 +160,23 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
       await fetchAllRef.current?.()
     } catch { /* surfaced via refetch state */ }
   }, [])
+
+  // Per-item "compare prices" dropdown: on expand, search real vendor options
+  // (product-page retail links + local trade-distributor quote links), the same
+  // pattern the blueprint takeoff uses. Lazy — only fetched when a row is opened.
+  const [vendors, setVendors] = useState<Record<string, { open: boolean; loading: boolean; options?: VendorOption[] }>>({})
+  const toggleVendors = useCallback((sku: string, itemName: string, category: string, unitCost: number) => {
+    setVendors(prev => {
+      const cur = prev[sku]
+      if (cur?.open) return { ...prev, [sku]: { ...cur, open: false } }
+      if (cur?.options) return { ...prev, [sku]: { ...cur, open: true } }
+      // First open → fetch.
+      api.materials.searchPrices({ item_name: itemName, category, unit_cost: unitCost, region: '', city: city || '' })
+        .then(r => setVendors(p => ({ ...p, [sku]: { open: true, loading: false, options: r.options } })))
+        .catch(() => setVendors(p => ({ ...p, [sku]: { open: true, loading: false, options: [] } })))
+      return { ...prev, [sku]: { open: true, loading: true } }
+    })
+  }, [city])
 
   const checkLive = useCallback(async (sku: string, item: string, basePrice: number) => {
     setLiveChecks(prev => ({ ...prev, [sku]: { loading: true } }))
@@ -377,34 +397,17 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
               </thead>
               <tbody>
                 {materials.lines.map(line => (
-                  <tr key={line.sku} className="group border-b border-white/5 text-slate-200">
+                  <Fragment key={line.sku}>
+                  <tr className="group border-b border-white/5 text-slate-200">
                     <td className="px-2 py-2 font-mono text-[10px] text-slate-400">{line.sku}</td>
                     <td className="px-2 py-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span>{line.item_name}</span>
-                        {/* Secondary actions stay out of the way until the row is hovered. */}
-                        <span className="flex items-center gap-1.5 opacity-25 transition-opacity duration-150 group-hover:opacity-100">
-                          <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer"
-                            title="Shop at Home Depot"
-                            className="text-[9px] font-semibold text-orange-300/90 hover:underline">HD↗</a>
-                          <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer"
-                            title="Shop at Lowe's"
-                            className="text-[9px] font-semibold text-blue-300/90 hover:underline">Lowe&apos;s↗</a>
-                          {liveChecks[line.sku]?.loading ? (
-                            <span className="text-[9px] text-blue-300">…</span>
-                          ) : liveChecks[line.sku]?.price == null && (
-                            <button onClick={() => void checkLive(line.sku, line.item_name, line.unit_cost)}
-                              className="text-[9px] text-slate-400 hover:text-blue-300 hover:underline"
-                              title="Fetch a live market price for this item">live $</button>
-                          )}
-                        </span>
-                        {liveChecks[line.sku]?.price != null && (
-                          <a href={liveChecks[line.sku].url} target="_blank" rel="noreferrer"
-                            className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-300 hover:text-blue-300"
-                            title={liveChecks[line.sku].isLive ? 'Live fetched price — click for source' : 'National estimate — click for source'}>
-                            {liveChecks[line.sku].isLive ? '🌐' : '≈'} {fmt$(liveChecks[line.sku].price)} ↗
-                          </a>
-                        )}
+                        <button onClick={() => toggleVendors(line.sku, line.item_name, line.category, line.unit_cost)}
+                          className="inline-flex items-center gap-1 rounded-full border border-blue-400/30 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-300 hover:bg-blue-500/20"
+                          title="Find where to buy this + compare local prices">
+                          🛒 Buy / compare {vendors[line.sku]?.open ? '▴' : '▾'}
+                        </button>
                       </div>
                       <div className="text-[10px] text-slate-500">{line.computation_trace}</div>
                     </td>
@@ -443,6 +446,45 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                     </td>
                     <td className="px-2 py-2 text-right font-mono">{fmt$((line.waste_quantities[wastePct] ?? 0) * line.unit_cost)}</td>
                   </tr>
+                  {vendors[line.sku]?.open && (
+                    <tr key={line.sku + '-vendors'} className="border-b border-white/5 bg-slate-900/40">
+                      <td colSpan={7} className="px-3 py-2.5">
+                        {vendors[line.sku]?.loading ? (
+                          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                            <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+                            Finding where to buy {line.item_name}{city ? ` near ${city}` : ''}…
+                          </div>
+                        ) : (vendors[line.sku]?.options?.length ?? 0) === 0 ? (
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                            <span>No product pages found. Try the big-box search:</span>
+                            <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer" className="font-semibold text-orange-300 hover:underline">Home Depot ↗</a>
+                            <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer" className="font-semibold text-blue-300 hover:underline">Lowe&apos;s ↗</a>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                              Where to buy · compare prices{city ? ` near ${city}` : ''}
+                            </div>
+                            <div className="grid gap-1.5 sm:grid-cols-2">
+                              {vendors[line.sku]!.options!.map((o, i) => (
+                                <a key={i} href={o.url} target="_blank" rel="noreferrer"
+                                  className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-slate-800/60 px-2.5 py-1.5 hover:border-blue-400/40 hover:bg-slate-800">
+                                  <span className="flex min-w-0 items-center gap-1.5">
+                                    {o.is_local && <span className="rounded bg-emerald-500/20 px-1 py-0.5 text-[9px] font-semibold text-emerald-300">LOCAL</span>}
+                                    <span className="truncate text-[11px] text-slate-200">{o.vendor}</span>
+                                  </span>
+                                  <span className="shrink-0 text-[11px] font-semibold text-slate-100">
+                                    {o.quote_only || o.price == null ? <span className="text-blue-300">Get quote ↗</span> : <>{fmt$(o.price)} ↗</>}
+                                  </span>
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

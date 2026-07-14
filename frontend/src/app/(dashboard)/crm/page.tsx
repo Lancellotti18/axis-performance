@@ -109,10 +109,14 @@ function staleDays(lead: Lead): number | null {
   return days >= limit ? days : null
 }
 
+const ROOFIQ_WORK: Record<string, string> = { replace: '🏠 Full replacement', repair: '🔧 Repair', unsure: '🤔 Deciding' }
+const ROOFIQ_COND: Record<string, string> = { no_damage: '✅ No visible damage', visible_damage: '⚠️ Visible damage', unsure: '🤔 Unsure' }
+const ROOFIQ_ISSUE: Record<string, string> = { leak: '💧 Active leak', storm_damage: '⛈ Storm damage', missing_shingles: '🍂 Missing shingles', sagging: '📉 Sagging', planning: '📋 Planning ahead' }
+
 const cardStyle = { boxShadow: '0 8px 32px rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.10)' }
 const EMPTY_FORM = { name: '', phone: '', email: '', address: '', city: '', state: '', job_type: 'residential', stage: 'new' as Stage, notes: '', estimated_value: '' }
-const inputCls = 'w-full bg-white/[0.06] border border-white/15 focus:border-blue-400/60 focus:bg-white/[0.09] rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none transition-colors text-sm [&>option]:bg-slate-900 [&>option]:text-white'
-const labelCls = 'block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5'
+const inputCls = 'w-full bg-slate-800 border border-slate-600 focus:border-blue-400 focus:bg-slate-800 rounded-xl px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-colors text-sm [&>option]:bg-slate-900 [&>option]:text-white'
+const labelCls = 'block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5'
 
 // ── Kanban card ───────────────────────────────────────────────────────────────
 function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete, onMove }: {
@@ -235,6 +239,16 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
   const bottomRef = useRef<HTMLDivElement>(null)
   const stage = STAGE_MAP[lead.stage] || STAGE_MAP.new
   const roofIQ = roofIQOf(lead)
+
+  // Pull the full RoofIQ report so the drawer shows everything the homeowner
+  // told us, organized — not just the packed notes string.
+  const [rept, setRept] = useState<Awaited<ReturnType<typeof api.instantQuote.report>> | null>(null)
+  useEffect(() => {
+    if (!roofIQ.reportToken) { setRept(null); return }
+    let live = true
+    api.instantQuote.report(roofIQ.reportToken).then(r => { if (live) setRept(r) }).catch(() => {})
+    return () => { live = false }
+  }, [roofIQ.reportToken])
 
   // One click: RoofIQ lead → live good/better/best proposal (uses the squares
   // measured at quote time; opens the shareable homeowner page).
@@ -442,6 +456,30 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
                   </a>
                 )}
               </div>
+              {/* Everything the homeowner told us, organized */}
+              {rept && (
+                <div className="rounded-xl bg-black/20 p-3">
+                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">What the homeowner told us</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {rept.details?.work_type && <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[11px] text-blue-200">{ROOFIQ_WORK[rept.details.work_type] || rept.details.work_type}</span>}
+                    {rept.details?.condition && <span className={`rounded-full px-2 py-0.5 text-[11px] ${rept.details.condition === 'visible_damage' ? 'bg-rose-500/15 text-rose-300' : 'bg-white/10 text-slate-300'}`}>{ROOFIQ_COND[rept.details.condition] || rept.details.condition}</span>}
+                    {rept.roof_age && <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-slate-300">Age: {rept.roof_age} yrs</span>}
+                    {rept.stories != null && <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-slate-300">{rept.stories} stor{rept.stories === 1 ? 'y' : 'ies'}</span>}
+                    {(rept.issues || []).map(i => (
+                      <span key={i} className={`rounded-full px-2 py-0.5 text-[11px] ${i === 'leak' || i === 'storm_damage' ? 'bg-rose-500/15 text-rose-300' : 'bg-white/10 text-slate-300'}`}>{ROOFIQ_ISSUE[i] || i}</span>
+                    ))}
+                    {rept.details?.chimney_skylights && <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-slate-300">🧱 Chimney/skylights</span>}
+                    {(rept.details?.rooftop_items || []).filter(x => x !== 'nothing' && x !== 'unsure').map(x => (
+                      <span key={x} className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-slate-300">{x.replace(/_/g, ' ')}</span>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
+                    {rept.squares != null && <span>📐 <strong className="text-slate-200">{rept.squares}</strong> squares{rept.roof_sqft ? ` · ${Math.round(rept.roof_sqft).toLocaleString()} ft²` : ''}</span>}
+                    {rept.price_low != null && rept.price_high != null && <span>💵 Quoted <strong className="text-slate-200">{fmt(rept.price_low)}–{fmt(rept.price_high)}</strong></span>}
+                    {rept.address && <span>📍 {rept.address}</span>}
+                  </div>
+                </div>
+              )}
               {roofIQ.reportToken && (
                 <button onClick={handleInstantProposal} disabled={proposing}
                   className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-50"
@@ -836,7 +874,7 @@ export default function CRMPage() {
       {/* Add / Edit modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.4)', backdropFilter: 'blur(4px)' }}>
-          <div className="bg-white/[0.04] rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+          <div className="bg-slate-900 rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh] ring-1 ring-white/10">
             <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
               <h2 className="text-lg font-bold text-white">{editingLead ? 'Edit Lead' : 'New Lead'}</h2>
               <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-200 transition-colors text-xl leading-none"></button>

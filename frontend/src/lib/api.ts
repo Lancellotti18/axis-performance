@@ -58,6 +58,22 @@ export interface QuoteMath {
   calibration?: { jobs: number; adjust_pct: number; note: string } | null
 }
 export type AppointmentStatus = 'requested' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+export interface AppointmentLead {
+  roof_age: string | null
+  stories: number | null
+  issues: string[]
+  work_type: string | null
+  condition: string | null
+  rooftop_items: string[]
+  chimney_skylights: boolean | null
+  drainage: string | null
+  squares: number | null
+  roof_sqft: number | null
+  price_low: number | null
+  price_high: number | null
+  lead_score: number | null
+  report_token: string | null
+}
 export interface Appointment {
   id: string
   report_token: string | null
@@ -71,6 +87,7 @@ export interface Appointment {
   status: AppointmentStatus
   contractor_note: string | null
   created_at: string
+  lead?: AppointmentLead | null
 }
 
 export interface WidgetLead {
@@ -591,6 +608,10 @@ export const api = {
     update: (id: string, patch: { status?: AppointmentStatus; preferred_date?: string; time_window?: string; contractor_note?: string }) =>
       apiRequest<Appointment>(`/api/v1/appointments/${id}`, {
         method: 'PATCH', body: JSON.stringify(patch),
+      }),
+    propose: (id: string, dates: string[], note?: string) =>
+      apiRequest<{ ok: boolean; proposed: string[]; texted: boolean }>(`/api/v1/appointments/${id}/propose`, {
+        method: 'POST', body: JSON.stringify({ dates, note }),
       }),
   },
   // ── Growth engine: instant quote widget + lead inbox ─────────────────────
