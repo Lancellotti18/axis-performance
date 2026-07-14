@@ -780,13 +780,27 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
     prof: dict = {}
     try:
         pr = db.table("contractor_profiles").select(
-            "company_name, phone, license_number, city, state"
+            "company_name, phone, license_number, city, state, logo_url"
         ).eq("user_id", lead["user_id"]).limit(1).execute()
         if pr.data:
             prof = pr.data[0]
     except Exception:
         pass
     service_area = ", ".join(x for x in [prof.get("city"), prof.get("state")] if x) or None
+
+    # Guarantee the house shows: use the tile captured at confirm, else build a
+    # fresh proxied satellite tile from the lead's confirmed lat/lng.
+    q0 = lead.get("quote") or {}
+    imagery_url = q0.get("imagery_url")
+    if not imagery_url and lead.get("lat") is not None and lead.get("lng") is not None:
+        try:
+            from app.services import imagery_service
+            from urllib.parse import quote as _q
+            tile = await imagery_service.fetch_satellite_image(
+                float(lead["lat"]), float(lead["lng"]), zoom=20, width_px=1280, height_px=960)
+            imagery_url = f"/api/v1/roofing/v2/imagery/proxy?url={_q(tile.url, safe='')}"
+        except Exception:
+            imagery_url = None
 
     # Every open counts — the contractor inbox surfaces "re-opened their report".
     if count:
@@ -820,6 +834,7 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
         "company_name": prof.get("company_name") or company.get("company_name") or "Your roofing contractor",
         "company_phone": prof.get("phone") or company.get("phone") or "",
         "company_license": prof.get("license_number") or None,
+        "company_logo_url": prof.get("logo_url") or None,
         "service_area": service_area,
         "roof_sqft": q.get("roof_sqft"),
         "squares": q.get("squares"),
@@ -827,7 +842,7 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
         "price_high": q.get("price_high"),
         "source": q.get("source"),
         "roof_confirmed": bool(q.get("roof_confirmed")),
-        "imagery_url": q.get("imagery_url"),
+        "imagery_url": imagery_url,
         "roof_age": lead.get("roof_age"),
         "stories": lead.get("stories"),
         "issues": lead.get("issues") or [],

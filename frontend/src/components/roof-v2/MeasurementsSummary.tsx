@@ -16,6 +16,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { VendorOption } from '@/types'
+import AxisSpinner from '@/components/AxisSpinner'
 
 interface Aggregates {
   total_plan_sqft?: number
@@ -304,6 +305,24 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
           >↻ Save & recompute now</button>
         </div>
       )}
+      {/* Not-final banner: while edges are unlabeled, the roof-line lengths,
+          true area, confidence, and material list are PROVISIONAL. Make that
+          impossible to miss — a live spinner + a plain-English instruction. */}
+      {unlabeledCount > 0 && (
+        <div className="flex items-center gap-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4">
+          <AxisSpinner size={46} color="#fbbf24" />
+          <div>
+            <div className="text-sm font-semibold text-amber-200">These numbers aren&apos;t final yet</div>
+            <p className="mt-0.5 text-xs leading-relaxed text-amber-100/80">
+              Roof-line lengths, true roof area, confidence, and the material list stay <strong>provisional</strong> until
+              you confirm the edges. Trace every plane, then hit <strong>✨ Auto-label edges</strong> and accept or fix
+              each one — the totals lock in the moment you do.
+              <span className="mt-1 block text-amber-300/90">{unlabeledCount} edge{unlabeledCount === 1 ? '' : 's'} still need labeling.</span>
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Top totals */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card label="True roof area" value={fmtSf(aggregates?.total_roof_sqft)} sub="(slope-adjusted)" />

@@ -51,10 +51,10 @@ const DRAINAGE_LABELS: Record<string, string> = {
 
 type Render = { key: string; name: string; tier: string; image_url: string }
 
-// RoofVision — the emotional close: the homeowner's OWN roof rendered in the
-// shingle colors the contractor installs, each tagged to its price tier. A
-// color-swatch picker swaps the hero image instantly.
-function RoofVision({ renders, company, apiBase, token }: { renders: Render[]; company: string; apiBase: string; token: string }) {
+// RoofVision — the emotional hero: a BEFORE (your roof today) / AFTER (your
+// roof in a new color) side-by-side, with a color-swatch picker that swaps the
+// "after" instantly. Each color is tagged to its price tier.
+function RoofVision({ renders, company, apiBase, token, beforeUrl }: { renders: Render[]; company: string; apiBase: string; token: string; beforeUrl?: string | null }) {
   const [sel, setSel] = useState(0)
   const active = renders[Math.min(sel, renders.length - 1)]
   const src = (u: string) => (u.startsWith('http') ? u : `${apiBase}${u}`)
@@ -66,22 +66,28 @@ function RoofVision({ renders, company, apiBase, token }: { renders: Render[]; c
     void api.instantQuote.selectColor(token, renders[i].key).catch(() => {})
   }
   return (
-    <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="px-5 py-3">
-        <div className="text-sm font-semibold">✨ See your home in a new roof</div>
-        <p className="mt-0.5 text-[11px] text-slate-500">Your actual house, rendered in shingle colors {company} installs. Tap a color.</p>
+    <section className="mb-6 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-[0_12px_44px_-16px_rgba(15,40,80,0.28)]">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-5 py-3 text-white">
+        <div className="text-sm font-bold">✨ See your home with a new roof</div>
+        <p className="mt-0.5 text-[11px] text-blue-50/90">Your actual house, rendered in the shingle colors {company} installs — tap a color to preview it.</p>
       </div>
-      <div className="relative bg-slate-100">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src(active.image_url)} alt={`Your roof in ${active.name}`} className="block w-full" />
-        <div className="absolute left-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">
-          {active.name} · {active.tier}
-        </div>
-        <div className="absolute bottom-2 right-3 rounded bg-black/50 px-1.5 py-0.5 text-[9px] text-white/80 backdrop-blur">
-          ✨ AI preview — actual color may vary
+      <div className={`grid ${beforeUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-px bg-slate-200`}>
+        {beforeUrl && (
+          <div className="relative bg-slate-100">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src(beforeUrl)} alt="Your roof today" className="block h-full w-full object-cover" />
+            <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur">Before</div>
+          </div>
+        )}
+        <div className="relative bg-slate-100">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src(active.image_url)} alt={`Your roof in ${active.name}`} className="block h-full w-full object-cover" />
+          <div className="absolute left-2 top-2 rounded-full bg-blue-600/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur">After</div>
+          <div className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">{active.name} · {active.tier}</div>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2 p-4">
+      <div className="px-4 pb-1 pt-2 text-center text-[9px] text-slate-400">✨ AI preview — actual color may vary slightly</div>
+      <div className="flex flex-wrap gap-2 p-4 pt-2">
         {renders.map((rn, i) => (
           <button key={rn.key} onClick={() => pick(i)}
             className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${i === sel ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
@@ -138,28 +144,40 @@ export default function ReportPage() {
     <main className="min-h-screen px-4 py-10 text-slate-900 print:bg-white print:py-2 sm:px-8"
       style={{ background: 'linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)' }}>
       <div className="mx-auto max-w-2xl">
-        {/* Header */}
+        {/* Header — contractor logo (prominent) + Axis attribution */}
         <header className="mb-6 text-center">
-          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.28em] text-blue-600/80">Roof Intelligence Report</div>
-          <h1 className="text-2xl font-bold tracking-tight">{r.company_name}</h1>
+          {r.company_logo_url ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={r.company_logo_url} alt={r.company_name} className="mx-auto mb-3 h-16 max-w-[240px] object-contain" />
+              <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-blue-600/80">Roof Intelligence Report</div>
+            </>
+          ) : (
+            <>
+              <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.28em] text-blue-600/80">Roof Intelligence Report</div>
+              <h1 className="text-2xl font-bold tracking-tight">{r.company_name}</h1>
+            </>
+          )}
           <div className="mt-1 text-sm text-slate-500">Prepared for <strong className="text-slate-700">{r.first_name}</strong> · {r.address}</div>
           <div className="text-[11px] text-slate-400">{new Date(r.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-slate-900/[0.04] px-2.5 py-0.5 text-[10px] font-medium text-slate-500 ring-1 ring-slate-200">
+            <span className="font-bold text-blue-600">Axis</span> satellite roof intelligence
+          </div>
         </header>
 
-        {/* Roof image */}
-        {r.imagery_url && (
-          <div className="mb-5 overflow-hidden rounded-2xl shadow-[0_10px_40px_-12px_rgba(15,40,80,0.15)] ring-1 ring-slate-200">
+        {/* HERO — RoofVision before/after leads the report to capture attention.
+            Falls back to the plain confirmed satellite image when renders aren't
+            available (RoofVision must be enabled on the backend to generate them). */}
+        {(r.details?.renders?.length ?? 0) > 0 ? (
+          <RoofVision renders={r.details!.renders!} company={r.company_name} apiBase={API_BASE} token={token} beforeUrl={r.imagery_url} />
+        ) : r.imagery_url && (
+          <div className="mb-6 overflow-hidden rounded-2xl shadow-[0_10px_40px_-12px_rgba(15,40,80,0.15)] ring-1 ring-slate-200">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`${API_BASE}${r.imagery_url}`} alt="Satellite view of your roof" className="block w-full" />
             {r.roof_confirmed && (
               <div className="bg-emerald-50 px-3 py-1.5 text-center text-[11px] font-semibold text-emerald-700">✓ Roof location confirmed by you</div>
             )}
           </div>
-        )}
-
-        {/* RoofVision — your own roof in the shingle colors {company} installs */}
-        {(r.details?.renders?.length ?? 0) > 0 && (
-          <RoofVision renders={r.details!.renders!} company={r.company_name} apiBase={API_BASE} token={token} />
         )}
 
         {/* Measurement */}

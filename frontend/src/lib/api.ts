@@ -662,6 +662,7 @@ export const api = {
         company_name: string
         company_phone: string
         company_license?: string | null
+        company_logo_url?: string | null
         service_area?: string | null
         roof_sqft: number | null
         squares: number | null
