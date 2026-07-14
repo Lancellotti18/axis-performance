@@ -104,6 +104,10 @@ export default function RoofV2Page() {
   // resume; auto-analyze WAITS for it so we never draw the neighbor's roof.
   const [subjectPoint, setSubjectPoint] = useState<{ x: number; y: number } | null>(null)
   const [savedScaleDesc, setSavedScaleDesc] = useState<string | null>(null)
+  // Sub-steps inside the editor so the contractor sees ONE satellite image at a
+  // time (confirm house → check scale → draw) and clicks Next, instead of
+  // scrolling past several stacked tiles.
+  const [editorSub, setEditorSub] = useState<'confirm' | 'scale' | 'draw'>('confirm')
   const [step, setStep] = useState<Step>('project')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -676,42 +680,65 @@ export default function RoofV2Page() {
             ))}
           </div>
 
-          {/* STEP 1 — confirm the house. Everything downstream (Solar, footprint,
-              auto-analyze) anchors on this tap, so it comes FIRST. */}
-          {imagery?.url && (
-            <HousePicker
-              runId={runId}
-              imageUrl={imagery.url}
-              lat={imagery.lat ?? location?.lat}
-              lng={imagery.lng ?? location?.lng}
-              imageWidthPx={imagery.width_px ?? 2048}
-              imageHeightPx={imagery.height_px ?? 1366}
-              feetPerPixel={imagery.feet_per_pixel ?? 0}
-              address={project ? [project.address, project.city, project.state, project.zip].filter(Boolean).join(', ') : undefined}
-              initialPoint={subjectPoint}
-              onConfirmed={(pt) => {
-                setSubjectPoint(pt)
-                if (facets.length > 0) {
-                  toast('House locked. If the drawn facets are on the wrong building, delete them, then hit \u26a1 Re-run.', { icon: '\ud83c\udfaf' })
-                }
-              }}
-            />
+          {/* Sub-stepper — one satellite image at a time (confirm → scale → draw). */}
+          <div className="flex items-center gap-1.5 text-xs">
+            {([['confirm', '1. Confirm house'], ['scale', '2. Check scale'], ['draw', '3. Draw roof']] as const).map(([k, label], i) => {
+              const reached = k === 'confirm' || (k === 'scale' && subjectPoint != null) || k === 'draw'
+              return (
+                <span key={k} className="flex items-center gap-1.5">
+                  {i > 0 && <span className="h-px w-4 bg-slate-700" />}
+                  <button onClick={() => reached && setEditorSub(k)} disabled={!reached}
+                    className={`rounded-full px-3 py-1 transition ${editorSub === k ? 'bg-blue-600 text-white' : reached ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'cursor-not-allowed bg-slate-900 text-slate-600'}`}>
+                    {label}
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+
+          {/* STEP 1 — confirm the house. */}
+          {editorSub === 'confirm' && imagery?.url && (
+            <div className="space-y-3">
+              <HousePicker
+                runId={runId}
+                imageUrl={imagery.url}
+                lat={imagery.lat ?? location?.lat}
+                lng={imagery.lng ?? location?.lng}
+                imageWidthPx={imagery.width_px ?? 2048}
+                imageHeightPx={imagery.height_px ?? 1366}
+                feetPerPixel={imagery.feet_per_pixel ?? 0}
+                address={project ? [project.address, project.city, project.state, project.zip].filter(Boolean).join(', ') : undefined}
+                initialPoint={subjectPoint}
+                onConfirmed={(pt) => { setSubjectPoint(pt) }}
+              />
+              <div className="flex justify-end">
+                <button onClick={() => setEditorSub('scale')}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Next: check scale &rarr;</button>
+              </div>
+            </div>
           )}
 
-          {/* STEP 2 — confirm the scale BEFORE drawing. A wrong scale silently
-              throws off every downstream measurement, so we verify it here,
-              up front, not buried after the editor. */}
-          {runId && imagery?.url && (
-            <ScaleCheckPanel
-              runId={runId}
-              imageUrl={imagery.original_url || imagery.url}
-              imageWidthPx={imagery.width_px ?? 2048}
-              imageHeightPx={imagery.height_px ?? 1366}
-              feetPerPixel={imagery.feet_per_pixel ?? 0}
-              savedScaleDescription={savedScaleDesc}
-            />
+          {/* STEP 2 — confirm the scale BEFORE drawing. */}
+          {editorSub === 'scale' && runId && imagery?.url && (
+            <div className="space-y-3">
+              <ScaleCheckPanel
+                runId={runId}
+                imageUrl={imagery.original_url || imagery.url}
+                imageWidthPx={imagery.width_px ?? 2048}
+                imageHeightPx={imagery.height_px ?? 1366}
+                feetPerPixel={imagery.feet_per_pixel ?? 0}
+                savedScaleDescription={savedScaleDesc}
+              />
+              <div className="flex justify-between">
+                <button onClick={() => setEditorSub('confirm')}
+                  className="rounded-md bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600">&larr; Back</button>
+                <button onClick={() => setEditorSub('draw')}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Next: draw roof &rarr;</button>
+              </div>
+            </div>
           )}
 
+          {editorSub === 'draw' && (<>
           {/* Vision auto-detect retired: field testing showed it didn't reliably
               pick up houses. The workflow is now trace the roof by hand →
               ✨ Auto-label edges (kept, below the canvas). */}
@@ -878,6 +905,7 @@ export default function RoofV2Page() {
               className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
             >Continue to report →</button>
           </div>
+          </>)}
         </section>
       )}
 

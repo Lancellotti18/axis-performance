@@ -869,6 +869,11 @@ export function RoofFacetEditor({
             {m === 'draw' ? '+ Draw facet' : m === 'select' ? 'Edit vertices' : 'Label by hand'}
           </button>
         ))}
+        <button
+          onClick={() => setShowCoach(true)}
+          title="How to trace the roof for the best auto-label results"
+          className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-slate-700"
+        >? How to trace</button>
         {onAutoLabelEdges && (
           <button
             onClick={onAutoLabelEdges}
@@ -1104,33 +1109,63 @@ export function RoofFacetEditor({
             </svg>
           </div>
 
+          {/* Magnifier loupe — a fixed zoomed view centered on the cursor with a
+              crosshair, so contractors can place a corner EXACTLY even at low
+              zoom (the "I can't pinpoint it" problem). Draw mode only. */}
+          {mode === 'draw' && hoverPt && imageUrl && (
+            <div className="pointer-events-none absolute right-3 top-3 z-20 h-36 w-36 overflow-hidden rounded-full border-2 border-white/80 shadow-xl"
+              style={{
+                backgroundImage: `url("${imageUrl}")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: `${imageDims.w * 3.5}px ${imageDims.h * 3.5}px`,
+                backgroundPosition: `${72 - hoverPt[0] * imageDims.w * 3.5}px ${72 - hoverPt[1] * imageDims.h * 3.5}px`,
+              }}>
+              {/* crosshair */}
+              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-cyan-300/70" />
+              <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-cyan-300/70" />
+              <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300 bg-cyan-300/30" />
+              <div className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 text-[9px] text-white">3.5×</div>
+            </div>
+          )}
+
           {/* First-use coachmark — dismissible tips, shown once. */}
           {showCoach && (
             <div className="pointer-events-auto absolute left-1/2 top-4 z-30 w-[min(420px,90%)] -translate-x-1/2 rounded-lg border border-blue-400/40 bg-slate-900/95 p-4 shadow-2xl backdrop-blur">
               <div className="mb-2 flex items-center justify-between">
-                <div className="text-sm font-semibold text-white">How to trace a roof facet</div>
+                <div className="text-sm font-semibold text-white">How to trace a roof for the best results</div>
                 <button onClick={dismissCoach} className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white">✕</button>
               </div>
+              <p className="mb-2 rounded bg-blue-500/10 px-2 py-1.5 text-[11px] text-blue-200">
+                The AI auto-labels your edges (ridge, eave, hip, valley) by reading how the planes fit
+                together — so a <strong>clean, complete trace = far better labels + accuracy</strong>.
+              </p>
               <ol className="space-y-2 text-xs text-slate-200">
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">1</span>
-                  <span>Click each <strong>corner</strong> of one roof plane. Dots snap to the edges for you.</span>
+                  <span><strong>Zoom in first.</strong> Scroll to fill the screen with the roof. Use the loupe (top-right) to place each corner exactly on the roof edge.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">2</span>
-                  <span>Click the <strong>first dot again</strong> (or press <kbd className="rounded bg-slate-800 px-1">Enter</kbd>) to finish that facet.</span>
+                  <span>Trace <strong>one flat plane at a time.</strong> Click each corner, then click the <strong>first dot</strong> (or <kbd className="rounded bg-slate-800 px-1">Enter</kbd>) to close it. One polygon = one slope of the roof.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">3</span>
-                  <span>Repeat for each plane, then hit <strong className="text-emerald-300">✨ Auto-label edges</strong> — AI names every edge (ridge, eave, hip, valley) and you just review. Fix any single edge by hand in <strong>Label by hand</strong> mode.</span>
+                  <span><strong>Share the edges.</strong> Where two planes meet (a ridge or valley), trace right along the same line — dots turn <span className="text-cyan-300">cyan</span> and snap onto the neighbor so the two planes connect. This is what tells the AI it&apos;s a ridge/hip/valley.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">4</span>
+                  <span><strong>Trace EVERY plane</strong> before labeling — including small dormers and porch roofs. Missing planes make edges mislabel.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white">5</span>
+                  <span>Hit <strong className="text-emerald-300">✨ Auto-label edges</strong>, then review — accept the good ones, fix any single edge by hand. The measurements lock in once you confirm.</span>
                 </li>
               </ol>
               <div className="mt-2 rounded bg-slate-800/60 px-2 py-1.5 text-[10px] text-slate-400">
                 <kbd className="rounded bg-slate-700 px-1 text-slate-200">Shift</kbd> square corners ·
                 drag = pan · scroll = zoom · <kbd className="rounded bg-slate-700 px-1 text-slate-200">⌘Z</kbd> undo
               </div>
-              <button onClick={dismissCoach} className="mt-3 w-full rounded bg-blue-600 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">Got it — let me draw</button>
-              <div className="mt-1 text-center text-[10px] text-slate-500">…or use <strong>AI assistance</strong> below to auto-detect facets.</div>
+              <button onClick={dismissCoach} className="mt-3 w-full rounded bg-blue-600 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">Got it — let me trace</button>
             </div>
           )}
 
