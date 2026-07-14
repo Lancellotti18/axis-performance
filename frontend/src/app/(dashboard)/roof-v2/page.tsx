@@ -25,13 +25,11 @@ import LocationPicker, { type LocationSelected } from '@/components/roof-v2/Loca
 import RoofFacetEditor, { type Facet, type LabeledEdge } from '@/components/roof-v2/RoofFacetEditor'
 import MeasurementsSummary from '@/components/roof-v2/MeasurementsSummary'
 import PenetrationSuggestions from '@/components/roof-v2/PenetrationSuggestions'
-import FacetSuggestions from '@/components/roof-v2/FacetSuggestions'
 import EdgeLabelSuggestions from '@/components/roof-v2/EdgeLabelSuggestions'
 import FlashingPanel from '@/components/roof-v2/FlashingPanel'
 import WallTransitionPanel from '@/components/roof-v2/WallTransitionPanel'
 import GroundPhotoPanel from '@/components/roof-v2/GroundPhotoPanel'
 import CollapsibleSection from '@/components/roof-v2/CollapsibleSection'
-import AutoAnalyzePanel from '@/components/roof-v2/AutoAnalyzePanel'
 import JobVerificationPanel from '@/components/roof-v2/JobVerificationPanel'
 import ProposalPanel from '@/components/roof-v2/ProposalPanel'
 import ClientPortalPanel from '@/components/roof-v2/ClientPortalPanel'
@@ -44,13 +42,6 @@ import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 // import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
 import PannableImage from '@/components/roof-v2/PannableImage'
-import { enhanceTile } from '@/lib/imageEnhance'
-
-// AI super-resolution (Replicate) is retired from the contractor workflow —
-// it never produced visible benefit and confused users. The real client-side
-// "Clarity" enhancement replaces it. Flip this flag (or set
-// NEXT_PUBLIC_FF_SHARPEN=true) to re-expose the experimental AI sharpen button.
-const FF_AI_SHARPEN = process.env.NEXT_PUBLIC_FF_SHARPEN === 'true'
 
 interface Project {
   id: string
@@ -109,10 +100,10 @@ export default function RoofV2Page() {
   const [geometryStamp, setGeometryStamp] = useState(0)
   const [editorSyncRev, setEditorSyncRev] = useState(0)   // bump to push external edits into the editor canvas
   const [autoLabelTrigger, setAutoLabelTrigger] = useState(0)   // editor toolbar → run edge auto-label
-  const [analyzeTrigger, setAnalyzeTrigger] = useState(0)       // house tapped → re-run auto-analyze
   // The contractor's confirmed "this is my house" tap. Loaded from the run on
   // resume; auto-analyze WAITS for it so we never draw the neighbor's roof.
   const [subjectPoint, setSubjectPoint] = useState<{ x: number; y: number } | null>(null)
+  const [savedScaleDesc, setSavedScaleDesc] = useState<string | null>(null)
   const [step, setStep] = useState<Step>('project')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -179,6 +170,7 @@ export default function RoofV2Page() {
           const run = data.run as Record<string, unknown>
           const sp = run.subject_point as { x: number; y: number } | null
           setSubjectPoint(sp && typeof sp.x === 'number' ? { x: sp.x, y: sp.y } : null)
+          setSavedScaleDesc((run.scale_reference_description as string) || null)
           const url = (run.satellite_image_url as string) || ''
           if (url) {
             const lat = Number(run.satellite_lat) || 0
@@ -247,106 +239,6 @@ export default function RoofV2Page() {
   // When a location is confirmed: fetch the imagery health and surface it to
   // the user immediately. Sharpening is OPT-IN via a button — the user
   // reported it wasn't adding visible value, so we don't run it automatically.
-  const [sharpening, setSharpening] = useState(false)
-
-  // ── Clarity enhancement (client-side, instant, no hallucination) ──────────
-  // Replaces AI sharpen. Boosts local contrast + sharpens edges so roof planes
-  // and ridge/valley lines are easier to see and trace. ON by default.
-  const [clarityOn, setClarityOn] = useState(true)
-  const [enhancing, setEnhancing] = useState(false)
-  const [enhanceError, setEnhanceError] = useState<string | null>(null)
-  const enhancedRevokeRef = useRef<null | (() => void)>(null)
-
-  // Re-run enhancement whenever the source tile changes or the toggle flips.
-  // Keyed on original_url (NOT url) so our own setImagery(url=...) doesn't loop.
-  useEffect(() => {
-    const sourceUrl = imagery?.original_url
-    if (!sourceUrl || imagery?.status === 'unavailable') return
-
-    // Off → show the original, drop any enhanced blob.
-    if (!clarityOn) {
-      enhancedRevokeRef.current?.()
-      enhancedRevokeRef.current = null
-      setEnhanceError(null)
-      setImagery(prev => (prev && prev.url !== prev.original_url
-        ? { ...prev, url: prev.original_url, display_mode: 'original' }
-        : prev))
-      return
-    }
-
-    let cancelled = false
-    setEnhancing(true)
-    setEnhanceError(null)
-    // Strong settings so the difference is OBVIOUS — local-contrast clarity +
-    // detail sharpen + a contrast stretch. This makes plane boundaries and
-    // ridge/valley lines pop on hazy tiles (it can't add detail that wasn't
-    // captured, but it surfaces what IS there).
-    enhanceTile(sourceUrl, {
-      clarity: 1.0,
-      sharpness: 0.7,
-      contrastStretch: 0.015,
-      edgeOverlay: false,
-    })
-      .then(res => {
-        if (cancelled) { res.revoke(); return }
-        enhancedRevokeRef.current?.()
-        enhancedRevokeRef.current = res.revoke
-        setImagery(prev => (prev ? { ...prev, url: res.url, display_mode: 'sharpened' } : prev))
-      })
-      .catch(err => {
-        // Surface the failure instead of silently doing nothing — otherwise
-        // the toggle looks broken.
-        console.warn('[axis] clarity enhancement failed, using original tile:', err)
-        if (!cancelled) {
-          setEnhanceError('Could not enhance this tile (the image could not be read). Showing the original.')
-          setImagery(prev => (prev ? { ...prev, url: prev.original_url, display_mode: 'original' } : prev))
-        }
-      })
-      .finally(() => { if (!cancelled) setEnhancing(false) })
-
-    return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imagery?.original_url, clarityOn])
-
-  // Revoke any outstanding blob URL on unmount.
-  useEffect(() => () => { enhancedRevokeRef.current?.() }, [])
-
-  // Optional on-demand sharpening when the contractor explicitly asks for it.
-  // Same code path as before but only fires when they click the button.
-  const trySharpening = useCallback(async () => {
-    if (!imagery?.url || sharpening) return
-    setSharpening(true)
-    try {
-      const sharp = await api.roofing.v2.upscaleImagery(imagery.url, 4) as {
-        status: string
-        upscaled_url?: string
-        scale_factor?: number
-        error?: string
-      }
-      // eslint-disable-next-line no-console
-      console.log('[axis] manual sharpen result:', sharp.status, sharp.upscaled_url ? 'URL changed' : 'URL same', sharp.error || '')
-      if (sharp.status === 'completed' && sharp.upscaled_url && sharp.upscaled_url !== imagery.url) {
-        const factor = sharp.scale_factor ?? 4
-        setImagery(prev => prev ? ({
-          ...prev,
-          url: sharp.upscaled_url,
-          sharpened_url: sharp.upscaled_url,
-          display_mode: 'sharpened',
-          feet_per_pixel: (prev.feet_per_pixel ?? 0) / factor,
-          warnings: [
-            ...(prev.warnings || []),
-            `✨ Tile AI-sharpened ${factor}x — toggle below to compare with original`,
-          ],
-        }) : prev)
-      } else if (sharp.status === 'failed' || sharp.error) {
-        setError(`Sharpening failed: ${sharp.error || sharp.status}. Original tile is still loaded.`)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sharpening errored')
-    } finally {
-      setSharpening(false)
-    }
-  }, [imagery, sharpening])
 
   // Auto-center: ask Gemini for the subject building's bbox, then re-fetch the
   // tile centered + zoomed on the roof. One-shot, best-effort — failures just
@@ -727,38 +619,6 @@ export default function RoofV2Page() {
                 </ul>
               )}
 
-              {/* Clarity toggle — client-side local-contrast + sharpen so roof
-                  plane boundaries are easier to see. Toggle off to A/B compare. */}
-              {imagery.url && imagery.status !== 'unavailable' && (
-                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
-                  <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={clarityOn}
-                      onChange={e => setClarityOn(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-800"
-                    />
-                    Sharpen image
-                    <span className="font-normal text-slate-500">(toggle off to compare)</span>
-                  </label>
-                  {enhancing && (
-                    <span className="flex items-center gap-1.5 text-xs text-blue-300">
-                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-                      sharpening…
-                    </span>
-                  )}
-                  {!enhancing && clarityOn && imagery.display_mode === 'sharpened' && (
-                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">applied ✓</span>
-                  )}
-                  {enhanceError && (
-                    <span className="text-[10px] text-amber-400">{enhanceError}</span>
-                  )}
-                  <span className="ml-auto text-[10px] text-slate-500">
-                    Visual only — measurements use the original tile
-                  </span>
-                </div>
-              )}
-
               {/* Instant pan/zoom preview — drag, scroll, arrows/WASD. You pick
                   the exact roof with "Tap your house" in the next step. */}
               {imagery.url && imagery.status !== 'unavailable' && (
@@ -783,26 +643,6 @@ export default function RoofV2Page() {
                       <>Open facet editor →</>
                     )}
                   </button>
-                  {/* AI sharpen retired from the workflow — gated behind a flag
-                      for experimentation only. Real clarity enhancement above
-                      replaced it. */}
-                  {FF_AI_SHARPEN && !imagery.sharpened_url && (
-                    <button
-                      onClick={trySharpening}
-                      disabled={sharpening || busy}
-                      className="flex items-center gap-2 rounded-md bg-purple-700 px-3 py-2 text-xs text-white transition hover:bg-purple-600 disabled:opacity-50"
-                      title="Experimental: AI super-resolution via Replicate. Takes 15-30 sec."
-                    >
-                      {sharpening ? (
-                        <>
-                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          <span>Sharpening…</span>
-                        </>
-                      ) : (
-                        <>✨ AI sharpen (experimental)</>
-                      )}
-                    </button>
-                  )}
                 </div>
               )}
               {imagery.status === 'unavailable' && (
@@ -853,49 +693,28 @@ export default function RoofV2Page() {
                 setSubjectPoint(pt)
                 if (facets.length > 0) {
                   toast('House locked. If the drawn facets are on the wrong building, delete them, then hit \u26a1 Re-run.', { icon: '\ud83c\udfaf' })
-                } else {
-                  setAnalyzeTrigger(t => t + 1)   // house confirmed → analyze now
                 }
               }}
             />
           )}
 
-          {/* ⚡ One-button pipeline: planes (Solar→footprint→vision) + edge labels,
-              landing the contractor at review instead of build-from-scratch. */}
-          <AutoAnalyzePanel
-            runId={runId}
-            centerLat={imagery.lat}
-            centerLng={imagery.lng}
-            imageWidthPx={imagery.width_px ?? 2048}
-            imageHeightPx={imagery.height_px ?? 1366}
-            feetPerPixel={imagery.feet_per_pixel ?? 0}
-            facetCount={facets.length}
-            autoStart={subjectPoint != null}
-            awaitingHouse={subjectPoint == null}
-            trigger={analyzeTrigger}
-            onAddFacets={async (newFacets) => {
-              const merged = [...facets, ...newFacets]
-              setFacets(merged)
-              const newEdges: typeof edges = newFacets.flatMap(nf =>
-                nf.polygon.map((_, i) => ({
-                  facetLabel: nf.label,
-                  vertexIndexStart: i,
-                  vertexIndexEnd: (i + 1) % nf.polygon.length,
-                  edgeType: 'unlabeled' as const,
-                  userConfirmed: false,
-                })),
-              )
-              const mergedEdges = [...edges, ...newEdges]
-              setEdges(mergedEdges)
-              setEditorSyncRev(r => r + 1)
-              await persistGeometry(merged, mergedEdges)
-            }}
-            onAutoLabel={() => {
-              setAutoLabelTrigger(t => t + 1)
-              setTimeout(() => document.getElementById('edge-label-panel')
-                ?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
-            }}
-          />
+          {/* STEP 2 — confirm the scale BEFORE drawing. A wrong scale silently
+              throws off every downstream measurement, so we verify it here,
+              up front, not buried after the editor. */}
+          {runId && imagery?.url && (
+            <ScaleCheckPanel
+              runId={runId}
+              imageUrl={imagery.original_url || imagery.url}
+              imageWidthPx={imagery.width_px ?? 2048}
+              imageHeightPx={imagery.height_px ?? 1366}
+              feetPerPixel={imagery.feet_per_pixel ?? 0}
+              savedScaleDescription={savedScaleDesc}
+            />
+          )}
+
+          {/* Vision auto-detect retired: field testing showed it didn't reliably
+              pick up houses. The workflow is now trace the roof by hand →
+              ✨ Auto-label edges (kept, below the canvas). */}
           <div className="h-[680px] overflow-hidden">
             <RoofFacetEditor
               imageUrl={imagery.url}
@@ -1012,36 +831,6 @@ export default function RoofV2Page() {
                 setEditorSyncRev(r => r + 1)
                 void persistGeometry(merged, mergedEdges)
               }}
-            />
-          )}
-          <FacetSuggestions
-            runId={runId}
-            imageUrl={imagery?.url ?? ''}
-            existingFacets={facets}
-            onAccept={(newFacet) => {
-              const merged = [...facets, newFacet]
-              setFacets(merged)
-              // Initialize this facet's edges as unlabeled in the editor state
-              const newEdges: typeof edges = newFacet.polygon.map((_, i) => ({
-                facetLabel: newFacet.label,
-                vertexIndexStart: i,
-                vertexIndexEnd: (i + 1) % newFacet.polygon.length,
-                edgeType: 'unlabeled' as const,
-                userConfirmed: false,
-              }))
-              const mergedEdges = [...edges, ...newEdges]
-              setEdges(mergedEdges)
-              setEditorSyncRev(r => r + 1)
-              void persistGeometry(merged, mergedEdges)
-            }}
-          />
-          {runId && imagery?.url && (
-            <ScaleCheckPanel
-              runId={runId}
-              imageUrl={imagery.original_url || imagery.url}
-              imageWidthPx={imagery.width_px ?? 2048}
-              imageHeightPx={imagery.height_px ?? 1366}
-              feetPerPixel={imagery.feet_per_pixel ?? 0}
             />
           )}
           </CollapsibleSection>

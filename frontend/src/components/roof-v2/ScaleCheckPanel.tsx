@@ -26,6 +26,8 @@ interface Props {
   imageHeightPx: number
   /** feet-per-pixel the measurement pipeline uses (imagery.feet_per_pixel) */
   feetPerPixel: number
+  /** A scale reference saved on a previous visit (shown on project resume). */
+  savedScaleDescription?: string | null
 }
 
 type Pt = [number, number]   // image fractions
@@ -46,7 +48,7 @@ function fmtFt(v: number): string {
   return inch === 12 ? `${f + 1}′ 0″` : `${f}′ ${inch}″`
 }
 
-export default function ScaleCheckPanel({ runId, imageUrl, imageWidthPx, imageHeightPx, feetPerPixel }: Props) {
+export default function ScaleCheckPanel({ runId, imageUrl, imageWidthPx, imageHeightPx, feetPerPixel, savedScaleDescription }: Props) {
   const [a, setA] = useState<Pt | null>(null)
   const [b, setB] = useState<Pt | null>(null)
   const [realFeet, setRealFeet] = useState<number>(16)
@@ -97,7 +99,13 @@ export default function ScaleCheckPanel({ runId, imageUrl, imageWidthPx, imageHe
   return (
     <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
       <h3 className="text-sm font-semibold text-slate-100">Scale check</h3>
-      <p className="text-xs text-slate-400">
+      {savedScaleDescription && !saved && (
+        <div className="mt-2 flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+          <span>✓</span>
+          <span>Scale on file from your last visit: <strong>{savedScaleDescription}</strong>. Re-measure below only if the tile changed.</span>
+        </div>
+      )}
+      <p className="mt-2 text-xs text-slate-400">
         Click the two ends of a <strong>standard-size</strong> object on the tile (a parked car is best —
         you can see it clearly from above; avoid driveways/sidewalks, which have no standard size),
         then pick its real size. Confirms whether the imagery scale — and every measurement — is accurate.

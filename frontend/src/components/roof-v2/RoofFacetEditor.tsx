@@ -323,10 +323,20 @@ export function RoofFacetEditor({
     const svg = svgRef.current
     if (!svg) return [0, 0]
     const rect = svg.getBoundingClientRect()
-    const x = (ev.clientX - rect.left) / rect.width
-    const y = (ev.clientY - rect.top) / rect.height
+    const iw = imageDims.w, ih = imageDims.h
+    if (!rect.width || !rect.height || !iw || !ih) return [0, 0]
+    // The SVG uses preserveAspectRatio="xMidYMid meet", so its viewBox is
+    // letterboxed inside the element box. Undo that letterbox — otherwise the
+    // plotted point drifts from the cursor whenever the container's aspect
+    // ratio doesn't match the tile's (the "point doesn't line up" bug).
+    const s = Math.min(rect.width / iw, rect.height / ih)
+    const contentW = iw * s, contentH = ih * s
+    const offX = (rect.width - contentW) / 2
+    const offY = (rect.height - contentH) / 2
+    const x = (ev.clientX - rect.left - offX) / contentW
+    const y = (ev.clientY - rect.top - offY) / contentH
     return [clampFrac(x), clampFrac(y)]
-  }, [])
+  }, [imageDims.w, imageDims.h])
 
   // ---- Pan + zoom (CSS transform on the stage) ----
   const MIN_SCALE = 1
@@ -1036,9 +1046,9 @@ export function RoofFacetEditor({
                   x2={hoverPt[0] * imageDims.w}
                   y2={hoverPt[1] * imageDims.h}
                   stroke={hoverSnappedVertex ? '#22d3ee' : '#fbbf24'}
-                  strokeWidth={2 / view.scale}
+                  strokeWidth={3.5 / view.scale}
                   strokeDasharray={`${5 / view.scale} ${4 / view.scale}`}
-                  opacity={0.8}
+                  opacity={0.9}
                 />
               )}
 
@@ -1046,13 +1056,25 @@ export function RoofFacetEditor({
               {drawingPoly.length > 0 && (
                 <g>
                   {drawingPoly.length >= 2 && (
-                    <polyline
-                      points={drawingPoly.map(([x, y]) => `${x * imageDims.w},${y * imageDims.h}`).join(' ')}
-                      fill="none"
-                      stroke="#fbbf24"
-                      strokeWidth={3 / view.scale}
-                      strokeDasharray={`${6 / view.scale} ${4 / view.scale}`}
-                    />
+                    <>
+                      {/* Dark halo so the trace stays visible on light roofs */}
+                      <polyline
+                        points={drawingPoly.map(([x, y]) => `${x * imageDims.w},${y * imageDims.h}`).join(' ')}
+                        fill="none"
+                        stroke="rgba(0,0,0,0.55)"
+                        strokeWidth={8 / view.scale}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <polyline
+                        points={drawingPoly.map(([x, y]) => `${x * imageDims.w},${y * imageDims.h}`).join(' ')}
+                        fill="none"
+                        stroke="#fbbf24"
+                        strokeWidth={4.5 / view.scale}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </>
                   )}
                   {drawingPoly.map(([x, y], i) => (
                     <circle

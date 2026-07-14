@@ -39,6 +39,16 @@ export default function HousePicker({
   const [streetView, setStreetView] = useState<string | null>(null)
   const imgRef = useRef<HTMLImageElement>(null)
 
+  // On project resume the saved house point arrives asynchronously (after this
+  // panel has already mounted). Sync to it so the previously-confirmed house
+  // shows as locked instead of resetting to the tile center.
+  useEffect(() => {
+    if (initialPoint && typeof initialPoint.x === 'number') {
+      setPoint({ x: initialPoint.x, y: initialPoint.y })
+      setConfirmed(true)
+    }
+  }, [initialPoint?.x, initialPoint?.y])   // eslint-disable-line react-hooks/exhaustive-deps
+
   // Pull a street-level photo of the address so users who don't recognize the
   // house from the top-down view can match it. Best-effort — hidden if missing.
   useEffect(() => {
