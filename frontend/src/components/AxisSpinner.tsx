@@ -7,31 +7,25 @@
  */
 export default function AxisSpinner({ size = 44, color = '#3b82f6' }: { size?: number; color?: string }) {
   const s = size
+  // Two 150° arcs that start opposite (forming a ring), swing TOWARD each other,
+  // overlap ("knock"), then swing back apart — repeating. ease-in-out gives the
+  // little deceleration at the meeting point that reads as a knock.
   return (
     <span style={{ display: 'inline-block', width: s, height: s, position: 'relative' }} aria-label="loading">
       <svg viewBox="0 0 50 50" width={s} height={s} style={{ display: 'block' }}>
-        {/* faint full track */}
         <circle cx="25" cy="25" r="20" fill="none" stroke={color} strokeOpacity="0.12" strokeWidth="4" />
-        {/* two 150° arcs, opposite each other, that oscillate toward + away */}
+        {/* single 150° arc each (dash 52.3 of a 125.66 circumference, rest gap) */}
         <circle className="axsp-arc axsp-a" cx="25" cy="25" r="20" fill="none" stroke={color} strokeWidth="4"
-          strokeLinecap="round" strokeDasharray="52.3 10.5" />
+          strokeLinecap="round" strokeDasharray="52.3 73.4" />
         <circle className="axsp-arc axsp-b" cx="25" cy="25" r="20" fill="none" stroke={color} strokeWidth="4"
-          strokeLinecap="round" strokeDasharray="52.3 10.5" />
+          strokeLinecap="round" strokeDasharray="52.3 73.4" />
       </svg>
       <style>{`
         .axsp-arc { transform-origin: 25px 25px; }
-        .axsp-a { animation: axsp-swingA 1.5s ease-in-out infinite; }
-        .axsp-b { animation: axsp-swingB 1.5s ease-in-out infinite; }
-        @keyframes axsp-swingA {
-          0%   { transform: rotate(0deg); }
-          50%  { transform: rotate(160deg); }
-          100% { transform: rotate(0deg); }
-        }
-        @keyframes axsp-swingB {
-          0%   { transform: rotate(180deg); }
-          50%  { transform: rotate(340deg); }
-          100% { transform: rotate(180deg); }
-        }
+        .axsp-a { animation: axsp-a 1.15s ease-in-out infinite alternate; }
+        .axsp-b { animation: axsp-b 1.15s ease-in-out infinite alternate; }
+        @keyframes axsp-a { from { transform: rotate(0deg); }   to { transform: rotate(105deg); } }
+        @keyframes axsp-b { from { transform: rotate(180deg); } to { transform: rotate(105deg); } }
       `}</style>
     </span>
   )

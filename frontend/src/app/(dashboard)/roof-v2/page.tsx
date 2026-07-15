@@ -35,7 +35,6 @@ import ProposalPanel from '@/components/roof-v2/ProposalPanel'
 import ClientPortalPanel from '@/components/roof-v2/ClientPortalPanel'
 import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
-import SolarAssistPanel from '@/components/roof-v2/SolarAssistPanel'
 import HousePicker from '@/components/roof-v2/HousePicker'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 // RoofViewer3D temporarily disabled (geometry rebuild) — re-enable in REPORT step.
@@ -74,7 +73,7 @@ interface ImageryPayload {
   display_mode?: 'original' | 'sharpened'
 }
 
-type Step = 'project' | 'location' | 'imagery' | 'editor' | 'siding' | 'report'
+type Step = 'project' | 'location' | 'imagery' | 'editor' | 'details' | 'siding' | 'report'
 
 // Friendly stepper labels (the Step values stay the same for all the logic).
 const STEP_LABELS: Record<Step, string> = {
@@ -82,6 +81,7 @@ const STEP_LABELS: Record<Step, string> = {
   location: 'Address',
   imagery: 'Locate roof',
   editor: 'Measure roof',
+  details: 'Details & flashing',
   siding: 'Siding',
   report: 'Report',
 }
@@ -472,7 +472,7 @@ export default function RoofV2Page() {
       {/* Stepper — sticky so it stays visible while scrolling the editor.
           Completed steps (before the current one) show a checkmark. */}
       {(() => {
-        const order: Step[] = ['project', 'location', 'imagery', 'editor', 'siding', 'report']
+        const order: Step[] = ['project', 'location', 'imagery', 'editor', 'details', 'siding', 'report']
         const currentIdx = order.indexOf(step)
         return (
           <nav className="sticky top-0 z-20 -mx-6 flex flex-wrap items-center gap-1.5 border-b border-white/10 bg-slate-950/85 px-6 py-2 text-xs backdrop-blur">
@@ -482,6 +482,7 @@ export default function RoofV2Page() {
                 (s === 'location' && !!projectId) ||
                 (s === 'imagery' && !!location) ||
                 (s === 'editor' && !!imagery && imagery.status !== 'unavailable') ||
+                (s === 'details' && !!runId && facets.length > 0) ||
                 (s === 'siding' && !!runId) ||
                 (s === 'report' && !!runId && facets.length > 0)
               const completed = reached && i < currentIdx
@@ -796,116 +797,99 @@ export default function RoofV2Page() {
           />
 
 
-          {/* Guided workflow — recommended top-to-bottom order. The editor above
-              is always your manual canvas; reject any AI suggestion and draw by hand. */}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              onClick={() => setStep('details')}
+              disabled={facets.length === 0}
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+            >Next: details &amp; flashing →</button>
+            <button
+              onClick={() => setStep('report')}
+              disabled={facets.length === 0}
+              className="rounded bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600 disabled:opacity-50"
+            >Skip to report →</button>
+          </div>
+          </>)}
+        </section>
+      )}
+
+      {/* DETAILS step — ground-photo intelligence, penetrations, and flashing.
+          Kept out of the core measure canvas to declutter it; all of this still
+          flows into the PDF report (it's read from the saved run data). */}
+      {step === 'details' && runId && (
+        <section className="space-y-4">
           <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3 text-xs text-blue-200">
-            <strong>Guided steps</strong> — work top to bottom for the best accuracy. The{' '}
-            <strong>editor above is always your manual fallback</strong>: reject any AI suggestion
-            and draw the facet by hand with all the same measurements.
+            <strong>Details &amp; flashing</strong> — fine-tune pitch from ground photos, add chimneys/skylights,
+            and compute flashing. Optional but recommended; everything here lands in your report.
           </div>
 
           <CollapsibleSection
-            title="① Ground photos — start here"
-            subtitle="Reads pitch, chimneys/skylights, dormers, roof shape & materials. Feeds pitch + a count check into auto-detect below — so do this first."
-            badge="step 1"
+            title="Ground-photo intelligence"
+            subtitle="A few phone photos read pitch, chimneys/skylights, dormers, roof shape & materials — then apply the measured pitch to your drawn facets."
+            badge="pitch + features"
             defaultOpen
           >
-          {runId && (
-            <GroundPhotoPanel
-              runId={runId}
-              onApplyPitch={(pitch) => {
-                if (facets.length === 0) return false
-                const updated = facets.map(f => ({ ...f, pitch }))
-                setFacets(updated)
-                setGeometryStamp(s => s + 1)   // force MeasurementsSummary to recompute
-                setEditorSyncRev(r => r + 1)
-                void persistGeometry(updated, edges)
-                return true
-              }}
-              onChimneyAdded={() => setGeometryStamp(s => s + 1)}
-            />
-          )}
+          <GroundPhotoPanel
+            runId={runId}
+            onApplyPitch={(pitch) => {
+              if (facets.length === 0) return false
+              const updated = facets.map(f => ({ ...f, pitch }))
+              setFacets(updated)
+              setGeometryStamp(s => s + 1)
+              setEditorSyncRev(r => r + 1)
+              void persistGeometry(updated, edges)
+              return true
+            }}
+            onChimneyAdded={() => setGeometryStamp(s => s + 1)}
+          />
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="② Auto-detect the roof"
-            subtitle="Google Solar (measured pitch) + AI tracing propose facets. Accept the good ones; reject the rest and draw them by hand in the editor above. The scale check confirms the measurements are trustworthy."
-            badge="step 2"
-            defaultOpen
-          >
-          {runId && imagery?.lat != null && imagery?.lng != null && (
-            <SolarAssistPanel
-              runId={runId}
-              centerLat={imagery.lat}
-              centerLng={imagery.lng}
-              imageWidthPx={imagery.width_px ?? 2048}
-              imageHeightPx={imagery.height_px ?? 1366}
-              feetPerPixel={imagery.feet_per_pixel ?? 0}
-              existingFacetCount={facets.length}
-              onAddFacets={(newFacets) => {
-                const merged = [...facets, ...newFacets]
-                setFacets(merged)
-                const newEdges: typeof edges = newFacets.flatMap(nf =>
-                  nf.polygon.map((_, i) => ({
-                    facetLabel: nf.label,
-                    vertexIndexStart: i,
-                    vertexIndexEnd: (i + 1) % nf.polygon.length,
-                    edgeType: 'unlabeled' as const,
-                    userConfirmed: false,
-                  })),
-                )
-                const mergedEdges = [...edges, ...newEdges]
-                setEdges(mergedEdges)
-                setEditorSyncRev(r => r + 1)
-                void persistGeometry(merged, mergedEdges)
-              }}
-            />
-          )}
-          </CollapsibleSection>
-
-          <CollapsibleSection
-            title="③ Penetrations"
-            subtitle="Add chimneys, skylights, and vents — these drive flashing and the final report. (Edge labels are handled right under the outline above.)"
-            badge="step 3"
+            title="Penetrations"
+            subtitle="Chimneys, skylights, and vents — these drive flashing and the final report."
+            badge="chimneys · vents"
           >
           <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="④ Flashing"
-            subtitle="Roof-to-wall transitions (corroborated by your ground photos) + chimney/skylight flashing, computed from the labeled edges above."
-            badge="step 4"
+            title="Flashing"
+            subtitle="Roof-to-wall transitions + chimney/skylight flashing, computed from your labeled edges."
+            badge="linear ft"
+            defaultOpen
           >
-          {runId && (
-            <WallTransitionPanel
-              runId={runId}
-              facets={facets}
-              edges={edges}
-              imageUrl={imagery?.original_url || imagery?.url}
-              imageWidthPx={imagery?.width_px ?? 2048}
-              imageHeightPx={imagery?.height_px ?? 1366}
-              onApplyEdges={(updated) => {
-                setEdges(updated)
-                setEditorSyncRev(r => r + 1)
-                void persistGeometry(facets, updated)
-              }}
-            />
-          )}
-          {runId && <FlashingPanel runId={runId} />}
+          <WallTransitionPanel
+            runId={runId}
+            facets={facets}
+            edges={edges}
+            imageUrl={imagery?.original_url || imagery?.url}
+            imageWidthPx={imagery?.width_px ?? 2048}
+            imageHeightPx={imagery?.height_px ?? 1366}
+            onApplyEdges={(updated) => {
+              setEdges(updated)
+              setEditorSyncRev(r => r + 1)
+              void persistGeometry(facets, updated)
+            }}
+          />
+          <FlashingPanel runId={runId} />
           </CollapsibleSection>
-          {runId && <PreReportChecklist runId={runId} facets={facets} edges={edges} />}
+
+          <PreReportChecklist runId={runId} facets={facets} edges={edges} />
           <div className="flex flex-wrap gap-2">
             <button
+              onClick={() => setStep('editor')}
+              className="rounded bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600"
+            >← Back to measure</button>
+            <button
               onClick={() => setStep('siding')}
-              className="rounded bg-slate-700 px-3 py-1.5 text-xs text-slate-100 hover:bg-slate-600"
+              className="rounded bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600"
             >Skip to siding →</button>
             <button
               onClick={() => setStep('report')}
               disabled={facets.length === 0}
-              className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
             >Continue to report →</button>
           </div>
-          </>)}
         </section>
       )}
 

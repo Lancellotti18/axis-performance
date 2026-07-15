@@ -239,29 +239,33 @@ export default function EdgeReviewModal({
               </div>
             )}
 
-            <div className="mt-3 text-[10px] uppercase tracking-wide text-slate-400">
-              Correct? Pick the right type (1-7):
-            </div>
-            <div className="mt-1 grid grid-cols-2 gap-1">
-              {REVIEW_TYPES.map((t, i) => {
-                const selected = chosenType === t.type
-                return (
-                  <button
-                    key={t.type}
-                    onClick={() => setChoice(c => ({ ...c, [idx]: t.type }))}
-                    title={`${i + 1} · ${t.hint}`}
-                    className={`flex items-center gap-1.5 rounded px-2 py-1.5 text-left text-xs transition ${
-                      selected ? 'ring-2' : 'hover:bg-slate-800'
-                    }`}
-                    style={selected
-                      ? { background: `${t.color}22`, color: '#fff', boxShadow: `0 0 0 2px ${t.color}` }
-                      : { color: '#cbd5e1' }}
-                  >
-                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: t.color }} />
-                    {t.label}
-                  </button>
-                )
-              })}
+            <div className="mt-3 rounded-lg border border-amber-400/25 bg-amber-500/[0.07] p-2">
+              <div className="text-[11px] font-semibold text-amber-200">
+                👆 Wrong? Tap the correct type — it fixes instantly
+              </div>
+              <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                {REVIEW_TYPES.map((t, i) => {
+                  const selected = chosenType === t.type
+                  const isCorrection = selected && t.type !== current.suggested_edge_type
+                  return (
+                    <button
+                      key={t.type}
+                      onClick={() => setChoice(c => ({ ...c, [idx]: t.type }))}
+                      title={`${i + 1} · ${t.hint}`}
+                      className={`flex items-center gap-1.5 rounded-md px-2.5 py-2 text-left text-xs font-medium transition ${
+                        selected ? 'ring-2' : 'bg-slate-800/60 hover:bg-slate-800'
+                      }`}
+                      style={selected
+                        ? { background: `${t.color}26`, color: '#fff', boxShadow: `0 0 0 2px ${t.color}` }
+                        : { color: '#cbd5e1' }}
+                    >
+                      <span className="inline-block h-3 w-3 rounded-full" style={{ background: t.color }} />
+                      {t.label}
+                      {isCorrection && <span className="ml-auto text-[9px] font-bold text-amber-300">FIX</span>}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>

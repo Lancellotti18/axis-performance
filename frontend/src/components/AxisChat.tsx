@@ -116,21 +116,23 @@ export default function AxisChat() {
 
   return (
     <>
-      {/* Floating launcher */}
+      {/* Floating launcher — compact icon-only FAB, dimmed until hover so it
+          stays out of the way of content action buttons. */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
           aria-label="Ask Axis"
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 h-12 rounded-full text-white font-bold text-sm shadow-xl transition-all hover:scale-105"
+          title="Ask Axis"
+          className="group fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full text-white opacity-70 shadow-lg transition-all hover:w-32 hover:opacity-100"
           style={{
             background: 'linear-gradient(135deg, #2563eb 0%, #1e3a5f 100%)',
-            boxShadow: '0 6px 24px rgba(37,99,235,0.40), 0 0 0 1px rgba(127,201,244,0.30)',
+            boxShadow: '0 4px 18px rgba(37,99,235,0.35), 0 0 0 1px rgba(127,201,244,0.25)',
           }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
           </svg>
-          <span>Ask Axis</span>
+          <span className="ml-1.5 hidden whitespace-nowrap text-sm font-bold group-hover:inline">Ask Axis</span>
         </button>
       )}
 
