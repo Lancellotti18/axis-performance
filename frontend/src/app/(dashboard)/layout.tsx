@@ -24,7 +24,8 @@ const NAV_GROUPS: { title: string; items: { href: string; label: string; icon: (
     title: 'Tools',
     items: [
       { href: '/roof-v2',         label: 'Roof Report',         icon: IconAerial },
-      { href: '/exterior',        label: 'Exterior Module',     icon: IconAerial },
+      // Exterior Measurement Module hidden until it's past MVP — kept routable.
+      // { href: '/exterior',     label: 'Exterior Module',     icon: IconAerial },
       { href: '/material-check',  label: 'Material Compliance', icon: IconMaterialCheck },
       { href: '/home-visualizer', label: 'Home Visualizer',     icon: IconVisualizer },
       { href: '/storm-report',    label: 'Storm Risk Report',   icon: IconStorm },

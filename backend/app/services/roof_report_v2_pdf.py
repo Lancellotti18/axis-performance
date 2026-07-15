@@ -261,30 +261,54 @@ def _section_1_executive(
     if not full_address:
         full_address = project.get("name") or "Property"
 
-    # White-label header — the contractor's brand front and center; Axis is
-    # credited in the footer line of the methodology section instead.
+    # Branded header: the contractor's brand on the LEFT (logo bigger + name),
+    # "Powered by Axis" credited on the RIGHT — both marks visible, not a tiny
+    # corner logo with Axis buried in a footnote.
     c = contractor or {}
     company = c.get("company_name") or "Axis Performance"
     logo_bytes = c.get("logo_bytes")
+    brand_hex = f"#{BRAND.hexval()[2:]}"
+    muted_hex = f"#{MUTED.hexval()[2:]}"
+
+    left_stack: list = []
     if logo_bytes:
         try:
             img = Image(io.BytesIO(logo_bytes))
             ratio = img.imageWidth / max(1, img.imageHeight)
-            img.drawHeight = 0.55 * inch
-            img.drawWidth = min(2.6 * inch, 0.55 * inch * ratio)
+            img.drawHeight = 0.85 * inch
+            img.drawWidth = min(3.3 * inch, 0.85 * inch * ratio)
             img.hAlign = "LEFT"
-            flow.append(img)
-            flow.append(Spacer(1, 4))
+            left_stack.append(img)
+            left_stack.append(Spacer(1, 5))
         except Exception:
             pass
-    flow.append(Paragraph(f"{company} — Roof Report", styles["title"]))
-    flow.append(Paragraph(full_address, styles["subtitle"]))
+    left_stack.append(Paragraph(company, styles["title"]))
     prepared_bits = [b for b in [
         f"License {c['license_number']}" if c.get("license_number") else None,
         c.get("phone"), c.get("email"),
     ] if b]
     if prepared_bits:
-        flow.append(Paragraph(" · ".join(prepared_bits), styles["muted"]))
+        left_stack.append(Paragraph(" · ".join(prepared_bits), styles["muted"]))
+
+    axis_mark = Paragraph(
+        f"<para align='right'><font size=7 color='{muted_hex}'>POWERED BY</font><br/>"
+        f"<font size=16 color='{brand_hex}'><b>Axis</b></font>"
+        f"<font size=16 color='{muted_hex}'> Performance</font><br/>"
+        f"<font size=7 color='{muted_hex}'>Satellite roof intelligence</font></para>",
+        styles["muted"],
+    )
+    header = Table([[left_stack, axis_mark]], colWidths=[4.4 * inch, 2.5 * inch])
+    header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    flow.append(header)
+    flow.append(Spacer(1, 8))
+    flow.append(Paragraph("Roof Measurement Report", styles["subtitle"]))
+    flow.append(Paragraph(full_address, styles["muted"]))
 
     # Hero cards
     conf_label, conf_color = _confidence_bucket(run.get("confidence") or 0)
