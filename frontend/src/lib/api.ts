@@ -613,6 +613,10 @@ export const api = {
       apiRequest<{ ok: boolean; proposed: string[]; texted: boolean }>(`/api/v1/appointments/${id}/propose`, {
         method: 'POST', body: JSON.stringify({ dates, note }),
       }),
+    remove: (id: string) =>
+      apiRequest<{ ok: boolean }>(`/api/v1/appointments/${id}`, { method: 'DELETE' }),
+    clearDone: () =>
+      apiRequest<{ ok: boolean; removed: number }>(`/api/v1/appointments/clear-done`, { method: 'POST' }),
   },
   // ── Growth engine: instant quote widget + lead inbox ─────────────────────
   instantQuote: {
@@ -1666,15 +1670,17 @@ export const api = {
       apiRequest<Record<string, unknown>>(`/api/v1/model3d/${projectId}/model3d`),
   },
   visualizer: {
-    generate: (file: File, description: string, city: string, state: string) => {
+    generate: async (file: File, description: string, city: string, state: string) => {
       const form = new FormData()
       form.append('file', file)
       form.append('description', description)
       form.append('city', city)
       form.append('state', state)
+      const session = await getCachedSession()
+      const token = session?.access_token
       return fetchWithTimeout(
         `${API_BASE}/api/v1/visualizer/generate`,
-        { method: 'POST', body: form },
+        { method: 'POST', body: form, headers: token ? { Authorization: `Bearer ${token}` } : {} },
         180000,  // 3-minute timeout — image generation can be slow on first run
       ).then(async res => {
         if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
@@ -1683,16 +1689,19 @@ export const api = {
     },
   },
   materialCheck: {
-    uploadFile: (file: File, city: string, state: string, county: string, projectType: string) => {
+    uploadFile: async (file: File, city: string, state: string, county: string, projectType: string) => {
       const form = new FormData()
       form.append('file', file)
       form.append('city', city)
       form.append('state', state)
       form.append('county', county)
       form.append('project_type', projectType)
+      const session = await getCachedSession()
+      const token = session?.access_token
       return fetch(`${API_BASE}/api/v1/material-check/upload`, {
         method: 'POST',
         body: form,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         // No Content-Type header — browser sets multipart boundary automatically
       }).then(async res => {
         if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }

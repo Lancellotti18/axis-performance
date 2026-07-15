@@ -795,7 +795,7 @@ export default function CRMPage() {
           <div className="flex items-center justify-center h-full text-slate-400">Loading…</div>
         ) : viewMode === 'kanban' ? (
           <div className="h-full overflow-x-auto">
-            <div className="flex gap-4 h-full" style={{ minWidth: `${STAGES.length * 336}px` }}>
+            <div className="flex gap-4 h-full" style={{ minWidth: `${STAGES.length * 400}px` }}>
               {STAGES.map(stage => {
                 const stageLeads = filtered.filter(l => l.stage === stage.key)
                 const stageValue = stageLeads.reduce((s, l) => s + (l.estimated_value || 0), 0)
@@ -803,7 +803,7 @@ export default function CRMPage() {
                 return (
                   <div key={stage.key}
                     className={`flex flex-col rounded-2xl flex-shrink-0 transition-all ${isOver ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
-                    style={{ width: 316, background: isOver ? 'rgba(255,255,255,0.4)' : 'rgba(248,250,252,0.8)', border: '1px solid rgba(255,255,255,0.10)' }}
+                    style={{ width: 380, background: isOver ? 'rgba(255,255,255,0.4)' : 'rgba(248,250,252,0.8)', border: '1px solid rgba(255,255,255,0.10)' }}
                     onDragOver={e => handleDragOver(e, stage.key)}
                     onDrop={e => handleDrop(e, stage.key)}
                     onDragLeave={() => setDragOverStage(null)}

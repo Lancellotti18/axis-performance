@@ -147,7 +147,7 @@ export default function SchedulePage() {
                     } ${inMonth ? '' : 'opacity-35'}`}>
                     <span className={`text-sm font-bold ${isToday ? 'flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white' : 'text-slate-300'}`}>{d.getDate()}</span>
                     <div className="mt-1 flex flex-1 flex-col gap-1">
-                      {active.slice(0, 2).map(a => (
+                      {active.map(a => (
                         <div key={a.id} className={`rounded-md px-1.5 py-1 ring-1 ${STATUS_STYLE[a.status].chip}`}>
                           <div className="flex items-center gap-1">
                             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_STYLE[a.status].dot}`} />
@@ -156,7 +156,6 @@ export default function SchedulePage() {
                           {a.address && <div className="truncate text-[10px] opacity-80">{a.address}</div>}
                         </div>
                       ))}
-                      {active.length > 2 && <span className="pl-1 text-[10px] text-slate-500">+{active.length - 2} more</span>}
                     </div>
                   </button>
                 )

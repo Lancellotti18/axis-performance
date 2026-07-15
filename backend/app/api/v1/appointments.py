@@ -224,10 +224,13 @@ async def update_appointment(
         except Exception:
             pass
 
-    # Auto-confirm text: when the contractor confirms, the homeowner gets an
-    # instant "you're confirmed" SMS (env-gated, best-effort — never blocks).
+    # Auto-text the homeowner on both confirm and decline (env-gated,
+    # best-effort — never blocks). Confirm → "you're confirmed"; cancel →
+    # "we can't make it, let's find another time".
     if payload.status == "confirmed":
         _notify_homeowner(db, user["id"], appt, kind="confirmed")
+    elif payload.status == "cancelled":
+        _notify_homeowner(db, user["id"], appt, kind="declined")
 
     return appt
 
@@ -253,6 +256,10 @@ def _notify_homeowner(db, user_id: str, appt: dict, *, kind: str, proposed: list
             win = "" if appt.get("time_window") in (None, "anytime") else f" ({appt['time_window']})"
             body = (f"Hi {first}, your free roof inspection with {company} is CONFIRMED for {d}{win}. "
                     f"We'll see you then!" + (f" Questions? Call {cphone}." if cphone else ""))
+        elif kind == "declined":
+            body = (f"Hi {first}, unfortunately {company} can't make your requested roof inspection time. "
+                    + (f"Please call {cphone} to find a time that works — we'd still love to help."
+                       if cphone else "We'll reach out with other times that work."))
         elif kind == "propose" and proposed:
             days = ", ".join(date.fromisoformat(p).strftime("%a %b %-d") for p in proposed[:4])
             body = (f"Hi {first}, {company} would like to schedule your free roof inspection. "
@@ -309,3 +316,37 @@ async def propose_alternative_dates(
     appt = res.data[0] if res.data else existing.data[0]
     _notify_homeowner(db, user["id"], appt, kind="propose", proposed=valid)
     return {"ok": True, "proposed": valid, "texted": bool(appt.get("homeowner_phone"))}
+
+
+@router.delete("/{appointment_id}")
+async def delete_appointment(appointment_id: str, user: dict = Depends(require_user)) -> dict:
+    """Remove a single appointment from the calendar (owner only)."""
+    db = get_supabase()
+    db.table("inspection_appointments").delete().eq("id", appointment_id).eq("user_id", user["id"]).execute()
+    return {"ok": True}
+
+
+@router.post("/clear-done")
+async def clear_finished_appointments(user: dict = Depends(require_user)) -> dict:
+    """Declutter: delete this contractor's finished appointments (completed,
+    cancelled, no-show) plus any past-dated ones still lingering."""
+    db = get_supabase()
+    removed = 0
+    try:
+        r1 = (
+            db.table("inspection_appointments").delete()
+            .eq("user_id", user["id"])
+            .in_("status", ["completed", "cancelled", "no_show"]).execute()
+        )
+        removed += len(r1.data or [])
+        # Past-dated appointments that were never actioned.
+        r2 = (
+            db.table("inspection_appointments").delete()
+            .eq("user_id", user["id"])
+            .lt("preferred_date", date.today().isoformat()).execute()
+        )
+        removed += len(r2.data or [])
+    except Exception as e:
+        logger.warning("clear-done failed: %s", e)
+        raise HTTPException(status_code=500, detail="Could not clear appointments.")
+    return {"ok": True, "removed": removed}

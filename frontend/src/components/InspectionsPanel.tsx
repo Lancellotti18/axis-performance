@@ -46,9 +46,29 @@ export default function InspectionsPanel() {
   const setStatus = useCallback((id: string, to: AppointmentStatus) => {
     setBusyId(id)
     api.appointments.update(id, { status: to })
-      .then(updated => { setAppts(prev => (prev || []).map(a => a.id === id ? updated : a)); toast.success(`Marked ${STATUS_STYLE[to].label.toLowerCase()}`) })
+      .then(updated => {
+        setAppts(prev => (prev || []).map(a => a.id === id ? updated : a))
+        toast.success(to === 'confirmed' ? 'Confirmed — homeowner texted' : to === 'cancelled' ? 'Declined — homeowner texted' : `Marked ${STATUS_STYLE[to].label.toLowerCase()}`)
+      })
       .catch(e => toast.error(e instanceof Error ? e.message : 'Could not update'))
       .finally(() => setBusyId(null))
+  }, [])
+
+  const removeOne = useCallback((id: string) => {
+    setBusyId(id)
+    api.appointments.remove(id)
+      .then(() => setAppts(prev => (prev || []).filter(a => a.id !== id)))
+      .catch(e => toast.error(e instanceof Error ? e.message : 'Could not remove'))
+      .finally(() => setBusyId(null))
+  }, [])
+
+  const clearDone = useCallback(() => {
+    api.appointments.clearDone()
+      .then(r => {
+        api.appointments.list().then(res => setAppts(res.appointments)).catch(() => {})
+        toast.success(r.removed ? `Cleared ${r.removed} old inspection${r.removed === 1 ? '' : 's'}` : 'Nothing to clear')
+      })
+      .catch(e => toast.error(e instanceof Error ? e.message : 'Could not clear'))
   }, [])
 
   if (!appts || appts.length === 0) return null
@@ -56,6 +76,7 @@ export default function InspectionsPanel() {
   const today = new Date().toISOString().slice(0, 10)
   const active = appts.filter(a => a.status !== 'cancelled' && a.status !== 'completed' && a.status !== 'no_show' && a.preferred_date >= today)
   const upcomingCount = active.length
+  const hasDone = appts.some(a => a.status === 'cancelled' || a.status === 'completed' || a.status === 'no_show' || a.preferred_date < today)
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
@@ -66,7 +87,12 @@ export default function InspectionsPanel() {
             <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[11px] font-semibold text-blue-300 ring-1 ring-blue-500/30">{upcomingCount} upcoming</span>
           )}
         </div>
-        <span className="text-[11px] text-slate-500">Booked from homeowner reports</span>
+        {hasDone && (
+          <button onClick={clearDone}
+            className="rounded-lg bg-white/5 px-2.5 py-1 text-[11px] font-medium text-slate-300 ring-1 ring-white/10 hover:bg-white/10">
+            🧹 Clear old
+          </button>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -98,6 +124,10 @@ export default function InspectionsPanel() {
                     {act.label}
                   </button>
                 ))}
+                <button onClick={() => removeOne(a.id)} disabled={busyId === a.id} title="Remove from calendar"
+                  className="rounded-lg bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-white/10 transition hover:bg-rose-500/15 hover:text-rose-300 disabled:opacity-40">
+                  ✕
+                </button>
               </div>
             </div>
           )
