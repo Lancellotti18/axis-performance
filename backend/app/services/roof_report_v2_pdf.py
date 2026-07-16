@@ -270,25 +270,31 @@ def _section_1_executive(
     brand_hex = f"#{BRAND.hexval()[2:]}"
     muted_hex = f"#{MUTED.hexval()[2:]}"
 
+    # Left-aligned clone of the title so the company name lines up under the
+    # logo (the base "title" style inherits center alignment).
+    from reportlab.lib.styles import ParagraphStyle
+    title_left = ParagraphStyle("TitleLeft", parent=styles["title"], alignment=0)
+    muted_left = ParagraphStyle("MutedLeft", parent=styles["muted"], alignment=0)
+
     left_stack: list = []
     if logo_bytes:
         try:
             img = Image(io.BytesIO(logo_bytes))
             ratio = img.imageWidth / max(1, img.imageHeight)
-            img.drawHeight = 0.85 * inch
-            img.drawWidth = min(3.3 * inch, 0.85 * inch * ratio)
+            img.drawHeight = 1.1 * inch
+            img.drawWidth = min(3.6 * inch, 1.1 * inch * ratio)
             img.hAlign = "LEFT"
             left_stack.append(img)
-            left_stack.append(Spacer(1, 5))
+            left_stack.append(Spacer(1, 6))
         except Exception:
             pass
-    left_stack.append(Paragraph(company, styles["title"]))
+    left_stack.append(Paragraph(company, title_left))
     prepared_bits = [b for b in [
         f"License {c['license_number']}" if c.get("license_number") else None,
         c.get("phone"), c.get("email"),
     ] if b]
     if prepared_bits:
-        left_stack.append(Paragraph(" · ".join(prepared_bits), styles["muted"]))
+        left_stack.append(Paragraph(" · ".join(prepared_bits), muted_left))
 
     axis_mark = Paragraph(
         f"<para align='right'><font size=7 color='{muted_hex}'>POWERED BY</font><br/>"

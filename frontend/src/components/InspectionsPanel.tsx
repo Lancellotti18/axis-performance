@@ -54,10 +54,12 @@ export default function InspectionsPanel() {
       .finally(() => setBusyId(null))
   }, [])
 
-  const removeOne = useCallback((id: string) => {
-    setBusyId(id)
-    api.appointments.remove(id)
-      .then(() => setAppts(prev => (prev || []).filter(a => a.id !== id)))
+  const removeOne = useCallback((a: Appointment) => {
+    const who = a.homeowner_name || 'this homeowner'
+    if (!window.confirm(`Delete the inspection for ${who}?\n\nThis removes only the appointment — the lead/customer stays in your CRM. This can't be undone.`)) return
+    setBusyId(a.id)
+    api.appointments.remove(a.id)
+      .then(() => setAppts(prev => (prev || []).filter(x => x.id !== a.id)))
       .catch(e => toast.error(e instanceof Error ? e.message : 'Could not remove'))
       .finally(() => setBusyId(null))
   }, [])
@@ -124,7 +126,7 @@ export default function InspectionsPanel() {
                     {act.label}
                   </button>
                 ))}
-                <button onClick={() => removeOne(a.id)} disabled={busyId === a.id} title="Remove from calendar"
+                <button onClick={() => removeOne(a)} disabled={busyId === a.id} title="Delete this inspection (customer stays in your CRM)"
                   className="rounded-lg bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-white/10 transition hover:bg-rose-500/15 hover:text-rose-300 disabled:opacity-40">
                   ✕
                 </button>

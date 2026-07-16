@@ -700,11 +700,24 @@ Thank you for your time.`
       </div>
 
       {!hasBlueprint ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-5xl mb-4"></div>
-            <div className="text-slate-200 font-semibold mb-2">No blueprint uploaded</div>
-            <Link href="/projects/new" className="text-blue-600 text-sm hover:text-blue-800">Upload a blueprint →</Link>
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="w-full max-w-lg text-center">
+            <div className="text-slate-100 font-semibold text-lg mb-1">What do you want to do with this project?</div>
+            <div className="text-slate-400 text-sm mb-6">Roofing jobs don&apos;t need a blueprint — measure the roof from satellite.</div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Link href="/roof-v2"
+                className="rounded-2xl border border-blue-400/30 bg-blue-500/10 p-5 text-left transition hover:bg-blue-500/15">
+                <div className="text-2xl mb-1">📐</div>
+                <div className="font-semibold text-white">Measure the roof</div>
+                <div className="mt-0.5 text-xs text-slate-400">Satellite measurement, materials, and a branded PDF report.</div>
+              </Link>
+              <Link href="/projects/new"
+                className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left transition hover:bg-white/[0.07]">
+                <div className="text-2xl mb-1">📄</div>
+                <div className="font-semibold text-white">Upload a blueprint</div>
+                <div className="mt-0.5 text-xs text-slate-400">For blueprint takeoff, estimating, and permit work.</div>
+              </Link>
+            </div>
           </div>
         </div>
       ) : isProcessing ? (

@@ -707,6 +707,9 @@ class PutFacetsRequest(BaseModel):
     lat: float
     lng: float
     facets: list[FacetIn]
+    # The exact tile the facets were traced on. Persisted so resume reloads the
+    # SAME tile — otherwise the outline lands in the wrong place on the roof.
+    satellite_image_url: Optional[str] = None
 
 
 @router.put("/runs/{run_id}/facets")
@@ -757,13 +760,17 @@ async def put_facets(
     else:
         new_facets = []
 
-    # Cache image params on the run so we can recompute later without the client.
-    db.table("roof_measurement_runs").update({
+    # Cache image params on the run so we can recompute later without the client
+    # AND so resume reloads the exact tile these facets were drawn on.
+    run_update = {
         "facet_count": len(new_facets),
         "satellite_zoom": req.zoom,
         "satellite_lat": req.lat,
         "satellite_lng": req.lng,
-    }).eq("id", run_id).execute()
+    }
+    if req.satellite_image_url:
+        run_update["satellite_image_url"] = req.satellite_image_url
+    db.table("roof_measurement_runs").update(run_update).eq("id", run_id).execute()
 
     return {"facets": new_facets, "count": len(new_facets)}
 

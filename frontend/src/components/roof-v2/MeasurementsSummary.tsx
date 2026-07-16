@@ -500,6 +500,13 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                             </div>
                           </div>
                         )}
+                        {/* Always offer direct big-box search — Home Depot AND Lowe's —
+                            even when a live product page wasn't matched. */}
+                        <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-white/5 pt-2 text-[11px] text-slate-400">
+                          <span>Search directly:</span>
+                          <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer" className="font-semibold text-orange-300 hover:underline">Home Depot ↗</a>
+                          <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer" className="font-semibold text-blue-300 hover:underline">Lowe&apos;s ↗</a>
+                        </div>
                       </td>
                     </tr>
                   )}

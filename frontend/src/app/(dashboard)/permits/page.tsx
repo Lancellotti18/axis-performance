@@ -77,12 +77,12 @@ export default function PermitsPage() {
               <div className="h-10 bg-white/[0.06] rounded-xl animate-pulse" />
             ) : projects.length === 0 ? (
               <div className="text-center py-6">
-                <p className="text-slate-500 text-sm mb-3">No projects yet.</p>
+                <p className="text-slate-500 text-sm mb-3">No projects yet. Measure a roof or upload a blueprint to get started.</p>
                 <button
                   onClick={() => router.push('/projects')}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-all"
                 >
-                  Upload a blueprint first →
+                  Go to Projects →
                 </button>
               </div>
             ) : (

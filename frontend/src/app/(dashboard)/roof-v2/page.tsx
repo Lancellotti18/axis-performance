@@ -16,9 +16,8 @@
  * The single contractor-facing roof measurement + report workflow
  * (the legacy /aerial-report v1 was removed).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { getUser } from '@/lib/auth'
 import LocationPicker, { type LocationSelected } from '@/components/roof-v2/LocationPicker'
@@ -244,42 +243,19 @@ export default function RoofV2Page() {
   // the user immediately. Sharpening is OPT-IN via a button — the user
   // reported it wasn't adding visible value, so we don't run it automatically.
 
-  // Auto-center: ask Gemini for the subject building's bbox, then re-fetch the
-  // tile centered + zoomed on the roof. One-shot, best-effort — failures just
-  // leave the geocoded framing in place. Also exposed as a manual "Center on
-  // house" button for when the contractor wants to re-run it.
-  const [, setAutoCentering] = useState(false)   // kept for background auto-frame; manual button removed
-  const autoCenterAttempted = useRef(false)
-  const autoCenterOnHouse = useCallback(async (loc: LocationSelected, manual = false) => {
-    if (!loc || (loc.lat === 0 && loc.lng === 0)) return
-    setAutoCentering(true)
-    try {
-      // Detect at a WIDE zoom (20) so the whole building + surroundings are in
-      // frame — at z22 the roof fills the tile and there's nothing to locate
-      // against, so detection silently no-op'd ("button does nothing").
-      const det = await api.roofing.v2.detectBuilding(loc.lat, loc.lng, 20, 2048, 1366)
-      if (det.found && det.recenter) {
-        const newLoc: LocationSelected = { ...loc, lat: det.recenter.lat, lng: det.recenter.lng }
-        setLocation(newLoc)
-        const zoom = det.suggested_zoom ?? 21
-        const health = await api.roofing.v2.imageryHealth(newLoc.lat, newLoc.lng, zoom, 2048, 1366) as ImageryPayload
-        setImagery({ ...health, original_url: health.url, url: health.url, display_mode: 'original' })
-        if (manual) toast.success('Centered + zoomed on the house')
-      } else if (manual) {
-        toast('Couldn’t find the building automatically — keeping the current view.', { icon: '🛈' })
-      }
-    } catch (err) {
-      console.warn('[axis] auto-center failed (keeping geocoded framing):', err)
-      if (manual) toast.error('Auto-center failed — keeping the current view.')
-    } finally {
-      setAutoCentering(false)
-    }
-  }, [])
-
   const onLocationSelected = useCallback(async (loc: LocationSelected) => {
     setLocation(loc)
     setStep('imagery')
-    autoCenterAttempted.current = false
+    // Persist the validated address onto the project so the Permits and Report
+    // tabs can resolve the county without re-asking. Best-effort — a roofing
+    // project otherwise carries only a name, which blocks the permit lookup.
+    if (projectId && loc.city && loc.state) {
+      api.projects.saveLocation(projectId, {
+        city: loc.city,
+        region: `US-${loc.state}`,
+        zip_code: loc.zip,
+      }).catch(() => {})
+    }
     if (loc.lat === 0 && loc.lng === 0) {
       setImagery({ status: 'unavailable', providers_tried: [], warnings: ['Manual address entry — no coordinates available for imagery.'], health_score: 0 })
       return
@@ -291,19 +267,20 @@ export default function RoofV2Page() {
       // native pixels at the same ~38m x 25m ground area — real native
       // resolution, not AI hallucination. Backend falls back z22→z21→z20 if
       // the provider lacks coverage at that location.
+      //
+      // NOTE: no background auto-recenter. It called the (now-retired) building
+      // auto-detect AND could swap the tile out from under a run mid-draw — so
+      // the saved tile no longer matched the facets, which is exactly the
+      // "outline lands in the wrong spot on resume" bug. The homeowner taps
+      // their house in the confirm step instead.
       const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22, 2048, 1366) as ImageryPayload
       setImagery({ ...health, original_url: health.url, display_mode: 'original' })
       setBusy(false)
-      // Auto-center on the roof once, in the background, after first paint.
-      if (!autoCenterAttempted.current && health.status !== 'unavailable') {
-        autoCenterAttempted.current = true
-        void autoCenterOnHouse(loc)
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Imagery health check failed')
       setBusy(false)
     }
-  }, [autoCenterOnHouse])
+  }, [projectId])
 
   // Create a measurement run + advance to editor. Heavily instrumented so we
   // can see EXACTLY what happens on each click and where it gets stuck if it
@@ -404,6 +381,8 @@ export default function RoofV2Page() {
         zoom: imagery.zoom ?? 20,
         lat,
         lng,
+        // Pin the exact tile these facets were drawn on so resume reloads it.
+        satellite_image_url: imagery.original_url || imagery.url,
         facets: newFacets.map(f => ({
           facet_label: f.label,
           polygon: f.polygon,

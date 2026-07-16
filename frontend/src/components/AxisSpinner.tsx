@@ -22,10 +22,12 @@ export default function AxisSpinner({ size = 44, color = '#3b82f6' }: { size?: n
       </svg>
       <style>{`
         .axsp-arc { transform-origin: 25px 25px; }
-        .axsp-a { animation: axsp-a 1.15s ease-in-out infinite alternate; }
-        .axsp-b { animation: axsp-b 1.15s ease-in-out infinite alternate; }
-        @keyframes axsp-a { from { transform: rotate(0deg); }   to { transform: rotate(105deg); } }
-        @keyframes axsp-b { from { transform: rotate(180deg); } to { transform: rotate(105deg); } }
+        .axsp-a { animation: axsp-a 1.25s ease-in-out infinite alternate; }
+        .axsp-b { animation: axsp-b 1.25s ease-in-out infinite alternate; }
+        /* Start opposite (a full ring), each swings ~110° toward the other,
+           overlap ~40° ("bump"), then ease back apart. */
+        @keyframes axsp-a { from { transform: rotate(0deg); }   to { transform: rotate(110deg); } }
+        @keyframes axsp-b { from { transform: rotate(180deg); } to { transform: rotate(70deg); } }
       `}</style>
     </span>
   )

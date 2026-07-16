@@ -349,6 +349,13 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ name }),
       }),
+    // Persist a validated address on the project so downstream tools (permits,
+    // reports) have the city/state/zip — roofing projects otherwise carry only a name.
+    saveLocation: (id: string, loc: { city?: string; region?: string; zip_code?: string }) =>
+      apiRequest<Project>(`/api/v1/projects/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(loc),
+      }),
     delete: (id: string) =>
       apiRequest<{ ok: boolean }>(`/api/v1/projects/${id}`, { method: 'DELETE' }),
     archive: (id: string) =>
@@ -1029,6 +1036,7 @@ export const api = {
         zoom: number
         lat: number
         lng: number
+        satellite_image_url?: string
         facets: Array<{
           facet_label: string
           polygon: [number, number][]
