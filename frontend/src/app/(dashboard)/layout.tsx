@@ -17,7 +17,9 @@ const NAV_GROUPS: { title: string; items: { href: string; label: string; icon: (
     items: [
       { href: '/dashboard',    label: 'Dashboard',        icon: IconDashboard },
       { href: '/projects',     label: 'Projects',         icon: IconProjects },
-      { href: '/projects/new', label: 'Upload Blueprint', icon: IconUpload },
+      // Blueprint upload hidden — Axis is roofing-first (roofers measure roofs,
+      // not architectural PDFs). Route + code kept; restore this line to re-enable.
+      // { href: '/projects/new', label: 'Upload Blueprint', icon: IconUpload },
     ],
   },
   {
@@ -27,7 +29,7 @@ const NAV_GROUPS: { title: string; items: { href: string; label: string; icon: (
       // Exterior Measurement Module hidden until it's past MVP — kept routable.
       // { href: '/exterior',     label: 'Exterior Module',     icon: IconAerial },
       { href: '/material-check',  label: 'Material Compliance', icon: IconMaterialCheck },
-      { href: '/home-visualizer', label: 'Home Visualizer',     icon: IconVisualizer },
+      { href: '/home-visualizer', label: 'Roof Visualizer',     icon: IconVisualizer },
       { href: '/storm-report',    label: 'Storm Risk Report',   icon: IconStorm },
       { href: '/training-data',   label: 'Training Data',       icon: IconReports },
     ],

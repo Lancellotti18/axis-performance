@@ -451,7 +451,9 @@ export default function RoofV2Page() {
       {/* Stepper — sticky so it stays visible while scrolling the editor.
           Completed steps (before the current one) show a checkmark. */}
       {(() => {
-        const order: Step[] = ['project', 'location', 'imagery', 'editor', 'details', 'siding', 'report']
+        // 'siding' intentionally omitted — off-mission for a pure roofer.
+        // The step block + tool remain in the code; drop it back in here to re-enable.
+        const order: Step[] = ['project', 'location', 'imagery', 'editor', 'details', 'report']
         const currentIdx = order.indexOf(step)
         return (
           <nav className="sticky top-0 z-20 -mx-6 flex flex-wrap items-center gap-1.5 border-b border-white/10 bg-slate-950/85 px-6 py-2 text-xs backdrop-blur">
@@ -662,7 +664,7 @@ export default function RoofV2Page() {
 
           {/* Sub-stepper — one satellite image at a time (confirm → scale → draw). */}
           <div className="flex items-center gap-1.5 text-xs">
-            {([['confirm', '1. Confirm house'], ['scale', '2. Check scale'], ['draw', '3. Draw roof']] as const).map(([k, label], i) => {
+            {([['confirm', '1. Confirm house'], ['scale', '2. Check scale (optional)'], ['draw', '3. Draw roof']] as const).map(([k, label], i) => {
               const reached = k === 'confirm' || (k === 'scale' && subjectPoint != null) || k === 'draw'
               return (
                 <span key={k} className="flex items-center gap-1.5">
@@ -691,9 +693,14 @@ export default function RoofV2Page() {
                 initialPoint={subjectPoint}
                 onConfirmed={(pt) => { setSubjectPoint(pt) }}
               />
-              <div className="flex justify-end">
+              {/* Scale is auto-derived from the tile's zoom/latitude and is right
+                  the vast majority of the time — so drawing is the primary path.
+                  "Check scale" stays one tap away for when a number looks off. */}
+              <div className="flex items-center justify-end gap-2">
                 <button onClick={() => setEditorSub('scale')}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Next: check scale &rarr;</button>
+                  className="rounded-md bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600">Check scale (optional)</button>
+                <button onClick={() => setEditorSub('draw')}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Next: draw roof &rarr;</button>
               </div>
             </div>
           )}
@@ -859,10 +866,6 @@ export default function RoofV2Page() {
               onClick={() => setStep('editor')}
               className="rounded bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600"
             >← Back to measure</button>
-            <button
-              onClick={() => setStep('siding')}
-              className="rounded bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600"
-            >Skip to siding →</button>
             <button
               onClick={() => setStep('report')}
               disabled={facets.length === 0}

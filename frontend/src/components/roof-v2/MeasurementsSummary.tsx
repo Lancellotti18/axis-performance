@@ -305,21 +305,32 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
           >↻ Save & recompute now</button>
         </div>
       )}
-      {/* Not-final banner: while edges are unlabeled, the roof-line lengths,
-          true area, confidence, and material list are PROVISIONAL. Make that
-          impossible to miss — a live spinner + a plain-English instruction. */}
-      {unlabeledCount > 0 && (
+      {/* Live/not-final banner. The spinner keeps turning until the numbers are
+          BOTH done computing (loading === false) AND final (all edges labeled).
+          While recomputing we say so; once settled but unlabeled, we prompt for
+          edge confirmation. It only disappears when the totals are real. */}
+      {(loading || unlabeledCount > 0) && (
         <div className="flex items-center gap-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4">
           <AxisSpinner size={46} color="#fbbf24" />
-          <div>
-            <div className="text-sm font-semibold text-amber-200">These numbers aren&apos;t final yet</div>
-            <p className="mt-0.5 text-xs leading-relaxed text-amber-100/80">
-              Roof-line lengths, true roof area, confidence, and the material list stay <strong>provisional</strong> until
-              you confirm the edges. Trace every plane, then hit <strong>✨ Auto-label edges</strong> and accept or fix
-              each one — the totals lock in the moment you do.
-              <span className="mt-1 block text-amber-300/90">{unlabeledCount} edge{unlabeledCount === 1 ? '' : 's'} still need labeling.</span>
-            </p>
-          </div>
+          {loading ? (
+            <div>
+              <div className="text-sm font-semibold text-amber-200">Crunching the latest measurements…</div>
+              <p className="mt-0.5 text-xs leading-relaxed text-amber-100/80">
+                Roof area, roof-line lengths, confidence, and the material list are updating from your last edit.
+                Hang tight — the numbers below settle the moment this finishes.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <div className="text-sm font-semibold text-amber-200">These numbers aren&apos;t final yet</div>
+              <p className="mt-0.5 text-xs leading-relaxed text-amber-100/80">
+                Roof-line lengths, true roof area, confidence, and the material list stay <strong>provisional</strong> until
+                you confirm the edges. Trace every plane, then hit <strong>✨ Auto-label edges</strong> and accept or fix
+                each one — the totals lock in the moment you do.
+                <span className="mt-1 block text-amber-300/90">{unlabeledCount} edge{unlabeledCount === 1 ? '' : 's'} still need labeling.</span>
+              </p>
+            </div>
+          )}
         </div>
       )}
 

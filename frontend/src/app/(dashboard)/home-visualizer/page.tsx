@@ -75,7 +75,7 @@ export default function HomeVisualizerPage() {
 
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Home Visualizer</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Roof Visualizer</h1>
           <p className="text-slate-400 text-sm mt-1">
             Upload a photo of any property, describe the changes you want, and get an AI-generated
             concept render with a real cost estimate.

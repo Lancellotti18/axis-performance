@@ -12,7 +12,7 @@ const PAGES: { label: string; href: string }[] = [
   { label: 'Roof Report', href: '/roof-v2' },
   { label: 'Exterior Module', href: '/exterior' },
   { label: 'Material Compliance', href: '/material-check' },
-  { label: 'Home Visualizer', href: '/home-visualizer' },
+  { label: 'Roof Visualizer', href: '/home-visualizer' },
   { label: 'Storm Risk Report', href: '/storm-report' },
   { label: 'Training Data', href: '/training-data' },
   { label: 'CRM', href: '/crm' },

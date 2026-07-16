@@ -199,6 +199,11 @@ export function RoofFacetEditor({
   // constrained to a multiple of 45° from the previous one (typical for
   // residential roofs that are mostly right-angled).
   const [shiftHeld, setShiftHeld] = useState(false)
+  // Alt/Option held = place the vertex EXACTLY where the cursor is, bypassing
+  // both the magnetic vertex snap and the gradient edge snap. The snaps are a
+  // help most of the time but fight you when you're pinning a precise corner —
+  // holding Alt gives surgical placement without toggling the snap off.
+  const [altHeld, setAltHeld] = useState(false)
 
   // Build the edge gradient map whenever the imagery changes. Runs once per
   // tile load (~80–150ms on a 2K tile).
@@ -218,8 +223,8 @@ export function RoofFacetEditor({
 
   // Track Shift for orthogonality constraint
   useEffect(() => {
-    const onDown = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(true) }
-    const onUp = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(false) }
+    const onDown = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(true); if (e.altKey) setAltHeld(true) }
+    const onUp = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(false); if (!e.altKey) setAltHeld(false) }
     window.addEventListener('keydown', onDown)
     window.addEventListener('keyup', onUp)
     return () => {
@@ -564,6 +569,10 @@ export function RoofFacetEditor({
       pt = constrainTo45(drawingPoly[drawingPoly.length - 1], pt, imageDims.w, imageDims.h)
     }
 
+    // Alt = exact placement: skip every magnetic assist so the vertex lands
+    // precisely under the cursor (still honors the Shift ortho constraint above).
+    if (altHeld) return { pt, onVertex: false }
+
     // 2. Magnetic vertex snap — strongest assist for topology correctness.
     //    Scale the radius INVERSELY with zoom: when the contractor zooms in to
     //    work in a tight space, the fraction-space threshold shrinks so it
@@ -581,12 +590,15 @@ export function RoofFacetEditor({
 
     // 3. Edge snap (gradient) — radius also tightens with zoom.
     if (snapEnabled && snapReady) {
-      const edgeRadius = Math.max(5, Math.round(14 / Math.max(1, view.scale * 0.6)))
+      // Tighter than before (was 14px) so it only grabs when the cursor is
+      // genuinely on a roof edge — a wide radius is what made precise corners
+      // feel like they "jumped."
+      const edgeRadius = Math.max(4, Math.round(9 / Math.max(1, view.scale * 0.6)))
       const snapped = snapToNearestEdge(pt[0] * imageDims.w, pt[1] * imageDims.h, edgeRadius)
       if (snapped.snapped) pt = [snapped.x / imageDims.w, snapped.y / imageDims.h]
     }
     return { pt, onVertex: false }
-  }, [shiftHeld, drawingPoly, facets, snapEnabled, snapReady, imageDims, view.scale])
+  }, [shiftHeld, altHeld, drawingPoly, facets, snapEnabled, snapReady, imageDims, view.scale])
 
   const onSvgPointerDown = useCallback((ev: React.PointerEvent<SVGSVGElement>) => {
     if (mode !== 'draw') return
@@ -927,6 +939,14 @@ export function RoofFacetEditor({
               title="Hold Shift while clicking to constrain new vertex to 45° angles from the previous one"
             >
               ⇧ {shiftHeld ? 'ortho ON' : 'ortho (hold ⇧)'}
+            </span>
+            <span
+              className={`rounded px-2 py-0.5 text-[10px] ${
+                altHeld ? 'bg-emerald-500/30 text-emerald-200' : 'bg-slate-800 text-slate-500'
+              }`}
+              title="Hold Alt/Option while clicking to place the vertex exactly under the cursor, bypassing snap"
+            >
+              ⌥ {altHeld ? 'exact ON' : 'exact (hold ⌥)'}
             </span>
           </>
         )}
