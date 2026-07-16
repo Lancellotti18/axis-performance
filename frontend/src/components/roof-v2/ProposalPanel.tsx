@@ -23,11 +23,37 @@ const STATUS_TONE: Record<string, string> = {
   expired: 'bg-slate-600/30 text-slate-400 border-slate-500/40',
 }
 
+// Standard asphalt-shingle re-roof cost structure: the classic "10 and 10"
+// (10% overhead + 10% profit) sits on top of the hard costs, which split into
+// materials / labor / tear-off / permits. These are DEFAULTS to sanity-check
+// Axis's price against — accuracy comes from the contractor confirming them,
+// not from pretending to know every market. Computed on-screen and NEVER stored
+// or sent to the customer (it would leak your margin), so the homeowner only
+// ever sees the final price you choose.
+const BREAKDOWN_SPLIT: { label: string; frac: number }[] = [
+  { label: 'Materials — shingles, underlayment, flashing, fasteners', frac: 0.45 },
+  { label: 'Labor — installation', frac: 0.38 },
+  { label: 'Tear-off & disposal', frac: 0.14 },
+  { label: 'Permits & misc.', frac: 0.03 },
+]
+
+function costBreakdown(price: number, squares?: number | null) {
+  const sq = Math.max(0.1, (squares || 0) * 1.10)   // waste factor matches pricing
+  const profit = 0.10 * price
+  const overhead = 0.10 * price
+  const hard = price - profit - overhead
+  const lines = BREAKDOWN_SPLIT.map(s => ({ label: s.label, total: hard * s.frac }))
+  lines.push({ label: 'Overhead — insurance, transport, supervision', total: overhead })
+  lines.push({ label: 'Profit', total: profit })
+  return { sq, lines }
+}
+
 export default function ProposalPanel({ runId, projectId }: Props) {
   const [proposals, setProposals] = useState<RoofProposal[]>([])
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editingPrices, setEditingPrices] = useState<Record<string, string[]>>({})
+  const [openBreakdown, setOpenBreakdown] = useState<Record<string, boolean>>({})
 
   const refresh = useCallback(async () => {
     try {
@@ -80,7 +106,8 @@ export default function ProposalPanel({ runId, projectId }: Props) {
           <h3 className="text-sm font-semibold text-slate-100">💼 Customer proposal</h3>
           <p className="text-xs text-slate-400">
             Turn this measurement into a <strong>Good / Better / Best</strong> proposal your customer
-            accepts online — priced automatically from the roof&apos;s squares.
+            accepts online. Axis suggests a price from the roof&apos;s squares — open the cost breakdown
+            to check it against your real costs and set your own before sending.
           </p>
         </div>
         <button
@@ -147,6 +174,51 @@ export default function ProposalPanel({ runId, projectId }: Props) {
                       className="rounded bg-slate-700 px-2 py-1 text-slate-300 hover:bg-slate-600"
                     >Edit prices</button>
                   ))}
+                </div>
+
+                {/* Internal cost breakdown — contractor-only. Lets you see how
+                    Axis's suggested price is built (materials/labor/tear-off/
+                    overhead/profit) and check it against your real numbers before
+                    the customer ever sees a price. Never sent to the homeowner. */}
+                <div className="mt-2">
+                  <button
+                    onClick={() => setOpenBreakdown(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                    className="text-[11px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-200"
+                  >
+                    {openBreakdown[p.id] ? 'Hide' : 'Show'} cost breakdown 🔒 (only you see this)
+                  </button>
+                  {openBreakdown[p.id] && (() => {
+                    const prices = p.tiers.map((t, i) => drafts ? (parseFloat(drafts[i]) || t.price) : t.price)
+                    const bds = prices.map(pr => costBreakdown(pr, p.squares))
+                    return (
+                      <div className="mt-2 overflow-x-auto rounded-lg border border-white/10 bg-slate-900/60 p-2">
+                        <table className="w-full text-[11px]">
+                          <thead>
+                            <tr className="text-slate-500">
+                              <th className="py-1 text-left font-medium">Where the money goes</th>
+                              {p.tiers.map(t => <th key={t.name} className="px-2 py-1 text-right font-medium">{t.name}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {bds[0].lines.map((ln, ri) => (
+                              <tr key={ln.label} className="text-slate-300">
+                                <td className="py-0.5 pr-2">{ln.label}</td>
+                                {bds.map((bd, ci) => <td key={ci} className="px-2 py-0.5 text-right tabular-nums">{money(bd.lines[ri].total)}</td>)}
+                              </tr>
+                            ))}
+                            <tr className="border-t border-white/10 font-semibold text-white">
+                              <td className="py-1 pr-2">Customer price</td>
+                              {prices.map((pr, ci) => <td key={ci} className="px-2 py-1 text-right tabular-nums">{money(pr)}</td>)}
+                            </tr>
+                          </tbody>
+                        </table>
+                        <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+                          Typical asphalt re-roof structure (standard 10% overhead + 10% profit). These are estimates to check against —
+                          your customer never sees this. Use <strong>Edit prices</strong> above to set your own number.
+                        </p>
+                      </div>
+                    )
+                  })()}
                 </div>
               </li>
             )
