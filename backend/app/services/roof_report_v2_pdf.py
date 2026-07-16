@@ -119,7 +119,7 @@ def _centered_lines(draw, cx, cy, lines, font, fontb) -> None:
         y += h + 5
 
 
-def _crop_image_to_facets(img_bytes: bytes, facets: list[dict], margin: float = 0.22, subject_point: dict | None = None) -> bytes | None:
+def _crop_image_to_facets(img_bytes: bytes, facets: list[dict], margin: float = 0.35, subject_point: dict | None = None) -> bytes | None:
     """Crop the aerial to the subject roof so the report shows ONLY this house,
     not the neighbors. Robust to a stray vertex: centers on the MEDIAN of the
     facet vertices and drops outliers far from that center before taking the box,
@@ -140,15 +140,18 @@ def _crop_image_to_facets(img_bytes: bytes, facets: list[dict], margin: float = 
                 pts = [(float(sp["x"]), float(sp["y"]))] * 3
             else:
                 return None
-        # Median center + 75th-percentile half-extent — robust: a stray vertex
-        # is past the 75th percentile, so it never inflates the window.
+        # Median center + near-max half-extent. We use the 95th percentile (not
+        # the 75th) so the WHOLE roof stays in frame — the 75th was clipping the
+        # outer edges of larger houses. The 95th still rejects a single wild
+        # outlier vertex while keeping every real roof edge, and the generous
+        # margin then adds the surrounding house/eaves context.
         cx = sorted(p[0] for p in pts)[len(pts) // 2]
         cy = sorted(p[1] for p in pts)[len(pts) // 2]
         dxs = sorted(abs(x - cx) for x, _ in pts)
         dys = sorted(abs(y - cy) for _, y in pts)
-        hx = dxs[int(len(dxs) * 0.75)]
-        hy = dys[int(len(dys) * 0.75)]
-        half = min(0.40, max(hx, hy, 0.04) * (1.0 + margin))
+        hx = dxs[min(len(dxs) - 1, int(len(dxs) * 0.95))]
+        hy = dys[min(len(dys) - 1, int(len(dys) * 0.95))]
+        half = min(0.48, max(hx, hy, 0.05) * (1.0 + margin))
         cx0, cy0 = max(0.0, cx - half), max(0.0, cy - half)
         cx1, cy1 = min(1.0, cx + half), min(1.0, cy + half)
         im = _PImage.open(io.BytesIO(img_bytes)).convert("RGB")
