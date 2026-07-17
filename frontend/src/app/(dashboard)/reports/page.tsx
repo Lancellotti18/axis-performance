@@ -7,6 +7,11 @@ import toast from 'react-hot-toast'
 
 const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.07)', border: '1px solid rgba(255,255,255,0.10)' }
 
+// Roofing-first: the Reports page is now just the clean Roof Reports list.
+// The legacy editable project/blueprint report is hidden (flip to true to
+// bring it back) so there's one obvious place reports live.
+const SHOW_PROJECT_REPORTS = false
+
 function fmt(n: any) {
   const num = parseFloat(n)
   if (isNaN(num)) return '—'
@@ -215,7 +220,7 @@ export default function ReportsPage() {
         style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-black text-white">Reports</h1>
-          <p className="text-slate-400 text-xs mt-0.5">Build, edit, and export project reports</p>
+          <p className="text-slate-400 text-xs mt-0.5">Open, download, and share your roof reports</p>
         </div>
 
         {/* Save status */}
@@ -224,8 +229,8 @@ export default function ReportsPage() {
           {savedFlash && !saving && <span className="text-emerald-600 flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>Saved</span>}
         </div>
 
-        {/* Export PDF */}
-        {reportData && (
+        {/* Export PDF (legacy project report) */}
+        {SHOW_PROJECT_REPORTS && reportData && (
           <button onClick={handleExportPdf} disabled={exporting}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold transition-all disabled:opacity-50"
             style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.25)' }}>
@@ -239,14 +244,19 @@ export default function ReportsPage() {
       </div>
 
       {/* Roof reports — every measured roof across all projects, reopen / download / share */}
-      {roofReports.length > 0 && (
-        <div className="px-6 pt-5">
+      <div className="px-6 pt-5 pb-8 max-w-4xl mx-auto">
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden">
             <div className="px-5 py-3.5 border-b border-white/10 flex items-center gap-2">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
               <h2 className="text-white font-semibold text-sm">Roof Reports</h2>
               <span className="text-slate-500 text-xs">({roofReports.length})</span>
             </div>
+            {roofReports.length === 0 ? (
+              <div className="px-5 py-14 text-center">
+                <div className="text-slate-300 text-sm font-medium">No roof reports yet</div>
+                <div className="text-slate-500 text-xs mt-1">Measure a roof in the Roof Report tool, then generate its report — it&apos;ll show up here to open, download, or share.</div>
+              </div>
+            ) : (
             <div className="divide-y divide-white/[0.06]">
               {roofReports.map(rep => {
                 const busyOpen = roofBusy === rep.run_id + ':open'
@@ -275,10 +285,11 @@ export default function ReportsPage() {
                 )
               })}
             </div>
+            )}
           </div>
         </div>
-      )}
 
+      {SHOW_PROJECT_REPORTS && (
       <div className="flex gap-0">
 
         {/* Project sidebar */}
@@ -695,6 +706,7 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }

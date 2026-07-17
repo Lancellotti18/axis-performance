@@ -31,7 +31,9 @@ const NAV_GROUPS: { title: string; items: { href: string; label: string; icon: (
       { href: '/material-check',  label: 'Material Compliance', icon: IconMaterialCheck },
       { href: '/home-visualizer', label: 'Roof Visualizer',     icon: IconVisualizer },
       { href: '/storm-report',    label: 'Storm Risk Report',   icon: IconStorm },
-      { href: '/training-data',   label: 'Training Data',       icon: IconReports },
+      // Training Data retired as a user task — edge labels/corrections are now
+      // captured silently as contractors work (see put_edges training capture).
+      // { href: '/training-data',   label: 'Training Data',       icon: IconReports },
     ],
   },
   {
