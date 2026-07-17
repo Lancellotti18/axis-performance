@@ -427,6 +427,20 @@ export default function PermitPortalSection({ project, projectId }: { project: a
 
   return (
     <div className="space-y-4">
+      {/* Honest framing: Axis prepares a review-ready DRAFT, it does not file for
+          you. Permit rules vary by jurisdiction and a wrong filing is the
+          contractor's liability — so this stays unmistakably a "verify first". */}
+      <div className="flex items-start gap-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="mt-0.5 flex-shrink-0"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+        <div className="text-xs leading-relaxed text-amber-200/90">
+          <strong className="text-amber-100">This is a prepared draft, not a filed permit.</strong> Axis finds the
+          likely jurisdiction and pre-fills what it knows — <strong>verify every field</strong>, confirm which
+          permits your local authority actually requires, and review the form before you submit. Fields marked
+          <span className="mx-1 rounded-full border border-amber-300/40 px-1.5 py-px text-[10px]">verify</span>
+          are inferred and need a look.
+        </div>
+      </div>
+
       {/* Progress steps */}
       <div className="flex items-center gap-2 bg-white/[0.04] rounded-2xl px-5 py-4" style={cardStyle}>
         {[
