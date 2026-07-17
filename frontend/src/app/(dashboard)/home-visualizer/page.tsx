@@ -9,14 +9,19 @@ const cardStyle = {
   border: '1px solid rgba(255,255,255,0.10)',
 }
 
+// Roof-first: the Visualizer is about showing the homeowner their NEW ROOF.
 const EXAMPLE_PROMPTS = [
-  'Change the siding to white board-and-batten, keep the roof and windows',
-  'Repaint the trim black, add black shutters to every window',
-  'Swap the front door for a natural wood double door, same opening',
-  'Replace the roof with a dark gray standing-seam metal roof',
+  'Replace the roof with charcoal architectural asphalt shingles, keep everything else',
+  'Show the roof in a weathered-wood shingle color, same house',
+  'Change the roof to a dark gray standing-seam metal roof',
+  'Replace the roof with a rich brown architectural shingle',
 ]
 
 const BACKEND = 'https://build-backend-jcp9.onrender.com'
+
+// The Visualizer is a VISUAL sales tool — keep pricing out of it so quotes live
+// in one place (the proposal). Flip to true to bring the cost estimate back.
+const SHOW_COST_ESTIMATE = false
 
 export default function HomeVisualizerPage() {
   // Wake the Render free tier backend as soon as the page loads
@@ -77,8 +82,8 @@ export default function HomeVisualizerPage() {
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">Roof Visualizer</h1>
           <p className="text-slate-400 text-sm mt-1">
-            Upload a photo of any property, describe the changes you want, and get an AI-generated
-            concept render with a real cost estimate.
+            Upload a photo of the home, pick the new roof, and show the homeowner a photoreal
+            preview of their finished roof — the easiest way to close the sale.
           </p>
         </div>
 
@@ -152,7 +157,8 @@ export default function HomeVisualizerPage() {
             </div>
           </div>
 
-          {/* Location (optional but improves cost accuracy) */}
+          {/* Location — only used for the cost estimate, so hidden with it. */}
+          {SHOW_COST_ESTIMATE && (
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">State <span className="text-slate-600 normal-case font-normal">(optional — improves cost accuracy)</span></label>
@@ -176,6 +182,7 @@ export default function HomeVisualizerPage() {
               />
             </div>
           </div>
+          )}
 
           {/* Submit */}
           <button
@@ -274,8 +281,8 @@ export default function HomeVisualizerPage() {
               </div>
             </div>
 
-            {/* Cost estimate */}
-            {estimate && (
+            {/* Cost estimate — hidden: pricing lives in the proposal, not here. */}
+            {SHOW_COST_ESTIMATE && estimate && (
               <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
                 <div className="px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
                   <div className="flex items-center justify-between">

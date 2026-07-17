@@ -93,12 +93,9 @@ async def book_inspection(report_token: str, payload: BookRequest, request: Requ
     if not ins.data:
         raise HTTPException(status_code=500, detail="Could not book — please call the contractor instead.")
 
-    # Advance the pipeline card to 'site_visit' (best-effort — never fail the booking).
-    if crm_lead_id:
-        try:
-            db.table("crm_leads").update({"stage": "site_visit"}).eq("id", crm_lead_id).execute()
-        except Exception:
-            logger.info("could not advance crm lead %s to site_visit", crm_lead_id)
+    # A booking REQUEST keeps the card a lead — it only becomes a 'site_visit'
+    # once the contractor confirms the appointment (see update_appointment). A
+    # requested-but-unconfirmed inspection is not yet a site visit.
 
     # Speed-to-lead: alert the contractor a booking came in (env-gated, best-effort).
     try:
@@ -217,10 +214,14 @@ async def update_appointment(
     # 'estimate_sent'; a cancellation/no-show sends it back to 'contacted'.
     appt = res.data[0]
     crm_lead_id = appt.get("crm_lead_id")
-    if crm_lead_id and payload.status in ("completed", "cancelled", "no_show"):
-        new_stage = "estimate_sent" if payload.status == "completed" else "contacted"
+    # Confirming an inspection is what turns a lead into a real 'site_visit';
+    # completing it moves to 'estimate_sent'; a cancel/no-show returns it to
+    # 'contacted' (it's still a live lead, just not a scheduled visit).
+    _STAGE_ON_STATUS = {"confirmed": "site_visit", "completed": "estimate_sent",
+                        "cancelled": "contacted", "no_show": "contacted"}
+    if crm_lead_id and payload.status in _STAGE_ON_STATUS:
         try:
-            db.table("crm_leads").update({"stage": new_stage}).eq("id", crm_lead_id).eq("user_id", user["id"]).execute()
+            db.table("crm_leads").update({"stage": _STAGE_ON_STATUS[payload.status]}).eq("id", crm_lead_id).eq("user_id", user["id"]).execute()
         except Exception:
             pass
 

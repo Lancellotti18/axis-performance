@@ -85,19 +85,6 @@ function roofIQOf(lead: Lead): { score: number | null; reportToken: string | nul
   return { score, reportToken }
 }
 
-function ScoreBadge({ score, size = 'sm' }: { score: number; size?: 'sm' | 'lg' }) {
-  const cls = score >= 70
-    ? 'bg-orange-500/15 text-orange-400 border-orange-400/30'
-    : score >= 40
-      ? 'bg-amber-500/15 text-amber-400 border-amber-400/30'
-      : 'bg-white/[0.06] text-slate-400 border-white/15'
-  const label = score >= 70 ? 'Hot' : score >= 40 ? 'Warm' : 'Cool'
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full border font-bold ${cls} ${size === 'lg' ? 'px-2.5 py-1 text-xs' : 'px-1.5 py-0.5 text-[10px]'}`}>
-      {score >= 70 && '🔥'} {score} · {label}
-    </span>
-  )
-}
 
 // A lead that sits untouched goes cold fast — 78% of homeowners hire the
 // first responder. New leads flag after 2 days, other active stages after 7.
@@ -138,14 +125,11 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
         <div className="text-white font-semibold text-sm leading-tight">{lead.name}</div>
         {(lead.estimated_value ?? 0) > 0 && <span className="text-emerald-600 font-black text-xs flex-shrink-0">{fmt(lead.estimated_value!)}</span>}
       </div>
-      {(roofIQ.score !== null || stale !== null) && (
+      {stale !== null && (
         <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-          {roofIQ.score !== null && <ScoreBadge score={roofIQ.score} />}
-          {stale !== null && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/30 bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-400">
-              ⏰ {stale}d no touch
-            </span>
-          )}
+          <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/30 bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-400">
+            ⏰ {stale}d no touch
+          </span>
         </div>
       )}
       {(lead.city || lead.state) && <div className="text-slate-400 text-xs mb-1">{[lead.city, lead.state].filter(Boolean).join(', ')}</div>}
@@ -193,14 +177,12 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
 // ── List row ──────────────────────────────────────────────────────────────────
 function ListRow({ lead, onStageChange, onOpen, onDelete }: { lead: Lead; onStageChange: (id: string, s: Stage) => void; onOpen: () => void; onDelete: (id: string) => void }) {
   const stage = STAGE_MAP[lead.stage] || STAGE_MAP.new
-  const roofIQ = roofIQOf(lead)
   const stale = staleDays(lead)
   return (
     <div onClick={onOpen} className="bg-white/[0.04] rounded-2xl px-5 py-4 flex items-center gap-4 hover:shadow-md transition-all cursor-pointer" style={cardStyle}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <div className="text-white font-semibold text-sm">{lead.name}</div>
-          {roofIQ.score !== null && <ScoreBadge score={roofIQ.score} />}
           {stale !== null && <span className="rounded-full border border-rose-400/30 bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-400">⏰ {stale}d</span>}
         </div>
         <div className="text-slate-400 text-xs mt-0.5">{[lead.city, lead.state, lead.job_type].filter(Boolean).join(' · ')}</div>
@@ -235,7 +217,6 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
   const [noteText, setNoteText] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [loadingNotes, setLoadingNotes] = useState(true)
-  const [proposing, setProposing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const stage = STAGE_MAP[lead.stage] || STAGE_MAP.new
   const roofIQ = roofIQOf(lead)
@@ -250,21 +231,6 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
     return () => { live = false }
   }, [roofIQ.reportToken])
 
-  // One click: RoofIQ lead → live good/better/best proposal (uses the squares
-  // measured at quote time; opens the shareable homeowner page).
-  async function handleInstantProposal() {
-    if (!roofIQ.reportToken || proposing) return
-    setProposing(true)
-    try {
-      const proposal = await api.roofProposals.createFromLead(roofIQ.reportToken)
-      window.open(`/p/${proposal.token}`, '_blank')
-      if (lead.stage === 'new' || lead.stage === 'contacted') onStageChange(lead.id, 'estimate_sent')
-    } catch (err: any) {
-      alert(err?.message || 'Could not create the proposal — the lead may not have a measured roof size.')
-    } finally {
-      setProposing(false)
-    }
-  }
 
   // Voice recorder state — record audio, send to /photos/transcribe, append text.
   const [recording, setRecording]     = useState(false)
@@ -445,16 +411,13 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
           </div>
 
           {/* RoofIQ intelligence + instant proposal */}
-          {(roofIQ.score !== null || roofIQ.reportToken) && (
+          {roofIQ.reportToken && (
             <div className="px-5 py-4 border-b space-y-3" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
               <div className="flex items-center gap-2">
-                {roofIQ.score !== null && <ScoreBadge score={roofIQ.score} size="lg" />}
-                {roofIQ.reportToken && (
-                  <a href={`/r/${roofIQ.reportToken}`} target="_blank" rel="noreferrer"
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all">
-                    View roof report ↗
-                  </a>
-                )}
+                <a href={`/r/${roofIQ.reportToken}`} target="_blank" rel="noreferrer"
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all">
+                  View roof report ↗
+                </a>
               </div>
               {/* Everything the homeowner told us, organized */}
               {rept && (
@@ -479,13 +442,6 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
                     {rept.address && <span>📍 {rept.address}</span>}
                   </div>
                 </div>
-              )}
-              {roofIQ.reportToken && (
-                <button onClick={handleInstantProposal} disabled={proposing}
-                  className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, #10b981, #047857)', boxShadow: '0 4px 14px rgba(16,185,129,0.25)' }}>
-                  {proposing ? 'Building proposal…' : '⚡ Instant proposal — good/better/best from their measured roof'}
-                </button>
               )}
             </div>
           )}
@@ -795,15 +751,18 @@ export default function CRMPage() {
           <div className="flex items-center justify-center h-full text-slate-400">Loading…</div>
         ) : viewMode === 'kanban' ? (
           <div className="h-full overflow-x-auto">
-            <div className="flex gap-4 h-full" style={{ minWidth: `${STAGES.length * 400}px` }}>
+            {/* Columns flex to fill the width so the whole pipeline is visible at
+                once (no horizontal scroll on desktop); they shrink to a readable
+                min and only scroll on narrow screens. */}
+            <div className="flex gap-4 h-full min-w-full">
               {STAGES.map(stage => {
                 const stageLeads = filtered.filter(l => l.stage === stage.key)
                 const stageValue = stageLeads.reduce((s, l) => s + (l.estimated_value || 0), 0)
                 const isOver = dragOverStage === stage.key
                 return (
                   <div key={stage.key}
-                    className={`flex flex-col rounded-2xl flex-shrink-0 transition-all ${isOver ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
-                    style={{ width: 380, background: isOver ? 'rgba(255,255,255,0.4)' : 'rgba(248,250,252,0.8)', border: '1px solid rgba(255,255,255,0.10)' }}
+                    className={`flex flex-col rounded-2xl flex-1 min-w-[230px] transition-all ${isOver ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
+                    style={{ background: isOver ? 'rgba(255,255,255,0.4)' : 'rgba(248,250,252,0.8)', border: '1px solid rgba(255,255,255,0.10)' }}
                     onDragOver={e => handleDragOver(e, stage.key)}
                     onDrop={e => handleDrop(e, stage.key)}
                     onDragLeave={() => setDragOverStage(null)}
