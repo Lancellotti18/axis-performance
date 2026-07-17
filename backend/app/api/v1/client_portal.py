@@ -245,15 +245,30 @@ async def post_public_message(token: str, payload: MessageIn, request: Request) 
     if not _msg_rate_ok(ip):
         raise HTTPException(status_code=429, detail="Too many messages — please try again in a bit.")
     db = get_supabase()
-    res = db.table("client_portals").select("id, enabled").eq("token", token).limit(1).execute()
+    res = db.table("client_portals").select("id, enabled, user_id, project_id").eq("token", token).limit(1).execute()
     if not res.data or not res.data[0].get("enabled"):
         raise HTTPException(status_code=404, detail="Portal not found.")
+    portal = res.data[0]
     ins = db.table("portal_messages").insert({
-        "portal_id": res.data[0]["id"],
+        "portal_id": portal["id"],
         "sender": "homeowner",
         "sender_name": (payload.name or "").strip() or None,
         "body": payload.body.strip(),
     }).execute()
     if not ins.data:
         raise HTTPException(status_code=500, detail="Could not send — please call the contractor instead.")
+
+    # Ping the contractor's bell — a customer replying is worth surfacing.
+    try:
+        from app.api.v1.notifications import create_notification
+        who = (payload.name or "").strip() or "A customer"
+        create_notification(
+            db, portal.get("user_id"), type="message",
+            title=f"💬 New message from {who}",
+            body=payload.body.strip(),
+            link=f"/projects/{portal.get('project_id')}" if portal.get("project_id") else "/crm",
+        )
+    except Exception:
+        pass
+
     return {"ok": True, "message": ins.data[0]}
