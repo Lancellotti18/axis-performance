@@ -7,6 +7,7 @@ import { PrecisionToggle } from '@/components/axis'
 import { ChatContextProvider } from '@/lib/chat-context'
 import AxisChat from '@/components/AxisChat'
 import GlobalSearch from '@/components/GlobalSearch'
+import NotificationBell from '@/components/NotificationBell'
 import BusinessProfileBanner from '@/components/BusinessProfileBanner'
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
@@ -363,6 +364,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex-1 flex justify-end max-w-[440px] ml-auto">
             <GlobalSearch />
           </div>
+
+          {/* Notifications */}
+          <NotificationBell />
 
           {/* Account */}
           <Link

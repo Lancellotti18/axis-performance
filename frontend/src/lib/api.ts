@@ -57,6 +57,16 @@ export interface QuoteMath {
   slope_factor: number | null
   calibration?: { jobs: number; adjust_pct: number; note: string } | null
 }
+export interface AppNotification {
+  id: string
+  type: 'appointment' | 'proposal_accepted' | 'message' | 'system'
+  title: string
+  body: string | null
+  link: string | null
+  read: boolean
+  created_at: string
+}
+
 export type AppointmentStatus = 'requested' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
 export interface AppointmentLead {
   roof_age: string | null
@@ -624,6 +634,17 @@ export const api = {
       apiRequest<{ ok: boolean }>(`/api/v1/appointments/${id}`, { method: 'DELETE' }),
     clearDone: () =>
       apiRequest<{ ok: boolean; removed: number }>(`/api/v1/appointments/clear-done`, { method: 'POST' }),
+  },
+  // ── In-app notifications (top-bar bell) ──────────────────────────────────
+  notifications: {
+    list: () =>
+      apiRequest<{ notifications: AppNotification[]; unread: number }>(`/api/v1/notifications`),
+    unreadCount: () =>
+      apiRequest<{ unread: number }>(`/api/v1/notifications/unread-count`),
+    markRead: (id: string) =>
+      apiRequest<{ ok: boolean }>(`/api/v1/notifications/${id}/read`, { method: 'POST' }),
+    markAllRead: () =>
+      apiRequest<{ ok: boolean }>(`/api/v1/notifications/read-all`, { method: 'POST' }),
   },
   // ── Growth engine: instant quote widget + lead inbox ─────────────────────
   instantQuote: {

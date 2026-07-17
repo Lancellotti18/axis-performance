@@ -370,6 +370,20 @@ async def accept_proposal(token: str, payload: AcceptIn) -> dict:
         "accepted_at": "now()",
         "updated_at": "now()",
     }).eq("id", p["id"]).execute()
+
+    # Notify the contractor — an accepted proposal is the moment that matters.
+    try:
+        from app.api.v1.notifications import create_notification
+        create_notification(
+            db, p.get("user_id"), type="proposal_accepted",
+            title="🎉 Proposal accepted",
+            body=f"{payload.name.strip()} accepted your “{payload.tier_name}” option"
+                 + (f" for {p.get('address')}" if p.get("address") else ""),
+            link="/crm",
+        )
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "message": f"You're set, {payload.name.split(' ')[0]}! {p.get('company_name') or 'The contractor'} will contact you to schedule.",

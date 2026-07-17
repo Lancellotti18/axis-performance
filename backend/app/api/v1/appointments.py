@@ -97,6 +97,19 @@ async def book_inspection(report_token: str, payload: BookRequest, request: Requ
     # once the contractor confirms the appointment (see update_appointment). A
     # requested-but-unconfirmed inspection is not yet a site visit.
 
+    # In-app notification for the bell (best-effort).
+    try:
+        from app.api.v1.notifications import create_notification
+        _when = d.strftime("%a %b %-d") + ("" if window == "anytime" else f" ({window})")
+        create_notification(
+            db, lead["user_id"], type="appointment",
+            title="New inspection booked",
+            body=f"{lead.get('name') or 'A homeowner'} — {lead.get('address') or ''} — {_when}",
+            link="/schedule",
+        )
+    except Exception:
+        pass
+
     # Speed-to-lead: alert the contractor a booking came in (env-gated, best-effort).
     try:
         from app.services.sms_service import sms_configured, send_sms
