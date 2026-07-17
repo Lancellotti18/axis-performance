@@ -68,6 +68,7 @@ async function heicToJpeg(file: File): Promise<File> {
 
 interface PhotoEntry {
   id: string
+  slot: string
   previewUrl: string
   name: string
   isPdf: boolean
@@ -75,6 +76,22 @@ interface PhotoEntry {
   results?: PageResult[]
   error?: string
 }
+
+// Guided walk-around: the contractor uploads into the slot that matches where
+// they're standing, in order, as if circling the house. Each slot is optional
+// and accepts more than one photo; "extra" catches anything else.
+interface Slot { key: string; label: string; emoji: string; hint: string; star?: boolean }
+const SLOTS: Slot[] = [
+  { key: 'front',   label: 'Front of house',      emoji: '🏠', hint: 'Whole front elevation, phone level' },
+  { key: 'right',   label: 'Right side',          emoji: '↩️', hint: 'Stand at the corner — two roof sides in frame' },
+  { key: 'back',    label: 'Back of house',       emoji: '🏡', hint: 'Whole rear elevation' },
+  { key: 'left',    label: 'Left side',           emoji: '↪️', hint: 'Stand at the corner — two roof sides in frame' },
+  { key: 'gable',   label: 'Gable end (pitch)',   emoji: '📐', hint: 'Triangular end wall, square-on — best shot for pitch', star: true },
+  { key: 'chimney', label: 'Chimney',             emoji: '🧱', hint: 'Full height + where it meets the roof' },
+  { key: 'features',label: 'Skylights / dormers', emoji: '🔲', hint: 'Any skylight, dormer, or roof-to-wall spot' },
+  { key: 'shingle', label: 'Shingle close-up',    emoji: '🎨', hint: '~3 ft from a roof edge — material + color' },
+  { key: 'extra',   label: 'Additional photos',   emoji: '➕', hint: 'Anything else worth capturing' },
+]
 
 interface Props {
   runId: string
@@ -86,17 +103,15 @@ interface Props {
 
 export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }: Props) {
   const [photos, setPhotos] = useState<PhotoEntry[]>([])
-  const fileRef = useRef<HTMLInputElement>(null)
-  const cameraRef = useRef<HTMLInputElement>(null)
   const idRef = useRef(0)
 
-  const handleFiles = useCallback(async (files: FileList | null) => {
+  const handleFiles = useCallback(async (slot: string, files: FileList | null) => {
     if (!files || files.length === 0) return
     for (const original of Array.from(files)) {
       const id = `p${idRef.current++}`
       const isPdf = original.type === 'application/pdf' || /\.pdf$/i.test(original.name)
       const isHeic = !isPdf && (/^image\/hei[cf]$/i.test(original.type) || /\.(heic|heif)$/i.test(original.name))
-      setPhotos(prev => [...prev, { id, previewUrl: '', name: original.name, isPdf, status: 'analyzing' }])
+      setPhotos(prev => [...prev, { id, slot, previewUrl: '', name: original.name, isPdf, status: 'analyzing' }])
       try {
         // iPhone HEIC isn't decodable server-side reliably, so convert it to JPEG
         // RIGHT HERE in the browser before upload. Bulletproof + no server dep.
@@ -131,6 +146,8 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
       }
     }
   }, [runId])
+
+  const removePhoto = useCallback((id: string) => setPhotos(prev => prev.filter(p => p.id !== id)), [])
 
   const applyPitch = useCallback((pitch: string) => {
     if (!pitch || !onApplyPitch) return
@@ -181,73 +198,94 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
             <strong> pitch</strong>, <strong>chimneys</strong>, dormers, gable walls, materials — and you apply the findings.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => cameraRef.current?.click()}
-            className="flex items-center gap-1.5 rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
-          >📷 Take photo</button>
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500"
-          >Upload</button>
-        </div>
-        {/* Camera capture (mobile opens the rear camera directly). HEIC/HEIF
-            extensions are listed EXPLICITLY — some file pickers don't match
-            iPhone .heic files to the generic image/* type. The backend
-            normalizes every format (incl. HEIC + PDF). */}
-        <input ref={cameraRef} type="file" accept="image/*,.heic,.heif,.HEIC,.HEIF" capture="environment" hidden
-          onChange={e => { void handleFiles(e.target.files); if (cameraRef.current) cameraRef.current.value = '' }} />
-        <input ref={fileRef} type="file" accept="image/*,.heic,.heif,.HEIC,.HEIF,application/pdf,.pdf" multiple hidden
-          onChange={e => { void handleFiles(e.target.files); if (fileRef.current) fileRef.current.value = '' }} />
       </div>
 
       <PhotoGuide />
 
-      {photos.length === 0 && (
-        <p className="mt-3 text-xs text-slate-500">
-          On your phone, tap <strong>📷 Take photo</strong> to shoot a gable end / chimney right now — a clear gable shot gives the best pitch reading.
-        </p>
-      )}
-
-      <ul className="mt-3 space-y-2">
-        {photos.map(p => (
-          <li key={p.id} className="flex gap-3 rounded-md border border-white/10 p-2">
-            {p.isPdf ? (
-              <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded bg-rose-500/15 text-rose-300">
-                <span className="text-lg leading-none">📄</span>
-                <span className="mt-0.5 text-[9px] font-semibold">PDF</span>
-              </div>
-            ) : p.previewUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={p.previewUrl} alt={p.name} className="h-16 w-16 shrink-0 rounded object-cover" />
-            ) : (
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] text-slate-500">…</div>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs text-slate-300">{p.name}</div>
-              {p.status === 'analyzing' && <div className="flex items-center gap-1.5 text-[11px] text-blue-300"><span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Analyzing with AI…</div>}
-              {p.status === 'error' && <div className="text-[11px] text-rose-400">{p.error}</div>}
-              {p.status === 'done' && p.results && p.results.length > 0 ? (
-                <div className="space-y-1.5">
-                  {p.results.map(r => (
-                    <div key={r.page}>
-                      {p.results!.length > 1 && (
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Page {r.page}</div>
-                      )}
-                      {r.findings
-                        ? <FindingsView f={r.findings} onApplyPitch={applyPitch} onAddChimney={addChimney} onAddSkylight={addSkylight} />
-                        : <div className="text-[11px] text-amber-400">{r.message || 'No usable findings'}</div>}
-                    </div>
-                  ))}
-                </div>
-              ) : p.status === 'done' && (
-                <div className="text-[11px] text-amber-400">{p.error || 'No usable findings'}</div>
-              )}
-            </div>
-          </li>
+      {/* Guided walk-around: drop each photo into the slot where you're standing. */}
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {SLOTS.map(slot => (
+          <PhotoSlot key={slot.key} slot={slot}
+            photos={photos.filter(p => p.slot === slot.key)}
+            onFiles={files => handleFiles(slot.key, files)}
+            onRemove={removePhoto}
+            onApplyPitch={applyPitch} onAddChimney={addChimney} onAddSkylight={addSkylight} />
         ))}
-      </ul>
+      </div>
     </section>
+  )
+}
+
+/** One labeled walk-around slot: its own camera + upload, and inline results. */
+function PhotoSlot({
+  slot, photos, onFiles, onRemove, onApplyPitch, onAddChimney, onAddSkylight,
+}: {
+  slot: Slot
+  photos: PhotoEntry[]
+  onFiles: (files: FileList | null) => void
+  onRemove: (id: string) => void
+  onApplyPitch: (p: string) => void
+  onAddChimney: (n: number) => void
+  onAddSkylight: (n: number) => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const camRef = useRef<HTMLInputElement>(null)
+  const done = photos.some(p => p.status === 'done')
+  return (
+    <div className={`rounded-lg border p-2.5 transition-colors ${done ? 'border-emerald-400/25 bg-emerald-500/[0.05]' : slot.star ? 'border-amber-400/30 bg-amber-500/[0.04]' : 'border-white/10 bg-slate-900/40'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-100">
+            <span>{slot.emoji}</span><span>{slot.label}</span>
+            {slot.star && <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">Best for pitch</span>}
+            {done && <span className="text-emerald-400">✓</span>}
+          </div>
+          <div className="mt-0.5 text-[11px] leading-snug text-slate-400">{slot.hint}</div>
+        </div>
+        <div className="flex flex-shrink-0 gap-1">
+          <button onClick={() => camRef.current?.click()} title="Take photo"
+            className="rounded bg-emerald-600/90 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-500">📷</button>
+          <button onClick={() => fileRef.current?.click()} title="Upload"
+            className="rounded bg-blue-600/90 px-2 py-1 text-[11px] text-white hover:bg-blue-500">＋</button>
+        </div>
+        <input ref={camRef} type="file" accept="image/*,.heic,.heif,.HEIC,.HEIF" capture="environment" hidden
+          onChange={e => { onFiles(e.target.files); if (camRef.current) camRef.current.value = '' }} />
+        <input ref={fileRef} type="file" accept="image/*,.heic,.heif,.HEIC,.HEIF,application/pdf,.pdf" multiple hidden
+          onChange={e => { onFiles(e.target.files); if (fileRef.current) fileRef.current.value = '' }} />
+      </div>
+
+      {photos.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {photos.map(p => (
+            <li key={p.id} className="flex gap-2 rounded-md border border-white/10 bg-slate-900/50 p-1.5">
+              {p.isPdf ? (
+                <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded bg-rose-500/15 text-rose-300"><span className="text-sm leading-none">📄</span></div>
+              ) : p.previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={p.previewUrl} alt={p.name} className="h-12 w-12 shrink-0 rounded object-cover" />
+              ) : (
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] text-slate-500">…</div>
+              )}
+              <div className="min-w-0 flex-1">
+                {p.status === 'analyzing' && <div className="flex items-center gap-1.5 text-[11px] text-blue-300"><span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Analyzing…</div>}
+                {p.status === 'error' && <div className="text-[11px] text-rose-400">{p.error}</div>}
+                {p.status === 'done' && p.results && p.results.some(r => r.findings) ? (
+                  <div className="space-y-1">
+                    {p.results.map(r => r.findings
+                      ? <FindingsView key={r.page} f={r.findings} onApplyPitch={onApplyPitch} onAddChimney={onAddChimney} onAddSkylight={onAddSkylight} />
+                      : null)}
+                  </div>
+                ) : p.status === 'done' && (
+                  <div className="text-[11px] text-amber-400">{p.error || 'No usable findings — the photo still saves.'}</div>
+                )}
+              </div>
+              <button onClick={() => onRemove(p.id)} title="Remove"
+                className="h-5 w-5 flex-shrink-0 rounded text-slate-500 hover:bg-rose-500/15 hover:text-rose-300">✕</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
