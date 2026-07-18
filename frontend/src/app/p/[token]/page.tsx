@@ -84,7 +84,7 @@ export default function PublicProposalPage() {
         <header className="mb-8 text-center">
           {p.logo_url && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={p.logo_url} alt={p.company_name} className="mx-auto mb-3 h-12 object-contain" />
+            <img src={p.logo_url} alt={p.company_name} className="mx-auto mb-3 h-24 sm:h-28 max-w-[340px] object-contain" />
           )}
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{p.company_name}</h1>
           <div className="mt-1 text-xs text-slate-500">

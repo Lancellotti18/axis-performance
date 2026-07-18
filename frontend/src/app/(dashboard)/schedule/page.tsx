@@ -141,21 +141,24 @@ export default function SchedulePage() {
                 const isSel = key === selected
                 return (
                   <button key={key} onClick={() => setSelected(key)}
-                    className={`flex min-h-[118px] flex-col rounded-xl border p-2 text-left transition ${
+                    className={`flex h-[120px] flex-col overflow-hidden rounded-xl border p-2 text-left transition ${
                       isSel ? 'border-blue-400/70 bg-blue-500/15 ring-1 ring-blue-400/40'
                         : 'border-white/5 hover:border-white/20 hover:bg-white/[0.04]'
                     } ${inMonth ? '' : 'opacity-35'}`}>
                     <span className={`text-sm font-bold ${isToday ? 'flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white' : 'text-slate-300'}`}>{d.getDate()}</span>
-                    <div className="mt-1 flex flex-1 flex-col gap-1">
-                      {active.map(a => (
-                        <div key={a.id} className={`rounded-md px-1.5 py-1 ring-1 ${STATUS_STYLE[a.status].chip}`}>
-                          <div className="flex items-center gap-1">
-                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_STYLE[a.status].dot}`} />
-                            <span className="truncate text-[11px] font-semibold">{a.homeowner_name || 'Homeowner'}</span>
-                          </div>
-                          {a.address && <div className="truncate text-[10px] opacity-80">{a.address}</div>}
+                    {/* Fixed-height cell: show a few condensed one-line chips, then
+                        a "+N more" so a busy day never grows or spills into its
+                        neighbours. Full list is in the day panel on the right. */}
+                    <div className="mt-1 flex min-h-0 flex-1 flex-col gap-0.5">
+                      {active.slice(0, 3).map(a => (
+                        <div key={a.id} className={`flex items-center gap-1 rounded px-1.5 py-0.5 ring-1 ${STATUS_STYLE[a.status].chip}`}>
+                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_STYLE[a.status].dot}`} />
+                          <span className="truncate text-[10.5px] font-semibold leading-tight">{a.homeowner_name || 'Homeowner'}</span>
                         </div>
                       ))}
+                      {active.length > 3 && (
+                        <span className="pl-1 text-[10px] font-semibold text-slate-400">+{active.length - 3} more</span>
+                      )}
                     </div>
                   </button>
                 )

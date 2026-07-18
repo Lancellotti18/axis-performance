@@ -149,7 +149,7 @@ export default function ReportPage() {
           {r.company_logo_url ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={r.company_logo_url} alt={r.company_name} className="mx-auto mb-3 h-28 sm:h-32 max-w-[380px] object-contain" />
+              <img src={r.company_logo_url} alt={r.company_name} className="mx-auto mb-4 h-36 sm:h-44 max-w-[460px] object-contain" />
               <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-blue-600/80">Roof Intelligence Report</div>
             </>
           ) : (

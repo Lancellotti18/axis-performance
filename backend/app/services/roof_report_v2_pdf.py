@@ -284,8 +284,8 @@ def _section_1_executive(
         try:
             img = Image(io.BytesIO(logo_bytes))
             ratio = img.imageWidth / max(1, img.imageHeight)
-            img.drawHeight = 1.1 * inch
-            img.drawWidth = min(3.6 * inch, 1.1 * inch * ratio)
+            img.drawHeight = 1.6 * inch
+            img.drawWidth = min(4.4 * inch, 1.6 * inch * ratio)
             img.hAlign = "LEFT"
             left_stack.append(img)
             left_stack.append(Spacer(1, 6))
