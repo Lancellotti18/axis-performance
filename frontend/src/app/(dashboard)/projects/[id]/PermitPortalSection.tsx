@@ -126,10 +126,10 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         formUrl: opts.manualUrl || null,
         useManual: !!opts.useManual,
       })
-      // After confirming, kick off blueprint scan automatically — it's the
-      // single highest-leverage step (extracts sqft / rooms / dimensions).
-      await handleScanBlueprint()
-      setStep('requirements')
+      // Skip straight to the pre-filled form. The Documents & Notes step is
+      // optional — most roofing permits don't need extra uploads — so it's no
+      // longer forced; it's reachable from the form via "Add supporting documents".
+      await handleFetchForm()
     } catch (err: any) {
       setFormError(err.message || 'Could not save confirmation.')
     }
@@ -446,11 +446,10 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         {[
           { key: 'portal',       label: 'Find Portal' },
           { key: 'confirm',      label: 'Confirm' },
-          { key: 'requirements', label: 'Documents' },
           { key: 'form',         label: 'Fill Permit' },
           { key: 'review',       label: 'Download' },
         ].map((s, i, arr) => {
-          const steps = ['portal', 'confirm', 'requirements', 'form', 'review']
+          const steps = ['portal', 'confirm', 'form', 'review']
           const currentIdx = steps.indexOf(step)
           const thisIdx    = steps.indexOf(s.key)
           const isActive   = step === s.key
@@ -846,7 +845,10 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 {filledCount} of {formData.fields?.length || 0} fields filled
               </p>
             </div>
-            <button onClick={() => setStep('requirements')} className="text-slate-400 text-sm hover:text-slate-300 transition-colors">← Back</button>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setStep('requirements')} className="text-blue-300 text-xs hover:text-blue-200 transition-colors" title="Only if this permit requires supporting documents">＋ Add supporting documents</button>
+              <button onClick={() => setStep('confirm')} className="text-slate-400 text-sm hover:text-slate-300 transition-colors">← Back</button>
+            </div>
           </div>
 
           {/* Field source banner — tells the contractor whether they're filling

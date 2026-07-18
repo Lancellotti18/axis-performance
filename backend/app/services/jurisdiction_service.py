@@ -170,7 +170,12 @@ def detect_jurisdiction(city: str, state: str, address: str = "", project_type: 
             authority_type = "county"
 
         # ── Search 2: Find a direct permit application form/PDF ─────────────
-        raw2 = _search(f"{city} {state} {project_type} building permit application form PDF fillable")
+        # Axis is roofing-first, so bias toward the RIGHT permit for a re-roof.
+        # We keep "building permit" in the query because most jurisdictions file
+        # reroofs on their general residential building-permit form rather than a
+        # separate roofing form — this matches either.
+        roof_ctx = "residential roofing re-roof" if (project_type or "residential") in ("residential", "roofing", "") else project_type
+        raw2 = _search(f"{city} {state} {roof_ctx} building permit application form PDF fillable")
         permit_form_url = None
 
         # LLM pick for form URL
