@@ -73,6 +73,12 @@ const DRAINAGE = [
   { key: 'unsure', label: 'Not sure' },
 ] as const
 
+// Homeowner-facing instant pricing is OFF here too (matches the /r report): an
+// auto price scares people off or sets a false anchor. We keep the full lead
+// funnel + the "we measured your roof" value; the exact price comes from the
+// contractor after a free on-site review.
+const SHOW_INSTANT_PRICE = false
+
 function monthly(principal: number): number {
   const r = 0.099 / 12, n = 120
   return principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
@@ -545,7 +551,7 @@ export default function RoofIQPage() {
             <>
               <div className="text-center">
                 <div className="text-2xl">🎉</div>
-                <div className="mt-1 text-sm font-semibold">Here&apos;s your estimate, {name.split(' ')[0]}</div>
+                <div className="mt-1 text-sm font-semibold">{SHOW_INSTANT_PRICE ? `Here's your estimate, ${name.split(' ')[0]}` : `You're all set, ${name.split(' ')[0]}`}</div>
                 <div className="text-xs text-slate-500">{located?.address}</div>
               </div>
 
@@ -585,11 +591,18 @@ export default function RoofIQPage() {
                         <div className="text-xl font-bold">{quote.roof_sqft?.toLocaleString()} ft²</div>
                         <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Measured roof area</div>
                       </div>
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
-                        <div className="text-xl font-bold text-emerald-700">{money(lo)}–{money(hi)}</div>
-                        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-emerald-600/80">Estimated range</div>
-                        <div className="mt-1 text-[10px] text-slate-500">or from <strong className="text-emerald-700">{money(monthly(lo))}/mo</strong>*</div>
-                      </div>
+                      {SHOW_INSTANT_PRICE ? (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+                          <div className="text-xl font-bold text-emerald-700">{money(lo)}–{money(hi)}</div>
+                          <div className="mt-0.5 text-[10px] uppercase tracking-wide text-emerald-600/80">Estimated range</div>
+                          <div className="mt-1 text-[10px] text-slate-500">or from <strong className="text-emerald-700">{money(monthly(lo))}/mo</strong>*</div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+                          <div className="text-sm font-bold text-emerald-800">Your exact price</div>
+                          <div className="mt-0.5 text-[10px] leading-snug text-emerald-700/80">{company || 'The contractor'} measures your roof and sends it after a free on-site review.</div>
+                        </div>
+                      )}
                     </div>
                   </>
                 )
@@ -597,20 +610,24 @@ export default function RoofIQPage() {
 
               {/* disclaimer */}
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <div className="text-[11px] font-semibold text-amber-900">ⓘ This is a rough, AI-powered educational estimate — not an official quote.</div>
+                <div className="text-[11px] font-semibold text-amber-900">{SHOW_INSTANT_PRICE ? 'ⓘ This is a rough, AI-powered educational estimate — not an official quote.' : 'ⓘ This is a free roof assessment, not an official quote.'}</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-amber-900/70">
-                  Built from satellite imagery and regional pricing. {company || 'The contractor'} provides an exact written proposal after a free on-site review.
+                  Built from satellite imagery{SHOW_INSTANT_PRICE ? ' and regional pricing' : ''}. {company || 'The contractor'} measures your roof and provides an exact written proposal after a free on-site review.
                 </p>
-                <button onClick={() => setFactorsOpen(o => !o)} className="mt-1 text-[11px] font-semibold text-amber-800 hover:underline">
-                  {factorsOpen ? 'Hide' : 'What can change the price?'}
-                </button>
-                {factorsOpen && (
-                  <ul className="mt-1.5 space-y-0.5 text-[11px] text-amber-900/70">
-                    <li>• Roof steepness &amp; height · tear-off layers · decking condition</li>
-                    <li>• Material &amp; color choice · chimneys/skylights/valleys · local code &amp; permits</li>
-                  </ul>
+                {SHOW_INSTANT_PRICE && (
+                  <>
+                    <button onClick={() => setFactorsOpen(o => !o)} className="mt-1 text-[11px] font-semibold text-amber-800 hover:underline">
+                      {factorsOpen ? 'Hide' : 'What can change the price?'}
+                    </button>
+                    {factorsOpen && (
+                      <ul className="mt-1.5 space-y-0.5 text-[11px] text-amber-900/70">
+                        <li>• Roof steepness &amp; height · tear-off layers · decking condition</li>
+                        <li>• Material &amp; color choice · chimneys/skylights/valleys · local code &amp; permits</li>
+                      </ul>
+                    )}
+                    <p className="mt-1 text-[10px] text-amber-900/50">*Financing example: 9.9% APR, 120 mo, subject to credit approval.</p>
+                  </>
                 )}
-                <p className="mt-1 text-[10px] text-amber-900/50">*Financing example: 9.9% APR, 120 mo, subject to credit approval.</p>
               </div>
 
               {/* What happens next — explicit, professional */}
