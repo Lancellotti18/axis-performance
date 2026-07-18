@@ -1,8 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
+import { getUser } from '@/lib/auth'
 import { STATES } from '@/lib/jurisdictions'
+import type { Project } from '@/types'
 
 const cardStyle = {
   boxShadow: '0 2px 12px rgba(59,130,246,0.07)',
@@ -37,6 +40,36 @@ export default function HomeVisualizerPage() {
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState<string | null>(null)
   const [result, setResult]           = useState<any>(null)
+  // "Use in a report": attach this render to a project as its report hero image.
+  const [projects, setProjects]       = useState<Project[] | null>(null)
+  const [pickerOpen, setPickerOpen]   = useState(false)
+  const [savingTo, setSavingTo]       = useState<string | null>(null)
+  const [savedTo, setSavedTo]         = useState<string | null>(null)
+
+  const openPicker = useCallback(async () => {
+    setPickerOpen(true)
+    if (projects) return
+    try {
+      const u = await getUser()
+      if (u) setProjects((await api.projects.list(u.id)) as Project[])
+      else setProjects([])
+    } catch { setProjects([]) }
+  }, [projects])
+
+  const useInReport = useCallback(async (projectId: string, projectName: string) => {
+    if (!result?.generated_image_url) return
+    setSavingTo(projectId)
+    try {
+      await api.projects.setHeroRender(projectId, result.generated_image_url)
+      setSavedTo(projectName)
+      setPickerOpen(false)
+      toast.success(`Added to “${projectName}” — it’ll appear at the top of that project’s report`)
+    } catch {
+      toast.error('Could not attach the render — please try again.')
+    } finally {
+      setSavingTo(null)
+    }
+  }, [result])
 
   const handleFile = (f: File) => {
     setFile(f)
@@ -274,6 +307,41 @@ export default function HomeVisualizerPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Use this render in a project's report */}
+              <div className="mt-3 relative">
+                {savedTo ? (
+                  <div className="flex items-center justify-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 py-2.5 text-sm font-semibold text-emerald-300">
+                    ✓ Added to “{savedTo}” — shows at the top of that project’s report
+                  </div>
+                ) : (
+                  <button onClick={openPicker}
+                    className="w-full rounded-xl py-2.5 text-sm font-bold text-white transition-all hover:scale-[1.01]"
+                    style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.3)' }}>
+                    🖼️ Use in a report
+                  </button>
+                )}
+                {pickerOpen && (
+                  <div className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border border-white/12 bg-[#0b111b] p-1.5 shadow-2xl">
+                    <div className="flex items-center justify-between px-2.5 py-1.5">
+                      <span className="text-xs font-semibold text-slate-300">Add to which project?</span>
+                      <button onClick={() => setPickerOpen(false)} className="text-xs text-slate-500 hover:text-slate-300">✕</button>
+                    </div>
+                    {projects === null ? (
+                      <div className="px-3 py-4 text-center text-xs text-slate-500">Loading…</div>
+                    ) : projects.length === 0 ? (
+                      <div className="px-3 py-4 text-center text-xs text-slate-500">No projects yet — create one first.</div>
+                    ) : projects.map(p => (
+                      <button key={p.id} onClick={() => useInReport(p.id, p.name)} disabled={savingTo === p.id}
+                        className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/[0.06] disabled:opacity-50">
+                        <span className="truncate">{p.name}</span>
+                        <span className="text-[11px] text-slate-500">{savingTo === p.id ? 'Saving…' : 'Use →'}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Concept render disclaimer */}
               <div className="mt-2 flex items-center gap-2 text-slate-400 text-xs">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>

@@ -361,6 +361,12 @@ export const api = {
       }),
     // Persist a validated address on the project so downstream tools (permits,
     // reports) have the city/state/zip — roofing projects otherwise carry only a name.
+    // Save a Roof Visualizer render as the project's report hero image.
+    setHeroRender: (id: string, hero_render_url: string) =>
+      apiRequest<Project>(`/api/v1/projects/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ hero_render_url }),
+      }),
     saveLocation: (id: string, loc: { city?: string; region?: string; zip_code?: string }) =>
       apiRequest<Project>(`/api/v1/projects/${id}`, {
         method: 'PATCH',

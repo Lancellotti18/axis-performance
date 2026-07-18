@@ -115,7 +115,7 @@ async def get_project(project_id: str, user: dict = Depends(require_user)):
 async def update_project(project_id: str, payload: dict, user: dict = Depends(require_user)):
     db = get_supabase()
     require_owned_project(db, project_id, user)
-    allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region", "city", "zip_code", "archived")}
+    allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region", "address", "city", "state", "zip_code", "archived", "hero_render_url")}
     if not allowed:
         raise HTTPException(status_code=400, detail="No valid fields to update")
     result = db.table("projects").update(allowed).eq("id", project_id).execute()

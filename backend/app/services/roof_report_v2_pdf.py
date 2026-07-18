@@ -363,6 +363,20 @@ def _section_1_executive(
     flow.append(ft)
     flow.append(Spacer(1, 12))
 
+    # Roof Visualizer "after" render (if the contractor saved one to the project)
+    # — the emotional hero shot. Always labeled illustrative so it never reads as
+    # a guarantee of the exact product/color.
+    hero_url = (project or {}).get("hero_render_url")
+    if hero_url:
+        hero_bytes = _fetch_satellite_image(hero_url)   # generic URL → bytes fetch
+        if hero_bytes:
+            try:
+                flow.append(Image(io.BytesIO(hero_bytes), width=6.5 * inch, height=4.0 * inch, kind="proportional"))
+                flow.append(Paragraph("Your new roof — illustrative preview (AI-rendered; final color and product per your selection)", styles["muted"]))
+                flow.append(Spacer(1, 12))
+            except Exception:
+                logger.debug("v2 report: hero render embed failed", exc_info=True)
+
     # Satellite image (if available)
     img_url = run.get("satellite_image_url")
     if img_url:
