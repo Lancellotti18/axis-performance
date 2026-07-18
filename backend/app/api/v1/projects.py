@@ -17,7 +17,9 @@ class ProjectCreate(BaseModel):
     description: Optional[str] = None
     region: Optional[str] = "US-TX"
     blueprint_type: Optional[str] = "residential"
+    address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
     zip_code: Optional[str] = None
 
 
@@ -84,7 +86,9 @@ async def create_project(
         "description": payload.description,
         "region": payload.region,
         "blueprint_type": payload.blueprint_type,
+        "address": payload.address,
         "city": payload.city,
+        "state": payload.state,
         "zip_code": payload.zip_code,
         "status": "pending",
     }).execute()

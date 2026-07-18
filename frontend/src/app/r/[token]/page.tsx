@@ -15,6 +15,12 @@ const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9
 
 type Report = Awaited<ReturnType<typeof api.instantQuote.report>>
 
+// Homeowner-facing auto-pricing is OFF: an instant estimate is inaccurate and
+// either scares people off or sets a false anchor. We keep the lead funnel and
+// the option descriptions, but the exact price comes from the contractor's
+// measured roof. Flip to true to show instant prices again.
+const SHOW_INSTANT_PRICE = false
+
 const SCENARIOS = [
   { name: 'Architectural asphalt', note: 'The standard — solid protection, best value', mult: 1.0 },
   { name: 'Premium / designer', note: 'Upgraded curb appeal + longer warranty', mult: 1.25 },
@@ -199,11 +205,12 @@ export default function ReportPage() {
           </p>
         )}
 
-        {/* Good / Better / Best */}
+        {/* Good / Better / Best — options only; the exact price comes from the
+            contractor's measured roof, so no instant number is shown. */}
         {r.tiers && r.tiers.length > 0 ? (
           <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="text-sm font-semibold">Your options</div>
-            <p className="mt-0.5 text-[11px] text-slate-500">Three ways to do this job — your exact price follows a free on-site review.</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">Three ways to do this job. {r.company_name} measures your roof and sends your exact price after a free on-site review.</p>
             <div className="mt-3 space-y-2">
               {r.tiers.map((t, i) => (
                 <div key={t.name} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 ring-1 ${i === 1 ? 'bg-blue-50/60 ring-blue-200' : 'bg-slate-50 ring-slate-100'}`}>
@@ -211,18 +218,18 @@ export default function ReportPage() {
                     <div className="text-sm font-semibold">{t.name} — {t.headline}{i === 1 && <span className="ml-1.5 rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Popular</span>}</div>
                     <div className="text-[11px] text-slate-500">{t.detail}</div>
                   </div>
-                  <div className="shrink-0 text-right text-sm font-bold text-slate-800">{money(t.price)}</div>
+                  {SHOW_INSTANT_PRICE && <div className="shrink-0 text-right text-sm font-bold text-slate-800">{money(t.price)}</div>}
                 </div>
               ))}
             </div>
-            {r.financing && (
+            {SHOW_INSTANT_PRICE && r.financing && (
               <p className="mt-3 text-center text-xs font-semibold text-emerald-700">
                 💳 From {money(r.financing.from_per_month)}/mo
                 <span className="mt-0.5 block text-[10px] font-normal text-slate-400">{r.financing.disclaimer}</span>
               </p>
             )}
           </section>
-        ) : r.price_low != null && (
+        ) : SHOW_INSTANT_PRICE && r.price_low != null && (
           <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="text-sm font-semibold">Estimated investment by material</div>
             <p className="mt-0.5 text-[11px] text-slate-500">Rough ranges — your exact price follows a free on-site review.</p>
@@ -322,10 +329,10 @@ export default function ReportPage() {
         {/* Disclaimer */}
         <section className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-[11px] leading-relaxed text-amber-900/80">
-            <strong>ⓘ About this report:</strong> a rough, AI-powered educational estimate built from satellite
-            imagery and regional pricing data — not an official quote or inspection. Final pricing depends on an
-            on-site evaluation: decking condition, tear-off layers, material selection, and access.
-            <strong> {r.company_name} provides an exact written proposal after a free on-site review.</strong>
+            <strong>ⓘ About this report:</strong> a free, AI-powered roof overview built from satellite imagery —
+            not an official quote or inspection. Your exact price depends on an on-site evaluation: decking
+            condition, tear-off layers, material selection, and access.
+            <strong> {r.company_name} measures your roof and provides an exact written proposal after a free on-site review.</strong>
           </p>
         </section>
 

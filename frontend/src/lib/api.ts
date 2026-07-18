@@ -347,7 +347,7 @@ export const api = {
   projects: {
     list: (userId: string) =>
       apiRequest<Project[]>(`/api/v1/projects/?user_id=${userId}`),
-    create: (payload: { name: string; description?: string; region?: string; blueprint_type?: string; city?: string; zip_code?: string }, userId: string) =>
+    create: (payload: { name: string; description?: string; region?: string; blueprint_type?: string; address?: string; city?: string; state?: string; zip_code?: string }, userId: string) =>
       apiRequest<Project>(`/api/v1/projects/?user_id=${userId}`, {
         method: 'POST',
         body: JSON.stringify(payload),

@@ -16,7 +16,7 @@
  * The single contractor-facing roof measurement + report workflow
  * (the legacy /aerial-report v1 was removed).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { getUser } from '@/lib/auth'
@@ -238,6 +238,16 @@ export default function RoofV2Page() {
       setBusy(false)
     }
   }, [])
+
+  // Deep-link support: /roof-v2?project=<id> (e.g. from "Create project" in the
+  // CRM) auto-selects that project and jumps into measuring — no re-picking.
+  // Read from window.location to avoid the useSearchParams Suspense requirement.
+  const autoPicked = useRef(false)
+  useEffect(() => {
+    if (autoPicked.current || typeof window === 'undefined') return
+    const pid = new URLSearchParams(window.location.search).get('project')
+    if (pid) { autoPicked.current = true; void pickProject(pid) }
+  }, [pickProject])
 
   // When a location is confirmed: fetch the imagery health and surface it to
   // the user immediately. Sharpening is OPT-IN via a button — the user

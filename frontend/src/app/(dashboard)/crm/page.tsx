@@ -217,9 +217,35 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
   const [noteText, setNoteText] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [loadingNotes, setLoadingNotes] = useState(true)
+  const [creatingProject, setCreatingProject] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const drawerRouter = useRouter()
   const stage = STAGE_MAP[lead.stage] || STAGE_MAP.new
   const roofIQ = roofIQOf(lead)
+
+  // Turn this lead into a project pre-filled with their address, then jump
+  // straight into measuring the roof — no re-typing the address.
+  async function createProjectFromLead() {
+    const suggested = lead.name?.trim() || lead.address?.trim() || 'New roof project'
+    const name = window.prompt('Name this project', suggested)
+    if (!name || !name.trim()) return
+    setCreatingProject(true)
+    try {
+      const st = (lead.state || '').trim().toUpperCase()
+      const proj = await api.projects.create({
+        name: name.trim(),
+        address: lead.address || undefined,
+        city: lead.city || undefined,
+        state: st || undefined,
+        region: st ? `US-${st}` : undefined,
+        blueprint_type: 'residential',
+      }, userId)
+      drawerRouter.push(`/roof-v2?project=${proj.id}`)
+    } catch {
+      setCreatingProject(false)
+      alert('Could not create the project — please try again.')
+    }
+  }
 
   // Pull the full RoofIQ report so the drawer shows everything the homeowner
   // told us, organized — not just the packed notes string.
@@ -381,6 +407,16 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto">
+
+          {/* Turn the lead into a project + start measuring (pulls their address) */}
+          <div className="px-5 pt-4">
+            <button onClick={createProjectFromLead} disabled={creatingProject}
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition-all disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+              📐 {creatingProject ? 'Creating project…' : 'Create project & measure roof'}
+            </button>
+            {lead.address && <p className="mt-1.5 text-center text-[11px] text-slate-500">Uses {lead.address}{lead.city ? `, ${lead.city}` : ''} — just name it and start.</p>}
+          </div>
 
           {/* Contact info */}
           <div className="px-5 py-4 space-y-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
