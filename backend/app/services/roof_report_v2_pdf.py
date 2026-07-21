@@ -922,7 +922,11 @@ def _section_photos(run: dict, styles: dict) -> list:
     if run.get("satellite_image_url"):
         items.append(("Aerial (satellite)", run["satellite_image_url"]))
     for i, u in enumerate(run.get("ground_photo_urls") or []):
-        items.append((f"Ground photo {i + 1}", u))
+        # Entries are {url, slot} now; legacy rows may be plain URL strings.
+        url = u.get("url") if isinstance(u, dict) else u
+        label = (u.get("slot") if isinstance(u, dict) else None) or f"Ground photo {i + 1}"
+        if url:
+            items.append((str(label).replace("_", " ").title(), url))
 
     if not items:
         flow.append(Paragraph(

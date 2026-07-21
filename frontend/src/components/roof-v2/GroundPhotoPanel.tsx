@@ -14,7 +14,7 @@
  * + RLS the exterior module uses); analysis is read-only until the contractor
  * explicitly applies a finding.
  */
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
@@ -133,7 +133,7 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
         setPhotos(prev => prev.map(p => p.id === id ? { ...p, previewUrl } : p))
 
         // Send the bytes straight to the backend — no storage round-trip.
-        const res = await api.roofing.v2.analyzeGroundPhoto(runId, file)
+        const res = await api.roofing.v2.analyzeGroundPhoto(runId, file, slot)
         const results = res.results ?? (res.findings ? [{ page: 1, findings: res.findings, message: res.message }] : [])
         const anyUsable = results.some(r => r.findings)
         setPhotos(prev => prev.map(p => p.id === id
@@ -148,6 +148,23 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
   }, [runId])
 
   const removePhoto = useCallback((id: string) => setPhotos(prev => prev.filter(p => p.id !== id)), [])
+
+  // On open, reload photos already saved to this run so they reappear in their
+  // walk-around slots — a contractor's job-site pictures are never lost.
+  useEffect(() => {
+    let cancelled = false
+    api.roofing.v2.getRun(runId).then(r => {
+      if (cancelled) return
+      const saved = (((r as { run?: { ground_photo_urls?: Array<{ url?: string; slot?: string } | string> } }).run?.ground_photo_urls) || [])
+      const entries: PhotoEntry[] = saved.map((s, i) => {
+        const url = typeof s === 'string' ? s : (s.url || '')
+        const slot = typeof s === 'string' ? 'extra' : (s.slot || 'extra')
+        return { id: `saved-${i}`, slot, previewUrl: url, name: 'Saved photo', isPdf: false, status: 'done' as const }
+      }).filter(e => e.previewUrl)
+      if (entries.length) setPhotos(entries)
+    }).catch(() => { /* best-effort — a fresh session still works */ })
+    return () => { cancelled = true }
+  }, [runId])
 
   const applyPitch = useCallback((pitch: string): boolean => {
     if (!pitch || !onApplyPitch) return false

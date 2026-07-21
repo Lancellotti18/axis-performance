@@ -1179,13 +1179,14 @@ export const api = {
         }>(`/api/v1/roofing/v2/runs/${runId}/footprint`, undefined, 60000, 1800000),
       // Ground-photo exterior intelligence — Gemini reads pitch/chimney/gable/
       // materials from a contractor-uploaded ground photo to improve the roof.
-      analyzeGroundPhoto: async (runId: string, file: File) => {
+      analyzeGroundPhoto: async (runId: string, file: File, slot = 'extra') => {
         // Multipart upload — send the image BYTES directly (no storage round-
         // trip) so it works regardless of bucket config + accepts any phone
         // image. apiRequest forces JSON, so we hand-roll the multipart fetch.
         const session = await getCachedSession()
         const fd = new FormData()
         fd.append('file', file)
+        fd.append('slot', slot)   // which walk-around slot this photo belongs to
         const res = await fetchWithTimeout(
           `${API_BASE}/api/v1/roofing/v2/runs/${runId}/ground-photos/analyze`,
           {

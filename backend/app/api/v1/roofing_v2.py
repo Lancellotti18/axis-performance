@@ -44,7 +44,7 @@ import logging
 import math
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 
@@ -1265,6 +1265,7 @@ async def _analyze_ground_image(img_bytes: bytes, mt: str) -> tuple[Optional[dic
 async def analyze_ground_photo(
     run_id: str,
     file: UploadFile = File(...),
+    slot: str = Form("extra"),   # which walk-around slot this photo belongs to
     user: dict = Depends(require_user),
 ) -> dict:
     """
@@ -1337,7 +1338,7 @@ async def analyze_ground_photo(
 
     # Persist the photos themselves so they can appear in the report. Best-effort.
     try:
-        new_urls = _store_ground_photos(run_id, images)
+        new_urls = _store_ground_photos(run_id, images, slot)
         if new_urls:
             db = get_supabase()
             cur = db.table("roof_measurement_runs").select(
@@ -1352,7 +1353,7 @@ async def analyze_ground_photo(
     return {"results": results, "findings": first, "message": message}
 
 
-def _store_ground_photos(run_id: str, images: list[tuple[bytes, str]]) -> list[str]:
+def _store_ground_photos(run_id: str, images: list[tuple[bytes, str]], slot: str = "extra") -> list[dict]:
     """Upload ground photos to Supabase Storage (the existing 'blueprints' bucket,
     under ground-photos/<run>/) and return long-lived signed URLs for the report.
     Best-effort — returns whatever uploaded."""
@@ -1360,7 +1361,7 @@ def _store_ground_photos(run_id: str, images: list[tuple[bytes, str]]) -> list[s
     from app.core.config import settings as _settings
 
     bucket = get_supabase().storage.from_("blueprints")
-    urls: list[str] = []
+    items: list[dict] = []
     for img_bytes, mt in (images or [])[:12]:
         ext = "png" if "png" in (mt or "") else "jpg"
         key = f"ground-photos/{run_id}/{_uuid.uuid4().hex}.{ext}"
@@ -1374,10 +1375,10 @@ def _store_ground_photos(run_id: str, images: list[tuple[bytes, str]]) -> list[s
             if url:
                 if url.startswith("/"):
                     url = _settings.SUPABASE_URL.rstrip("/") + url
-                urls.append(url)
+                items.append({"url": url, "slot": slot})
         except Exception as e:
             logger.info("ground photo upload failed: %s", e)
-    return urls
+    return items
 
 
 @router.get("/runs/{run_id}/solar")
