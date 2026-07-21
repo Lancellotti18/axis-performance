@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
+import WalkAroundCamera from '@/components/roof-v2/WalkAroundCamera'
 
 type Findings = NonNullable<Awaited<ReturnType<typeof api.roofing.v2.analyzeGroundPhoto>>['findings']>
 type PageResult = { page: number; findings: Findings | null; message: string }
@@ -105,7 +106,9 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
   const [photos, setPhotos] = useState<PhotoEntry[]>([])
   const idRef = useRef(0)
 
-  const handleFiles = useCallback(async (slot: string, files: FileList | null) => {
+  const [cameraOpen, setCameraOpen] = useState(false)
+
+  const handleFiles = useCallback(async (slot: string, files: FileList | File[] | null) => {
     if (!files || files.length === 0) return
     for (const original of Array.from(files)) {
       const id = `p${idRef.current++}`
@@ -208,7 +211,7 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
 
   return (
     <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-100">Ground-photo intelligence</h3>
           <p className="text-xs text-slate-400">
@@ -216,7 +219,22 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
             <strong> pitch</strong>, <strong>chimneys</strong>, dormers, gable walls, materials — and you apply the findings.
           </p>
         </div>
+        {/* One-tap live camera: shoot the whole walk-around without leaving it. */}
+        <button onClick={() => setCameraOpen(true)}
+          className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Open camera
+        </button>
       </div>
+
+      {cameraOpen && (
+        <WalkAroundCamera
+          slots={SLOTS.map(s => ({ key: s.key, label: s.label }))}
+          initialSlot={SLOTS[0].key}
+          onCapture={(file, slot) => handleFiles(slot, [file])}
+          onClose={() => setCameraOpen(false)}
+        />
+      )}
 
       <PhotoGuide />
 
