@@ -398,7 +398,7 @@ function FindingsView({
               >({f.pitch_confidence})</span>
             </span>
             {applied ? (
-              <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 ring-1 ring-emerald-400/30">✓ Applied to all facets</span>
+              <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 ring-1 ring-emerald-400/30">✓ Applied to all facets — next, review Penetrations &amp; Flashing below</span>
             ) : (
               <button onClick={() => { if (onApplyPitch(f.roof_pitch)) setApplied(true) }}
                 className="rounded bg-emerald-700 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-600">Apply to facets</button>
