@@ -149,11 +149,12 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
 
   const removePhoto = useCallback((id: string) => setPhotos(prev => prev.filter(p => p.id !== id)), [])
 
-  const applyPitch = useCallback((pitch: string) => {
-    if (!pitch || !onApplyPitch) return
+  const applyPitch = useCallback((pitch: string): boolean => {
+    if (!pitch || !onApplyPitch) return false
     const applied = onApplyPitch(pitch)
     if (applied) toast.success(`Applied ${pitch} pitch to every facet — areas recomputed`)
     else toast.error('No facets yet — auto-detect or draw your roof first, then apply pitch.')
+    return applied
   }, [onApplyPitch])
 
   const addChimney = useCallback(async (count: number) => {
@@ -224,7 +225,7 @@ function PhotoSlot({
   photos: PhotoEntry[]
   onFiles: (files: FileList | null) => void
   onRemove: (id: string) => void
-  onApplyPitch: (p: string) => void
+  onApplyPitch: (p: string) => boolean
   onAddChimney: (n: number) => void
   onAddSkylight: (n: number) => void
 }) {
@@ -346,8 +347,9 @@ function PhotoGuide() {
 
 function FindingsView({
   f, onApplyPitch, onAddChimney, onAddSkylight,
-}: { f: Findings; onApplyPitch: (p: string) => void; onAddChimney: (n: number) => void; onAddSkylight: (n: number) => void }) {
+}: { f: Findings; onApplyPitch: (p: string) => boolean; onAddChimney: (n: number) => void; onAddSkylight: (n: number) => void }) {
   const confColor = f.pitch_confidence === 'high' ? 'text-emerald-300' : f.pitch_confidence === 'medium' ? 'text-amber-300' : 'text-rose-300'
+  const [applied, setApplied] = useState(false)
   return (
     <div className="mt-1 space-y-1">
       <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
@@ -360,8 +362,12 @@ function FindingsView({
                 title="How sure the AI is about the pitch read — not measured accuracy. A square-on shot of a gable END (the triangular wall) reads 'high'. 'Medium' is usable; verify it or re-shoot the gable straight-on for 'high'."
               >({f.pitch_confidence})</span>
             </span>
-            <button onClick={() => onApplyPitch(f.roof_pitch)}
-              className="rounded bg-emerald-700 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-600">Apply to facets</button>
+            {applied ? (
+              <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 ring-1 ring-emerald-400/30">✓ Applied to all facets</span>
+            ) : (
+              <button onClick={() => { if (onApplyPitch(f.roof_pitch)) setApplied(true) }}
+                className="rounded bg-emerald-700 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-600">Apply to facets</button>
+            )}
             {f.pitch_confidence !== 'high' && (
               <span className="text-[10px] text-slate-500">↳ for &quot;high&quot;, shoot the gable end square-on</span>
             )}
