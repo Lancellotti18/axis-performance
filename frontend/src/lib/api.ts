@@ -652,6 +652,25 @@ export const api = {
     markAllRead: () =>
       apiRequest<{ ok: boolean }>(`/api/v1/notifications/read-all`, { method: 'POST' }),
   },
+  // ── Find Roofs (prospecting) ─────────────────────────────────────────────
+  prospecting: {
+    sources: () =>
+      apiRequest<{ sources: Array<{ key: string; name: string }> }>(`/api/v1/prospecting/sources`),
+    findRoofs: (params: { county: string; city?: string; ownerOccupiedOnly?: boolean; limit?: number }) => {
+      const q = new URLSearchParams({ county: params.county })
+      if (params.city) q.set('city', params.city)
+      if (params.ownerOccupiedOnly) q.set('owner_occupied_only', 'true')
+      if (params.limit) q.set('limit', String(params.limit))
+      return apiRequest<{
+        county: string; count: number; note: string
+        prospects: Array<{
+          pin: string; address: string; city: string; owner: string
+          owner_occupied: boolean | null; lat: number; lng: number
+          score: number; tier: string; reasons: string[]; confidence: string
+        }>
+      }>(`/api/v1/prospecting/find-roofs?${q}`)
+    },
+  },
   // ── Growth engine: instant quote widget + lead inbox ─────────────────────
   instantQuote: {
     // Public (homeowner-facing; no auth required)
