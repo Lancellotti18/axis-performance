@@ -1,20 +1,24 @@
 """Find Roofs — prospecting from public parcel data (free tier).
 
-Pulls REAL residential parcels (address, location, owner) from a county's public
-ArcGIS REST service and builds a canvassing list a contractor can work.
+Pulls REAL residential parcels (address, location, owner, and — where the county
+publishes it — year built) from public ArcGIS REST services and builds a
+canvassing list a contractor can work.
 
-Free tier gives what public data actually exposes: address, location, and
-OWNER-OCCUPANCY (derived by comparing the owner's mailing address to the property
-address). Roof AGE and CONDITION are NOT in free feeds — so the score is honest
-about that and leaves condition to the contractor's eye (satellite thumbnail in
-the UI). The scoring function accepts optional `year_built` and `condition`
-inputs so a paid provider (e.g. BatchData ~$99/mo) can be flipped on later,
-nationwide, and the exact same UI gets sharper with zero rebuild.
+Data reality (verified live):
+  - Brunswick County: address + owner + geometry, but year-built is empty.
+  - Onslow County: address + owner + geometry AND a populated YEARBUILT — so we
+    get REAL roof age for free there (real "why" + real confidence).
+
+Owner-occupancy is derived (owner mailing vs property address). The score is
+transparent and honest: it only claims what the data supports, and it accepts an
+optional `condition` input so satellite roof-condition AI (or a paid data
+provider) can raise confidence later with zero UI rebuild.
 """
 from __future__ import annotations
 
 import logging
 import re
+from datetime import date
 from typing import Optional
 
 import httpx
@@ -25,23 +29,30 @@ from app.core.auth import require_user
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+_THIS_YEAR = date.today().year
+_YEAR_FLOOR = 1902  # counties use ~1901 as an "unknown/very old" sentinel
+
 # ---------------------------------------------------------------------------
-# County data sources. Each entry is a public ArcGIS REST parcel layer + the
-# field names to read. Add a county by verifying its endpoint + fields once.
-# (Verified live: Brunswick TaxParcels exposes address, owner, use code, geometry
-#  — but ActualYearBuilt is empty, which is why age is a paid-tier signal.)
+# County sources. `f` maps our keys -> the layer's field names. A source may use
+# either a single `full_address` field or `house`/`street`/`suffix` components,
+# and may or may not expose `year_built`. Add a county by verifying its endpoint.
 # ---------------------------------------------------------------------------
 PARCEL_SOURCES: dict[str, dict] = {
+    "onslow": {
+        "name": "Onslow County, NC (Jacksonville)",
+        "url": "https://maps.onslowcountync.gov/arcgis/rest/services/WEB_PUBLICATIONS/Tax_Data/MapServer/0/query",
+        "residential_where": "YEARBUILT>1901 AND FINALFULLBUILDINGVALUE>0",
+        "city_field": "PHYSICALCITY",
+        "f": {"full_address": "PHYSICALADDRESS", "city": "PHYSICALCITY", "zip": "PHYSICALZIP",
+              "owner": "OWNER1", "owner_mail": "ADDRLINE1", "pin": "OBJECTID", "year_built": "YEARBUILT"},
+    },
     "brunswick": {
-        "name": "Brunswick County, NC",
+        "name": "Brunswick County, NC (Leland, Southport)",
         "url": "https://bcgis.brunswickcountync.gov/arcgis/rest/services/Layers/TaxParcels/MapServer/0/query",
         "residential_where": "UseCode='0100'",
         "city_field": "City",
-        "f": {
-            "house": "HouseNumber", "street": "StreetName", "suffix": "StreetType",
-            "city": "City", "zip": "ZipCode", "owner": "Name1",
-            "owner_mail": "Address1", "pin": "PIN",
-        },
+        "f": {"house": "HouseNumber", "street": "StreetName", "suffix": "StreetType",
+              "city": "City", "zip": "ZipCode", "owner": "Name1", "owner_mail": "Address1", "pin": "PIN"},
     },
 }
 
@@ -51,79 +62,96 @@ def _norm(s: Optional[str]) -> str:
 
 
 def _centroid(geometry: Optional[dict]) -> tuple[Optional[float], Optional[float]]:
-    """Rough centroid (average of the first ring's vertices) — plenty for a map
-    pin + a satellite thumbnail."""
     try:
         ring = (geometry or {}).get("rings", [])[0]
-        xs = [p[0] for p in ring]
-        ys = [p[1] for p in ring]
+        xs = [p[0] for p in ring]; ys = [p[1] for p in ring]
         return round(sum(ys) / len(ys), 6), round(sum(xs) / len(xs), 6)  # lat, lng
     except Exception:
         return None, None
 
 
-def _owner_occupied(house: str, street: str, owner_mail: str) -> Optional[bool]:
-    """True if the owner's mailing address looks like the property itself
-    (owner-occupied), False if it clearly differs (absentee/rental), None if we
-    can't tell."""
+def _owner_occupied(prop_addr: str, owner_mail: str) -> Optional[bool]:
+    """True if the owner's mailing address looks like the property (owner-occupied),
+    False if it clearly differs (absentee), None if we can't tell."""
     mail = _norm(owner_mail)
-    h = _norm(house).lstrip("0")
-    st = _norm(street)
-    if not mail or not h or not st:
+    if not mail:
         return None
-    return (h in mail) and (st in mail)
+    m = re.match(r"^0*(\d+)\s+([A-Z0-9]+)", _norm(prop_addr))  # house number + first street word
+    if not m:
+        return None
+    house, word = m.group(1), m.group(2)
+    return (house in mail) and (word in mail)
+
+
+def _clean_year(v) -> Optional[int]:
+    try:
+        y = int(float(v))
+        return y if _YEAR_FLOOR <= y <= _THIS_YEAR else None
+    except Exception:
+        return None
 
 
 def _score(*, owner_occupied: Optional[bool], year_built: Optional[int] = None,
-           condition: Optional[int] = None, now_year: int = 2026) -> dict:
-    """Transparent opportunity score. Free tier only has owner-occupancy, so the
-    score is modest + honest; year_built / condition (paid or vision, later) make
-    it real. Every point is explained."""
+           condition: Optional[int] = None) -> dict:
+    """Transparent opportunity score + a plain-English 'why'. Only claims what the
+    data supports; confidence reflects how much REAL signal we had."""
     reasons: list[str] = []
-    score = 40  # baseline: a residential home is a candidate
+    score = 40
+    age = (_THIS_YEAR - year_built) if year_built else None
+
+    if year_built and age is not None:
+        if age >= 30:
+            score += 30; reasons.append(f"built {year_built} (~{age} yrs) — at or past typical roof life")
+        elif age >= 18:
+            score += 22; reasons.append(f"built {year_built} (~{age} yrs) — entering the replacement window")
+        elif age >= 12:
+            score += 8; reasons.append(f"built {year_built} (~{age} yrs) — watch, not yet due")
+        else:
+            score -= 15; reasons.append(f"built {year_built} — likely a newer roof")
 
     if owner_occupied is True:
-        score += 20; reasons.append("Owner-occupied (classic retail buyer)")
+        score += 15; reasons.append("owner-occupied (classic retail buyer)")
     elif owner_occupied is False:
-        score += 5; reasons.append("Absentee/rental owner (investor pitch)")
+        score += 3; reasons.append("absentee/rental owner (investor pitch)")
 
-    # These only fire once a paid/vision source is connected.
-    if year_built:
-        age = max(0, now_year - int(year_built))
-        if 18 <= age <= 35:
-            score += 25; reasons.append(f"Roof-age window (built {year_built}, ~{age} yrs)")
-        elif age > 35:
-            score += 20; reasons.append(f"Likely past due (built {year_built})")
-        elif age < 8:
-            score -= 20; reasons.append(f"Newer home (built {year_built}) — likely fine")
     if condition is not None:
         score += int(condition * 0.3)
         if condition >= 60:
-            reasons.append("Roof looks worn in imagery")
+            reasons.append("roof looks worn in imagery")
 
     score = max(0, min(100, score))
-    tier = "Hot" if score >= 70 else "Warm" if score >= 50 else "Cool"
-    # Confidence reflects how much REAL signal we had.
+    tier = "Hot" if score >= 68 else "Warm" if score >= 50 else "Cool"
     confidence = "high" if (year_built and condition is not None) else \
                  "medium" if (year_built or condition is not None) else "low"
-    return {"score": score, "tier": tier, "reasons": reasons, "confidence": confidence}
+
+    # Human "why" line.
+    if age is not None and age >= 18:
+        why = (f"Built in {year_built} — a ~{age}-year-old asphalt roof is typically near or past "
+               f"replacement age" + (", and it's owner-occupied, so a strong retail prospect." if owner_occupied else ". Confirm wear on the roof view."))
+    elif age is not None:
+        why = f"Built in {year_built} — likely a newer roof, so lower priority unless the roof view shows damage."
+    elif owner_occupied is True:
+        why = "Owner-occupied home. Roof age isn't in this county's public data — check the satellite view for streaking, patches, or tarps."
+    else:
+        why = "Residential home. Roof age/condition aren't in public data here — judge it from the roof view."
+
+    return {"score": score, "tier": tier, "reasons": reasons, "confidence": confidence, "why": why}
 
 
 @router.get("/sources")
 async def list_sources(user: dict = Depends(require_user)) -> dict:
-    """Counties currently wired for the free tier."""
-    return {"sources": [{"key": k, "name": v["name"]} for k, v in PARCEL_SOURCES.items()]}
+    return {"sources": [{"key": k, "name": v["name"], "has_age": "year_built" in v["f"]}
+                        for k, v in PARCEL_SOURCES.items()]}
 
 
 @router.get("/find-roofs")
 async def find_roofs(
     county: str = Query(...),
-    city: Optional[str] = Query(None, description="Filter to a city/town within the county"),
+    city: Optional[str] = Query(None),
     owner_occupied_only: bool = Query(False),
     limit: int = Query(60, ge=1, le=200),
     user: dict = Depends(require_user),
 ) -> dict:
-    """Return a ranked canvassing list of real residential homes for an area."""
     src = PARCEL_SOURCES.get(county)
     if not src:
         raise HTTPException(status_code=404, detail=f"No free data source wired for '{county}' yet.")
@@ -132,18 +160,18 @@ async def find_roofs(
     if city:
         where += f" AND UPPER({src['city_field']}) LIKE '%{_norm(city)}%'"
 
+    out_fields = ",".join(sorted(set(f.values())))
+    # Oldest homes first — those are the roofs most likely due for replacement.
+    order = f"{f['year_built']} ASC" if "year_built" in f else ""
     params = {
-        "where": where,
-        "outFields": ",".join([f["house"], f["street"], f["suffix"], f["city"], f["zip"], f["owner"], f["owner_mail"], f["pin"]]),
-        "returnGeometry": "true",
-        "outSR": "4326",
-        "resultRecordCount": str(min(limit * 3, 300)),  # over-fetch; we filter/rank then trim
-        "f": "json",
+        "where": where, "outFields": out_fields, "returnGeometry": "true", "outSR": "4326",
+        "resultRecordCount": str(min(limit * 2, 200)), "f": "json",
     }
+    if order:
+        params["orderByFields"] = order
     try:
         async with httpx.AsyncClient(timeout=25) as client:
-            resp = await client.get(src["url"], params=params)
-            data = resp.json()
+            data = (await client.get(src["url"], params=params)).json()
     except Exception as e:
         logger.warning("prospecting query failed for %s: %s", county, e)
         raise HTTPException(status_code=502, detail="Couldn't reach the county data service — try again.")
@@ -156,28 +184,29 @@ async def find_roofs(
         lat, lng = _centroid(feat.get("geometry"))
         if lat is None:
             continue
-        occ = _owner_occupied(a.get(f["house"], ""), a.get(f["street"], ""), a.get(f["owner_mail"], ""))
+        if "full_address" in f:
+            prop_addr = re.sub(r"\s+", " ", str(a.get(f["full_address"], "") or "")).strip()
+        else:
+            prop_addr = re.sub(r"^0+", "", " ".join(str(a.get(f[k], "") or "").strip()
+                               for k in ("house", "street", "suffix") if k in f)).strip()
+        occ = _owner_occupied(prop_addr, a.get(f["owner_mail"], ""))
         if owner_occupied_only and occ is not True:
             continue
-        street = " ".join(str(a.get(k, "") or "").strip() for k in (f["house"], f["street"], f["suffix"])).strip()
-        # tidy the zero-padded house number
-        street = re.sub(r"^0+", "", street)
-        addr = f"{street}, {a.get(f['city'], '')} {str(a.get(f['zip'], '') or '')[:5]}".strip()
-        sc = _score(owner_occupied=occ)
+        year = _clean_year(a.get(f["year_built"])) if "year_built" in f else None
+        addr = f"{prop_addr}, {a.get(f['city'], '')} {str(a.get(f['zip'], '') or '')[:5]}".strip().strip(",")
+        sc = _score(owner_occupied=occ, year_built=year)
         out.append({
-            "pin": a.get(f["pin"]),
-            "address": addr,
-            "city": a.get(f["city"]),
-            "owner": a.get(f["owner"]),
-            "owner_occupied": occ,
-            "lat": lat, "lng": lng,
-            **sc,
+            "pin": str(a.get(f["pin"])), "address": addr, "city": a.get(f["city"]),
+            "owner": a.get(f["owner"]), "owner_occupied": occ, "year_built": year,
+            "lat": lat, "lng": lng, **sc,
         })
 
     out.sort(key=lambda r: r["score"], reverse=True)
+    has_age = "year_built" in f
     return {
-        "county": src["name"],
-        "count": len(out[:limit]),
-        "prospects": out[:limit],
-        "note": "Free tier: real homes + owner-occupancy from public records. Roof age/condition aren't in free data — check each roof thumbnail to triage. A ~$99/mo data upgrade adds nationwide age + verified owner data.",
+        "county": src["name"], "count": len(out[:limit]), "prospects": out[:limit],
+        "note": ("Real homes with roof age from public records — scores use age + owner-occupancy. "
+                 "Check each roof thumbnail to confirm condition.") if has_age else
+                ("Free tier: real homes + owner-occupancy, but this county doesn't publish roof age — "
+                 "lean on the roof thumbnails. Counties like Onslow do publish age, so those score higher-confidence."),
     }

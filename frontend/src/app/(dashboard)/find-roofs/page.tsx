@@ -16,8 +16,8 @@ import { getUser } from '@/lib/auth'
 
 type Prospect = {
   pin: string; address: string; city: string; owner: string
-  owner_occupied: boolean | null; lat: number; lng: number
-  score: number; tier: string; reasons: string[]; confidence: string
+  owner_occupied: boolean | null; year_built: number | null; lat: number; lng: number
+  score: number; tier: string; reasons: string[]; confidence: string; why: string
 }
 
 // Free, no-key satellite thumbnail from Esri World Imagery (tight crop on the roof).
@@ -136,11 +136,12 @@ export default function FindRoofsPage() {
                       <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${TIER[p.tier] || TIER.Cool}`}>{p.tier}</span>
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                      {p.year_built && <span className="rounded bg-blue-500/15 px-1.5 py-0.5 font-medium text-blue-200">Built {p.year_built}</span>}
                       {p.owner_occupied === true && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300">Owner-occupied</span>}
                       {p.owner_occupied === false && <span className="rounded bg-slate-500/15 px-1.5 py-0.5 text-slate-400">Absentee</span>}
-                      <span className="text-slate-500">conf: {p.confidence}</span>
+                      <span className={p.confidence === 'low' ? 'text-slate-500' : 'text-slate-400'}>conf: {p.confidence}</span>
                     </div>
-                    {p.reasons.length > 0 && <div className="mt-1 truncate text-[11px] text-slate-400">{p.reasons.join(' · ')}</div>}
+                    {p.why && <div className="mt-1 text-[11px] leading-snug text-slate-400">{p.why}</div>}
                     <div className="mt-2 flex items-center gap-2">
                       <button onClick={() => measure(p)} disabled={converting === p.pin}
                         className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
