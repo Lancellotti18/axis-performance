@@ -655,7 +655,7 @@ export const api = {
   // ── Find Roofs (prospecting) ─────────────────────────────────────────────
   prospecting: {
     sources: () =>
-      apiRequest<{ sources: Array<{ key: string; name: string; has_age: boolean }> }>(`/api/v1/prospecting/sources`),
+      apiRequest<{ sources: Array<{ key: string; name: string; has_age: boolean; has_owner: boolean }> }>(`/api/v1/prospecting/sources`),
     findRoofs: (params: { county: string; city?: string; ownerOccupiedOnly?: boolean; limit?: number }) => {
       const q = new URLSearchParams({ county: params.county })
       if (params.city) q.set('city', params.city)
@@ -665,11 +665,19 @@ export const api = {
         county: string; count: number; note: string
         prospects: Array<{
           pin: string; address: string; city: string; owner: string
-          owner_occupied: boolean | null; year_built: number | null; lat: number; lng: number
+          owner_occupied: boolean | null; year_built: number | null; sold_year: number | null; lat: number; lng: number
           score: number; tier: string; reasons: string[]; confidence: string; why: string
         }>
       }>(`/api/v1/prospecting/find-roofs?${q}`)
     },
+    censusHeat: (county: string, limit = 40) =>
+      apiRequest<{
+        available: boolean; county: string; count?: number; note: string
+        tracts: Array<{
+          tract: string; pct_pre_1980: number; pct_owner_occupied: number
+          median_value: number | null; units: number; score: number; tier: string; why: string
+        }>
+      }>(`/api/v1/prospecting/census-heat?county=${encodeURIComponent(county)}&limit=${limit}`),
   },
   // ── Growth engine: instant quote widget + lead inbox ─────────────────────
   instantQuote: {
