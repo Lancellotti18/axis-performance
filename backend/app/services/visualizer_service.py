@@ -135,7 +135,11 @@ async def _fal_img2img(image_bytes: bytes, content_type: str, description: str) 
 
         edit_instruction = (
             f"{description}. "
-            "Keep the rest of the house identical: same roofline, same windows, "
+            "Render the new roof as if it were just professionally installed: brand-new, "
+            "flawless, uniform shingles in clean straight courses. Completely replace and "
+            "REMOVE any existing roof damage — no missing, broken, cracked, curling, or "
+            "mismatched shingles, no streaks, stains, moss, patches, or wear. "
+            "Keep the rest of the house identical: same roofline shape, same windows, "
             "same door placement, same camera angle, same lighting. "
             "Photorealistic real-estate photograph."
         )
@@ -182,6 +186,9 @@ def _gemini_img2img_sync(image_bytes: bytes, mime: str, description: str) -> str
         "Keep the house EXACTLY the same: same roofline, same window layout, same door placement, "
         "same foundation, same yard, same trees, same camera angle, same time of day, same lighting. "
         f"Apply ONLY this change: {description}. "
+        "If the change involves the roof, render it as a brand-new, professionally installed roof — "
+        "replace and REMOVE all existing damage in that area: no missing, broken, cracked, or curling "
+        "shingles, no streaks, stains, moss, or wear; make the new shingles clean, uniform, and flawless. "
         "Output a photorealistic real-estate photograph of the SAME house with just that change applied. "
         "Do not invent a new house. Do not move the camera. Do not change the composition."
     )
@@ -231,7 +238,9 @@ async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") ->
     """
     prompt = (
         f"the exact same house photographed from the exact same angle, "
-        f"only modification: {description}. "
+        f"only modification: {description}. Render any new roof as brand-new, flawless, "
+        f"uniform shingles in clean straight courses — no missing, broken, or curling shingles, "
+        f"no streaks, stains, or moss. "
         f"Identical roofline, identical window placement, identical door placement, "
         f"identical foundation, identical trees and yard. "
         f"Photorealistic, professional real estate photography, sharp focus, natural daylight."
@@ -241,12 +250,14 @@ async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") ->
         "inputs": base64.b64encode(image_bytes).decode(),
         "parameters": {
             "prompt": prompt,
-            "strength": 0.42,           # 0=identical to original, 1=ignore original; low enough to keep structure
+            "strength": 0.55,           # 0=identical, 1=ignore original; high enough to actually re-roof, low enough to keep structure
             "guidance_scale":       8.0,
             "num_inference_steps":  30,
             "negative_prompt": (
                 "different house, different house shape, different roofline, "
                 "different windows, different door, rearranged facade, new building, "
+                "damaged roof, missing shingles, broken shingles, curling shingles, "
+                "roof streaks, roof stains, moss, worn roof, "
                 "blurry, low quality, distorted, cartoon, painting, watermark, people, text"
             ),
         },
@@ -305,13 +316,16 @@ async def _replicate_img2img(image_bytes: bytes, content_type: str, description:
 
     positive = (
         f"the exact same house photographed from the same angle, "
-        f"only modification: {description}. "
+        f"only modification: {description}. Render any new roof as brand-new, flawless, uniform "
+        f"shingles — remove all existing damage, missing/broken/curling shingles, streaks, stains, and moss. "
         f"Identical roofline, identical window layout, identical door, identical foundation, identical yard. "
         f"Photorealistic, professional architectural photography, high resolution 8k, sharp focus, natural daylight."
     )
     negative = (
         "different house, different house shape, different roofline, different windows, "
-        "rearranged facade, new building, blurry, low quality, distorted, warped, "
+        "rearranged facade, new building, damaged roof, missing shingles, broken shingles, "
+        "curling shingles, roof streaks, roof stains, moss, worn roof, "
+        "blurry, low quality, distorted, warped, "
         "cartoon, anime, painting, sketch, watermark, text overlay, people, vehicles, interior, abstract"
     )
 

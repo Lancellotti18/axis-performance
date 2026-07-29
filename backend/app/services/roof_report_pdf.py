@@ -8,8 +8,10 @@ the measurement artifact adjusters already know how to read.
 """
 from __future__ import annotations
 
+import base64
 import io
 import logging
+import urllib.parse
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -52,15 +54,27 @@ def _confidence_bucket(c: float) -> tuple[str, colors.Color]:
 
 
 def _fetch_satellite_image(url: str) -> Optional[bytes]:
+    """Return image bytes from an http(s) URL OR an inline data: URI.
+
+    The Roof Visualizer stores its render as a base64 `data:` URI, so this must
+    decode those directly — a plain HTTP GET can't fetch a data: URI.
+    """
     if not url:
         return None
     try:
+        if url.startswith("data:"):
+            header, _, payload = url.partition(",")
+            if not payload:
+                return None
+            if ";base64" in header.lower():
+                return base64.b64decode(payload)
+            return urllib.parse.unquote_to_bytes(payload)
         with httpx.Client(timeout=15, follow_redirects=True) as client:
             r = client.get(url)
             r.raise_for_status()
             return r.content
     except Exception:
-        logger.debug("roof_report: satellite image fetch failed", exc_info=True)
+        logger.debug("roof_report: image fetch failed", exc_info=True)
         return None
 
 
