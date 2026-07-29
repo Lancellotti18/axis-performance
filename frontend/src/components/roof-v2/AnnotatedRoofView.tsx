@@ -156,14 +156,14 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-lg border border-white/10 bg-black">
+      <div className="relative overflow-hidden rounded-lg border border-white/10 bg-slate-950">
         {/* Hidden loader just to capture the tile's natural dimensions. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt="" className="hidden" onLoad={onImageLoad} />
         <svg
           ref={svgRef}
           viewBox={cropViewBox}
-          preserveAspectRatio="xMidYMid meet"
+          preserveAspectRatio="xMidYMid slice"
           className="block max-h-[82vh] min-h-[480px] w-full"
         >
           {/* Satellite tile inside the SVG so it crops to the roof with the

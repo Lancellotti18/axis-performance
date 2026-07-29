@@ -1004,7 +1004,7 @@ export function RoofFacetEditor({
         {/* Canvas */}
         <div
           ref={containerRef}
-          className="relative min-h-0 flex-1 touch-none overflow-hidden rounded-lg border border-white/10 bg-black"
+          className="relative min-h-0 flex-1 touch-none overflow-hidden rounded-lg border border-white/10 bg-slate-950"
           onKeyDown={(ev) => {
             if (ev.key === 'Enter' && mode === 'draw' && drawingPoly.length >= 3) {
               finalizeDrawingPoly()
@@ -1023,6 +1023,19 @@ export function RoofFacetEditor({
             cursor: panning ? 'grabbing' : spaceHeld ? 'grab' : undefined,
           }}
         >
+          {/* Blurred backdrop — fills the letterbox area with a soft continuation
+              of the satellite instead of hard black bars. Sits behind the pannable
+              stage and doesn't move, so it always covers the full viewport. */}
+          {imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageUrl}
+              alt=""
+              aria-hidden
+              draggable={false}
+              className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
+            />
+          )}
           {/* Transformed stage — image + svg move/scale together */}
           <div
             ref={stageRef}

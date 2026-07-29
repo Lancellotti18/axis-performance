@@ -31,9 +31,15 @@ export default function PannableImage({
       ref={map.containerRef}
       {...map.bind}
       tabIndex={0}
-      className={`relative select-none overflow-hidden rounded border border-white/10 bg-black outline-none focus:ring-1 focus:ring-blue-500/40 ${map.isPanning ? 'cursor-grabbing' : 'cursor-grab'} ${className}`}
+      className={`relative select-none overflow-hidden rounded border border-white/10 bg-slate-950 outline-none focus:ring-1 focus:ring-blue-500/40 ${map.isPanning ? 'cursor-grabbing' : 'cursor-grab'} ${className}`}
       style={{ height: maxHeight, touchAction: 'none' }}
     >
+      {/* Blurred backdrop fills the letterbox with a soft satellite continuation
+          (no hard black bars) — fixed behind the pannable stage. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="" aria-hidden draggable={false}
+        className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl" />
+
       {/* Transformed stage holds the world content */}
       <div
         ref={map.stageRef}

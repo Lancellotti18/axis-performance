@@ -40,6 +40,7 @@ import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 // import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
 import SidingMeasurementTool from '@/components/roof-v2/SidingMeasurementTool'
 import PannableImage from '@/components/roof-v2/PannableImage'
+import RoofScanSpinner from '@/components/roof-v2/RoofScanSpinner'
 
 interface Project {
   id: string
@@ -582,8 +583,8 @@ export default function RoofV2Page() {
           </h2>
           {busy && !imagery && (
             <div className="flex items-center gap-3 rounded bg-slate-900/60 p-3 text-sm text-slate-300">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-              <span>Fetching highest-resolution tile (zoom 22 @2x retina)…</span>
+              <RoofScanSpinner size={30} className="flex-shrink-0" />
+              <span>Fetching the highest-resolution satellite tile (zoom 22 @2x retina)…</span>
             </div>
           )}
           {imagery && (

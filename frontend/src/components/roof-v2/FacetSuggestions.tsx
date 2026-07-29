@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import RoofScanSpinner from '@/components/roof-v2/RoofScanSpinner'
 import { buildEdgeMap, snapToNearestEdge } from '@/lib/edgeSnap'
 import type { Facet } from './RoofFacetEditor'
 
@@ -222,7 +223,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
       {/* Loading state with elapsed timer + cold-start hint */}
       {loading && (
         <div className="mt-3 flex items-center gap-3 rounded-md border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-200">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+          <RoofScanSpinner size={30} className="flex-shrink-0" />
           <div>
             <div>Analyzing the satellite tile with AI vision… {elapsed}s</div>
             {elapsed >= 8 && (
