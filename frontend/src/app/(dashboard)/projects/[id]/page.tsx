@@ -141,6 +141,10 @@ export default function ProjectPage() {
   const [quoteForm, setQuoteForm] = useState({ name: '', company: '', phone: '', email: '', branch: '', notes: '' })
   const [quoteGenerated, setQuoteGenerated] = useState(false)
   const [quoteCopied, setQuoteCopied] = useState(false)
+  // Roofing projects (no blueprint) — surface the saved measurement + report.
+  const [roofRunId, setRoofRunId] = useState<string | null>(null)
+  const [roofFacetCount, setRoofFacetCount] = useState<number | null>(null)
+  const [openingReport, setOpeningReport] = useState(false)
   // 3D Model
   // scene3d state removed — floor plan viewer removed
 
@@ -212,6 +216,34 @@ export default function ProjectPage() {
   }, [projectId])
 
   useEffect(() => { loadData() }, [loadData])
+  // For roofing projects (no blueprint), load the saved measurement run so the
+  // overview can show what's been done and link straight to the report.
+  useEffect(() => {
+    if (!project || (project.blueprints?.length ?? 0) > 0) return
+    let cancelled = false
+    api.roofing.v2.latestRun(projectId).then(async ({ run_id }) => {
+      if (cancelled || !run_id) return
+      setRoofRunId(run_id)
+      try {
+        const r = await api.roofing.v2.getRun(run_id)
+        if (!cancelled) setRoofFacetCount(Array.isArray(r.facets) ? r.facets.length : 0)
+      } catch { /* run summary is best-effort */ }
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [project, projectId])
+
+  async function openRoofReport() {
+    if (!roofRunId) return
+    setOpeningReport(true)
+    try {
+      const { url } = await api.roofing.v2.getReportShareUrl(roofRunId)
+      window.open(url, '_blank', 'noopener')
+    } catch (err) {
+      toast.error('Could not open the report — measure the roof first, then try again.')
+    } finally {
+      setOpeningReport(false)
+    }
+  }
   // Wake Render free tier as soon as the page loads so it's ready when the user clicks Generate
   useEffect(() => {
     fetch('https://build-backend-jcp9.onrender.com/health').catch(() => {})
@@ -700,17 +732,71 @@ Thank you for your time.`
       </div>
 
       {!hasBlueprint ? (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="w-full max-w-lg text-center">
-            <div className="text-slate-100 font-semibold text-lg mb-1">Measure this roof</div>
-            <div className="text-slate-400 text-sm mb-6">Axis measures the roof from satellite — no blueprint needed.</div>
-            <div className="flex justify-center">
-              <Link href="/roof-v2"
-                className="rounded-2xl border border-blue-400/30 bg-blue-500/10 p-5 text-left transition hover:bg-blue-500/15 max-w-sm w-full">
-                <div className="text-2xl mb-1">📐</div>
-                <div className="font-semibold text-white">Measure the roof</div>
-                <div className="mt-0.5 text-xs text-slate-400">Satellite measurement, materials, and a branded PDF report.</div>
-              </Link>
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="mx-auto max-w-4xl space-y-5">
+            {/* Saved Roof Visualizer render — the hero shot */}
+            {project?.hero_render_url && (
+              <div className="overflow-hidden rounded-2xl bg-white/[0.04]" style={cardStyle}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={project.hero_render_url} alt="Roof visualization" className="w-full object-cover" style={{ maxHeight: 340 }} />
+                <div className="px-4 py-2.5 text-xs text-slate-400">Roof Visualizer preview — saved to this project&apos;s report</div>
+              </div>
+            )}
+
+            <div className="grid gap-5 md:grid-cols-2">
+              {/* Project details */}
+              <div className="rounded-2xl bg-white/[0.04] p-5" style={cardStyle}>
+                <h3 className="mb-3 text-sm font-bold text-white">Project details</h3>
+                <div className="space-y-0.5">
+                  {[
+                    ['Name', project?.name],
+                    ['Address', project?.address],
+                    ['City', project?.city],
+                    ['State', (project?.region || '').replace('US-', '') || project?.state],
+                    ['Type', project?.blueprint_type || 'Roofing'],
+                    ['Created', project?.created_at ? new Date(project.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex justify-between gap-3 border-b border-white/[0.07] py-2 last:border-0">
+                      <span className="text-sm text-slate-400">{label}</span>
+                      <span className="max-w-[60%] truncate text-right text-sm font-semibold text-white">{value || '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Roof status + actions */}
+              <div className="flex flex-col rounded-2xl bg-white/[0.04] p-5" style={cardStyle}>
+                <h3 className="mb-3 text-sm font-bold text-white">Roof</h3>
+                {roofRunId ? (
+                  <div className="mb-4 rounded-xl border border-emerald-400/25 bg-emerald-500/[0.06] px-4 py-3">
+                    <div className="text-sm font-semibold text-emerald-300">Roof measured ✓</div>
+                    <div className="mt-0.5 text-xs text-slate-400">
+                      {roofFacetCount != null ? `${roofFacetCount} roof ${roofFacetCount === 1 ? 'facet' : 'facets'} captured. ` : ''}
+                      Open the measurement tool to review or edit, or view the report.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-4 text-sm text-slate-400">
+                    This roof hasn&apos;t been measured yet. Axis measures it from satellite — no blueprint needed.
+                  </div>
+                )}
+                <div className="mt-auto flex flex-col gap-2">
+                  <Link href={`/roof-v2?project=${projectId}`}
+                    className="rounded-xl bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white transition-colors hover:bg-blue-500">
+                    {roofRunId ? 'Open measurement tool →' : '📐 Measure the roof →'}
+                  </Link>
+                  {roofRunId && (
+                    <button onClick={openRoofReport} disabled={openingReport}
+                      className="rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-slate-200 transition-colors hover:bg-white/[0.08] disabled:opacity-50">
+                      {openingReport ? 'Preparing report…' : 'View report (PDF)'}
+                    </button>
+                  )}
+                  <Link href="/home-visualizer"
+                    className="rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-center text-sm font-semibold text-slate-200 transition-colors hover:bg-white/[0.08]">
+                    Roof Visualizer
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </div>
