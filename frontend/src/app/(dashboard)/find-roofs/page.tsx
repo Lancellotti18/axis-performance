@@ -38,6 +38,9 @@ function roofThumb(lat: number, lng: number, d = 0.0006) {
   return `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=240,180&format=jpg&f=image`
 }
 const mapsLink = (lat: number, lng: number) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+// Area view (no dropped pin) — a tract centroid pin can land in a field; this
+// shows the surrounding neighborhood so the contractor recognizes the area.
+const mapAreaLink = (lat: number, lng: number) => `https://www.google.com/maps/@${lat},${lng},15z`
 
 const TIER: Record<string, string> = {
   Hot: 'bg-rose-500/15 text-rose-300 ring-rose-400/30',
@@ -264,11 +267,12 @@ export default function FindRoofsPage() {
                       <span className={`flex-shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ring-1 ${TIER[t.tier] || TIER.Cool}`}>{t.tier}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                          <span className="text-sm font-semibold text-white">{t.tract}</span>
-                          <span className="text-[11px] text-slate-500">{t.units.toLocaleString()} homes</span>
+                          <span className="text-sm font-semibold text-white">{t.place || t.tract}</span>
+                          {t.place && <span className="text-[11px] text-slate-500">{t.tract}</span>}
+                          <span className="text-[11px] text-slate-500">· {t.units.toLocaleString()} homes</span>
                           {t.lat != null && t.lng != null && (
-                            <a href={mapsLink(t.lat, t.lng)} target="_blank" rel="noreferrer"
-                              className="text-[11px] text-blue-300 underline decoration-dotted hover:text-blue-200">📍 View on map ↗</a>
+                            <a href={mapAreaLink(t.lat, t.lng)} target="_blank" rel="noreferrer"
+                              className="text-[11px] text-blue-300 underline decoration-dotted hover:text-blue-200">📍 See the area ↗</a>
                           )}
                         </div>
                         <div className="mt-0.5 text-[11px] leading-snug text-slate-400">{t.why}</div>

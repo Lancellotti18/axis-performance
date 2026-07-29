@@ -17,6 +17,7 @@ roof-condition AI can raise confidence later with zero UI rebuild.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -67,6 +68,13 @@ PARCEL_SOURCES: dict[str, dict] = {
         "geom": "point",
         "f": {"house": "NUMBER", "street": "STREET", "city": "POSTALCITY",
               "zip": "ZIPCODE", "pin": "OBJECTID"},
+    },
+    "pender": {
+        "name": "Pender County, NC (Hampstead, Topsail)",
+        "url": "https://services3.arcgis.com/eWu49l4aPlhvQwvs/arcgis/rest/services/Parcels/FeatureServer/0/query",
+        "residential_where": "HEAT_SQ_FT>0 AND ADDR NOT LIKE 'P O BOX%'",
+        "city_field": "ADDR",
+        "f": {"full_address": "ADDR", "owner": "NAME", "pin": "OBJECTID", "sale_price": "SALE_PRICE"},
     },
 }
 
@@ -278,7 +286,9 @@ async def find_roofs(
         sale_price = _num(a.get(f["sale_price"])) if "sale_price" in f else None
         tax_value = _num(a.get(f["tax_value"])) if "tax_value" in f else None
         owner_mail = a.get(f["owner_mail"]) if "owner_mail" in f else None
-        addr = f"{prop_addr}, {a.get(f['city'], '')} {str(a.get(f['zip'], '') or '')[:5]}".strip().strip(",")
+        city_val = str(a.get(f["city"], "") or "").strip() if "city" in f else ""
+        zip_val = str(a.get(f["zip"], "") or "")[:5] if "zip" in f else ""
+        addr = re.sub(r"\s+", " ", f"{prop_addr}, {city_val} {zip_val}").strip().strip(",").strip()
         sc = _score(owner_occupied=occ, year_built=year,
                     sold_months=sale[0] if sale else None, sold_year=sale[1] if sale else None,
                     sold_price=sale_price, tax_value=tax_value)
@@ -392,13 +402,45 @@ async def census_heat(
         why = f"{pct_pre80}% of homes built before 1980, {pct_owner}% owner-occupied"
         if value:
             why += f", median value ${int(value):,}"
-        tracts.append({"tract": name, "pct_pre_1980": pct_pre80, "pct_owner_occupied": pct_owner,
+        tracts.append({"tract": name, "place": None, "pct_pre_1980": pct_pre80,
+                       "pct_owner_occupied": pct_owner,
                        "median_value": int(value) if value else None, "units": int(units),
                        "lat": cen[0] if cen else None, "lng": cen[1] if cen else None,
                        "score": score, "tier": tier, "why": why + "."})
 
     tracts.sort(key=lambda t: t["score"], reverse=True)
-    return {"available": True, "county": cname, "count": len(tracts[:limit]),
-            "tracts": tracts[:limit],
+    top = tracts[:limit]
+
+    # Reverse-geocode each neighborhood's centroid to a recognizable community
+    # name (a CDP like 'Ogden' / 'Myrtle Grove', else the city or township) so a
+    # contractor knows the AREA, not just a tract number. Best-effort + concurrent.
+    def _clean_place(name: str) -> str:
+        return re.sub(r"\s+(city|town|township|village|CDP)$", "", name or "", flags=re.I).strip()
+
+    sem = asyncio.Semaphore(10)
+    async with httpx.AsyncClient(timeout=6) as c:
+        async def _name(t):
+            if t.get("lat") is None:
+                return
+            async with sem:
+                try:
+                    r = await c.get(
+                        "https://geocoding.geo.census.gov/geocoder/geographies/coordinates",
+                        params={"x": t["lng"], "y": t["lat"], "benchmark": "Public_AR_Current",
+                                "vintage": "Current_Current", "format": "json"})
+                    g = r.json().get("result", {}).get("geographies", {})
+                except Exception:
+                    return
+            for layer in ("Census Designated Places", "Incorporated Places", "County Subdivisions"):
+                arr = g.get(layer) or []
+                if arr and arr[0].get("NAME"):
+                    t["place"] = _clean_place(arr[0]["NAME"])
+                    return
+        try:
+            await asyncio.gather(*[_name(t) for t in top])
+        except Exception:
+            logger.debug("tract place-naming failed", exc_info=True)
+
+    return {"available": True, "county": cname, "count": len(top), "tracts": top,
             "note": ("Neighborhoods ranked by roof opportunity (older homes + owner-occupied), from free "
-                     "Census data. This is where to farm — pair with the address list for door-knocking.")}
+                     "Census data. This is where to farm — the community name + map link show exactly where.")}

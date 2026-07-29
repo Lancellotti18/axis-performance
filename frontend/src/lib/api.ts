@@ -675,7 +675,7 @@ export const api = {
       apiRequest<{
         available: boolean; county: string; count?: number; note: string
         tracts: Array<{
-          tract: string; pct_pre_1980: number; pct_owner_occupied: number
+          tract: string; place: string | null; pct_pre_1980: number; pct_owner_occupied: number
           median_value: number | null; units: number; lat: number | null; lng: number | null
           score: number; tier: string; why: string
         }>
