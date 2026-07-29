@@ -211,20 +211,12 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
 
   return (
     <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-100">Ground-photo intelligence</h3>
-          <p className="text-xs text-slate-400">
-            Upload ground-level photos <strong>or a PDF</strong>. AI reads what the satellite can&apos;t — roof
-            <strong> pitch</strong>, <strong>chimneys</strong>, dormers, gable walls, materials — and you apply the findings.
-          </p>
-        </div>
-        {/* One-tap live camera: shoot the whole walk-around without leaving it. */}
-        <button onClick={() => setCameraOpen(true)}
-          className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-          Open camera
-        </button>
+      <div>
+        <h3 className="text-sm font-semibold text-slate-100">Ground-photo intelligence</h3>
+        <p className="text-xs text-slate-400">
+          Upload ground-level photos <strong>or a PDF</strong>. AI reads what the satellite can&apos;t — roof
+          <strong> pitch</strong>, <strong>chimneys</strong>, dormers, gable walls, materials — and you apply the findings.
+        </p>
       </div>
 
       {cameraOpen && (
@@ -238,7 +230,16 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
 
       <PhotoGuide />
 
-      {/* Guided walk-around: drop each photo into the slot where you're standing. */}
+      {/* One-tap live camera, right where you capture — shoot the whole
+          walk-around without leaving the panel. */}
+      <button onClick={() => setCameraOpen(true)}
+        className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-500">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Open camera — guided walk-around
+      </button>
+
+      {/* Guided walk-around: drop each photo into the slot where you're standing,
+          or tap 📷 on any slot to shoot just that one. */}
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {SLOTS.map(slot => (
           <PhotoSlot key={slot.key} slot={slot}

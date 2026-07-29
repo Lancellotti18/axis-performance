@@ -3416,12 +3416,13 @@ async def get_run_report(run_id: str, user: dict = Depends(require_user)):
 
 @router.get("/runs/{run_id}/report/url")
 async def get_run_report_url(run_id: str, user: dict = Depends(require_user)) -> dict:
-    """A shareable signed URL for the run's report — returns the stored one if it
-    exists, otherwise builds + stores it first."""
+    """A shareable signed URL for the run's report. Always rebuilds so the report
+    reflects the latest measurements, pitch, and any saved Roof Visualizer render —
+    a cached copy goes stale the moment the project changes."""
     require_owned_run(get_supabase(), run_id, user)
-    url = _signed_report_url(run_id)
+    _, _, url = await _build_and_store_report(run_id)
     if not url:
-        _, _, url = await _build_and_store_report(run_id)
+        url = _signed_report_url(run_id)  # fall back to a stored copy if re-store failed
     if not url:
         raise HTTPException(status_code=503, detail="Could not prepare a shareable link for this report.")
     return {"url": url}
