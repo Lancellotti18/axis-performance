@@ -664,8 +664,9 @@ export const api = {
       return apiRequest<{
         county: string; count: number; note: string
         prospects: Array<{
-          pin: string; address: string; city: string; owner: string
-          owner_occupied: boolean | null; year_built: number | null; sold_year: number | null; lat: number; lng: number
+          pin: string; address: string; city: string; owner: string | null; owner_mail: string | null
+          owner_occupied: boolean | null; year_built: number | null; sold_year: number | null
+          tax_value: number | null; lat: number; lng: number
           score: number; tier: string; reasons: string[]; confidence: string; why: string
         }>
       }>(`/api/v1/prospecting/find-roofs?${q}`)
@@ -675,7 +676,8 @@ export const api = {
         available: boolean; county: string; count?: number; note: string
         tracts: Array<{
           tract: string; pct_pre_1980: number; pct_owner_occupied: number
-          median_value: number | null; units: number; score: number; tier: string; why: string
+          median_value: number | null; units: number; lat: number | null; lng: number | null
+          score: number; tier: string; why: string
         }>
       }>(`/api/v1/prospecting/census-heat?county=${encodeURIComponent(county)}&limit=${limit}`),
   },

@@ -48,7 +48,8 @@ PARCEL_SOURCES: dict[str, dict] = {
         "city_field": "PHYSICALCITY",
         "f": {"full_address": "PHYSICALADDRESS", "city": "PHYSICALCITY", "zip": "PHYSICALZIP",
               "owner": "OWNER1", "owner_mail": "ADDRLINE1", "pin": "OBJECTID",
-              "year_built": "YEARBUILT", "sale_date": "SALEDATE", "sale_price": "SALEPRICE"},
+              "year_built": "YEARBUILT", "sale_date": "SALEDATE", "sale_price": "SALEPRICE",
+              "tax_value": "TAXMARKETVALUE"},
     },
     "brunswick": {
         "name": "Brunswick County, NC (Leland, Southport)",
@@ -84,6 +85,14 @@ COUNTY_FIPS: dict[str, tuple[str, str, str]] = {
 
 def _norm(s: Optional[str]) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().upper())
+
+
+def _num(v) -> Optional[float]:
+    try:
+        n = float(v)
+        return n if n > 0 else None
+    except Exception:
+        return None
 
 
 def _latlng(geometry: Optional[dict], kind: str) -> tuple[Optional[float], Optional[float]]:
@@ -148,7 +157,8 @@ def _sale_recency(v) -> Optional[tuple[int, int]]:
 
 def _score(*, owner_occupied: Optional[bool], year_built: Optional[int] = None,
            condition: Optional[int] = None, sold_months: Optional[int] = None,
-           sold_year: Optional[int] = None) -> dict:
+           sold_year: Optional[int] = None, sold_price: Optional[float] = None,
+           tax_value: Optional[float] = None) -> dict:
     """Transparent opportunity score + plain-English 'why'. Only claims what the
     data supports; confidence reflects how much REAL signal we had."""
     reasons: list[str] = []
@@ -157,21 +167,29 @@ def _score(*, owner_occupied: Optional[bool], year_built: Optional[int] = None,
 
     if year_built and age is not None:
         if age >= 30:
-            score += 30; reasons.append(f"built {year_built} (~{age} yrs) — at or past typical roof life")
+            score += 30; reasons.append(f"Built {year_built} (~{age} yrs old) — at or past typical asphalt-roof life")
         elif age >= 18:
-            score += 22; reasons.append(f"built {year_built} (~{age} yrs) — entering the replacement window")
+            score += 22; reasons.append(f"Built {year_built} (~{age} yrs old) — entering the roof-replacement window")
         elif age >= 12:
-            score += 8; reasons.append(f"built {year_built} (~{age} yrs) — watch, not yet due")
+            score += 8; reasons.append(f"Built {year_built} (~{age} yrs old) — worth watching, not yet due")
         else:
-            score -= 15; reasons.append(f"built {year_built} — likely a newer roof")
+            score -= 15; reasons.append(f"Built {year_built} — likely a newer roof")
+    elif year_built is None:
+        reasons.append("Roof age not in this county's public records — judge from the roof view")
 
     if owner_occupied is True:
-        score += 15; reasons.append("owner-occupied (classic retail buyer)")
+        score += 15; reasons.append("Owner-occupied — the classic retail (homeowner) buyer")
     elif owner_occupied is False:
-        score += 3; reasons.append("absentee/rental owner (investor pitch)")
+        score += 3; reasons.append("Absentee / rental owner — better as an investor pitch")
 
     if sold_months is not None and sold_months <= 24:
-        score += 10; reasons.append(f"sold {sold_year} — new owner, prime re-roof window")
+        price = f" for ${int(sold_price):,}" if sold_price else ""
+        score += 10; reasons.append(f"Sold {sold_year}{price} — new owner, prime re-roof timing")
+    elif sold_year:
+        reasons.append(f"Last sold {sold_year}")
+
+    if tax_value:
+        reasons.append(f"Tax market value ${int(tax_value):,}")
 
     if condition is not None:
         score += int(condition * 0.3)
@@ -257,13 +275,19 @@ async def find_roofs(
             continue
         year = _clean_year(a.get(f["year_built"])) if "year_built" in f else None
         sale = _sale_recency(a.get(f["sale_date"])) if "sale_date" in f else None
+        sale_price = _num(a.get(f["sale_price"])) if "sale_price" in f else None
+        tax_value = _num(a.get(f["tax_value"])) if "tax_value" in f else None
+        owner_mail = a.get(f["owner_mail"]) if "owner_mail" in f else None
         addr = f"{prop_addr}, {a.get(f['city'], '')} {str(a.get(f['zip'], '') or '')[:5]}".strip().strip(",")
         sc = _score(owner_occupied=occ, year_built=year,
-                    sold_months=sale[0] if sale else None, sold_year=sale[1] if sale else None)
+                    sold_months=sale[0] if sale else None, sold_year=sale[1] if sale else None,
+                    sold_price=sale_price, tax_value=tax_value)
         out.append({
             "pin": str(a.get(f["pin"])), "address": addr, "city": a.get(f["city"]),
-            "owner": owner, "owner_occupied": occ, "year_built": year,
-            "sold_year": sale[1] if sale else None, "lat": lat, "lng": lng, **sc,
+            "owner": owner, "owner_mail": (owner_mail or None), "owner_occupied": occ,
+            "year_built": year, "sold_year": sale[1] if sale else None,
+            "tax_value": int(tax_value) if tax_value else None,
+            "lat": lat, "lng": lng, **sc,
         })
 
     out.sort(key=lambda r: r["score"], reverse=True)
@@ -319,6 +343,25 @@ async def census_heat(
     if not isinstance(rows, list) or len(rows) < 2:
         raise HTTPException(status_code=502, detail="Census API returned no tract data for this county.")
 
+    # Tract centroids from TIGERweb so each neighborhood gets a real map location
+    # (a bare "Tract 106" is meaningless to a contractor). Best-effort — if it
+    # fails, tracts still return, just without a map pin.
+    centroids: dict[str, tuple[float, float]] = {}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            tr = await client.get(
+                "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer/0/query",
+                params={"where": f"STATE='{state_fips}' AND COUNTY='{county_fips}'",
+                        "outFields": "GEOID,CENTLAT,CENTLON", "returnGeometry": "false", "f": "json"})
+            for ft in tr.json().get("features", []):
+                at = ft.get("attributes", {})
+                try:
+                    centroids[at["GEOID"]] = (float(at["CENTLAT"]), float(at["CENTLON"]))
+                except Exception:
+                    continue
+    except Exception:
+        logger.debug("TIGERweb tract centroids unavailable", exc_info=True)
+
     hdr = {name: i for i, name in enumerate(rows[0])}
 
     def num(row, code):
@@ -343,12 +386,15 @@ async def census_heat(
         # Opportunity: older stock + owner-occupied ownership both raise it.
         score = min(100, round(pct_pre80 * 0.7 + pct_owner * 0.4))
         tier = "Hot" if score >= 65 else "Warm" if score >= 45 else "Cool"
-        name = (row[hdr["NAME"]] or "").split(",")[0].replace("Census Tract", "Tract").strip()
+        name = (row[hdr["NAME"]] or "").split(",")[0].replace("Census Tract", "Neighborhood").strip()
+        geoid = f"{row[hdr['state']]}{row[hdr['county']]}{row[hdr['tract']]}"
+        cen = centroids.get(geoid)
         why = f"{pct_pre80}% of homes built before 1980, {pct_owner}% owner-occupied"
         if value:
             why += f", median value ${int(value):,}"
         tracts.append({"tract": name, "pct_pre_1980": pct_pre80, "pct_owner_occupied": pct_owner,
                        "median_value": int(value) if value else None, "units": int(units),
+                       "lat": cen[0] if cen else None, "lng": cen[1] if cen else None,
                        "score": score, "tier": tier, "why": why + "."})
 
     tracts.sort(key=lambda t: t["score"], reverse=True)
