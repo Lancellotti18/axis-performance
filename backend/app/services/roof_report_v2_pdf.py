@@ -969,6 +969,65 @@ def _section_photos(run: dict, styles: dict) -> list:
     return flow
 
 
+_PROJECT_PHASE_LABELS = [
+    ("before", "Before"),
+    ("damage", "Damage"),
+    ("progress", "In-progress"),
+    ("completed", "Completed / After"),
+]
+
+
+def _section_project_photos(project_photos: list[dict], styles: dict) -> list:
+    """Job photos the contractor organized by phase (Before / Damage / After),
+    with captions. Clean client/insurance-facing shots — crew markup is omitted."""
+    import urllib.request
+
+    if not project_photos:
+        return []
+    flow: list = [_section_header("Job Photos", 11, styles)]
+    cap_style = styles.get("small") or styles["muted"]
+    any_rendered = False
+
+    for phase_key, phase_label in _PROJECT_PHASE_LABELS:
+        in_phase = [p for p in project_photos if (p.get("phase") or "before") == phase_key and p.get("url")]
+        if not in_phase:
+            continue
+        rows: list[list] = []
+        row: list = []
+        for p in in_phase[:8]:
+            try:
+                req = urllib.request.Request(p["url"], headers={"User-Agent": "AxisReport/1.0"})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    data = r.read()
+                cell = [Image(io.BytesIO(data), width=3.1 * inch, height=2.3 * inch, kind="proportional")]
+                if p.get("caption"):
+                    cell.append(Paragraph(str(p["caption"]), cap_style))
+            except Exception:
+                logger.info("report: could not fetch project photo")
+                continue
+            row.append(cell)
+            if len(row) == 2:
+                rows.append(row); row = []
+        if row:
+            while len(row) < 2:
+                row.append("")
+            rows.append(row)
+        if not rows:
+            continue
+        any_rendered = True
+        flow.append(Paragraph(phase_label, styles["h2"]))
+        t = Table(rows, colWidths=[3.45 * inch, 3.45 * inch])
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        flow.append(t)
+        flow.append(Spacer(1, 6))
+
+    return flow if any_rendered else []
+
+
 def generate_v2_report(
     project: dict,
     run: dict,
@@ -981,6 +1040,7 @@ def generate_v2_report(
     flashing: dict | None = None,
     contractor: dict | None = None,     # white-label: company_name, license_number, phone, email, logo_bytes
     calibration: dict | None = None,    # accuracy flywheel: {jobs, mean_abs_pct_error}
+    project_photos: list[dict] | None = None,  # crew gallery: [{phase, caption, url}]
 ) -> bytes:
     """Render the full report PDF and return bytes."""
     buf = io.BytesIO()
@@ -1015,6 +1075,11 @@ def generate_v2_report(
     story.extend(_section_8_methodology(run, aggregates, styles, calibration))
     story.append(PageBreak())
     story.extend(_section_photos(run, styles))
+
+    project_photo_flow = _section_project_photos(project_photos or [], styles)
+    if project_photo_flow:
+        story.append(PageBreak())
+        story.extend(project_photo_flow)
 
     doc.build(story)
     return buf.getvalue()

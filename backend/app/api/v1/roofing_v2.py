@@ -3379,11 +3379,33 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
     except Exception as e:
         logger.info("calibration stats failed: %s", e)
 
+    # Crew job photos (before / damage / after) → before/after story in the report.
+    project_photos: list[dict] = []
+    try:
+        pr = (db.table("project_photos").select("phase, caption, storage_path")
+              .eq("project_id", run["project_id"]).order("phase").order("created_at").execute())
+        pbucket = db.storage.from_("blueprints")
+        for prow in (pr.data or []):
+            path = prow.get("storage_path")
+            if not path:
+                continue
+            try:
+                s = pbucket.create_signed_url(path, 3600)
+                purl = (s.get("signedURL") or s.get("signedUrl") or s.get("signed_url") or s.get("url")) if isinstance(s, dict) else None
+            except Exception:
+                purl = None
+            if purl:
+                project_photos.append({"phase": prow.get("phase") or "before",
+                                       "caption": prow.get("caption"), "url": purl})
+    except Exception as e:
+        logger.info("project photos for report failed: %s", e)
+
     pdf_bytes = await asyncio.to_thread(
         generate_v2_report,
         proj.data, run, aggregates, facets_res.data or [], edges,
         pens_res.data or [], material_lines, siding_res.data or [], flashing_summary,
         contractor, calibration,
+        project_photos=project_photos,
     )
 
     slug = (proj.data.get("name") or "project").strip().lower()
