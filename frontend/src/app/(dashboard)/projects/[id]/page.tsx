@@ -14,6 +14,7 @@ const RenderViewer      = dynamic(() => import('./RenderViewer'),      { ssr: fa
 const ExteriorCarousel  = dynamic(() => import('./ExteriorCarousel'),  { ssr: false })
 import RoofingSection from './RoofingSection'
 import PermitPortalSection from './PermitPortalSection'
+import ProjectPhotos from './ProjectPhotos'
 import { computeMaterialConfidence, loadReviewedIds, saveReviewedIds } from './materialConfidence'
 import { CitationInline, CitationBibliography, ComplianceLimitations } from '@/components/MaterialComplianceCitations'
 import { useRegisterChatContext } from '@/lib/chat-context'
@@ -22,7 +23,7 @@ function StaggeredRender({ src, label, totalSqft }: { src: string; label: string
   return <RenderViewer src={src} label={label} totalSqft={totalSqft} />
 }
 
-type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'compliance' | 'permits' | 'roofing'
+type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'compliance' | 'permits' | 'roofing' | 'photos'
 type SortMode = 'lowest_price' | 'best_value'
 
 // Labor split by trade (fractions of total labor cost)
@@ -701,6 +702,7 @@ Thank you for your time.`
     { id: 'view3d',     label: 'Renders' },
     { id: 'compliance', label: 'Compliance', badge: (requiredCount + (matCheckResult?.violations?.length ?? 0)) || undefined },
     { id: 'permits',    label: 'Permits' },
+    { id: 'photos',     label: 'Photos' },
   ]
 
   return (
@@ -798,6 +800,8 @@ Thank you for your time.`
                 </div>
               </div>
             </div>
+
+            <ProjectPhotos projectId={projectId} />
           </div>
         </div>
       ) : isProcessing ? (
@@ -869,6 +873,11 @@ Thank you for your time.`
                   projectId={projectId}
                 />
               </div>
+            )}
+
+            {/* ── PHOTOS ────────────────────────────────────────────────── */}
+            {tab === 'photos' && (
+              <ProjectPhotos projectId={projectId} />
             )}
 
             {/* ── OVERVIEW ──────────────────────────────────────────────── */}

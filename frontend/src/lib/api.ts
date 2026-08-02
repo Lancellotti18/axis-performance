@@ -17,6 +17,16 @@ import type {
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
+// Project-photo markup shapes (fractional 0–1 coords so they scale with the image).
+export type PhotoAnnotation =
+  | { type: 'arrow'; x1: number; y1: number; x2: number; y2: number; color?: string }
+  | { type: 'circle'; cx: number; cy: number; r: number; color?: string }
+  | { type: 'text'; x: number; y: number; text: string; color?: string }
+export type ProjectPhoto = {
+  id: string; phase: string; caption: string | null
+  annotations: PhotoAnnotation[]; sort_order: number; created_at: string | null; url: string | null
+}
+
 // ── Growth-engine types ─────────────────────────────────────────────────────
 export interface QuoteWidget {
   id: string
@@ -680,6 +690,39 @@ export const api = {
           score: number; tier: string; why: string
         }>
       }>(`/api/v1/prospecting/census-heat?county=${encodeURIComponent(county)}&limit=${limit}`),
+  },
+  // ── Project photos: crew gallery, phases, markup, shareable link ─────────
+  projectPhotos: {
+    list: (projectId: string) =>
+      apiRequest<{ photos: ProjectPhoto[]; phases: string[] }>(`/api/v1/project-photos/projects/${projectId}`),
+    upload: async (projectId: string, file: File, phase: string, caption?: string): Promise<ProjectPhoto> => {
+      const session = await getCachedSession()
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('phase', phase)
+      if (caption) fd.append('caption', caption)
+      const res = await fetchWithTimeout(`${API_BASE}/api/v1/project-photos/projects/${projectId}`, {
+        method: 'POST',
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        body: fd,
+      }, 60000)
+      if (!res.ok) {
+        const text = await res.text(); let detail = text
+        try { detail = JSON.parse(text).detail ?? text } catch { /* raw */ }
+        throw new Error(String(detail))
+      }
+      return res.json() as Promise<ProjectPhoto>
+    },
+    update: (photoId: string, patch: { caption?: string; phase?: string; annotations?: PhotoAnnotation[]; sort_order?: number }) =>
+      apiRequest<ProjectPhoto>(`/api/v1/project-photos/${photoId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+    remove: (photoId: string) =>
+      apiRequest<{ deleted: boolean }>(`/api/v1/project-photos/${photoId}`, { method: 'DELETE' }),
+    getShare: (projectId: string) =>
+      apiRequest<{ token: string; enabled: boolean }>(`/api/v1/project-photos/projects/${projectId}/share`),
+    toggleShare: (projectId: string, enabled: boolean) =>
+      apiRequest<{ token: string; enabled: boolean }>(`/api/v1/project-photos/projects/${projectId}/share`, { method: 'POST', body: JSON.stringify({ enabled }) }),
+    publicGallery: (token: string) =>
+      apiRequest<{ project: { name: string | null; address: string | null; city: string | null }; photos: ProjectPhoto[]; phases: string[] }>(`/api/v1/project-photos/public/${token}`),
   },
   // ── Growth engine: instant quote widget + lead inbox ─────────────────────
   instantQuote: {
