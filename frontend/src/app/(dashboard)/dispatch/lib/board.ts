@@ -164,6 +164,37 @@ export async function bulkUndo(batchId: string): Promise<{ affected: AffectedMul
   return res.json()
 }
 
+// ── M5: weather impact + reschedule ──────────────────────────────────────────
+export interface WeatherRiskDay {
+  date: string; precip_probability: number | null
+  appointments: { appointment_id: string; crew_id: string | null; job_number: number; job_type: string; squares: number | null }[]
+}
+export interface RescheduleSuggestion {
+  appointment_id: string; job_number: number | null; job_type: string | null
+  from: { crew_id: string | null; date: string | null }
+  to: { crew_id: string; date: string } | null
+  resulting_state: LoadState | null; resulting_pct: number | null; ok: boolean; reason: string
+}
+export interface WeatherImpact {
+  risk_days: WeatherRiskDay[]; at_risk_count: number; suggestions: RescheduleSuggestion[]; resolvable: number
+}
+
+export async function fetchWeatherImpact(start: string, end: string): Promise<WeatherImpact> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/weather/impact?start=${start}&end=${end}`, { headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function reschedule(moves: { appointment_id: string; crew_id: string; date: string }[], dryRun: boolean): Promise<BulkResult> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/reschedule`, {
+    method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify({ moves, dry_run: dryRun }),
+  })
+  if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
+  return res.json()
+}
+
 export async function createAppointment(jobId: string, crewId: string, dateStr: string): Promise<AffectedSlice> {
   const h = await authHeaders()
   const res = await fetch(`${API_BASE}/api/v1/scheduling/appointments`, {

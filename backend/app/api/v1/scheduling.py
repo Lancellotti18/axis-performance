@@ -8,6 +8,7 @@ drops in later without a rewrite. Reads sched_* tables only; touches nothing els
 from __future__ import annotations
 
 import logging
+import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -439,7 +440,7 @@ async def patch_appointment(appointment_id: str, patch: AppointmentPatch, user: 
 # ── M4: tray + bulk operations ───────────────────────────────────────────────
 
 NOMINAL_CREW = CrewCapacityInput(28.0, 16.0, 9.0, 2)  # for tray crew-day estimates
-BULK_OPS = {"REASSIGN", "MOVE_TO_DATE", "SHIFT_DAYS", "SET_STATUS", "ADD_TAG", "WAIVE_TRIP", "UNASSIGN"}
+BULK_OPS = {"REASSIGN", "MOVE_TO_DATE", "SHIFT_DAYS", "MOVE", "SET_STATUS", "ADD_TAG", "WAIVE_TRIP", "UNASSIGN"}
 
 
 def _primary_crew(db, appointment_id):
@@ -527,6 +528,8 @@ def _target_for(op, payload, cur_crew, cur_date):
             return cur_crew, cur_date, True
         nd = (date.fromisoformat(cur_date) + timedelta(days=int(payload.get("days") or 0))).isoformat()
         return cur_crew, nd, True
+    if op == "MOVE":  # explicit crew AND date, used by the weather-reschedule planner
+        return payload.get("crew_id") or cur_crew, payload.get("date") or cur_date, True
     return cur_crew, cur_date, False
 
 
@@ -549,7 +552,7 @@ def _apply_op_single(db, aid, op, payload, actor, batch_id):
     after = dict(before)
     touched = set()
 
-    if op in ("REASSIGN", "MOVE_TO_DATE", "SHIFT_DAYS"):
+    if op in ("REASSIGN", "MOVE_TO_DATE", "SHIFT_DAYS", "MOVE"):
         tgt_crew, tgt_date, _m = _target_for(op, payload, cur_crew, cur_date)
         if tgt_date != cur_date and sdt:
             edt = _dt(appt.get("scheduled_end")); nd = date.fromisoformat(tgt_date)
@@ -726,3 +729,181 @@ async def create_appointment(body: CreateAppt, user: dict = Depends(require_user
                                           "entity_id": appt["id"], "action": "CREATE", "before_json": None,
                                           "after_json": {"crew_id": body.crew_id, "date": body.date}, "request_id": body.request_id}).execute()
     return _affected_slice(db, appt, None, (body.crew_id, body.date))
+
+
+# ── M5: weather impact + one-click reschedule ────────────────────────────────
+
+RISK_THRESHOLD = 60        # precip % that makes a day a weather risk
+RESCHEDULE_HORIZON = 21    # days forward the planner will search for a dry slot
+IDEAL_UTIL = 95.0          # prefer landing at or under this
+MAX_UTIL = 110.0           # never suggest a slot that overbooks past this
+
+
+def _date_precip(db, date_str: str) -> Optional[float]:
+    wx = db.table("sched_weather_day").select("*").eq("date", date_str).execute().data or []
+    if not wx:
+        return None
+    wx = sorted(wx, key=lambda w: 0 if w.get("postal_prefix") == "284" else 1)
+    return _f(wx[0].get("precip_probability"))
+
+
+def _date_is_risky(db, date_str: str) -> bool:
+    p = _date_precip(db, date_str)
+    return p is not None and p >= RISK_THRESHOLD
+
+
+def _suggest_moves(db, appt_ids: list, horizon: int = RESCHEDULE_HORIZON) -> list:
+    """For each rained-out appointment, find the earliest dry crew-day that fits.
+    Keeps a running projection of squares it has already re-parked so it spreads
+    the day's work across the week instead of stacking it all onto one Tuesday.
+    Same crew only (skill/rig continuity); alternate-crew search is future work."""
+    projected: dict = defaultdict(float)
+    out = []
+    for aid in appt_ids:
+        appt = _one(db, "sched_appointment", aid)
+        if not appt:
+            continue
+        job = _one(db, "sched_job", appt["job_id"])
+        prim = _primary_crew(db, aid)
+        crew = _one(db, "sched_crew", prim["crew_id"]) if prim else None
+        sdt = _dt(appt.get("scheduled_start"))
+        cur_date = sdt.date().isoformat() if sdt else None
+        entry = {"appointment_id": aid, "job_number": job.get("job_number") if job else None,
+                 "job_type": job.get("job_type") if job else None,
+                 "from": {"crew_id": prim["crew_id"] if prim else None, "date": cur_date},
+                 "to": None, "resulting_state": None, "resulting_pct": None, "ok": False, "reason": ""}
+        if not (job and crew and cur_date):
+            entry["reason"] = "No crew or date to plan from."
+            out.append(entry)
+            continue
+        sq = _f(job.get("squares")) or 0.0
+        d0 = date.fromisoformat(cur_date)
+        ideal = None; fit = None
+        for k in range(1, horizon + 1):
+            cds = (d0 + timedelta(days=k)).isoformat()
+            if _date_is_risky(db, cds):
+                continue
+            ev = _evaluate_move(db, appt, job, crew, cds)
+            if any(c["severity"] == "BLOCK" for c in ev["conflicts"]):
+                continue
+            cap = _f(ev.get("capacity_squares")) or 0.0
+            if cap <= 0:
+                continue
+            planned = _f(ev.get("resulting_planned_squares")) or 0.0
+            util = (planned + projected[(crew["id"], cds)]) / cap * 100.0
+            cand = {"crew_id": crew["id"], "date": cds, "util": round(util, 1),
+                    "state": ev.get("resulting_state"), "warns": [c["message"] for c in ev["conflicts"] if c["severity"] == "WARN"]}
+            if util <= MAX_UTIL and fit is None:
+                fit = cand
+            if util <= IDEAL_UTIL:
+                ideal = cand
+                break
+        chosen = ideal or fit
+        if chosen:
+            projected[(chosen["crew_id"], chosen["date"])] += sq
+            entry["to"] = {"crew_id": chosen["crew_id"], "date": chosen["date"]}
+            entry["resulting_state"] = chosen["state"]
+            entry["resulting_pct"] = chosen["util"]
+            entry["ok"] = True
+            entry["reason"] = "Next dry day with room." if chosen is ideal else "Next dry day (runs tight)."
+            if chosen.get("warns"):
+                entry["reason"] += " " + " · ".join(chosen["warns"][:2])
+        else:
+            entry["reason"] = f"No dry, unblocked slot within {horizon} days — needs a manual call."
+        out.append(entry)
+    return out
+
+
+@router.get("/weather/impact")
+async def weather_impact(start: str, end: str, user: dict = Depends(require_user)) -> dict:
+    """Which scheduled, weather-exposed jobs sit on a high-risk rain day in the
+    range — and a proposed dry-day home for each. The apply path is POST /reschedule."""
+    db = get_supabase()
+    s = _parse_date(start, "start"); e = _parse_date(end, "end")
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG)
+                  .gte("scheduled_start", s.isoformat()).lte("scheduled_start", (e + timedelta(days=1)).isoformat()).execute())
+    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute()) if a.get("is_primary", True)}
+    jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("*").eq("org_id", ORG).execute())}
+
+    risk_dates: dict = {}
+    at_risk_ids = []
+    for a in appts:
+        if a.get("status") in ("DONE", "CANCELED"):
+            continue
+        sdt = _dt(a.get("scheduled_start"))
+        if not sdt:
+            continue
+        ds = sdt.date().isoformat()
+        job = jobs.get(a["job_id"])
+        if not job or job.get("job_type") == "INSPECTION":  # interior/inspection isn't rained out
+            continue
+        if not _date_is_risky(db, ds):
+            continue
+        at_risk_ids.append(a["id"])
+        bucket = risk_dates.setdefault(ds, {"date": ds, "precip_probability": _date_precip(db, ds), "appointments": []})
+        bucket["appointments"].append({
+            "appointment_id": a["id"], "crew_id": appt_crew.get(a["id"]),
+            "job_number": job.get("job_number"), "job_type": job.get("job_type"),
+            "squares": _f(job.get("squares")),
+        })
+
+    suggestions = _suggest_moves(db, at_risk_ids)
+    return {
+        "risk_days": [risk_dates[d] for d in sorted(risk_dates)],
+        "at_risk_count": len(at_risk_ids),
+        "suggestions": suggestions,
+        "resolvable": sum(1 for s in suggestions if s["ok"]),
+    }
+
+
+class Move(BaseModel):
+    appointment_id: str
+    crew_id: str
+    date: str
+
+
+class Reschedule(BaseModel):
+    moves: list
+    dry_run: bool = False
+
+
+@router.post("/reschedule")
+async def reschedule(body: Reschedule, user: dict = Depends(require_user)) -> dict:
+    """Apply a set of explicit per-job moves (the weather plan, or an edited one)
+    as one transaction: validate every move, and if any BLOCKs, apply none and
+    return the conflicts keyed by appointment id. Undo via POST /bulk/undo."""
+    db = get_supabase()
+    moves = [Move(**m) if not isinstance(m, Move) else m for m in body.moves]
+    conflicts: dict = {}
+    changes = []
+    for m in moves:
+        appt = _one(db, "sched_appointment", m.appointment_id)
+        if not appt:
+            continue
+        job = _one(db, "sched_job", appt["job_id"])
+        crew = _one(db, "sched_crew", m.crew_id)
+        prim = _primary_crew(db, m.appointment_id)
+        cur_crew = prim["crew_id"] if prim else None
+        sdt = _dt(appt.get("scheduled_start"))
+        cur_date = sdt.date().isoformat() if sdt else None
+        entry = {"id": m.appointment_id, "job_number": job.get("job_number") if job else None,
+                 "from": {"crew_id": cur_crew, "date": cur_date}, "to": {"crew_id": m.crew_id, "date": m.date}}
+        if job and crew:
+            ev = _evaluate_move(db, appt, job, crew, m.date)
+            entry["conflicts"] = ev["conflicts"]
+            blocks = [c for c in ev["conflicts"] if c["severity"] == "BLOCK"]
+            if blocks:
+                conflicts[m.appointment_id] = blocks
+        changes.append(entry)
+
+    if body.dry_run:
+        return {"applied": False, "dry_run": True, "changes": changes, "conflicts": conflicts}
+    if conflicts:
+        return {"applied": False, "changes": changes, "conflicts": conflicts}
+
+    batch_id = str(uuid.uuid4())
+    touched = set(); ids = set()
+    for m in moves:
+        touched |= _apply_op_single(db, m.appointment_id, "MOVE", {"crew_id": m.crew_id, "date": m.date}, user.get("id"), batch_id)
+        ids.add(m.appointment_id)
+    return {"applied": True, "batch_id": batch_id, "affected": _affected_multi(db, touched, ids)}

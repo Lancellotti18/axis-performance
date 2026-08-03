@@ -22,6 +22,7 @@ import DetailPanel from './DetailPanel'
 import { useSelection } from './lib/selection'
 import BulkBar from './BulkBar'
 import JobsTray from './JobsTray'
+import WeatherReschedule from './WeatherReschedule'
 
 const BU_COLOR: Record<string, string> = {
   'bu-install': 'var(--sky)', 'bu-service': 'var(--balanced)', 'bu-gutter': 'var(--tight)', 'bu-siding': 'var(--dawn)',
@@ -242,6 +243,9 @@ export default function Board({ data, today }: { data: BoardData; today: string 
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => { setActiveId(null); activeRef.current = null; setDragLabel(null); clearPreview() }}>
+      <WeatherReschedule start={data.range.start} end={data.range.end} crews={data.crews}
+        onApplied={applyAffected}
+        onInvalidate={() => { qc.invalidateQueries({ queryKey: ['weather-impact'] }); qc.invalidateQueries({ queryKey: ['tray'] }) }} />
       <div className="min-w-max pb-12 text-[13px]">
         {/* Day header */}
         <div className="sticky top-0 z-20 grid border-b" style={{ gridTemplateColumns: cols, background: 'var(--ink)', borderColor: 'var(--line)' }}>

@@ -145,3 +145,38 @@ the throughput flywheel accrues history from day one.
   router; no other feature code touched.
 - **Deferred:** tray multi-select bulk-assign (create-many), map/day views, the AI
   copilot (M5.5), and the weather-reschedule flow (M5).
+
+## M5 — Weather reschedule ("clear a rain day in one click")
+
+- **Backend (scheduling.py):**
+  - `GET /weather/impact?start&end` — active, weather-exposed appointments (skips
+    INSPECTION) sitting on a **high-risk day** (max precip ≥ 60%, Wilmington prefix
+    284 preferred), grouped by risk day, **plus a proposed dry-day home for each**.
+  - `_suggest_moves` — for each rained-out job, scan the **same crew** forward up to
+    21 days for the earliest slot that (a) isn't itself a rain day, (b) has no BLOCK
+    conflict, and (c) doesn't overbook. Prefers ≤95% utilization, falls back to ≤110%
+    ("runs tight"), else reports "needs a manual call." Crucially it keeps a running
+    **projection of squares it has already re-parked**, so three jobs off one storm
+    day spread across the week instead of all landing on the same Tuesday. Same-crew
+    only for now (skill/rig continuity); alternate-crew search is future work.
+  - `POST /reschedule` — apply explicit per-job moves (the plan, or an edited subset)
+    as **one transaction**: validate every move via the same `_evaluate_move`, and if
+    any BLOCKs, apply none and return conflicts keyed by id. Reuses the M4 primitives
+    — a new combined **`MOVE`** op (crew *and* date in one audited write) fed through
+    `_apply_op_single`, a shared `batch_id`, and **undo via the existing
+    `/bulk/undo`**. No second undo path.
+- **Frontend:** `WeatherReschedule` — a banner appears only when the visible range has
+  jobs on a rain day ("3 jobs on a rain day — 3 can move to a dry slot"). Opening it
+  shows the plan: each job's from→to with the resulting-utilization chip and a reason,
+  approve/skip per row (unresolvable jobs are flagged, not selectable). Apply →
+  `/reschedule` → merge the affected slice into cache → single **Undo** toast.
+  Invalidates `weather-impact` + `tray` after applying.
+- **Bug caught:** `uuid` was used in the M4 bulk/undo/create paths but never imported
+  (latent `NameError` that would fire on first bulk apply) — fixed here with
+  `import uuid`.
+- **Known limitation:** per-move validation is independent, so two jobs both landing
+  on the same day could *jointly* overbook (OVERBOOKED is a WARN, not a BLOCK); the
+  planner's projection makes this unlikely. Tightening to plan-aware joint validation
+  is a later refinement.
+- **Deferred:** alternate-crew reschedule, editable target dates in the panel (drag
+  the rest manually), and auto-notify-customer on move (belongs with M5.5 AI + comms).
