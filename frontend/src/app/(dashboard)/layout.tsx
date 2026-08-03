@@ -43,6 +43,7 @@ const NAV_GROUPS: { title: string; items: { href: string; label: string; icon: (
     items: [
       { href: '/crm',      label: 'CRM',      icon: IconCRM },
       { href: '/schedule', label: 'Schedule', icon: IconSchedule },
+      { href: '/dispatch', label: 'Dispatch', icon: IconDispatch },
       { href: '/reports',  label: 'Reports',  icon: IconReports },
       { href: '/permits',  label: 'Permits',  icon: IconPermits },
     ],
@@ -169,6 +170,14 @@ function IconSchedule({ active }: { active: boolean }) {
       <rect x="3" y="4" width="18" height="18" rx="2"/>
       <path d="M16 2v4M8 2v4M3 10h18"/>
       <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>
+    </svg>
+  )
+}
+function IconDispatch({ active }: { active: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#bfe6ff' : '#94a3b8'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2"/>
+      <path d="M9 4v16M3 10h6M9 8h12M9 13h12"/>
     </svg>
   )
 }

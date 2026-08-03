@@ -60,3 +60,27 @@ the throughput flywheel accrues history from day one.
   Thursday storm** in week 1. Deterministic + idempotent (clears the seed org first).
 - **M1 complete.** Next: **M2 — read-only board** (grid, capacity headers, cards,
   single `/api/board` fetch). Pausing for review per the build order.
+
+## M2 — Read-only board
+
+- **Route:** `/dispatch` (not `/schedule` — that's the existing inspection
+  calendar; must not clobber it). All board files live under
+  `app/(dashboard)/dispatch/` + `backend/app/api/v1/scheduling.py` +
+  `app/services/scheduling/`. Existing files touched: only the router
+  registration and one nav link (both pre-authorized).
+- **One fetch:** `GET /api/v1/scheduling/scheduling/board?start&end` returns the
+  entire visible slice — business units, crews, people, shifts, non-job events,
+  appointments+assignments, jobs, customers, properties, tags, weather, AND
+  per-crew-day loads computed server-side by the pure capacity engine. No N+1.
+- **FE state:** TanStack Query + Zustand were already in the repo (no new deps).
+  QueryClient is scoped to the dispatch page (global layout untouched); auth via
+  the exported `getCachedSession` (import only).
+- **Design:** grounded in dawn-on-a-worksite, not the app's blue-on-black. Tokens:
+  ink ground, warm `dawn` amber signature (today marker/emphasis), cool `sky`
+  interactive; load states (idle/light/balanced/tight/over) are a SEPARATE
+  semantic channel, always paired with a label + glyph (never color alone).
+  Tabular numerals throughout; the squares-based **capacity meter** is the
+  signature per-cell element (`24/28 sq` + fill bar + state), squares loud on
+  cards. Weather chip per day header; a >=60% day hatches its column.
+- **Deferred to M3+:** drag/drop (dnd-kit), selection/bulk, the tray, day/map
+  views. M2 is render-only.

@@ -11,6 +11,7 @@ safe to paste repeatedly.
 from __future__ import annotations
 
 import random
+import sys
 import uuid
 from datetime import date, datetime, timedelta
 
@@ -20,7 +21,9 @@ random.seed(42)
 
 # The board's first visible week — Monday anchoring "today" (~2026-08-03).
 WEEK1 = date(2026, 8, 3)
-WEEKS = 6
+# Optional CLI overrides for a compact, chat-pasteable seed: gen ... <weeks> <njobs>
+WEEKS = int(sys.argv[1]) if len(sys.argv) > 1 else 6
+_N_OVERRIDE = int(sys.argv[2]) if len(sys.argv) > 2 else None
 
 out: list[str] = []
 def emit(s: str = "") -> None: out.append(s)
@@ -163,7 +166,7 @@ STATUS_POOL = (["SOLD"] * 8 + ["SCHEDULED"] * 6 + ["IN_PROGRESS"] * 3 + ["ESTIMA
 
 cust_rows, prop_rows, job_rows, link_rows = [], [], [], []
 jobs = []  # (jid, bu, job_type, status, squares, pitch, stories, planned crew days-ish)
-N = 90
+N = _N_OVERRIDE or 90
 for i in range(N):
     cid_ = uid("cust", i); pid_ = uid("prop", i); jid = uid("job", i)
     fn = random.choice(FIRST); ln = random.choice(LAST)
@@ -178,7 +181,7 @@ for i in range(N):
     status = STATUS_POOL[i % len(STATUS_POOL)]
     priority = random.choices(["ROUTINE", "HIGH", "URGENT"], weights=[80, 15, 5])[0]
 
-    missing = i < 12  # first 12 jobs deliberately missing measurements
+    missing = i < max(2, N // 8)  # a slice deliberately missing measurements
     if missing:
         squares = pitch = stories = None; tear = 0; waste = None
     else:
