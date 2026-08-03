@@ -1,0 +1,55 @@
+# Crew Scheduling & Dispatch — decisions log
+
+## M1 — Foundation
+
+### Stack adaptation (repo reality vs. the brief's greenfield assumptions)
+The brief assumed Prisma + Next route handlers + Zod + `lib/capacity` in TypeScript.
+This repo is **FastAPI + Supabase + a custom TS `api` client + React hooks**. Chose,
+with the user, to adapt rather than clone (building both would fork the stack):
+
+- **Capacity engine → pure Python** in `app/services/scheduling/` (pytest), served
+  later via `/api/capacity/preview`. One authoritative source of truth for the
+  transactional bulk/undo logic — no TS/Python duplication of the math. *Rejected:*
+  a TS `lib/capacity` (would force the backend to re-implement the same math to stay
+  authoritative on writes).
+- **Data → Supabase SQL migration**, not Prisma. Tables prefixed `sched_` to
+  guarantee zero collision with existing tables (e.g. the existing
+  `inspection_appointments`), and **every row keyed by `org_id`** from day one so
+  tenancy can be added without a rewrite.
+- **Board FE state (later milestones) → TanStack Query + Zustand**, scoped to the
+  `/schedule` section only. *Rejected:* hand-rolled optimistic updates/undo on plain
+  hooks — too error-prone on the hardest part of the app.
+
+### Isolation rule (per user)
+The dispatch board is its own section. **No existing feature code is modified.** The
+only unavoidable one-line touches, when we reach the API/UI, will be registering the
+new router in `api/v1/__init__.py` and one nav link. M1 touched **zero** existing
+files — all new.
+
+### Capacity engine specifics
+- Pitch is a **lookup table, not a formula** (steep slope is non-linear); ≥11/12
+  flags `requires_steep_slope_crew`.
+- **Squares-based utilization**, not hours — the product's whole point. State is
+  computed from the *rounded* utilization so the number shown and the state can never
+  disagree (a float-dust bug the test suite caught: 110% tipping to OVERBOOKED).
+- Missing measurements fall back to a job-type default and are flagged
+  `is_estimated` + `MISSING_MEASUREMENTS`, because the absence is itself actionable.
+- `plan_multi_day` never throws; refuses (empty plan + warning) only on an unmet hard
+  deadline or insufficient available days.
+- DST handled via `zoneinfo` wall-clock times (`timeutil.local_datetime`), tested
+  across the March and November 2026 transitions.
+
+### AI layer
+Designed and specced in `docs/crew-scheduling-ai-layer.md` (co-pilot, not autopilot:
+propose → approve → undo; grounded in the tested engine; degrades to a fully-working
+board if the model is down). Lands at **M5.5**; only its **actuals-capture** fields
+(`sched_appointment.actual_squares/started_at/completed_at`) were pulled into M1 so
+the throughput flywheel accrues history from day one.
+
+### Status
+- `tests/test_scheduling_capacity.py` — **25 passing** (pitch table, tear-off,
+  missing measurements, steep flag, utilization boundaries, multi-day across
+  weekend/PTO/no-shift, every conflict code + combined, DST).
+- `supabase/migrations/20260802_scheduling.sql` — full domain model, new tables only.
+- **Remaining M1 item:** realistic Wilmington seed data (runs after the migration is
+  applied).
