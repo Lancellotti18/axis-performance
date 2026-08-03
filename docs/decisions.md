@@ -105,3 +105,43 @@ the throughput flywheel accrues history from day one.
 - **Deferred to later milestones:** the "move day only / whole series" prompt (a
   single-day move currently moves just that day; the SERIES_BROKEN warning still
   surfaces in preview), full ARIA drag announcements, and the tray/bulk (M4).
+
+## M4 — Tray + multi-select + bulk operations
+
+- **Backend (all in `scheduling.py`, still one router):**
+  - `GET /tray` — five attention queues (unassigned, needs-measurements, on-hold,
+    live-conflicts, canceled) with per-row est. crew-days from the pure engine
+    (`NOMINAL_CREW` when no crew is assigned yet) so a dispatcher sees the cost of a
+    job before placing it. Conflicts are recomputed server-side, never trusted from
+    the client.
+  - `POST /bulk` — one op over N appointments (REASSIGN / MOVE_TO_DATE / SHIFT_DAYS /
+    SET_STATUS / ADD_TAG / WAIVE_TRIP / UNASSIGN). **Transactional, all-or-nothing on
+    any BLOCK:** it validates every move first (via the same `_evaluate_move` the
+    single-drag preview uses), and if *any* appointment blocks it applies *none* and
+    returns the conflicts keyed by appointment id. `dry_run:true` returns the same
+    change/conflict summary without writing — the UI shows it before you commit.
+    Every write stamps a shared `batch_id` on its `sched_audit_event`.
+  - `POST /bulk/undo` — reverses a whole batch by replaying each event's `before_json`
+    (date, crew assignment, status) as a real inverse write, not a client-side hack;
+    itself audited as `UNDO`.
+  - `POST /appointments` — creates an appointment from a tray job (drag-to-schedule),
+    bumps a `SOLD` job to `SCHEDULED`, returns the affected slice like PATCH.
+- **Frontend:**
+  - **Selection** → a tiny Zustand store (`lib/selection.ts`). Card checkbox appears
+    on hover / when any selection is active; **shift-click** selects the range in
+    render order (`visibleOrder`), **Cmd/Ctrl-A** selects all, **Esc** clears.
+  - **BulkBar** (floating pill, only when ≥1 selected): every action runs the server
+    dry-run first and opens a **summary modal** (each job's from→to + any block) —
+    Apply is disabled while blocks exist. Apply → merge the returned affected slice
+    into cache → a single **Undo** toast that calls `/bulk/undo`.
+  - **JobsTray** (bottom sheet, collapsed to a handle): tabbed queues with counts;
+    unassigned / needs-measurements rows are **draggable straight onto a crew-day**
+    (drop = `POST /appointments`), reusing the same `DndContext`. Tray drags skip the
+    move-preview path (no appointment yet) and paint the target cell sky on hover.
+  - `mergeAffected` handles multi-appointment cache patches, and **drops the crew key
+    for unassigned appointments** so they fall off the grid into the tray without a
+    refetch. Cache invalidation of `['tray']` keeps the sheet in sync after any write.
+- **Isolation held:** M4 added only new files + appended to the existing scheduling
+  router; no other feature code touched.
+- **Deferred:** tray multi-select bulk-assign (create-many), map/day views, the AI
+  copilot (M5.5), and the weather-reschedule flow (M5).

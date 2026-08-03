@@ -434,3 +434,295 @@ async def patch_appointment(appointment_id: str, patch: AppointmentPatch, user: 
     }).execute()
 
     return _affected_slice(db, after, (old_crew_id, old_date), (new_crew_id, new_date))
+
+
+# ── M4: tray + bulk operations ───────────────────────────────────────────────
+
+NOMINAL_CREW = CrewCapacityInput(28.0, 16.0, 9.0, 2)  # for tray crew-day estimates
+BULK_OPS = {"REASSIGN", "MOVE_TO_DATE", "SHIFT_DAYS", "SET_STATUS", "ADD_TAG", "WAIVE_TRIP", "UNASSIGN"}
+
+
+def _primary_crew(db, appointment_id):
+    r = (db.table("sched_assignment").select("*").eq("org_id", ORG)
+         .eq("appointment_id", appointment_id).eq("is_primary", True).limit(1).execute().data or [None])[0]
+    return r
+
+
+def _tray_row(job, appt, customers, properties, tags_by_job, tag_map, today):
+    cust = customers.get(job["customer_id"])
+    prop = properties.get(job["property_id"])
+    est = compute_crew_days(_job_input(job), NOMINAL_CREW)
+    age = None
+    cdt = _dt(job.get("created_at"))
+    if cdt:
+        age = (today - cdt.date()).days
+    return {
+        "job_id": job["id"], "appointment_id": appt["id"] if appt else None,
+        "job_number": job.get("job_number"), "job_type": job["job_type"], "status": job["status"],
+        "priority": job["priority"], "customer": f"{cust['first_name']} {cust['last_name']}" if cust else "",
+        "city": prop["city"] if prop else "", "squares": _f(job.get("squares")),
+        "est_crew_days": est.crew_days, "is_estimated": est.is_estimated,
+        "sold_amount": _f(job.get("sold_amount")), "age_days": age, "deadline": job.get("deadline"),
+        "tags": [tag_map[t]["label"] for t in tags_by_job.get(job["id"], []) if t in tag_map],
+    }
+
+
+@router.get("/tray")
+async def get_tray(user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    today = date.today()
+    jobs = _rows(db.table("sched_job").select("*").eq("org_id", ORG).execute())
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG).execute())
+    appts_by_job = defaultdict(list)
+    for a in appts:
+        appts_by_job[a["job_id"]].append(a)
+    customers = {c["id"]: c for c in _rows(db.table("sched_customer").select("*").eq("org_id", ORG).execute())}
+    properties = {p["id"]: p for p in _rows(db.table("sched_property").select("*").eq("org_id", ORG).execute())}
+    tag_map = {t["id"]: t for t in _rows(db.table("sched_job_tag").select("*").eq("org_id", ORG).execute())}
+    tags_by_job = defaultdict(list)
+    for l in _rows(db.table("sched_job_tag_link").select("*").eq("org_id", ORG).execute()):
+        tags_by_job[l["job_id"]].append(l["tag_id"])
+
+    def row(job, appt=None):
+        return _tray_row(job, appt, customers, properties, tags_by_job, tag_map, today)
+
+    unassigned, needs, on_hold, canceled = [], [], [], []
+    for j in jobs:
+        has_appt = len(appts_by_job.get(j["id"], [])) > 0
+        if j["status"] == "ON_HOLD":
+            on_hold.append(row(j))
+        elif j["status"] == "CANCELED":
+            canceled.append(row(j))
+        else:
+            if j.get("squares") is None and j["status"] != "COMPLETE":
+                needs.append(row(j))
+            if not has_appt and j["status"] in ("SOLD", "SCHEDULED"):
+                unassigned.append(row(j))
+
+    conflicts = []
+    crews = {c["id"]: c for c in _rows(db.table("sched_crew").select("*").eq("org_id", ORG).execute())}
+    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute()) if a.get("is_primary", True)}
+    jobs_by_id = {j["id"]: j for j in jobs}
+    for a in appts:
+        if a["status"] in ("DONE", "CANCELED"):
+            continue
+        crew = crews.get(appt_crew.get(a["id"])); job = jobs_by_id.get(a["job_id"])
+        sdt = _dt(a.get("scheduled_start"))
+        if not crew or not job or not sdt:
+            continue
+        ev = _evaluate_move(db, a, job, crew, sdt.date().isoformat())
+        if ev["conflicts"]:
+            r = row(job, a); r["conflicts"] = ev["conflicts"]; conflicts.append(r)
+
+    return {"unassigned": unassigned, "needs_measurements": needs, "on_hold": on_hold, "conflicts": conflicts, "canceled": canceled}
+
+
+def _target_for(op, payload, cur_crew, cur_date):
+    if op == "REASSIGN":
+        return payload.get("crew_id") or cur_crew, cur_date, True
+    if op == "MOVE_TO_DATE":
+        return cur_crew, payload.get("date") or cur_date, True
+    if op == "SHIFT_DAYS":
+        if not cur_date:
+            return cur_crew, cur_date, True
+        nd = (date.fromisoformat(cur_date) + timedelta(days=int(payload.get("days") or 0))).isoformat()
+        return cur_crew, nd, True
+    return cur_crew, cur_date, False
+
+
+class BulkOp(BaseModel):
+    ids: list
+    op: str
+    payload: dict = {}
+    dry_run: bool = False
+
+
+def _apply_op_single(db, aid, op, payload, actor, batch_id):
+    appt = _one(db, "sched_appointment", aid)
+    if not appt:
+        return set()
+    prim = _primary_crew(db, aid)
+    cur_crew = prim["crew_id"] if prim else None
+    sdt = _dt(appt.get("scheduled_start"))
+    cur_date = sdt.date().isoformat() if sdt else None
+    before = {"crew_id": cur_crew, "date": cur_date, "status": appt.get("status")}
+    after = dict(before)
+    touched = set()
+
+    if op in ("REASSIGN", "MOVE_TO_DATE", "SHIFT_DAYS"):
+        tgt_crew, tgt_date, _m = _target_for(op, payload, cur_crew, cur_date)
+        if tgt_date != cur_date and sdt:
+            edt = _dt(appt.get("scheduled_end")); nd = date.fromisoformat(tgt_date)
+            st = naive_dt(nd, sdt.strftime("%H:%M")); en = naive_dt(nd, edt.strftime("%H:%M")) if edt else st
+            db.table("sched_appointment").update({"scheduled_start": st.isoformat(), "scheduled_end": en.isoformat()}).eq("id", aid).execute()
+        if tgt_crew and tgt_crew != cur_crew:
+            if prim:
+                db.table("sched_assignment").update({"crew_id": tgt_crew}).eq("id", prim["id"]).execute()
+            else:
+                db.table("sched_assignment").insert({"org_id": ORG, "appointment_id": aid, "crew_id": tgt_crew, "is_primary": True}).execute()
+        after = {"crew_id": tgt_crew, "date": tgt_date, "status": appt.get("status")}
+        for cd in ((cur_crew, cur_date), (tgt_crew, tgt_date)):
+            if cd[0] and cd[1]:
+                touched.add(cd)
+    elif op == "SET_STATUS":
+        stt = payload.get("status")
+        if stt in VALID_STATUS:
+            db.table("sched_appointment").update({"status": stt}).eq("id", aid).execute()
+            after["status"] = stt
+        if cur_crew and cur_date:
+            touched.add((cur_crew, cur_date))
+    elif op == "UNASSIGN":
+        if prim:
+            db.table("sched_assignment").delete().eq("id", prim["id"]).execute()
+        db.table("sched_appointment").update({"status": "UNASSIGNED"}).eq("id", aid).execute()
+        after = {"crew_id": None, "date": cur_date, "status": "UNASSIGNED"}
+        if cur_crew and cur_date:
+            touched.add((cur_crew, cur_date))
+    elif op == "WAIVE_TRIP":
+        db.table("sched_appointment").update({"waive_trip_fee": True}).eq("id", aid).execute()
+    elif op == "ADD_TAG":
+        tag_id = payload.get("tag_id")
+        if tag_id:
+            try:
+                db.table("sched_job_tag_link").upsert({"org_id": ORG, "job_id": appt["job_id"], "tag_id": tag_id}).execute()
+            except Exception:
+                pass
+
+    db.table("sched_audit_event").insert({
+        "org_id": ORG, "actor_id": str(actor or ""), "entity_type": "appointment", "entity_id": aid,
+        "action": "BULK_" + op, "before_json": before, "after_json": after, "request_id": batch_id,
+    }).execute()
+    return touched
+
+
+def _affected_multi(db, touched, appt_ids):
+    day_loads = {}
+    for (cid, ds) in touched:
+        crew = _one(db, "sched_crew", cid)
+        if crew:
+            day_loads[f"{cid}:{ds}"] = _day_load_dict(db, crew, ds)
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG).in_("id", list(appt_ids)).execute()) if appt_ids else []
+    ac = {}
+    if appt_ids:
+        for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).in_("appointment_id", list(appt_ids)).execute()):
+            if a.get("is_primary", True):
+                ac[a["appointment_id"]] = a["crew_id"]
+    return {"appointments": appts, "day_loads": day_loads, "appointment_crew": ac}
+
+
+@router.post("/bulk")
+async def bulk(body: BulkOp, user: dict = Depends(require_user)) -> dict:
+    if body.op not in BULK_OPS:
+        raise HTTPException(status_code=400, detail=f"Unknown op '{body.op}'.")
+    db = get_supabase()
+    conflicts: dict = {}
+    changes = []
+    for aid in body.ids:
+        appt = _one(db, "sched_appointment", aid)
+        if not appt:
+            continue
+        job = _one(db, "sched_job", appt["job_id"])
+        prim = _primary_crew(db, aid)
+        cur_crew = prim["crew_id"] if prim else None
+        sdt = _dt(appt.get("scheduled_start"))
+        cur_date = sdt.date().isoformat() if sdt else None
+        tgt_crew, tgt_date, is_move = _target_for(body.op, body.payload, cur_crew, cur_date)
+        entry = {"id": aid, "job_number": job.get("job_number") if job else None,
+                 "from": {"crew_id": cur_crew, "date": cur_date}, "to": {"crew_id": tgt_crew, "date": tgt_date}}
+        if is_move and job and tgt_crew:
+            crew = _one(db, "sched_crew", tgt_crew)
+            if crew:
+                ev = _evaluate_move(db, appt, job, crew, tgt_date)
+                entry["conflicts"] = ev["conflicts"]
+                blocks = [c for c in ev["conflicts"] if c["severity"] == "BLOCK"]
+                if blocks:
+                    conflicts[aid] = blocks
+        changes.append(entry)
+
+    if body.dry_run:
+        return {"applied": False, "dry_run": True, "op": body.op, "changes": changes, "conflicts": conflicts}
+    if conflicts:  # transactional: all-or-nothing on any BLOCK
+        return {"applied": False, "op": body.op, "changes": changes, "conflicts": conflicts}
+
+    batch_id = str(uuid.uuid4())
+    touched = set(); ids = set()
+    for aid in body.ids:
+        touched |= _apply_op_single(db, aid, body.op, body.payload, user.get("id"), batch_id)
+        ids.add(aid)
+    return {"applied": True, "batch_id": batch_id, "affected": _affected_multi(db, touched, ids)}
+
+
+class BulkUndo(BaseModel):
+    batch_id: str
+
+
+@router.post("/bulk/undo")
+async def bulk_undo(body: BulkUndo, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    events = _rows(db.table("sched_audit_event").select("*").eq("org_id", ORG).eq("request_id", body.batch_id).execute())
+    if not events:
+        raise HTTPException(status_code=404, detail="Nothing to undo.")
+    undo_batch = str(uuid.uuid4())
+    touched = set(); ids = set()
+    for e in events:
+        aid = e["entity_id"]; before = e.get("before_json") or {}; after = e.get("after_json") or {}
+        appt = _one(db, "sched_appointment", aid)
+        if not appt:
+            continue
+        sdt = _dt(appt.get("scheduled_start"))
+        if before.get("date") and sdt and before["date"] != sdt.date().isoformat():
+            edt = _dt(appt.get("scheduled_end")); nd = date.fromisoformat(before["date"])
+            st = naive_dt(nd, sdt.strftime("%H:%M")); en = naive_dt(nd, edt.strftime("%H:%M")) if edt else st
+            db.table("sched_appointment").update({"scheduled_start": st.isoformat(), "scheduled_end": en.isoformat()}).eq("id", aid).execute()
+        if before.get("status"):
+            db.table("sched_appointment").update({"status": before["status"]}).eq("id", aid).execute()
+        bc = before.get("crew_id")
+        prim = _primary_crew(db, aid)
+        if bc:
+            if prim and prim["crew_id"] != bc:
+                db.table("sched_assignment").update({"crew_id": bc}).eq("id", prim["id"]).execute()
+            elif not prim:
+                db.table("sched_assignment").insert({"org_id": ORG, "appointment_id": aid, "crew_id": bc, "is_primary": True}).execute()
+            if before.get("date"):
+                touched.add((bc, before["date"]))
+        if after.get("crew_id") and after.get("date"):
+            touched.add((after["crew_id"], after["date"]))
+        ids.add(aid)
+        db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "appointment",
+                                              "entity_id": aid, "action": "UNDO", "before_json": after, "after_json": before, "request_id": undo_batch}).execute()
+    return {"applied": True, "affected": _affected_multi(db, {t for t in touched if t[0] and t[1]}, ids)}
+
+
+class CreateAppt(BaseModel):
+    job_id: str
+    crew_id: str
+    date: str
+    planned_squares: Optional[float] = None
+    request_id: Optional[str] = None
+
+
+@router.post("/appointments")
+async def create_appointment(body: CreateAppt, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    job = _one(db, "sched_job", body.job_id)
+    crew = _one(db, "sched_crew", body.crew_id)
+    if not job or not crew:
+        raise HTTPException(status_code=404, detail="Job or crew not found.")
+    nd = _parse_date(body.date, "date")
+    start = naive_dt(nd, "07:00"); end = naive_dt(nd, "15:00")
+    ps = body.planned_squares if body.planned_squares is not None else _f(job.get("squares"))
+    ins = db.table("sched_appointment").insert({
+        "org_id": ORG, "job_id": body.job_id, "sequence": 1, "total_in_series": 1,
+        "scheduled_start": start.isoformat(), "scheduled_end": end.isoformat(),
+        "status": "SCHEDULED", "planned_squares": ps, "waive_trip_fee": False,
+    }).execute()
+    appt = (ins.data or [None])[0]
+    if not appt:
+        raise HTTPException(status_code=500, detail="Could not create the appointment.")
+    db.table("sched_assignment").insert({"org_id": ORG, "appointment_id": appt["id"], "crew_id": body.crew_id, "is_primary": True}).execute()
+    if job.get("status") == "SOLD":
+        db.table("sched_job").update({"status": "SCHEDULED"}).eq("id", body.job_id).execute()
+    db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "appointment",
+                                          "entity_id": appt["id"], "action": "CREATE", "before_json": None,
+                                          "after_json": {"crew_id": body.crew_id, "date": body.date}, "request_id": body.request_id}).execute()
+    return _affected_slice(db, appt, None, (body.crew_id, body.date))

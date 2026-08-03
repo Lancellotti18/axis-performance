@@ -8,7 +8,7 @@
  * 15s Undo. BLOCK conflicts refuse the drop with a reason. Click a card for the
  * detail slide-over. Read-only visuals from M2 are preserved.
  */
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable,
   useSensor, useSensors, type DragEndEvent, type DragOverEvent, type DragStartEvent,
@@ -16,9 +16,12 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
-import type { BoardData, Crew, DayLoad, Job, LoadState, PreviewResult, AffectedSlice } from './lib/board'
-import { num, patchAppointment, previewMove } from './lib/board'
+import type { BoardData, Crew, DayLoad, Job, LoadState, PreviewResult, AffectedSlice, AffectedMulti } from './lib/board'
+import { num, patchAppointment, previewMove, createAppointment } from './lib/board'
 import DetailPanel from './DetailPanel'
+import { useSelection } from './lib/selection'
+import BulkBar from './BulkBar'
+import JobsTray from './JobsTray'
 
 const BU_COLOR: Record<string, string> = {
   'bu-install': 'var(--sky)', 'bu-service': 'var(--balanced)', 'bu-gutter': 'var(--tight)', 'bu-siding': 'var(--dawn)',
@@ -65,6 +68,17 @@ function mergeSlice(old: BoardData, slice: AffectedSlice, movedCrewId: string): 
     day_loads: { ...old.day_loads, ...slice.day_loads },
   }
 }
+function mergeAffected(old: BoardData, aff: AffectedMulti): BoardData {
+  const byId = new Map(old.appointments.map(a => [a.id, a]))
+  aff.appointments.forEach(a => byId.set(a.id, a))
+  const appointment_crew = { ...old.appointment_crew }
+  aff.appointments.forEach(a => {
+    if (aff.appointment_crew[a.id]) appointment_crew[a.id] = aff.appointment_crew[a.id]
+    else delete appointment_crew[a.id]  // unassigned → drops off the grid into the tray
+  })
+  return { ...old, appointments: Array.from(byId.values()), appointment_crew, day_loads: { ...old.day_loads, ...aff.day_loads } }
+}
+const isTrayDrag = (id: string | null): boolean => !!id && id.startsWith('tray:')
 
 export default function Board({ data, today }: { data: BoardData; today: string }) {
   const qc = useQueryClient()
@@ -77,6 +91,10 @@ export default function Board({ data, today }: { data: BoardData; today: string 
   const [detailId, setDetailId] = useState<string | null>(null)
   const activeRef = useRef<string | null>(null)
   const previewRef = useRef<Record<string, PreviewResult | 'loading'>>({})
+
+  const [dragLabel, setDragLabel] = useState<string | null>(null)
+  const sel = useSelection()
+  const selCount = sel.selected.size
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor))
 
@@ -108,15 +126,63 @@ export default function Board({ data, today }: { data: BoardData; today: string 
     return { jobs, customers, properties, tags, tagsByJob, shiftBy, membersBy, persons, apptBy, wxBy, crewsByBu }
   }, [data])
 
+  // Flat render-order of appointment ids, for shift-click range + Cmd+A.
+  const visibleOrder = useMemo(() => {
+    const order: string[] = []
+    data.business_units.forEach(bu => {
+      (idx.crewsByBu.get(bu.id) || []).forEach(crew => {
+        days.forEach(d => { (idx.apptBy.get(`${crew.id}:${d}`) || []).forEach(ap => order.push(ap.id)) })
+      })
+    })
+    return order
+  }, [data.business_units, idx, days])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a' && visibleOrder.length) {
+        e.preventDefault(); sel.setAll(visibleOrder)
+      } else if (e.key === 'Escape') { sel.clear() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [visibleOrder]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onSelect = (id: string, shift: boolean) => {
+    if (shift && sel.last) {
+      const a = visibleOrder.indexOf(sel.last), b = visibleOrder.indexOf(id)
+      if (a >= 0 && b >= 0) { const [lo, hi] = a < b ? [a, b] : [b, a]; sel.addRange(visibleOrder.slice(lo, hi + 1)); sel.setLast(id); return }
+    }
+    sel.toggle(id)
+  }
+
+  const applyAffected = (aff: AffectedMulti) => qc.setQueryData<BoardData>(queryKey, old => old ? mergeAffected(old, aff) : old)
+
+  function doCreate(jobId: string, crewId: string, dateStr: string) {
+    createAppointment(jobId, crewId, dateStr)
+      .then(slice => {
+        qc.setQueryData<BoardData>(queryKey, old => old ? mergeSlice(old, slice, crewId) : old)
+        qc.invalidateQueries({ queryKey: ['tray'] })
+        toast.success('Scheduled.')
+      })
+      .catch(err => toast.error('Could not schedule — ' + (err instanceof Error ? err.message.replace(/\[HTTP \d+\]\s*/, '') : 'try again')))
+  }
+
   const cols = `220px repeat(${days.length}, minmax(158px, 1fr))`
   const rainy = (d: string) => { const w = idx.wxBy.get(d); return w ? w.precip_probability >= 60 : false }
 
-  const onDragStart = (e: DragStartEvent) => { activeRef.current = String(e.active.id); setActiveId(String(e.active.id)); clearPreview(); setHoverCell(null) }
+  const onDragStart = (e: DragStartEvent) => {
+    const id = String(e.active.id)
+    activeRef.current = id; setActiveId(id)
+    setDragLabel((e.active.data.current?.label as string) ?? null)
+    clearPreview(); setHoverCell(null)
+  }
   const onDragOver = (e: DragOverEvent) => {
     const over = e.over ? String(e.over.id) : null
     setHoverCell(over)
     const apptId = activeRef.current
-    if (over && apptId && !(over in previewRef.current)) {
+    if (over && apptId && !isTrayDrag(apptId) && !(over in previewRef.current)) {
       const [crewId, dateStr] = over.split('|')
       setPreview(over, 'loading')
       previewMove(apptId, crewId, dateStr).then(pv => setPreview(over, pv)).catch(() => {
@@ -129,9 +195,10 @@ export default function Board({ data, today }: { data: BoardData; today: string 
     const apptId = activeRef.current
     const over = e.over ? String(e.over.id) : null
     const pmap = previewRef.current
-    setActiveId(null); activeRef.current = null; setHoverCell(null)
+    setActiveId(null); activeRef.current = null; setHoverCell(null); setDragLabel(null)
     if (!apptId || !over) { clearPreview(); return }
     const [crewId, dateStr] = over.split('|')
+    if (isTrayDrag(apptId)) { doCreate(apptId.slice(5), crewId, dateStr); clearPreview(); return }
     const appt = data.appointments.find(a => a.id === apptId)
     if (!appt) { clearPreview(); return }
     const fromCrew = data.appointment_crew[apptId]
@@ -174,8 +241,8 @@ export default function Board({ data, today }: { data: BoardData; today: string 
   const hoverPv = hoverCell ? previewMap[hoverCell] : undefined
 
   return (
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => { setActiveId(null); activeRef.current = null; clearPreview() }}>
-      <div className="min-w-max text-[13px]">
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => { setActiveId(null); activeRef.current = null; setDragLabel(null); clearPreview() }}>
+      <div className="min-w-max pb-12 text-[13px]">
         {/* Day header */}
         <div className="sticky top-0 z-20 grid border-b" style={{ gridTemplateColumns: cols, background: 'var(--ink)', borderColor: 'var(--line)' }}>
           <div className="sticky left-0 z-30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ background: 'var(--ink)', color: 'var(--muted)' }}>Crew</div>
@@ -226,7 +293,8 @@ export default function Board({ data, today }: { data: BoardData; today: string 
                             const cust = idx.customers.get(job.customer_id); const prop = idx.properties.get(job.property_id)
                             const tagIds = idx.tagsByJob.get(job.id) || []
                             return (
-                              <DraggableCard key={ap.id} id={ap.id} dragging={activeId === ap.id} onClick={() => setDetailId(ap.id)}>
+                              <DraggableCard key={ap.id} id={ap.id} dragging={activeId === ap.id} onClick={() => setDetailId(ap.id)}
+                                selected={sel.isSelected(ap.id)} selectionActive={selCount > 0} onToggle={(shift) => onSelect(ap.id, shift)}>
                                 <JobCardBody start={ap.scheduled_start} end={ap.scheduled_end} status={ap.status}
                                   seq={ap.sequence} total={ap.total_in_series} job={job} custLast={cust?.last_name}
                                   street={prop?.line1} city={prop?.city} tags={tagIds.map(t => idx.tags.get(t)).filter(Boolean) as BoardData['tags']}
@@ -246,7 +314,14 @@ export default function Board({ data, today }: { data: BoardData; today: string 
       </div>
 
       <DragOverlay dropAnimation={null}>
-        {activeJob && activeAppt ? (
+        {isTrayDrag(activeId) ? (
+          <div className="w-[200px] rotate-1">
+            <div className="rounded-md px-2 py-1.5 shadow-2xl ring-1 ring-white/20" style={{ background: 'var(--panel)' }}>
+              <div className="text-[13px] font-semibold">{dragLabel ?? 'New job'}</div>
+            </div>
+            <div className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold shadow-lg" style={{ background: 'var(--sky)', color: '#04121f' }}>drop to schedule</div>
+          </div>
+        ) : activeJob && activeAppt ? (
           <div className="w-[200px] rotate-1">
             <div className="rounded-md px-2 py-1.5 shadow-2xl ring-1 ring-white/20" style={{ background: 'var(--panel)' }}>
               <div className="text-[13px] font-semibold">{jobTypeLabel(activeJob.job_type)}{activeJob.squares != null && <span style={{ color: 'var(--dawn)' }}> · {num(activeJob.squares)} sq</span>}</div>
@@ -263,6 +338,12 @@ export default function Board({ data, today }: { data: BoardData; today: string 
 
       {detailId && <DetailPanel appointmentId={detailId} data={data} onClose={() => setDetailId(null)}
         onPatched={(slice) => qc.setQueryData<BoardData>(queryKey, old => old ? mergeSlice(old, slice, data.appointment_crew[slice.appointment.id]) : old)} />}
+
+      {selCount > 0 && (
+        <BulkBar ids={Array.from(sel.selected)} crews={data.crews} tags={data.tags}
+          onApplied={applyAffected} onClear={() => sel.clear()} onTrayInvalidate={() => qc.invalidateQueries({ queryKey: ['tray'] })} />
+      )}
+      <JobsTray />
     </DndContext>
   )
 }
@@ -282,12 +363,25 @@ function Cell({ id, rainy, dragging, preview, children }: { id: string; rainy: b
   )
 }
 
-function DraggableCard({ id, dragging, onClick, children }: { id: string; dragging: boolean; onClick: () => void; children: React.ReactNode }) {
+function DraggableCard({
+  id, dragging, selected, selectionActive, onToggle, onClick, children,
+}: {
+  id: string; dragging: boolean; selected: boolean; selectionActive: boolean
+  onToggle: (shift: boolean) => void; onClick: () => void; children: React.ReactNode
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id })
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} onClick={onClick}
-      className="cursor-grab active:cursor-grabbing" style={{ opacity: isDragging || dragging ? 0.4 : 1 }}>
-      {children}
+    <div ref={setNodeRef} className="group relative rounded-md"
+      style={{ opacity: isDragging || dragging ? 0.4 : 1, boxShadow: selected ? '0 0 0 2px var(--sky)' : undefined }}>
+      <div {...listeners} {...attributes} onClick={onClick} className="cursor-grab active:cursor-grabbing">{children}</div>
+      <button
+        onPointerDown={e => e.stopPropagation()}
+        onClick={e => { e.stopPropagation(); onToggle(e.shiftKey) }}
+        title="Select"
+        className={`absolute left-1 top-1 z-10 flex h-4 w-4 items-center justify-center rounded-[3px] border text-[9px] font-bold leading-none transition-opacity ${selected || selectionActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+        style={{ borderColor: selected ? 'var(--sky)' : 'var(--line)', background: selected ? 'var(--sky)' : 'var(--panel)', color: selected ? '#04121f' : 'transparent' }}>
+        ✓
+      </button>
     </div>
   )
 }

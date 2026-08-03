@@ -116,3 +116,60 @@ export async function patchAppointment(
   }
   return res.json()
 }
+
+// ── M4: tray + bulk ──────────────────────────────────────────────────────────
+export interface TrayRow {
+  job_id: string; appointment_id: string | null; job_number: number; job_type: string
+  status: string; priority: string; customer: string; city: string
+  squares: number | null; est_crew_days: number; is_estimated: boolean
+  sold_amount: number | null; age_days: number | null; deadline: string | null
+  tags: string[]; conflicts?: Conflict[]
+}
+export interface TrayData {
+  unassigned: TrayRow[]; needs_measurements: TrayRow[]; on_hold: TrayRow[]; conflicts: TrayRow[]; canceled: TrayRow[]
+}
+export interface BulkChange {
+  id: string; job_number: number | null; from: { crew_id: string | null; date: string | null }
+  to: { crew_id: string | null; date: string | null }; conflicts?: Conflict[]
+}
+export interface AffectedMulti { appointments: Appointment[]; day_loads: Record<string, DayLoad>; appointment_crew: Record<string, string> }
+export interface BulkResult {
+  applied: boolean; dry_run?: boolean; op?: string; batch_id?: string
+  changes?: BulkChange[]; conflicts?: Record<string, Conflict[]>; affected?: AffectedMulti
+}
+
+export async function fetchTray(): Promise<TrayData> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/tray`, { headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function bulkOp(ids: string[], op: string, payload: Record<string, unknown>, dryRun: boolean): Promise<BulkResult> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/bulk`, {
+    method: 'POST', headers: { ...h, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, op, payload, dry_run: dryRun }),
+  })
+  if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
+  return res.json()
+}
+
+export async function bulkUndo(batchId: string): Promise<{ affected: AffectedMulti }> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/bulk/undo`, {
+    method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify({ batch_id: batchId }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function createAppointment(jobId: string, crewId: string, dateStr: string): Promise<AffectedSlice> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/appointments`, {
+    method: 'POST', headers: { ...h, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ job_id: jobId, crew_id: crewId, date: dateStr, request_id: crypto.randomUUID() }),
+  })
+  if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
+  return res.json()
+}
