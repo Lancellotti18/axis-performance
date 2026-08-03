@@ -27,7 +27,8 @@ export interface Job {
   id: string; business_unit_id: string; customer_id: string; property_id: string
   job_number: number; job_type: string; status: string; priority: string
   squares: number | string | null; predominant_pitch: number | string | null
-  stories: number | null; tear_off_layers: number; sold_amount: number | string | null; deadline: string | null
+  stories: number | null; tear_off_layers: number; waste_factor_pct: number | string | null
+  sold_amount: number | string | null; deadline: string | null
 }
 export interface Customer { id: string; first_name: string; last_name: string }
 export interface Property { id: string; line1: string; city: string; state: string; postal_code: string; lat: number; lng: number }
@@ -70,4 +71,48 @@ export async function fetchBoard(start: string, end: string): Promise<BoardData>
 export const num = (v: number | string | null | undefined): number => {
   const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0)
   return Number.isFinite(n) ? (n as number) : 0
+}
+
+// ── M3: preview + move ───────────────────────────────────────────────────────
+export interface Conflict { code: string; severity: 'BLOCK' | 'WARN'; message: string }
+export interface CrewDaysBreakdown {
+  crew_days: number; is_estimated: boolean; tear_off_days: number; install_days: number
+  pitch_multiplier: number; story_multiplier: number; warnings: string[]
+}
+export interface PreviewResult {
+  conflicts: Conflict[]; blocked: boolean
+  resulting_utilization_pct: number; resulting_state: LoadState
+  resulting_planned_squares: number; capacity_squares: number
+  crew_days: CrewDaysBreakdown
+}
+export interface AffectedSlice {
+  appointment: Appointment; series: Appointment[]; day_loads: Record<string, DayLoad>
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const s = await getCachedSession()
+  return s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {}
+}
+
+export async function previewMove(appointmentId: string, crewId: string, dateStr: string): Promise<PreviewResult> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/preview?appointment_id=${appointmentId}&crew_id=${crewId}&date=${dateStr}`, { headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function patchAppointment(
+  appointmentId: string,
+  body: { crew_id?: string; date?: string; status?: string; request_id?: string },
+): Promise<AffectedSlice> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/appointments/${appointmentId}`, {
+    method: 'PATCH', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const t = await res.text(); let detail = t
+    try { detail = JSON.parse(t).detail ?? t } catch { /* raw */ }
+    throw new Error(String(detail))
+  }
+  return res.json()
 }

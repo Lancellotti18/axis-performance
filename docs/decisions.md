@@ -84,3 +84,24 @@ the throughput flywheel accrues history from day one.
   cards. Weather chip per day header; a >=60% day hatches its column.
 - **Deferred to M3+:** drag/drop (dnd-kit), selection/bulk, the tray, day/map
   views. M2 is render-only.
+
+## M3 — Single-item interaction
+
+- **Backend:** `GET /preview` (dry-run a drop → conflicts + resulting utilization
+  + the crew-days breakdown, all from the pure engine) and `PATCH /appointments/:id`
+  (move / reassign / restatus). The PATCH is idempotent on `request_id`, writes a
+  `sched_audit_event` (who moved this job), and returns the **full affected slice**
+  — the appointment, its series siblings, and recomputed dayLoads for every touched
+  crew-day — so the client patches cache without refetching.
+- **Frontend (dnd-kit):** drag a card to any crew-day. On hover the target cell is
+  previewed and painted green / amber / red; a chip on the drag shows the resulting
+  utilization (`→ 74/28 sq · Over`). BLOCK conflicts refuse the drop with the reason;
+  WARN allows it. Drop = optimistic cache move → PATCH → reconcile with the returned
+  slice → 15s **Undo** (a real inverse PATCH, not a client hack). On server rejection
+  the card snaps back and toasts why.
+- **Detail slide-over:** click a card → job + the measurement→crew-days calculation
+  shown as itemized work (install/tear-off days, pitch/story multipliers), the full
+  series, and a status control that writes through the same PATCH.
+- **Deferred to later milestones:** the "move day only / whole series" prompt (a
+  single-day move currently moves just that day; the SERIES_BROKEN warning still
+  surfaces in preview), full ARIA drag announcements, and the tray/bulk (M4).
