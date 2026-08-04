@@ -15,11 +15,10 @@ const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9
 
 type Report = Awaited<ReturnType<typeof api.instantQuote.report>>
 
-// Homeowner-facing auto-pricing is OFF: an instant estimate is inaccurate and
-// either scares people off or sets a false anchor. We keep the lead funnel and
-// the option descriptions, but the exact price comes from the contractor's
-// measured roof. Flip to true to show instant prices again.
-const SHOW_INSTANT_PRICE = false
+// Instant pricing is now per-contractor: the report shows the estimate range
+// only when the contractor turns it on (RoofIQ settings → "Show these prices to
+// homeowners"). Off by default — otherwise homeowners see options without a
+// number. The value is read from the report payload inside the component.
 
 const SCENARIOS = [
   { name: 'Architectural asphalt', note: 'The standard — solid protection, best value', mult: 1.0 },
@@ -144,6 +143,7 @@ export default function ReportPage() {
     return <main className="flex min-h-screen items-center justify-center bg-slate-50"><span className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" /></main>
   }
 
+  const SHOW_INSTANT_PRICE = !!r.show_instant_price
   const urgent = r.issues.includes('leak') || r.issues.includes('storm_damage') || r.roof_age === '25+' || r.details?.condition === 'visible_damage'
 
   return (

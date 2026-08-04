@@ -193,7 +193,8 @@ def _branding_for(db, w: dict) -> dict:
             phone = prof.data[0].get("phone") or phone
     except Exception:
         pass
-    return {"company_name": company or "Your local roofing pro", "phone": phone or ""}
+    return {"company_name": company or "Your local roofing pro", "phone": phone or "",
+            "show_instant_price": bool(w.get("show_instant_price"))}
 
 
 @router.get("/w/{widget_key}")
@@ -688,6 +689,7 @@ class WidgetSettings(BaseModel):
     phone: Optional[str] = Field(None, max_length=32)
     price_low: Optional[float] = Field(None, ge=50, le=5000)
     price_high: Optional[float] = Field(None, ge=50, le=5000)
+    show_instant_price: Optional[bool] = None   # homeowner sees the estimate range; default off
     # RoofVision palette — ordered catalog keys the contractor wants rendered.
     roofvision_palette: Optional[list[str]] = Field(None, max_length=8)
 
@@ -706,12 +708,16 @@ async def update_widget(payload: WidgetSettings, user: dict = Depends(require_us
     try:
         res = db.table("quote_widgets").update(patch).eq("user_id", user["id"]).execute()
     except Exception as e:
-        # Pre-migration schema (no roofvision_palette column) — retry without it
-        # so price/branding edits still save; palette lights up post-migration.
+        # Pre-migration schema (newer optional columns not added yet) — retry
+        # without them so price/branding edits still save; the newer column
+        # lights up once its migration runs. `updated_at` keeps patch non-empty.
         msg = str(e).lower()
-        if "roofvision_palette" in patch and (("column" in msg and "does not exist" in msg) or "pgrst204" in msg):
-            logger.warning("quote_widgets missing roofvision_palette — run 20260713_roofvision_palette.sql")
-            patch.pop("roofvision_palette", None)
+        schema_miss = ("column" in msg and "does not exist" in msg) or "pgrst204" in msg
+        newer = [k for k in ("roofvision_palette", "show_instant_price") if k in patch]
+        if schema_miss and newer:
+            logger.warning("quote_widgets missing newer column(s) %s — run pending migration", newer)
+            for k in newer:
+                patch.pop(k, None)
             res = db.table("quote_widgets").update(patch).eq("user_id", user["id"]).execute()
         else:
             raise
@@ -771,7 +777,9 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
     if not res.data:
         raise HTTPException(status_code=404, detail="Report not found.")
     lead = res.data[0]
-    w = db.table("quote_widgets").select("company_name, phone").eq("widget_key", lead["widget_key"]).limit(1).execute()
+    # select("*") so a pre-migration schema (no show_instant_price column) can't
+    # 500 the whole report; the flag simply reads falsy until the column exists.
+    w = db.table("quote_widgets").select("*").eq("widget_key", lead["widget_key"]).limit(1).execute()
     company = (w.data[0] if w.data else {})
 
     # Trust & Verify: the contractor profile is the single source of truth for
@@ -833,6 +841,7 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
         "created_at": lead.get("created_at"),
         "company_name": prof.get("company_name") or company.get("company_name") or "Your roofing contractor",
         "company_phone": prof.get("phone") or company.get("phone") or "",
+        "show_instant_price": bool(company.get("show_instant_price")),
         "company_license": prof.get("license_number") or None,
         "company_logo_url": prof.get("logo_url") or None,
         "service_area": service_area,

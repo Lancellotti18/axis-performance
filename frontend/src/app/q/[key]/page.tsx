@@ -73,11 +73,10 @@ const DRAINAGE = [
   { key: 'unsure', label: 'Not sure' },
 ] as const
 
-// Homeowner-facing instant pricing is OFF here too (matches the /r report): an
-// auto price scares people off or sets a false anchor. We keep the full lead
-// funnel + the "we measured your roof" value; the exact price comes from the
-// contractor after a free on-site review.
-const SHOW_INSTANT_PRICE = false
+// Instant pricing in the funnel is per-contractor now (matches the /r report):
+// the estimate shows only when the contractor turns it on in RoofIQ settings.
+// Off by default — the "we measured your roof" value still carries the funnel.
+// The live value comes from the widget config (`showPrice` state below).
 
 function monthly(principal: number): number {
   const r = 0.099 / 12, n = 120
@@ -97,6 +96,7 @@ export default function RoofIQPage() {
 
   const [company, setCompany] = useState('')
   const [companyPhone, setCompanyPhone] = useState('')
+  const [showPrice, setShowPrice] = useState(false)
   const [notFound, setNotFound] = useState(false)
   const [step, setStep] = useState<Step>('address')
   const [busy, setBusy] = useState(false)
@@ -149,7 +149,7 @@ export default function RoofIQPage() {
   useEffect(() => {
     if (!widgetKey) return
     api.instantQuote.widgetConfig(widgetKey)
-      .then(c => { setCompany(c.company_name); setCompanyPhone(c.phone); track('view') })
+      .then(c => { setCompany(c.company_name); setCompanyPhone(c.phone); setShowPrice(!!c.show_instant_price); track('view') })
       .catch(() => setNotFound(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgetKey])
@@ -551,7 +551,7 @@ export default function RoofIQPage() {
             <>
               <div className="text-center">
                 <div className="text-2xl">🎉</div>
-                <div className="mt-1 text-sm font-semibold">{SHOW_INSTANT_PRICE ? `Here's your estimate, ${name.split(' ')[0]}` : `You're all set, ${name.split(' ')[0]}`}</div>
+                <div className="mt-1 text-sm font-semibold">{showPrice ? `Here's your estimate, ${name.split(' ')[0]}` : `You're all set, ${name.split(' ')[0]}`}</div>
                 <div className="text-xs text-slate-500">{located?.address}</div>
               </div>
 
@@ -591,7 +591,7 @@ export default function RoofIQPage() {
                         <div className="text-xl font-bold">{quote.roof_sqft?.toLocaleString()} ft²</div>
                         <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Measured roof area</div>
                       </div>
-                      {SHOW_INSTANT_PRICE ? (
+                      {showPrice ? (
                         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
                           <div className="text-xl font-bold text-emerald-700">{money(lo)}–{money(hi)}</div>
                           <div className="mt-0.5 text-[10px] uppercase tracking-wide text-emerald-600/80">Estimated range</div>
@@ -610,11 +610,11 @@ export default function RoofIQPage() {
 
               {/* disclaimer */}
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <div className="text-[11px] font-semibold text-amber-900">{SHOW_INSTANT_PRICE ? 'ⓘ This is a rough, AI-powered educational estimate — not an official quote.' : 'ⓘ This is a free roof assessment, not an official quote.'}</div>
+                <div className="text-[11px] font-semibold text-amber-900">{showPrice ? 'ⓘ This is a rough, AI-powered educational estimate — not an official quote.' : 'ⓘ This is a free roof assessment, not an official quote.'}</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-amber-900/70">
-                  Built from satellite imagery{SHOW_INSTANT_PRICE ? ' and regional pricing' : ''}. {company || 'The contractor'} measures your roof and provides an exact written proposal after a free on-site review.
+                  Built from satellite imagery{showPrice ? ' and regional pricing' : ''}. {company || 'The contractor'} measures your roof and provides an exact written proposal after a free on-site review.
                 </p>
-                {SHOW_INSTANT_PRICE && (
+                {showPrice && (
                   <>
                     <button onClick={() => setFactorsOpen(o => !o)} className="mt-1 text-[11px] font-semibold text-amber-800 hover:underline">
                       {factorsOpen ? 'Hide' : 'What can change the price?'}
