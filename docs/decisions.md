@@ -228,3 +228,35 @@ the board stays fully operable if the model is down.
   `NameError` in the brief) — added.
 - **Deferred:** smart-placement ranking for Gaps (best-fit per unplaced job, capability
   B), one-tap fixes on brief risk chips beyond weather, and customer comms on moves.
+
+## M6 — Views, responsive, audit (final milestone)
+
+- **View switcher (Week / Day / Map)** in a sticky bar, with a focus-date + day nav
+  for Day/Map. All three views read the **same already-fetched week slice** — no new
+  board fetch. Week is the desktop grid; Day and Map operate on one `focusDate`.
+- **Day view** — wrapping crew **columns** for one day (crew header, capacity meter,
+  that day's jobs as full cards). It reuses the exact `Cell` + `DraggableCard` +
+  `JobCardBody` inside the same `DndContext`, so drag, hover-preview, selection,
+  tray-drop, and bulk all work unchanged — and because the columns wrap, **this same
+  layout is the mobile layout** (small screens default to Day via a width check).
+- **Map view** (`MapView.tsx`) — deliberately **dependency-free**: no tile provider or
+  API key. Properties already carry lat/lng, so it's a normalized geographic scatter
+  (bounding-box → SVG), one color per crew, each crew's stops connected in scheduled
+  order as a dashed route, numbered by sequence. A side list mirrors the routes with
+  per-crew stop counts + squares. Click any stop → detail. Degenerate bounds (single
+  or colinear stops) are padded so they still lay out. Chosen over Leaflet/Mapbox to
+  keep the section self-contained and offline-safe; a real tile map is a later swap.
+- **Audit trail** — every board mutation already wrote a `sched_audit_event`; M6 only
+  surfaces it. `GET /audit?limit&appointment_id` resolves job numbers + crew names and
+  returns a **plain-English summary per event** (`_audit_summary`: moved / scheduled /
+  status / capacity / reverted). A **History** slide-over (timeline, relative time,
+  actor vs. system) opens from the view bar; the **DetailPanel** shows the same feed
+  filtered to one job. Read-only.
+- **Isolation held:** appended one endpoint + helper to the router; new FE files
+  (MapView, AuditPanel) + edits to Board/DetailPanel only. No other feature touched.
+
+**Board is feature-complete against the brief (M1–M6 + M5.5).** Backlog beyond the
+brief: smart-placement ranking (B), alternate-crew reschedule, customer comms on
+moves, and a real tile-based map. The AI surfaces need an LLM key on Render to
+narrate (they degrade cleanly without one), and the flywheel needs completed jobs
+with `actual_squares` before it fires.

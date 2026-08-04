@@ -6,9 +6,10 @@
  * and a status control. Editing writes through the same PATCH the board uses.
  */
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import type { BoardData, CrewDaysBreakdown } from './lib/board'
-import { num, patchAppointment, previewMove } from './lib/board'
+import { num, patchAppointment, previewMove, fetchAudit } from './lib/board'
 
 const STATUSES = ['SCHEDULED', 'DISPATCHED', 'WORKING', 'PAUSED', 'DONE', 'HOLD', 'CANCELED', 'UNASSIGNED']
 
@@ -30,6 +31,7 @@ export default function DetailPanel({
 
   const [est, setEst] = useState<CrewDaysBreakdown | null>(null)
   const [savingStatus, setSavingStatus] = useState(false)
+  const { data: history } = useQuery({ queryKey: ['audit', appointmentId], queryFn: () => fetchAudit(15, appointmentId), staleTime: 15_000 })
 
   useEffect(() => {
     if (!appt || !crewId) return
@@ -134,6 +136,21 @@ export default function DetailPanel({
 
           {job.sold_amount != null && (
             <div className="text-[12px]" style={{ color: 'var(--muted)' }}>Sold: <span className="font-semibold" style={{ color: 'var(--text)' }}>${num(job.sold_amount).toLocaleString()}</span></div>
+          )}
+
+          {/* History for this job */}
+          {history && history.events.length > 0 && (
+            <section>
+              <div className="mb-2 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>History</div>
+              <div className="space-y-1.5">
+                {history.events.map(ev => (
+                  <div key={ev.id} className="flex items-baseline justify-between gap-3 text-[12px]">
+                    <span className="min-w-0 flex-1">{ev.summary}</span>
+                    <span className="shrink-0 text-[11px]" style={{ color: 'var(--muted)' }}>{ev.created_at ? new Date(ev.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
         </div>
       </div>

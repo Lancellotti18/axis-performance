@@ -164,6 +164,21 @@ export async function bulkUndo(batchId: string): Promise<{ affected: AffectedMul
   return res.json()
 }
 
+// ── M6: audit trail ──────────────────────────────────────────────────────────
+export interface AuditEvent {
+  id: string; created_at: string | null; action: string; entity_type: string
+  entity_id: string | null; actor_id: string | null; job_number: number | null; summary: string
+}
+
+export async function fetchAudit(limit = 60, appointmentId?: string): Promise<{ events: AuditEvent[] }> {
+  const h = await authHeaders()
+  const qs = new URLSearchParams({ limit: String(limit) })
+  if (appointmentId) qs.set('appointment_id', appointmentId)
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/audit?${qs.toString()}`, { headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 // ── M5.5: Copilot (brief, throughput flywheel, ⌘K plan) ──────────────────────
 export interface BriefItem { kind: string; severity: number; text: string; refs: Record<string, string | null>; action: Record<string, unknown> | null }
 export interface Brief {

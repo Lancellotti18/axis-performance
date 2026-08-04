@@ -923,6 +923,61 @@ async def reschedule(body: Reschedule, user: dict = Depends(require_user)) -> di
     return {"applied": True, "batch_id": batch_id, "affected": _affected_multi(db, touched, ids)}
 
 
+# ── M6: audit trail ──────────────────────────────────────────────────────────
+
+def _audit_summary(e: dict, job_number, crew_name: dict) -> str:
+    before, after = e.get("before_json") or {}, e.get("after_json") or {}
+    action = e.get("action") or ""
+    jn = f"#{job_number}" if job_number else "a job"
+
+    def where(d: dict) -> str:
+        c = crew_name.get(d.get("crew_id"), "unassigned") if d.get("crew_id") else "unassigned"
+        return f"{c} {d['date'][5:]}" if d.get("date") else c
+
+    if e.get("entity_type") == "crew" or action == "CAPACITY_UPDATE":
+        return f"{crew_name.get(e.get('entity_id'), 'A crew')} capacity {before.get('squares_per_day')} → {after.get('squares_per_day')} sq/day"
+    if action == "CREATE":
+        return f"Scheduled {jn} on {where(after)}"
+    if action == "UNDO":
+        return f"Reverted {jn} to {where(after)}"
+    if action.startswith("BULK_SET_STATUS") or action == "SET_STATUS" or (before.get("status") and after.get("status") and before["status"] != after["status"]):
+        return f"{jn} status → {(after.get('status') or '').lower()}"
+    if action.endswith("UNASSIGN"):
+        return f"{jn} sent to the tray"
+    if before.get("crew_id") != after.get("crew_id") or before.get("date") != after.get("date"):
+        return f"Moved {jn}: {where(before)} → {where(after)}"
+    return f"{action.replace('_', ' ').title()} · {jn}"
+
+
+@router.get("/audit")
+async def audit(limit: int = 50, appointment_id: Optional[str] = None, user: dict = Depends(require_user)) -> dict:
+    """Recent scheduling changes — who moved what, when. Every board mutation
+    already writes a sched_audit_event; this surfaces them with plain summaries."""
+    db = get_supabase()
+    q = db.table("sched_audit_event").select("*").eq("org_id", ORG).order("created_at", desc=True).limit(min(max(limit, 1), 200))
+    if appointment_id:
+        q = q.eq("entity_id", appointment_id)
+    events = _rows(q.execute())
+
+    appt_ids = list({e["entity_id"] for e in events if e.get("entity_type") == "appointment" and e.get("entity_id")})
+    job_by_appt = {}
+    if appt_ids:
+        appts = _rows(db.table("sched_appointment").select("id,job_id").eq("org_id", ORG).in_("id", appt_ids).execute())
+        jmap = {a["id"]: a["job_id"] for a in appts}
+        jids = list({v for v in jmap.values() if v})
+        jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("id,job_number").eq("org_id", ORG).in_("id", jids).execute())} if jids else {}
+        job_by_appt = {aid: jobs.get(jid, {}).get("job_number") for aid, jid in jmap.items()}
+    crew_name = {c["id"]: c["name"] for c in _rows(db.table("sched_crew").select("id,name").eq("org_id", ORG).execute())}
+
+    out = [{
+        "id": e["id"], "created_at": e.get("created_at"), "action": e.get("action"),
+        "entity_type": e.get("entity_type"), "entity_id": e.get("entity_id"),
+        "actor_id": e.get("actor_id"), "job_number": job_by_appt.get(e.get("entity_id")),
+        "summary": _audit_summary(e, job_by_appt.get(e.get("entity_id")), crew_name),
+    } for e in events]
+    return {"events": out}
+
+
 # ── M5.5: Axis Copilot ───────────────────────────────────────────────────────
 # Guardrail (docs/crew-scheduling-ai-layer.md A0): every NUMBER comes from the
 # tested engine; the model only narrates, ranks, and compiles intent into the

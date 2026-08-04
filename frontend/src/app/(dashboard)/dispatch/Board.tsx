@@ -24,6 +24,8 @@ import BulkBar from './BulkBar'
 import JobsTray from './JobsTray'
 import WeatherReschedule from './WeatherReschedule'
 import Copilot from './Copilot'
+import MapView from './MapView'
+import AuditPanel from './AuditPanel'
 
 const BU_COLOR: Record<string, string> = {
   'bu-install': 'var(--sky)', 'bu-service': 'var(--balanced)', 'bu-gutter': 'var(--tight)', 'bu-siding': 'var(--dawn)',
@@ -91,8 +93,15 @@ export default function Board({ data, today }: { data: BoardData; today: string 
   const [hoverCell, setHoverCell] = useState<string | null>(null)
   const [previewMap, setPreviewMap] = useState<Record<string, PreviewResult | 'loading'>>({})
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [view, setView] = useState<'week' | 'day' | 'map'>('week')
+  const [focusDate, setFocusDate] = useState<string>(() => (days.includes(today) ? today : days[0]))
+  const [auditOpen, setAuditOpen] = useState(false)
   const activeRef = useRef<string | null>(null)
   const previewRef = useRef<Record<string, PreviewResult | 'loading'>>({})
+
+  // Keep the focused day valid as the visible week changes; default to a mobile-friendly day view.
+  useEffect(() => { if (!days.includes(focusDate)) setFocusDate(days.includes(today) ? today : days[0]) }, [days]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (typeof window !== 'undefined' && window.innerWidth < 640) setView('day') }, [])
 
   const [dragLabel, setDragLabel] = useState<string | null>(null)
   const sel = useSelection()
@@ -254,6 +263,72 @@ export default function Board({ data, today }: { data: BoardData; today: string 
       <WeatherReschedule start={data.range.start} end={data.range.end} crews={data.crews}
         onApplied={applyAffected}
         onInvalidate={() => { qc.invalidateQueries({ queryKey: ['weather-impact'] }); qc.invalidateQueries({ queryKey: ['tray'] }) }} />
+
+      {/* View switcher + day nav */}
+      <div className="sticky left-0 z-[19] flex flex-wrap items-center gap-2 border-b px-4 py-2" style={{ borderColor: 'var(--line)', background: 'var(--ink)' }}>
+        <div className="flex overflow-hidden rounded-lg border" style={{ borderColor: 'var(--line)' }}>
+          {(['week', 'day', 'map'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className="px-3 py-1 text-[12px] font-semibold capitalize transition-colors"
+              style={{ background: view === v ? 'var(--sky)' : 'transparent', color: view === v ? '#04121f' : 'var(--text)' }}>{v}</button>
+          ))}
+        </div>
+        {view !== 'week' && (
+          <div className="flex items-center gap-1">
+            <button onClick={() => { const i = days.indexOf(focusDate); if (i > 0) setFocusDate(days[i - 1]) }} disabled={days.indexOf(focusDate) <= 0}
+              className="rounded-md px-2 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Previous day">←</button>
+            <span className="min-w-[132px] text-center text-[13px] font-semibold">{format(parseISO(focusDate), 'EEE, MMM d')}{focusDate === today && <span className="ml-1.5 rounded px-1 text-[9px] font-bold uppercase" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>Today</span>}</span>
+            <button onClick={() => { const i = days.indexOf(focusDate); if (i < days.length - 1) setFocusDate(days[i + 1]) }} disabled={days.indexOf(focusDate) >= days.length - 1}
+              className="rounded-md px-2 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Next day">→</button>
+          </div>
+        )}
+        <span className="ml-auto hidden text-[11px] sm:inline" style={{ color: 'var(--muted)' }}>{view === 'week' ? 'Drag to move · click for detail' : view === 'day' ? 'One day, every crew' : 'Stops by location, routed in order'}</span>
+        <button onClick={() => setAuditOpen(true)} className="ml-auto rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-white/5 sm:ml-3" style={{ borderColor: 'var(--line)' }}>History</button>
+      </div>
+
+      {view === 'map' ? (
+        <MapView data={data} focusDate={focusDate} onDetail={setDetailId} />
+      ) : view === 'day' ? (
+        <div className="flex flex-wrap gap-3 p-3 pb-16">
+          {data.business_units.map(bu => (idx.crewsByBu.get(bu.id) || []).map(crew => {
+            const d = focusDate
+            const load = data.day_loads[`${crew.id}:${d}`]
+            const shift = idx.shiftBy.get(`${crew.id}:${d}`)
+            const appts = idx.apptBy.get(`${crew.id}:${d}`) || []
+            return (
+              <div key={crew.id} className="flex w-full flex-col overflow-hidden rounded-xl border sm:w-[300px]" style={{ borderColor: 'var(--line)', background: 'var(--panel)' }}>
+                <div className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--line)' }}>
+                  <span className="h-2 w-2 rounded-full" style={{ background: buColor(bu.color_token) }} />
+                  <span className="truncate text-[13px] font-semibold">{crew.name}</span>
+                  <span className="ml-auto rounded px-1.5 text-[11px] font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: buColor(bu.color_token) }}>{num(crew.squares_per_day)} sq/day</span>
+                </div>
+                <div className="p-2">
+                  <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined} />
+                </div>
+                <Cell id={cellId(crew.id, d)} rainy={rainy(d)} dragging={!!activeId} preview={previewMap[cellId(crew.id, d)]}>
+                  <div className="space-y-1.5">
+                    {appts.length === 0 && <div className="py-4 text-center text-[11px]" style={{ color: 'var(--muted)' }}>Open — drop a job here</div>}
+                    {appts.map(ap => {
+                      const job = idx.jobs.get(ap.job_id); if (!job) return null
+                      const cust = idx.customers.get(job.customer_id); const prop = idx.properties.get(job.property_id)
+                      const tagIds = idx.tagsByJob.get(job.id) || []
+                      return (
+                        <DraggableCard key={ap.id} id={ap.id} dragging={activeId === ap.id} onClick={() => setDetailId(ap.id)}
+                          selected={sel.isSelected(ap.id)} selectionActive={selCount > 0} onToggle={(shiftKey) => onSelect(ap.id, shiftKey)}>
+                          <JobCardBody start={ap.scheduled_start} end={ap.scheduled_end} status={ap.status}
+                            seq={ap.sequence} total={ap.total_in_series} job={job} custLast={cust?.last_name}
+                            street={prop?.line1} city={prop?.city} tags={tagIds.map(t => idx.tags.get(t)).filter(Boolean) as BoardData['tags']}
+                            buColor={buColor(bu.color_token)} storm={rainy(d)} />
+                        </DraggableCard>
+                      )
+                    })}
+                  </div>
+                </Cell>
+              </div>
+            )
+          }))}
+        </div>
+      ) : (
       <div className="min-w-max pb-12 text-[13px]">
         {/* Day header */}
         <div className="sticky top-0 z-20 grid border-b" style={{ gridTemplateColumns: cols, background: 'var(--ink)', borderColor: 'var(--line)' }}>
@@ -324,6 +399,7 @@ export default function Board({ data, today }: { data: BoardData; today: string 
           )
         })}
       </div>
+      )}
 
       <DragOverlay dropAnimation={null}>
         {isTrayDrag(activeId) ? (
@@ -356,6 +432,7 @@ export default function Board({ data, today }: { data: BoardData; today: string 
           onApplied={applyAffected} onClear={() => sel.clear()} onTrayInvalidate={() => qc.invalidateQueries({ queryKey: ['tray'] })} />
       )}
       <JobsTray />
+      {auditOpen && <AuditPanel onClose={() => setAuditOpen(false)} />}
     </DndContext>
   )
 }
