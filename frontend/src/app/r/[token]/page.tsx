@@ -222,6 +222,12 @@ export default function ReportPage() {
                 </div>
               ))}
             </div>
+            {SHOW_INSTANT_PRICE && (
+              <p className="mt-2.5 flex items-start gap-1.5 text-[10px] leading-relaxed text-slate-400">
+                <span className="mt-px shrink-0 rounded bg-amber-100 px-1 py-0.5 font-bold uppercase tracking-wide text-amber-700">Estimate only</span>
+                <span>A rough range from satellite data — not a final quote. Your exact price comes from {r.company_name}’s free on-site review.</span>
+              </p>
+            )}
             {SHOW_INSTANT_PRICE && r.financing && (
               <p className="mt-3 text-center text-xs font-semibold text-emerald-700">
                 💳 From {money(r.financing.from_per_month)}/mo
@@ -346,8 +352,9 @@ export default function ReportPage() {
           </ul>
         </section>
 
-        {/* Book a free inspection — self-serve, lands on the contractor's calendar */}
-        <section className="mb-5 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm print:hidden">
+        {/* Book a free inspection — self-serve, lands on the contractor's calendar.
+            id="book" lets the quote funnel's "Schedule an appointment" button deep-link here. */}
+        <section id="book" className="mb-5 scroll-mt-4 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm print:hidden">
           <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)' }}>
             <div className="text-sm font-semibold">📅 Book your free on-site inspection</div>
             <div className="text-[11px] text-blue-50/90">Pick a day and {r.company_name} will confirm — no charge, no obligation.</div>

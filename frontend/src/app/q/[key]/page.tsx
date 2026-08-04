@@ -641,6 +641,13 @@ export default function RoofIQPage() {
               </div>
 
               <div className="mt-4 grid gap-2">
+                {/* Primary: self-serve scheduling — deep-links to the booking form on the report */}
+                {reportUrl && (
+                  <a href={`${reportUrl}#book`} target="_blank" rel="noreferrer"
+                    className="rounded-lg bg-emerald-600 py-3 text-center text-sm font-semibold text-white transition hover:scale-[1.01] hover:bg-emerald-500"
+                    style={{ boxShadow: '0 6px 20px rgba(5,150,105,0.35)' }}
+                  >📅 Schedule an appointment</a>
+                )}
                 {reportUrl && (
                   <a href={reportUrl} target="_blank" rel="noreferrer"
                     className="rounded-lg py-3 text-center text-sm font-semibold text-white transition hover:scale-[1.01]"
@@ -649,8 +656,8 @@ export default function RoofIQPage() {
                 )}
                 {companyPhone && (
                   <a href={`tel:${companyPhone}`}
-                    className="rounded-lg bg-emerald-600 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-500"
-                  >📅 Book my free inspection — call {companyPhone}</a>
+                    className="rounded-lg bg-slate-100 py-3 text-center text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-200"
+                  >📞 Prefer to call? {companyPhone}</a>
                 )}
               </div>
             </>
