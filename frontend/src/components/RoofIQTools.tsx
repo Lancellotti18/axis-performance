@@ -17,6 +17,7 @@ export default function RoofIQTools() {
   const [priceLow, setPriceLow] = useState('425')
   const [priceHigh, setPriceHigh] = useState('550')
   const [showPrice, setShowPrice] = useState(false)
+  const [brandColor, setBrandColor] = useState('')
   const [catalog, setCatalog] = useState<{ key: string; name: string; tier: string }[]>([])
   const [palette, setPalette] = useState<string[]>([])
 
@@ -25,6 +26,7 @@ export default function RoofIQTools() {
       setWidget(w)
       setPriceLow(String(w.price_low)); setPriceHigh(String(w.price_high))
       setShowPrice(!!w.show_instant_price)
+      setBrandColor(w.brand_color || '')
       setPalette(w.roofvision_palette || [])
     }).catch(() => {})
     api.instantQuote.analytics().then(setAnalytics).catch(() => {})
@@ -54,6 +56,16 @@ export default function RoofIQTools() {
       toast.error('Could not update')
     }
   }, [showPrice])
+
+  const saveBrand = useCallback(async (hex: string) => {
+    setBrandColor(hex)
+    if (hex && !/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex)) return  // wait for a full hex
+    try {
+      const w = await api.instantQuote.updateWidget({ brand_color: hex || null })
+      setWidget(w)
+      toast.success(hex ? 'Brand color saved' : 'Reverted to the default blue')
+    } catch { toast.error('Could not save color') }
+  }, [])
 
   const saveSettings = useCallback(async () => {
     const lo = parseFloat(priceLow), hi = parseFloat(priceHigh)
@@ -181,6 +193,28 @@ export default function RoofIQTools() {
                 </span>
               </span>
             </button>
+          </div>
+
+          {/* Brand color — cosmetic white-label; layout + Axis footer stay locked */}
+          <div className="border-t border-white/10 pt-3">
+            <div className="mb-1 font-semibold text-slate-300">🎨 Brand color</div>
+            <p className="mb-2 text-[11px] text-slate-500">
+              The accent on your report and quote page — buttons and highlights pick this up. Layout, trust language, and the “Powered by Axis” footer stay the same. Blank = the default blue.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input type="color" value={brandColor || '#2563eb'} aria-label="Brand color"
+                onChange={e => setBrandColor(e.target.value)} onBlur={e => saveBrand(e.target.value)}
+                className="h-9 w-12 cursor-pointer rounded border border-slate-700 bg-slate-800 p-0.5" />
+              <input type="text" value={brandColor} placeholder="#2563eb"
+                onChange={e => setBrandColor(e.target.value.trim())}
+                onBlur={() => saveBrand(brandColor)}
+                onKeyDown={e => { if (e.key === 'Enter') saveBrand(brandColor) }}
+                className="w-28 rounded border border-slate-700 bg-slate-800 px-2 py-1.5 font-mono text-white" />
+              <span className="rounded px-2.5 py-1.5 text-[11px] font-semibold text-white" style={{ background: brandColor || '#2563eb' }}>Sample button</span>
+              {brandColor && (
+                <button onClick={() => saveBrand('')} className="rounded bg-slate-700 px-2.5 py-1.5 text-slate-200 hover:bg-slate-600">Reset to blue</button>
+              )}
+            </div>
           </div>
 
           {catalog.length > 0 && (

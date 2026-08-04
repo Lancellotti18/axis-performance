@@ -38,6 +38,7 @@ export interface QuoteWidget {
   price_low: number
   price_high: number
   show_instant_price?: boolean
+  brand_color?: string | null
   roofvision_palette?: string[] | null
 }
 
@@ -729,7 +730,7 @@ export const api = {
   instantQuote: {
     // Public (homeowner-facing; no auth required)
     widgetConfig: (key: string) =>
-      apiRequest<{ company_name: string; phone: string; show_instant_price?: boolean }>(`/api/v1/instant-quote/w/${key}`),
+      apiRequest<{ company_name: string; phone: string; show_instant_price?: boolean; brand_color?: string | null }>(`/api/v1/instant-quote/w/${key}`),
     locate: (key: string, payload: { address?: string; lat?: number; lng?: number }) =>
       apiRequest<{
         found: boolean
@@ -773,6 +774,7 @@ export const api = {
         company_name: string
         company_phone: string
         show_instant_price?: boolean
+        brand_color?: string | null
         company_license?: string | null
         company_logo_url?: string | null
         service_area?: string | null
@@ -831,7 +833,7 @@ export const api = {
     // Contractor
     myWidget: () =>
       apiRequest<QuoteWidget>(`/api/v1/instant-quote/my-widget`),
-    updateWidget: (patch: Partial<Pick<QuoteWidget, 'enabled' | 'company_name' | 'phone' | 'price_low' | 'price_high' | 'show_instant_price' | 'roofvision_palette'>>) =>
+    updateWidget: (patch: Partial<Pick<QuoteWidget, 'enabled' | 'company_name' | 'phone' | 'price_low' | 'price_high' | 'show_instant_price' | 'brand_color' | 'roofvision_palette'>>) =>
       apiRequest<QuoteWidget>(`/api/v1/instant-quote/my-widget`, {
         method: 'PATCH', body: JSON.stringify(patch),
       }),

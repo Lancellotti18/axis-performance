@@ -72,7 +72,7 @@ function RoofVision({ renders, company, apiBase, token, beforeUrl }: { renders: 
   }
   return (
     <section className="mb-6 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-[0_12px_44px_-16px_rgba(15,40,80,0.28)]">
-      <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-5 py-3 text-white">
+      <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 70%, black))' }}>
         <div className="text-sm font-bold">✨ See your home with a new roof</div>
         <p className="mt-0.5 text-[11px] text-blue-50/90">Your actual house, rendered in the shingle colors {company} installs — tap a color to preview it.</p>
       </div>
@@ -87,7 +87,7 @@ function RoofVision({ renders, company, apiBase, token, beforeUrl }: { renders: 
         <div className="relative bg-slate-100">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={src(active.image_url)} alt={`Your roof in ${active.name}`} className="block h-full w-full object-cover" />
-          <div className="absolute left-2 top-2 rounded-full bg-blue-600/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur">After</div>
+          <div className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur" style={{ background: 'color-mix(in srgb, var(--brand) 90%, transparent)' }}>After</div>
           <div className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">{active.name} · {active.tier}</div>
         </div>
       </div>
@@ -144,11 +144,12 @@ export default function ReportPage() {
   }
 
   const SHOW_INSTANT_PRICE = !!r.show_instant_price
+  const brand = r.brand_color || '#2563eb'   // contractor's accent; default Axis blue
   const urgent = r.issues.includes('leak') || r.issues.includes('storm_damage') || r.roof_age === '25+' || r.details?.condition === 'visible_damage'
 
   return (
     <main className="min-h-screen px-4 py-10 text-slate-900 print:bg-white print:py-2 sm:px-8"
-      style={{ background: 'linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)' }}>
+      style={{ background: 'linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)', ['--brand' as string]: brand }}>
       <div className="mx-auto max-w-2xl">
         {/* Header — contractor logo (prominent) + Axis attribution */}
         <header className="mb-6 text-center">
@@ -156,11 +157,11 @@ export default function ReportPage() {
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={r.company_logo_url} alt={r.company_name} className="mx-auto mb-4 h-36 sm:h-44 max-w-[460px] object-contain" />
-              <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-blue-600/80">Roof Intelligence Report</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.28em]" style={{ color: 'var(--brand)' }}>Roof Intelligence Report</div>
             </>
           ) : (
             <>
-              <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.28em] text-blue-600/80">Roof Intelligence Report</div>
+              <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.28em]" style={{ color: 'var(--brand)' }}>Roof Intelligence Report</div>
               <h1 className="text-2xl font-bold tracking-tight">{r.company_name}</h1>
             </>
           )}
@@ -215,7 +216,7 @@ export default function ReportPage() {
               {r.tiers.map((t, i) => (
                 <div key={t.name} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 ring-1 ${i === 1 ? 'bg-blue-50/60 ring-blue-200' : 'bg-slate-50 ring-slate-100'}`}>
                   <div>
-                    <div className="text-sm font-semibold">{t.name} — {t.headline}{i === 1 && <span className="ml-1.5 rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Popular</span>}</div>
+                    <div className="text-sm font-semibold">{t.name} — {t.headline}{i === 1 && <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white" style={{ background: 'var(--brand)' }}>Popular</span>}</div>
                     <div className="text-[11px] text-slate-500">{t.detail}</div>
                   </div>
                   {SHOW_INSTANT_PRICE && <div className="shrink-0 text-right text-sm font-bold text-slate-800">{money(t.price)}</div>}
@@ -355,7 +356,7 @@ export default function ReportPage() {
         {/* Book a free inspection — self-serve, lands on the contractor's calendar.
             id="book" lets the quote funnel's "Schedule an appointment" button deep-link here. */}
         <section id="book" className="mb-5 scroll-mt-4 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm print:hidden">
-          <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)' }}>
+          <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))' }}>
             <div className="text-sm font-semibold">📅 Book your free on-site inspection</div>
             <div className="text-[11px] text-blue-50/90">Pick a day and {r.company_name} will confirm — no charge, no obligation.</div>
           </div>

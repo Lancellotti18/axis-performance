@@ -97,6 +97,7 @@ export default function RoofIQPage() {
   const [company, setCompany] = useState('')
   const [companyPhone, setCompanyPhone] = useState('')
   const [showPrice, setShowPrice] = useState(false)
+  const [brandColor, setBrandColor] = useState('')
   const [notFound, setNotFound] = useState(false)
   const [step, setStep] = useState<Step>('address')
   const [busy, setBusy] = useState(false)
@@ -149,7 +150,7 @@ export default function RoofIQPage() {
   useEffect(() => {
     if (!widgetKey) return
     api.instantQuote.widgetConfig(widgetKey)
-      .then(c => { setCompany(c.company_name); setCompanyPhone(c.phone); setShowPrice(!!c.show_instant_price); track('view') })
+      .then(c => { setCompany(c.company_name); setCompanyPhone(c.phone); setShowPrice(!!c.show_instant_price); setBrandColor(c.brand_color || ''); track('view') })
       .catch(() => setNotFound(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgetKey])
@@ -276,7 +277,7 @@ export default function RoofIQPage() {
   return (
     <main
       className={`min-h-screen text-slate-900 ${embedded ? 'p-3' : 'flex items-start justify-center p-4 pt-8 sm:items-center sm:p-8'}`}
-      style={{ background: 'radial-gradient(1100px 420px at 50% -8%, #dcebff 0%, rgba(220,235,255,0) 62%), linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)' }}
+      style={{ background: 'radial-gradient(1100px 420px at 50% -8%, #dcebff 0%, rgba(220,235,255,0) 62%), linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)', ['--brand' as string]: brandColor || '#2563eb' }}
     >
       <div className="w-full max-w-xl">
         {/* Header */}
@@ -318,7 +319,7 @@ export default function RoofIQPage() {
                 />
                 <button onClick={() => void locate()} disabled={busy}
                   className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.02] disabled:opacity-50"
-                  style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
+                  style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                 >{busy ? 'Finding…' : 'Continue →'}</button>
               </div>
               <button onClick={useMyLocation} disabled={busy}
@@ -355,8 +356,8 @@ export default function RoofIQPage() {
                 <div className="pointer-events-none absolute" style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%`, transform: 'translate(-50%, -100%)' }}>
                   <div className="text-3xl drop-shadow-lg">📍</div>
                 </div>
-                <div className="pointer-events-none absolute animate-ping rounded-full border-2 border-blue-400"
-                  style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%`, width: 28, height: 28, transform: 'translate(-50%, -50%)' }} />
+                <div className="pointer-events-none absolute animate-ping rounded-full border-2"
+                  style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%`, width: 28, height: 28, transform: 'translate(-50%, -50%)', borderColor: 'var(--brand)' }} />
               </div>
               <div className="mt-3 flex gap-2">
                 <button onClick={confirmRoof}
@@ -428,7 +429,7 @@ export default function RoofIQPage() {
 
                   <button onClick={() => setQualifyPage(2)}
                     className="mt-5 w-full rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
-                    style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
+                    style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                   >Continue →</button>
                 </>
               )}
@@ -489,7 +490,7 @@ export default function RoofIQPage() {
                       className="rounded-lg bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200">← Back</button>
                     <button onClick={() => void finishQualify()}
                       className="flex-1 rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
-                      style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
+                      style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                     >Measure my roof →</button>
                   </div>
                 </>
@@ -651,7 +652,7 @@ export default function RoofIQPage() {
                 {reportUrl && (
                   <a href={reportUrl} target="_blank" rel="noreferrer"
                     className="rounded-lg py-3 text-center text-sm font-semibold text-white transition hover:scale-[1.01]"
-                    style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
+                    style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                   >📄 View my full Roof Intelligence Report</a>
                 )}
                 {companyPhone && (

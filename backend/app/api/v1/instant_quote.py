@@ -194,7 +194,8 @@ def _branding_for(db, w: dict) -> dict:
     except Exception:
         pass
     return {"company_name": company or "Your local roofing pro", "phone": phone or "",
-            "show_instant_price": bool(w.get("show_instant_price"))}
+            "show_instant_price": bool(w.get("show_instant_price")),
+            "brand_color": w.get("brand_color") or None}
 
 
 @router.get("/w/{widget_key}")
@@ -690,6 +691,9 @@ class WidgetSettings(BaseModel):
     price_low: Optional[float] = Field(None, ge=50, le=5000)
     price_high: Optional[float] = Field(None, ge=50, le=5000)
     show_instant_price: Optional[bool] = None   # homeowner sees the estimate range; default off
+    # Brand accent color (cosmetic white-label). Hex only — it's injected into a
+    # CSS variable on the public pages, so the pattern guards against CSS breakout.
+    brand_color: Optional[str] = Field(None, pattern=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
     # RoofVision palette — ordered catalog keys the contractor wants rendered.
     roofvision_palette: Optional[list[str]] = Field(None, max_length=8)
 
@@ -713,7 +717,7 @@ async def update_widget(payload: WidgetSettings, user: dict = Depends(require_us
         # lights up once its migration runs. `updated_at` keeps patch non-empty.
         msg = str(e).lower()
         schema_miss = ("column" in msg and "does not exist" in msg) or "pgrst204" in msg
-        newer = [k for k in ("roofvision_palette", "show_instant_price") if k in patch]
+        newer = [k for k in ("roofvision_palette", "show_instant_price", "brand_color") if k in patch]
         if schema_miss and newer:
             logger.warning("quote_widgets missing newer column(s) %s — run pending migration", newer)
             for k in newer:
@@ -842,6 +846,7 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
         "company_name": prof.get("company_name") or company.get("company_name") or "Your roofing contractor",
         "company_phone": prof.get("phone") or company.get("phone") or "",
         "show_instant_price": bool(company.get("show_instant_price")),
+        "brand_color": company.get("brand_color") or None,
         "company_license": prof.get("license_number") or None,
         "company_logo_url": prof.get("logo_url") or None,
         "service_area": service_area,
