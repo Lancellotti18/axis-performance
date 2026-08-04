@@ -180,3 +180,51 @@ the throughput flywheel accrues history from day one.
   is a later refinement.
 - **Deferred:** alternate-crew reschedule, editable target dates in the panel (drag
   the rest manually), and auto-notify-customer on move (belongs with M5.5 AI + comms).
+
+## M5.5 — The Axis Copilot (AI layer)
+
+Built to `docs/crew-scheduling-ai-layer.md` guardrails: **deterministic core, AI
+narration.** Every number on screen comes from the tested engine; the model only
+narrates, ranks, and compiles intent. **There is no AI write path** — apply always
+flows back through the existing `/bulk` or `/reschedule` (with their all-or-nothing
++ `batch_id` + `/bulk/undo`). Every surface degrades to a clean "unavailable" and
+the board stays fully operable if the model is down.
+
+- **New pure module `services/scheduling/copilot.py`** (no I/O, no model), tested by
+  `tests/test_copilot.py` (13 tests):
+  - **E — throughput flywheel** `analyze_crew_throughput`: from a crew's completed-job
+    actuals, recommend a capacity change **only** past a tested evidence threshold —
+    ≥6 samples, ≥8% delta, and a stable rate (coefficient of variation ≤0.25). *A
+    single fast or slow job never moves a crew's number* — pinned by test. This is the
+    moat: the number gets more accurate every completed job, off data only Axis has.
+  - **A — brief assembly** `assemble_brief` + `templated_prose`: ranks Load/Gaps/Risk
+    and produces a deterministic paragraph (also the shape the LLM is asked to match).
+  - **C — `parse_plan_json`**: safety-net layer 1 (tolerant parse of the model's plan);
+    garbage → `{}` → the endpoint rejects it. Tested against fences, prose, junk.
+- **Endpoints (same scheduling router):**
+  - `GET /ai/throughput-review` + `POST /ai/throughput-apply` — deterministic; needs
+    no model. Applying audits a `CAPACITY_UPDATE`.
+  - `GET /ai/brief` — engine-computes over/idle crew-days, unplaced jobs, weather /
+    series / deadline risks, then narrates via `llm_text` and **falls back to the
+    templated paragraph** on any model failure (`narrated` flag tells the UI which).
+  - `POST /ai/plan` — compiles NL intent into the **exact dry-run** a human bulk action
+    produces, using a grounded board snapshot + constrained JSON schema. **Read-only:**
+    validates every returned id/crew against the snapshot (drops anything invented),
+    dry-runs moves through `_evaluate_move`, and returns `{kind, op/moves, changes,
+    conflicts}`. The client applies it via the existing `/bulk` or `/reschedule` — no
+    new write path exists. Weather intents resolve to the deterministic reschedule plan.
+- **Frontend `Copilot.tsx`:** Morning Brief card (prose + Load/Gaps/Risk chips, offline
+  badge when un-narrated, dismissible), the **Capacity flywheel** inline with one-tap
+  `configured → suggested` apply, and the **⌘K command bar** (intent → dry-run preview
+  with per-job from→to + blocks → Approve & apply → single Undo). Apply is disabled
+  while any block exists. `llm_text` provider chain (free Gemini/Groq → Claude) means
+  the brief/⌘K work when a key is present and degrade cleanly when not.
+- **Isolation held:** one new pure module + one new test file + appended router +
+  new FE component wired at one call site. No other feature code touched.
+- **Reused, not duplicated:** factored `_compute_weather_impact` so the brief and
+  `/weather/impact` share one implementation; added a combined `MOVE` op earlier so
+  ⌘K/reschedule ride the same audited primitive.
+- **Bug caught:** `_label` job-type helper was referenced before it existed (would
+  `NameError` in the brief) — added.
+- **Deferred:** smart-placement ranking for Gaps (best-fit per unplaced job, capability
+  B), one-tap fixes on brief risk chips beyond weather, and customer comms on moves.

@@ -23,6 +23,7 @@ import { useSelection } from './lib/selection'
 import BulkBar from './BulkBar'
 import JobsTray from './JobsTray'
 import WeatherReschedule from './WeatherReschedule'
+import Copilot from './Copilot'
 
 const BU_COLOR: Record<string, string> = {
   'bu-install': 'var(--sky)', 'bu-service': 'var(--balanced)', 'bu-gutter': 'var(--tight)', 'bu-siding': 'var(--dawn)',
@@ -243,6 +244,13 @@ export default function Board({ data, today }: { data: BoardData; today: string 
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => { setActiveId(null); activeRef.current = null; setDragLabel(null); clearPreview() }}>
+      <Copilot start={data.range.start} end={data.range.end} crews={data.crews}
+        onApplied={applyAffected}
+        onInvalidate={() => {
+          qc.invalidateQueries({ queryKey: ['weather-impact'] }); qc.invalidateQueries({ queryKey: ['tray'] })
+          qc.invalidateQueries({ queryKey: ['ai-brief'] }); qc.invalidateQueries({ queryKey: ['ai-throughput'] })
+          qc.invalidateQueries({ queryKey: ['board'] })
+        }} />
       <WeatherReschedule start={data.range.start} end={data.range.end} crews={data.crews}
         onApplied={applyAffected}
         onInvalidate={() => { qc.invalidateQueries({ queryKey: ['weather-impact'] }); qc.invalidateQueries({ queryKey: ['tray'] }) }} />

@@ -7,6 +7,7 @@ drops in later without a rewrite. Reads sched_* tables only; touches nothing els
 """
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from collections import defaultdict
@@ -24,6 +25,10 @@ from app.services.scheduling.capacity import (
     compute_day_load, detect_conflicts, has_block,
 )
 from app.services.scheduling.timeutil import naive_dt
+from app.services.scheduling.copilot import (
+    ThroughputSample, analyze_crew_throughput, assemble_brief, BriefInputs, templated_prose, parse_plan_json,
+)
+from app.services.llm import llm_text
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -228,6 +233,10 @@ def _required_skills(job: dict) -> list:
     if p and p >= 11:
         out.append("STEEP_SLOPE")
     return out
+
+
+def _label(job_type: Optional[str]) -> str:
+    return (job_type or "").replace("_", " ").title()
 
 
 def _one(db, table, id_):
@@ -814,12 +823,9 @@ def _suggest_moves(db, appt_ids: list, horizon: int = RESCHEDULE_HORIZON) -> lis
     return out
 
 
-@router.get("/weather/impact")
-async def weather_impact(start: str, end: str, user: dict = Depends(require_user)) -> dict:
-    """Which scheduled, weather-exposed jobs sit on a high-risk rain day in the
-    range — and a proposed dry-day home for each. The apply path is POST /reschedule."""
-    db = get_supabase()
-    s = _parse_date(start, "start"); e = _parse_date(end, "end")
+def _compute_weather_impact(db, s: date, e: date) -> dict:
+    """Weather-exposed jobs on high-risk days in [s, e], each with a proposed dry
+    slot. Shared by GET /weather/impact and the Copilot's Morning Brief."""
     appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG)
                   .gte("scheduled_start", s.isoformat()).lte("scheduled_start", (e + timedelta(days=1)).isoformat()).execute())
     appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute()) if a.get("is_primary", True)}
@@ -854,6 +860,14 @@ async def weather_impact(start: str, end: str, user: dict = Depends(require_user
         "suggestions": suggestions,
         "resolvable": sum(1 for s in suggestions if s["ok"]),
     }
+
+
+@router.get("/weather/impact")
+async def weather_impact(start: str, end: str, user: dict = Depends(require_user)) -> dict:
+    """Which scheduled, weather-exposed jobs sit on a high-risk rain day in the
+    range — and a proposed dry-day home for each. The apply path is POST /reschedule."""
+    db = get_supabase()
+    return _compute_weather_impact(db, _parse_date(start, "start"), _parse_date(end, "end"))
 
 
 class Move(BaseModel):
@@ -907,3 +921,308 @@ async def reschedule(body: Reschedule, user: dict = Depends(require_user)) -> di
         touched |= _apply_op_single(db, m.appointment_id, "MOVE", {"crew_id": m.crew_id, "date": m.date}, user.get("id"), batch_id)
         ids.add(m.appointment_id)
     return {"applied": True, "batch_id": batch_id, "affected": _affected_multi(db, touched, ids)}
+
+
+# ── M5.5: Axis Copilot ───────────────────────────────────────────────────────
+# Guardrail (docs/crew-scheduling-ai-layer.md A0): every NUMBER comes from the
+# tested engine; the model only narrates, ranks, and compiles intent into the
+# EXACT dry-run object a human action produces. There is no AI write path — apply
+# always flows back through /bulk or /reschedule. Any AI surface degrades to a
+# clean "unavailable" and the board stays fully operable.
+
+
+# --- E. Throughput flywheel ---------------------------------------------------
+
+def _completed_samples(db, crew_id: str) -> list:
+    asg = _rows(db.table("sched_assignment").select("appointment_id").eq("org_id", ORG)
+                .eq("crew_id", crew_id).eq("is_primary", True).execute())
+    ids = [a["appointment_id"] for a in asg]
+    if not ids:
+        return []
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG).in_("id", ids).eq("status", "DONE").execute())
+    samples = []
+    for a in appts:
+        actual = _f(a.get("actual_squares"))
+        if not actual or actual <= 0:
+            continue
+        st, en = _dt(a.get("started_at")), _dt(a.get("completed_at"))
+        crew_days = max(1.0, float((en.date() - st.date()).days + 1)) if (st and en) else 1.0
+        samples.append(ThroughputSample(a["id"], actual, crew_days))
+    return samples
+
+
+@router.get("/ai/throughput-review")
+async def throughput_review(user: dict = Depends(require_user)) -> dict:
+    """The flywheel: from completed jobs' actuals, which crews' configured capacity
+    the evidence says should change. Fully deterministic; needs no model."""
+    db = get_supabase()
+    crews = _rows(db.table("sched_crew").select("*").eq("org_id", ORG).execute())
+    suggestions, watching = [], []
+    for c in crews:
+        v = analyze_crew_throughput(c["id"], c["name"], _f(c.get("squares_per_day")) or 0.0, _completed_samples(db, c["id"]))
+        row = {"crew_id": v.crew_id, "crew_name": v.crew_name, "configured_sqpd": v.configured_sqpd,
+               "observed_sqpd": v.observed_sqpd, "sample_size": v.sample_size, "delta_pct": v.delta_pct,
+               "stable": v.stable, "suggested_sqpd": v.suggested_sqpd, "rationale": v.rationale}
+        if v.recommend:
+            suggestions.append(row)
+        elif v.sample_size > 0:
+            watching.append(row)
+    return {"suggestions": suggestions, "watching": watching}
+
+
+class ThroughputApply(BaseModel):
+    crew_id: str
+    squares_per_day: float
+
+
+@router.post("/ai/throughput-apply")
+async def throughput_apply(body: ThroughputApply, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    crew = _one(db, "sched_crew", body.crew_id)
+    if not crew:
+        raise HTTPException(status_code=404, detail="Crew not found.")
+    before = _f(crew.get("squares_per_day"))
+    db.table("sched_crew").update({"squares_per_day": body.squares_per_day}).eq("id", body.crew_id).execute()
+    db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "crew",
+        "entity_id": body.crew_id, "action": "CAPACITY_UPDATE", "before_json": {"squares_per_day": before},
+        "after_json": {"squares_per_day": body.squares_per_day}, "request_id": str(uuid.uuid4())}).execute()
+    return {"applied": True, "crew_id": body.crew_id, "squares_per_day": body.squares_per_day}
+
+
+# --- A/D. Morning Brief -------------------------------------------------------
+
+async def _narrate_brief(brief: dict) -> str:
+    facts = json.dumps({"load": [i["text"] for i in brief["load"]],
+                        "gaps": [i["text"] for i in brief["gaps"]],
+                        "risk": [i["text"] for i in brief["risk"]]})
+    system = ("You are the dispatch assistant for a roofing company. Write a tight 2-3 sentence morning brief "
+              "using ONLY the facts provided. Never invent numbers, crew names, or jobs. Lead with the most urgent "
+              "item. Plain, confident, no greetings, no fluff.")
+    out = (await llm_text(f"Facts (JSON):\n{facts}\n\nWrite the brief:", system=system, max_tokens=300)).strip()
+    if not out or len(out) > 900:
+        raise ValueError("unusable narration")
+    return out
+
+
+@router.get("/ai/brief")
+async def ai_brief(start: str, end: str, narrate: bool = True, user: dict = Depends(require_user)) -> dict:
+    """The 6:30am read: who's over/idle, what still needs placing, what breaks.
+    Every fact is engine-computed; the model only turns them into a paragraph and
+    degrades to a deterministic one if it's unavailable."""
+    db = get_supabase()
+    s = _parse_date(start, "start"); e = _parse_date(end, "end")
+    days = []
+    d = s
+    while d <= e:
+        days.append(d.isoformat()); d += timedelta(days=1)
+    crews = _rows(db.table("sched_crew").select("*").eq("org_id", ORG).execute())
+
+    overbooked, idle = [], []
+    for c in crews:
+        for ds in days:
+            load = _day_load_dict(db, c, ds)
+            if load["available_hours"] <= 0:
+                continue
+            if load["state"] == "OVERBOOKED":
+                overbooked.append({"crew_id": c["id"], "crew_name": c["name"], "date": ds, "utilization_pct": load["utilization_pct"]})
+            elif load["state"] == "IDLE":
+                idle.append({"crew_id": c["id"], "crew_name": c["name"], "date": ds})
+
+    all_appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG).execute())
+    scheduled_ids = {a["job_id"] for a in all_appts}
+    by_job = defaultdict(list)
+    for a in all_appts:
+        by_job[a["job_id"]].append(a)
+    jobs = _rows(db.table("sched_job").select("*").eq("org_id", ORG).execute())
+
+    gaps = [{"job_id": j["id"], "job_number": j.get("job_number"), "label": _label(j.get("job_type")), "best": None}
+            for j in jobs if j["id"] not in scheduled_ids and j.get("status") in ("SOLD", "SCHEDULED")]
+
+    impact = _compute_weather_impact(db, s, e)
+    weather_risks = [{"date": r["date"], "precip": _f(r["precip_probability"]) or 0.0, "count": len(r["appointments"]),
+                      "resolvable": sum(1 for sg in impact["suggestions"] if sg["ok"] and sg["from"]["date"] == r["date"])}
+                     for r in impact["risk_days"]]
+
+    series_risks = []
+    for jid, arr in by_job.items():
+        if len(arr) < 2:
+            continue
+        ds_list = sorted([_dt(a["scheduled_start"]).date() for a in arr if _dt(a.get("scheduled_start"))])
+        if not ds_list or ds_list[-1] < s or ds_list[0] > e:
+            continue
+        if any((ds_list[i + 1] - ds_list[i]).days > 3 for i in range(len(ds_list) - 1)):
+            job = _one(db, "sched_job", jid)
+            series_risks.append({"appointment_id": arr[0]["id"], "job_number": job.get("job_number") if job else None,
+                                 "text": f"#{job.get('job_number') if job else '?'} is a split series with a broken gap between days."})
+
+    deadline_risks = []
+    for j in jobs:
+        dl = j.get("deadline")
+        if not dl:
+            continue
+        try:
+            dld = date.fromisoformat(str(dl)[:10])
+        except ValueError:
+            continue
+        arr = by_job.get(j["id"], [])
+        if arr:
+            last = max([_dt(a["scheduled_start"]).date() for a in arr if _dt(a.get("scheduled_start"))], default=None)
+            if last and last > dld:
+                deadline_risks.append({"job_id": j["id"], "job_number": j.get("job_number"),
+                                       "text": f"#{j.get('job_number')} is scheduled past its {dld.isoformat()[5:]} deadline."})
+        elif j.get("status") in ("SOLD", "SCHEDULED") and s <= dld <= e:
+            deadline_risks.append({"job_id": j["id"], "job_number": j.get("job_number"),
+                                   "text": f"#{j.get('job_number')} is unscheduled with a {dld.isoformat()[5:]} deadline."})
+
+    inp = BriefInputs(date=s.isoformat(), overbooked=overbooked, idle=idle[:6], gaps=gaps[:12],
+                      weather_risks=weather_risks, series_risks=series_risks[:5], deadline_risks=deadline_risks[:6])
+    brief = assemble_brief(inp)
+
+    narrated = False
+    prose = templated_prose(brief)
+    if narrate:
+        try:
+            prose = await _narrate_brief(brief); narrated = True
+        except Exception:
+            prose = templated_prose(brief)
+    brief["prose"] = prose
+    brief["narrated"] = narrated
+    return brief
+
+
+# --- C. Natural-language dispatch (⌘K) ----------------------------------------
+
+PLAN_OPS = {"REASSIGN", "MOVE_TO_DATE", "MOVE", "SET_STATUS", "UNASSIGN", "RESCHEDULE_WEATHER"}
+
+
+def _plan_snapshot(db, s: date, e: date) -> dict:
+    crews = _rows(db.table("sched_crew").select("*").eq("org_id", ORG).execute())
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG)
+                  .gte("scheduled_start", s.isoformat()).lte("scheduled_start", (e + timedelta(days=1)).isoformat()).execute())
+    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute()) if a.get("is_primary", True)}
+    jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("*").eq("org_id", ORG).execute())}
+    crew_name = {c["id"]: c["name"] for c in crews}
+    rows = []
+    for a in appts:
+        if a.get("status") == "CANCELED":
+            continue
+        job = jobs.get(a["job_id"]); sdt = _dt(a.get("scheduled_start"))
+        rows.append({"appointment_id": a["id"], "job_number": job.get("job_number") if job else None,
+                     "job_type": job.get("job_type") if job else None, "crew_id": appt_crew.get(a["id"]),
+                     "crew_name": crew_name.get(appt_crew.get(a["id"]), ""),
+                     "date": sdt.date().isoformat() if sdt else None, "status": a.get("status"),
+                     "squares": _f(job.get("squares")) if job else None})
+    impact = _compute_weather_impact(db, s, e)
+    return {
+        "date_range": {"start": s.isoformat(), "end": e.isoformat()},
+        "crews": [{"crew_id": c["id"], "name": c["name"]} for c in crews],
+        "appointments": rows,
+        "rain_days": [r["date"] for r in impact["risk_days"]],
+        "allowed_ops": sorted(PLAN_OPS),
+    }
+
+
+async def _compile_intent(intent: str, snapshot: dict) -> dict:
+    system = (
+        "You compile a roofing dispatcher's plain-English request into ONE safe scheduling action. "
+        "Output ONLY JSON, no prose. Schema: {\"op\": <allowed_op>, \"ids\": [appointment_id...], "
+        "\"payload\": {...}, \"summary\": \"<one short sentence>\"}. Rules: "
+        "ids MUST be appointment_id strings copied verbatim from the snapshot — NEVER invent ids. "
+        "REASSIGN payload {\"crew_id\": <crew_id from snapshot>}. "
+        "MOVE_TO_DATE payload {\"date\": \"YYYY-MM-DD\"}. "
+        "MOVE payload {\"crew_id\": <crew_id>, \"date\": \"YYYY-MM-DD\"}. "
+        "SET_STATUS payload {\"status\": one of SCHEDULED|DISPATCHED|HOLD|CANCELED}. "
+        "UNASSIGN payload {}. "
+        "RESCHEDULE_WEATHER (move rained-out jobs to dry slots) uses ids [] and payload {}. "
+        "If you cannot map the request safely and unambiguously, output {\"op\": \"NONE\"}."
+    )
+    raw = await llm_text(f"BOARD SNAPSHOT (JSON):\n{json.dumps(snapshot)}\n\nDISPATCHER INTENT:\n{intent}\n\nPlan JSON:",
+                         system=system, max_tokens=1200, json_mode=True)
+    return parse_plan_json(raw)
+
+
+def _dry_run_moves(db, moves: list) -> tuple:
+    """Validate explicit per-appointment moves through the same engine the human
+    path uses. Returns (changes, conflicts-keyed-by-id)."""
+    conflicts, changes = {}, []
+    for m in moves:
+        aid = m.get("appointment_id")
+        appt = _one(db, "sched_appointment", aid) if aid else None
+        if not appt:
+            continue
+        job = _one(db, "sched_job", appt["job_id"])
+        prim = _primary_crew(db, aid); cur_crew = prim["crew_id"] if prim else None
+        sdt = _dt(appt.get("scheduled_start")); cur_date = sdt.date().isoformat() if sdt else None
+        tgt_crew = m.get("crew_id") or cur_crew; tgt_date = m.get("date") or cur_date
+        entry = {"id": aid, "job_number": job.get("job_number") if job else None,
+                 "from": {"crew_id": cur_crew, "date": cur_date}, "to": {"crew_id": tgt_crew, "date": tgt_date}}
+        crew = _one(db, "sched_crew", tgt_crew) if tgt_crew else None
+        if job and crew and tgt_date:
+            ev = _evaluate_move(db, appt, job, crew, tgt_date)
+            entry["conflicts"] = ev["conflicts"]
+            blocks = [c for c in ev["conflicts"] if c["severity"] == "BLOCK"]
+            if blocks:
+                conflicts[aid] = blocks
+        changes.append(entry)
+    return changes, conflicts
+
+
+class PlanReq(BaseModel):
+    intent: str
+    start: str
+    end: str
+
+
+@router.post("/ai/plan")
+async def ai_plan(body: PlanReq, user: dict = Depends(require_user)) -> dict:
+    """Compile intent into a dry-run the human approves. NEVER writes — the client
+    applies the returned plan through the existing /bulk or /reschedule endpoints."""
+    db = get_supabase()
+    s = _parse_date(body.start, "start"); e = _parse_date(body.end, "end")
+    snapshot = _plan_snapshot(db, s, e)
+    try:
+        plan = await _compile_intent(body.intent, snapshot)
+    except Exception as ex:  # model down / all providers failed
+        return {"ok": False, "reason": "The Copilot is unavailable right now — you can still schedule by hand.",
+                "detail": str(ex)[:200]}
+
+    op = (plan or {}).get("op")
+    if not op or op not in PLAN_OPS:
+        return {"ok": False, "reason": "Couldn't turn that into a safe action. Try naming the jobs, a crew, or a day."}
+
+    # Weather special-case → the deterministic reschedule plan.
+    if op == "RESCHEDULE_WEATHER":
+        impact = _compute_weather_impact(db, s, e)
+        moves = [{"appointment_id": sg["appointment_id"], "crew_id": sg["to"]["crew_id"], "date": sg["to"]["date"]}
+                 for sg in impact["suggestions"] if sg["ok"] and sg.get("to")]
+        if not moves:
+            return {"ok": False, "reason": "No rained-out jobs have a dry slot to move to."}
+        changes, conflicts = _dry_run_moves(db, moves)
+        return {"ok": True, "kind": "reschedule", "intent": body.intent,
+                "summary": plan.get("summary") or f"Move {len(moves)} rained-out job(s) to a dry slot.",
+                "moves": moves, "changes": changes, "conflicts": conflicts}
+
+    # Standard bulk op. Validate ids/crew against the snapshot — drop anything invented.
+    snap_ids = {r["appointment_id"] for r in snapshot["appointments"]}
+    snap_crews = {c["crew_id"] for c in snapshot["crews"]}
+    ids = [i for i in (plan.get("ids") or []) if isinstance(i, str) and i in snap_ids]
+    if not ids:
+        return {"ok": False, "reason": "Couldn't identify which jobs you meant. Name the job numbers, crew, or day."}
+    payload = plan.get("payload") or {}
+    if op in ("REASSIGN", "MOVE") and payload.get("crew_id") not in snap_crews:
+        return {"ok": False, "reason": "That crew isn't on this board."}
+    if op == "SET_STATUS" and payload.get("status") not in VALID_STATUS:
+        return {"ok": False, "reason": "That isn't a status I can set."}
+
+    # Dry-run: move-type ops go through the engine; status/unassign have no conflicts.
+    if op in ("REASSIGN", "MOVE", "MOVE_TO_DATE"):
+        moves = [{"appointment_id": i, "crew_id": payload.get("crew_id"), "date": payload.get("date")} for i in ids]
+        changes, conflicts = _dry_run_moves(db, moves)
+    else:
+        conflicts = {}
+        changes = [{"id": i, "job_number": next((r["job_number"] for r in snapshot["appointments"] if r["appointment_id"] == i), None),
+                    "from": {}, "to": {"status": payload.get("status")} if op == "SET_STATUS" else {"unassigned": True}} for i in ids]
+
+    return {"ok": True, "kind": "bulk", "intent": body.intent, "op": op, "payload": payload, "ids": ids,
+            "summary": plan.get("summary") or f"{op.replace('_', ' ').title()} · {len(ids)} job(s).",
+            "changes": changes, "conflicts": conflicts}

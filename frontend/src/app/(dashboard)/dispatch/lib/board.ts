@@ -164,6 +164,56 @@ export async function bulkUndo(batchId: string): Promise<{ affected: AffectedMul
   return res.json()
 }
 
+// ── M5.5: Copilot (brief, throughput flywheel, ⌘K plan) ──────────────────────
+export interface BriefItem { kind: string; severity: number; text: string; refs: Record<string, string | null>; action: Record<string, unknown> | null }
+export interface Brief {
+  date: string; load: BriefItem[]; gaps: BriefItem[]; risk: BriefItem[]
+  counts: { load: number; gaps: number; risk: number }; prose: string; narrated: boolean
+}
+export interface ThroughputRow {
+  crew_id: string; crew_name: string; configured_sqpd: number; observed_sqpd: number
+  sample_size: number; delta_pct: number; stable: boolean; suggested_sqpd: number | null; rationale: string
+}
+export interface ThroughputReview { suggestions: ThroughputRow[]; watching: ThroughputRow[] }
+export interface PlanResult {
+  ok: boolean; reason?: string; kind?: 'bulk' | 'reschedule'; intent?: string; summary?: string
+  op?: string; payload?: Record<string, unknown>; ids?: string[]
+  moves?: { appointment_id: string; crew_id: string; date: string }[]
+  changes?: BulkChange[]; conflicts?: Record<string, Conflict[]>
+}
+
+export async function fetchBrief(start: string, end: string): Promise<Brief> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/ai/brief?start=${start}&end=${end}`, { headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function fetchThroughputReview(): Promise<ThroughputReview> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/ai/throughput-review`, { headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function applyThroughput(crewId: string, squaresPerDay: number): Promise<{ applied: boolean }> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/ai/throughput-apply`, {
+    method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify({ crew_id: crewId, squares_per_day: squaresPerDay }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function planIntent(intent: string, start: string, end: string): Promise<PlanResult> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/ai/plan`, {
+    method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify({ intent, start, end }),
+  })
+  if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
+  return res.json()
+}
+
 // ── M5: weather impact + reschedule ──────────────────────────────────────────
 export interface WeatherRiskDay {
   date: string; precip_probability: number | null
