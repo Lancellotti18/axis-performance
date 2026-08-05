@@ -739,6 +739,7 @@ export const api = {
         address?: string
         message?: string
         imagery?: { url: string; width_px: number; height_px: number; feet_per_pixel: number } | null
+        footprint?: { x: number; y: number }[] | null   // building outline, normalized to the tile
       }>(`/api/v1/instant-quote/w/${key}/locate`, {
         method: 'POST', body: JSON.stringify(payload),
       }, 45000),

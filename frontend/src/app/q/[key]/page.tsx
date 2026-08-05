@@ -108,6 +108,8 @@ export default function RoofIQPage() {
   const [located, setLocated] = useState<{ lat: number; lng: number; address: string } | null>(null)
   const [imagery, setImagery] = useState<{ url: string; width_px: number; height_px: number; feet_per_pixel: number } | null>(null)
   const [pin, setPin] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 })
+  const [footprint, setFootprint] = useState<{ x: number; y: number }[] | null>(null)
+  const [tapped, setTapped] = useState(false)   // homeowner overrode the auto outline
   const [confirmed, setConfirmed] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
 
@@ -164,7 +166,9 @@ export default function RoofIQPage() {
       if (!r.found || r.lat == null) { setError(r.message || 'Address not found.'); return }
       setLocated({ lat: r.lat, lng: r.lng as number, address: r.address || address.trim() })
       setImagery(r.imagery || null)
-      setPin({ x: 0.5, y: 0.5 })
+      setFootprint(r.footprint && r.footprint.length >= 3 ? r.footprint : null)
+      setPin({ x: 0.5, y: 0.5 })   // tile is centered on the building; center = the house
+      setTapped(false)
       setConfirmed(false)
       track('address_entered')
       setStep(r.imagery ? 'confirm' : 'qualify')   // no tile? skip confirm gracefully
@@ -204,6 +208,9 @@ export default function RoofIQPage() {
     track('roof_confirmed')
     setStep('qualify')
   }, [track])
+
+  // Show the auto-detected building outline until the homeowner taps to override.
+  const showOutline = !!footprint && footprint.length >= 3 && !tapped
 
   // ---- step 3 → 4: measurement runs SILENTLY while they enter contact info.
   // Fully gated by design: no numbers (and no measurement hiccups) are shown
@@ -333,8 +340,12 @@ export default function RoofIQPage() {
           {/* ── 2. CONFIRM ── */}
           {step === 'confirm' && imagery && (
             <>
-              <div className="text-sm font-semibold">Is this your roof?</div>
-              <p className="mt-0.5 text-xs text-slate-500">{located?.address} — <strong>tap your roof</strong> so the measurement locks onto exactly the right building.</p>
+              <div className="text-sm font-semibold">{showOutline ? 'We found your home' : 'Is this your roof?'}</div>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {showOutline
+                  ? <>{located?.address} — confirm the highlighted roof is yours, or <strong>tap</strong> to adjust.</>
+                  : <>{located?.address} — <strong>tap your roof</strong> so the measurement locks onto the right building.</>}
+              </p>
               <div className="relative mt-3 overflow-hidden rounded-xl ring-1 ring-slate-200">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -350,14 +361,28 @@ export default function RoofIQPage() {
                       x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
                       y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)),
                     })
+                    setTapped(true)   // homeowner overrides the auto outline
                   }}
                 />
-                {/* pin */}
-                <div className="pointer-events-none absolute" style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%`, transform: 'translate(-50%, -100%)' }}>
-                  <div className="text-3xl drop-shadow-lg">📍</div>
-                </div>
-                <div className="pointer-events-none absolute animate-ping rounded-full border-2"
-                  style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%`, width: 28, height: 28, transform: 'translate(-50%, -50%)', borderColor: 'var(--brand)' }} />
+                {showOutline ? (
+                  <>
+                    {/* Detected building footprint, brand-tinted */}
+                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
+                      <polygon points={footprint!.map(p => `${p.x * 100},${p.y * 100}`).join(' ')}
+                        style={{ fill: 'var(--brand)', fillOpacity: 0.22, stroke: 'var(--brand)', strokeWidth: 0.9, strokeLinejoin: 'round', filter: 'drop-shadow(0 0 2.5px rgba(0,0,0,0.55))' }} />
+                    </svg>
+                    <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">✓ Your home</div>
+                  </>
+                ) : (
+                  <>
+                    {/* pin */}
+                    <div className="pointer-events-none absolute" style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%`, transform: 'translate(-50%, -100%)' }}>
+                      <div className="text-3xl drop-shadow-lg">📍</div>
+                    </div>
+                    <div className="pointer-events-none absolute animate-ping rounded-full border-2"
+                      style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%`, width: 28, height: 28, transform: 'translate(-50%, -50%)', borderColor: 'var(--brand)' }} />
+                  </>
+                )}
               </div>
               <div className="mt-3 flex gap-2">
                 <button onClick={confirmRoof}

@@ -168,6 +168,44 @@ def _ring_area_sqft(ring: list[dict]) -> float:
     return abs(area) / 2.0 * 10.7639   # m² → ft²
 
 
+_FEET_PER_DEG_LAT = 364000.0  # ~ft per degree latitude (good to building scale)
+
+
+def _ring_centroid(ring: list[dict]) -> tuple[float, float]:
+    n = len(ring) or 1
+    return sum(p["lat"] for p in ring) / n, sum(p["lng"] for p in ring) / n
+
+
+def _project_ring_to_tile(ring: list[dict], clat: float, clng: float, fpp: float, w: int, h: int) -> list[dict]:
+    """Project a lat/lng footprint ring onto a tile centered at (clat, clng) with
+    scale `fpp` feet/pixel, returned as normalized [{x,y}] in 0..1 (north up).
+    Exact for this tile because width_px × fpp == true ground width."""
+    if fpp <= 0 or w <= 0 or h <= 0:
+        return []
+    coslat = math.cos(math.radians(clat))
+    out = []
+    for p in ring:
+        east_ft = (p["lng"] - clng) * _FEET_PER_DEG_LAT * coslat
+        north_ft = (p["lat"] - clat) * _FEET_PER_DEG_LAT
+        out.append({"x": round(0.5 + (east_ft / fpp) / w, 4),
+                    "y": round(0.5 - (north_ft / fpp) / h, 4)})
+    return out
+
+
+def _frame_zoom(ring: list[dict], clat: float, frame_h_px: int = 960, fill: float = 0.6) -> int:
+    """Pick a zoom so the footprint fills ~`fill` of the frame height. Clamped to
+    19–21 (providers cap ~20–22; projection stays correct via the returned fpp)."""
+    lats = [p["lat"] for p in ring]
+    lngs = [p["lng"] for p in ring]
+    coslat = math.cos(math.radians(clat))
+    ext = max((max(lats) - min(lats)) * _FEET_PER_DEG_LAT,
+              (max(lngs) - min(lngs)) * _FEET_PER_DEG_LAT * coslat, 20.0)
+    target_fpp = ext / (fill * frame_h_px)
+    base_fpp = 156543.03392 * coslat * 3.28084   # feet/pixel at zoom 0 for this lat
+    z = math.log2(base_fpp / target_fpp) if target_fpp > 0 else 20
+    return max(19, min(21, int(round(z))))
+
+
 def _widget_by_key(db, widget_key: str) -> dict:
     if not widget_key or len(widget_key) > 64:
         raise HTTPException(status_code=404, detail="Unknown widget.")
@@ -234,13 +272,33 @@ async def locate(widget_key: str, payload: LocateRequest, request: Request) -> d
         m = result.matches[0]
         lat, lng, address = m.lat, m.lng, m.matched_address
 
+    # Building footprint (free OSM) — lets us center + frame on the actual house
+    # and outline it, the "we found your home" moment. Best-effort; never blocks.
+    ring: list[dict] = []
+    try:
+        from app.services.footprint_service import get_building_footprint
+        fp = await get_building_footprint(lat, lng)
+        if fp.get("available") and isinstance(fp.get("ring"), list) and len(fp["ring"]) >= 3:
+            ring = fp["ring"]
+    except Exception as e:
+        logger.info("widget footprint lookup failed: %s", e)
+
+    # Center + zoom on the footprint centroid when we have one, so the outline
+    # frames the house instead of a corner-of-lot geocode point.
+    center_lat, center_lng, zoom = lat, lng, 20
+    if ring:
+        center_lat, center_lng = _ring_centroid(ring)
+        zoom = _frame_zoom(ring, center_lat)
+
     try:
         from app.services import imagery_service
         from urllib.parse import quote as _q
-        tile = await imagery_service.fetch_satellite_image(lat, lng, zoom=20, width_px=1280, height_px=960)
+        tile = await imagery_service.fetch_satellite_image(center_lat, center_lng, zoom=zoom, width_px=1280, height_px=960)
+        footprint_norm = _project_ring_to_tile(ring, center_lat, center_lng, tile.feet_per_pixel, tile.width_px, tile.height_px) if ring else None
         return {
             "found": True,
-            "lat": lat, "lng": lng,
+            # Anchor measurement on the building centroid when we found the footprint.
+            "lat": center_lat if ring else lat, "lng": center_lng if ring else lng,
             "address": address or "Your location",
             "imagery": {
                 "url": f"/api/v1/roofing/v2/imagery/proxy?url={_q(tile.url, safe='')}",
@@ -248,11 +306,12 @@ async def locate(widget_key: str, payload: LocateRequest, request: Request) -> d
                 "height_px": tile.height_px,
                 "feet_per_pixel": tile.feet_per_pixel,
             },
+            "footprint": footprint_norm,
         }
     except Exception as e:
         logger.info("widget locate imagery failed: %s", e)
         # No tile ≠ no lead: quote can still run from the geocoded point.
-        return {"found": True, "lat": lat, "lng": lng, "address": address or "Your location", "imagery": None}
+        return {"found": True, "lat": lat, "lng": lng, "address": address or "Your location", "imagery": None, "footprint": None}
 
 
 class QuoteRequest(BaseModel):
