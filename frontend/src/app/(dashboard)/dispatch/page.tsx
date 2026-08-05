@@ -9,7 +9,7 @@
  */
 import { useMemo, useState } from 'react'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { addWeeks, format, startOfWeek } from 'date-fns'
+import { addDays, format, startOfWeek } from 'date-fns'
 import { fetchBoard } from './lib/board'
 import Board from './Board'
 
@@ -59,10 +59,12 @@ function BoardScreen() {
           <h1 className="text-[15px] font-bold tracking-tight">Dispatch board</h1>
           <p className="text-[11px]" style={{ color: 'var(--muted)' }}>Production scheduling — squares, not slots.</p>
         </div>
-        <div className="ml-2 flex items-center gap-1">
-          <button onClick={() => setWeekStart(w => addWeeks(w, -1))} className="rounded-md px-2 py-1 text-sm hover:bg-white/5" aria-label="Previous week">←</button>
-          <button onClick={() => setWeekStart(startOfWeek(TZ_TODAY, { weekStartsOn: 1 }))} className="rounded-md border px-2.5 py-1 text-xs font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>This week</button>
-          <button onClick={() => setWeekStart(w => addWeeks(w, 1))} className="rounded-md px-2 py-1 text-sm hover:bg-white/5" aria-label="Next week">→</button>
+        <div className="ml-2 flex items-center gap-0.5">
+          <button onClick={() => setWeekStart(w => addDays(w, -7))} className="rounded-md px-1.5 py-1 text-sm hover:bg-white/5" aria-label="Back one week" title="Back a week">«</button>
+          <button onClick={() => setWeekStart(w => addDays(w, -1))} className="rounded-md px-2 py-1 text-sm hover:bg-white/5" aria-label="Back one day" title="Back a day">‹</button>
+          <button onClick={() => setWeekStart(startOfWeek(TZ_TODAY, { weekStartsOn: 1 }))} className="rounded-md border px-2.5 py-1 text-xs font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Today</button>
+          <button onClick={() => setWeekStart(w => addDays(w, 1))} className="rounded-md px-2 py-1 text-sm hover:bg-white/5" aria-label="Forward one day" title="Forward a day">›</button>
+          <button onClick={() => setWeekStart(w => addDays(w, 7))} className="rounded-md px-1.5 py-1 text-sm hover:bg-white/5" aria-label="Forward one week" title="Forward a week">»</button>
         </div>
         <div className="text-sm font-semibold">
           {format(weekStart, 'MMM d')} – {format(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6), 'MMM d, yyyy')}

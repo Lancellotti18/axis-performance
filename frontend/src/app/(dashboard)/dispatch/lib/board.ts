@@ -179,6 +179,44 @@ export async function fetchAudit(limit = 60, appointmentId?: string): Promise<{ 
   return res.json()
 }
 
+// ── M7: dispatch ↔ project link ──────────────────────────────────────────────
+export interface ProjectSearchResult { id: string; name: string; address: string | null; status: string | null; thumbnail_url: string | null }
+export interface JobProject {
+  linked: boolean
+  project?: { id: string; name: string; status: string | null; address: string | null }
+  thumbnail_url?: string | null
+  squares?: number | null
+  facet_count?: number | null
+  roof_sqft?: number | null
+  photos?: { url: string; caption: string | null; phase: string | null }[]
+  has_report?: boolean
+  share_token?: string | null
+}
+// A roof-run tile / photo URL may be absolute or a same-origin proxy path.
+export const mediaUrl = (u: string | null | undefined): string | null =>
+  !u ? null : (u.startsWith('http') || u.startsWith('data:') ? u : `${API_BASE}${u}`)
+
+export async function fetchJobProject(jobId: string): Promise<JobProject> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/jobs/${jobId}/project`, { headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+export async function searchProjects(q: string): Promise<{ projects: ProjectSearchResult[] }> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/projects/search?q=${encodeURIComponent(q)}`, { headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+export async function linkJobProject(jobId: string, projectId: string | null): Promise<{ ok: boolean; project_id: string | null }> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/jobs/${jobId}/link`, {
+    method: 'PATCH', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: projectId }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 // ── M5.5: Copilot (brief, throughput flywheel, ⌘K plan) ──────────────────────
 export interface BriefItem { kind: string; severity: number; text: string; refs: Record<string, string | null>; action: Record<string, unknown> | null }
 export interface Brief {

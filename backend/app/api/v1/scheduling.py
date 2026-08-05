@@ -1281,3 +1281,126 @@ async def ai_plan(body: PlanReq, user: dict = Depends(require_user)) -> dict:
     return {"ok": True, "kind": "bulk", "intent": body.intent, "op": op, "payload": payload, "ids": ids,
             "summary": plan.get("summary") or f"{op.replace('_', ' ').title()} · {len(ids)} job(s).",
             "changes": changes, "conflicts": conflicts}
+
+
+# ── M7: dispatch ↔ project (see the real roof / report / photos from a job) ───
+# Read-first integration: a sched_job.project_id points at the real roofing
+# project. The board can open its satellite/outline, report, and crew photos.
+
+_PHOTO_BUCKET = "blueprints"
+
+
+def _project_addr(p: dict) -> Optional[str]:
+    return ", ".join(x for x in [p.get("address"), p.get("city"), p.get("state")] if x) or None
+
+
+def _latest_run(db, project_id: str) -> dict:
+    r = _rows(db.table("roof_measurement_runs").select("satellite_image_url,squares,facet_count,total_roof_sqft,created_at")
+              .eq("project_id", project_id).order("created_at", desc=True).limit(1).execute())
+    return r[0] if r else {}
+
+
+def _signed_photo(db, path: str) -> Optional[str]:
+    try:
+        s = db.storage.from_(_PHOTO_BUCKET).create_signed_url(path, 3600)
+        if isinstance(s, dict):
+            return s.get("signedURL") or s.get("signedUrl") or s.get("signed_url") or s.get("url")
+    except Exception:
+        return None
+    return None
+
+
+@router.get("/projects/search")
+async def dispatch_project_search(q: str = "", user: dict = Depends(require_user)) -> dict:
+    """The logged-in contractor's projects, for linking a dispatch job to one."""
+    db = get_supabase()
+    rows = _rows(db.table("projects").select("id,name,address,city,state,status,created_at")
+                 .eq("user_id", user["id"]).order("created_at", desc=True).limit(60).execute())
+    ql = (q or "").strip().lower()
+    if ql:
+        rows = [r for r in rows if ql in (r.get("name") or "").lower()
+                or ql in (r.get("address") or "").lower() or ql in (r.get("city") or "").lower()]
+    out = []
+    for r in rows[:15]:
+        t = _latest_run(db, r["id"])
+        out.append({"id": r["id"], "name": r.get("name") or "Untitled project",
+                    "address": _project_addr(r), "status": r.get("status"),
+                    "thumbnail_url": t.get("satellite_image_url")})
+    return {"projects": out}
+
+
+class JobLink(BaseModel):
+    project_id: Optional[str] = None
+
+
+@router.patch("/jobs/{job_id}/link")
+async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    job = _one(db, "sched_job", job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if body.project_id:  # verify the project is the caller's before linking
+        pr = _rows(db.table("projects").select("id,user_id").eq("id", body.project_id).limit(1).execute())
+        if not pr or pr[0].get("user_id") != user.get("id"):
+            raise HTTPException(status_code=404, detail="Project not found.")
+    db.table("sched_job").update({"project_id": body.project_id}).eq("id", job_id).execute()
+    db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "job",
+        "entity_id": job_id, "action": "LINK_PROJECT", "before_json": {"project_id": job.get("project_id")},
+        "after_json": {"project_id": body.project_id}, "request_id": str(uuid.uuid4())}).execute()
+    return {"ok": True, "project_id": body.project_id}
+
+
+@router.get("/jobs/{job_id}/project")
+async def get_job_project(job_id: str, user: dict = Depends(require_user)) -> dict:
+    """The linked project's bundle for the job detail panel: roof tile + stats,
+    recent crew photos (signed), and whether a report exists. `linked:false` when
+    the job has no project attached yet."""
+    db = get_supabase()
+    job = _one(db, "sched_job", job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    pid = job.get("project_id")
+    if not pid:
+        return {"linked": False}
+    pr = _rows(db.table("projects").select("id,name,address,city,state,status").eq("id", pid).limit(1).execute())
+    if not pr:
+        return {"linked": False}
+    p = pr[0]
+    run = _latest_run(db, pid)
+
+    photos = []
+    try:
+        for x in _rows(db.table("project_photos").select("storage_path,caption,phase,created_at")
+                       .eq("project_id", pid).order("created_at", desc=True).limit(6).execute()):
+            url = _signed_photo(db, x["storage_path"])
+            if url:
+                photos.append({"url": url, "caption": x.get("caption"), "phase": x.get("phase")})
+    except Exception:
+        pass
+
+    has_report = False
+    try:
+        has_report = bool(_rows(db.table("apir_reports").select("id").eq("project_id", pid).limit(1).execute()))
+    except Exception:
+        has_report = False
+
+    share_token = None
+    try:
+        sh = _rows(db.table("project_photo_shares").select("token,enabled").eq("project_id", pid).limit(1).execute())
+        if sh and sh[0].get("enabled"):
+            share_token = sh[0].get("token")
+    except Exception:
+        share_token = None
+
+    return {
+        "linked": True,
+        "project": {"id": p["id"], "name": p.get("name") or "Untitled project",
+                    "status": p.get("status"), "address": _project_addr(p)},
+        "thumbnail_url": run.get("satellite_image_url"),
+        "squares": _f(run.get("squares")),
+        "facet_count": run.get("facet_count"),
+        "roof_sqft": _f(run.get("total_roof_sqft")),
+        "photos": photos,
+        "has_report": has_report,
+        "share_token": share_token,
+    }
