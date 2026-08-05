@@ -179,6 +179,20 @@ export async function fetchAudit(limit = 60, appointmentId?: string): Promise<{ 
   return res.json()
 }
 
+// ── M7: live per-crew weather ─────────────────────────────────────────────────
+export interface LiveWx {
+  precip_probability: number | null; precip_in: number | null
+  temp_high_f: number | null; temp_low_f: number | null; wind_mph: number | null
+}
+export interface LiveWeather { crew_weather: Record<string, LiveWx>; regional: Record<string, LiveWx> }
+
+export async function fetchLiveWeather(start: string, end: string): Promise<LiveWeather> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/weather/live?start=${start}&end=${end}`, { headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 // ── M7: dispatch ↔ project link ──────────────────────────────────────────────
 export interface ProjectSearchResult { id: string; name: string; address: string | null; status: string | null; thumbnail_url: string | null }
 export interface JobProject {

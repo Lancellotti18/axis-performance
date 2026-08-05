@@ -13,11 +13,11 @@ import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable,
   useSensor, useSensors, type DragEndEvent, type DragOverEvent, type DragStartEvent,
 } from '@dnd-kit/core'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
-import type { BoardData, Crew, DayLoad, Job, LoadState, PreviewResult, AffectedSlice, AffectedMulti } from './lib/board'
-import { num, patchAppointment, previewMove, createAppointment } from './lib/board'
+import type { BoardData, Crew, DayLoad, Job, LoadState, PreviewResult, AffectedSlice, AffectedMulti, LiveWx } from './lib/board'
+import { num, patchAppointment, previewMove, createAppointment, fetchLiveWeather } from './lib/board'
 import DetailPanel from './DetailPanel'
 import { useSelection } from './lib/selection'
 import BulkBar from './BulkBar'
@@ -180,8 +180,20 @@ export default function Board({ data, today }: { data: BoardData; today: string 
       .catch(err => toast.error('Could not schedule — ' + (err instanceof Error ? err.message.replace(/\[HTTP \d+\]\s*/, '') : 'try again')))
   }
 
+  // Live per-crew weather — non-blocking; the grid renders first, this fills in.
+  const { data: liveWx } = useQuery({
+    queryKey: ['weather-live', data.range.start, data.range.end],
+    queryFn: () => fetchLiveWeather(data.range.start, data.range.end),
+    staleTime: 3 * 3600 * 1000, refetchOnWindowFocus: false,
+  })
+  const crewWx = (crewId: string, d: string): LiveWx | undefined => liveWx?.crew_weather[`${crewId}:${d}`]
+  const regionalPrecip = (d: string): number | null => {
+    const r = liveWx?.regional[d]?.precip_probability
+    return r != null ? r : (idx.wxBy.get(d)?.precip_probability ?? null)
+  }
+
   const cols = `220px repeat(${days.length}, minmax(158px, 1fr))`
-  const rainy = (d: string) => { const w = idx.wxBy.get(d); return w ? w.precip_probability >= 60 : false }
+  const rainy = (d: string) => { const p = regionalPrecip(d); return p != null && p >= 60 }
 
   const onDragStart = (e: DragStartEvent) => {
     const id = String(e.active.id)
@@ -303,6 +315,7 @@ export default function Board({ data, today }: { data: BoardData; today: string 
                   <span className="ml-auto rounded px-1.5 text-[11px] font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: buColor(bu.color_token) }}>{num(crew.squares_per_day)} sq/day</span>
                 </div>
                 <div className="p-2">
+                  {crewWx(crew.id, d) && <CrewWeatherChip wx={crewWx(crew.id, d)!} />}
                   <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined} />
                 </div>
                 <Cell id={cellId(crew.id, d)} rainy={rainy(d)} dragging={!!activeId} preview={previewMap[cellId(crew.id, d)]}>
@@ -334,7 +347,10 @@ export default function Board({ data, today }: { data: BoardData; today: string 
         <div className="sticky top-0 z-20 grid border-b" style={{ gridTemplateColumns: cols, background: 'var(--ink)', borderColor: 'var(--line)' }}>
           <div className="sticky left-0 z-30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ background: 'var(--ink)', color: 'var(--muted)' }}>Crew</div>
           {days.map(d => {
-            const dt = parseISO(d); const isToday = d === today; const w = idx.wxBy.get(d); const storm = rainy(d)
+            const dt = parseISO(d); const isToday = d === today; const storm = rainy(d)
+            const reg = liveWx?.regional[d]; const seeded = idx.wxBy.get(d)
+            const pp = reg?.precip_probability ?? seeded?.precip_probability ?? null
+            const hi = reg?.temp_high_f ?? seeded?.temp_high_f ?? null
             return (
               <div key={d} className="border-l px-3 py-2" style={{ borderColor: 'var(--line)', background: storm ? 'rgba(90,169,255,0.05)' : undefined }}>
                 <div className="flex items-center justify-between">
@@ -343,7 +359,7 @@ export default function Board({ data, today }: { data: BoardData; today: string 
                     <span className="text-[15px] font-bold" style={{ color: isToday ? 'var(--dawn)' : 'var(--text)' }}>{format(dt, 'd')}</span>
                     {isToday && <span className="rounded px-1 text-[9px] font-bold uppercase" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>Today</span>}
                   </div>
-                  {w && <WeatherChip pp={w.precip_probability} hi={w.temp_high_f} storm={storm} />}
+                  {pp != null && <WeatherChip pp={pp} hi={hi} storm={storm} />}
                 </div>
               </div>
             )
@@ -373,6 +389,7 @@ export default function Board({ data, today }: { data: BoardData; today: string 
                     const appts = idx.apptBy.get(`${crew.id}:${d}`) || []
                     return (
                       <Cell key={d} id={cid} rainy={rainy(d)} dragging={!!activeId} preview={previewMap[cid]}>
+                        {crewWx(crew.id, d) && <CrewWeatherChip wx={crewWx(crew.id, d)!} />}
                         <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined} />
                         <div className="mt-1.5 space-y-1.5">
                           {appts.map(ap => {
@@ -517,9 +534,26 @@ function CapacityHeader({ load, hasShift, shift }: { load?: DayLoad; hasShift: b
 function WeatherChip({ pp, hi, storm }: { pp: number; hi: number | null; storm: boolean }) {
   return (
     <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold"
-      style={{ background: storm ? 'rgba(245,178,46,0.15)' : 'rgba(255,255,255,0.05)', color: storm ? 'var(--tight)' : 'var(--muted)' }} title={`${pp}% precip`}>
-      <span>{storm ? '⛈' : pp >= 30 ? '🌦' : '☀'}</span>{hi != null && <span>{hi}°</span>}<span>{pp}%</span>
+      style={{ background: storm ? 'rgba(245,178,46,0.15)' : 'rgba(255,255,255,0.05)', color: storm ? 'var(--tight)' : 'var(--muted)' }} title={`${Math.round(pp)}% precip`}>
+      <span>{storm ? '⛈' : pp >= 30 ? '🌦' : '☀'}</span>{hi != null && <span>{Math.round(hi)}°</span>}<span>{Math.round(pp)}%</span>
     </span>
+  )
+}
+
+// Per-crew weather for a crew-day — the sky at that crew's own job site.
+function CrewWeatherChip({ wx }: { wx: LiveWx }) {
+  const pp = wx.precip_probability ?? 0
+  const storm = pp >= 60
+  const windy = (wx.wind_mph ?? 0) >= 20
+  return (
+    <div className="mb-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold"
+      style={{ background: storm ? 'rgba(245,178,46,0.15)' : 'rgba(255,255,255,0.05)', color: storm ? 'var(--tight)' : 'var(--muted)' }}
+      title={`Job-site forecast · ${Math.round(pp)}% precip${windy ? ` · ${Math.round(wx.wind_mph!)} mph wind` : ''}`}>
+      <span>{storm ? '⛈' : pp >= 30 ? '🌦' : '☀'}</span>
+      <span>{Math.round(pp)}%</span>
+      {windy && <span>💨{Math.round(wx.wind_mph!)}</span>}
+      {wx.temp_high_f != null && <span className="ml-auto">{Math.round(wx.temp_high_f)}°</span>}
+    </div>
   )
 }
 

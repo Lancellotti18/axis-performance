@@ -1404,3 +1404,65 @@ async def get_job_project(job_id: str, user: dict = Depends(require_user)) -> di
         "has_report": has_report,
         "share_token": share_token,
     }
+
+
+# ── M7: live per-crew weather (each crew sees the sky at its own job site) ─────
+
+@router.get("/weather/live")
+async def live_weather(start: str, end: str, user: dict = Depends(require_user)) -> dict:
+    """Per-crew-day forecast from each crew's job location (Open-Meteo, free).
+    Non-blocking companion to the board: the grid renders, this fills in the
+    per-cell weather. Also returns a regional headline (centroid of the day's
+    work). Best-effort — returns {} weather rather than erroring."""
+    from app.services.scheduling import weather_service as wx
+
+    db = get_supabase()
+    s = _parse_date(start, "start"); e = _parse_date(end, "end")
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG)
+                  .gte("scheduled_start", s.isoformat()).lte("scheduled_start", (e + timedelta(days=1)).isoformat()).execute())
+    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute()) if a.get("is_primary", True)}
+    jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("id,property_id").eq("org_id", ORG).execute())}
+    props = {p["id"]: p for p in _rows(db.table("sched_property").select("id,lat,lng").eq("org_id", ORG).execute())}
+
+    # Each crew's PRIMARY (earliest) located stop per date.
+    crew_loc: dict[tuple, tuple] = {}
+    for a in sorted(appts, key=lambda x: x.get("scheduled_start") or ""):
+        crew_id = appt_crew.get(a["id"])
+        sdt = _dt(a.get("scheduled_start"))
+        if not crew_id or not sdt:
+            continue
+        job = jobs.get(a["job_id"]); prop = props.get(job["property_id"]) if job else None
+        lat, lng = (_f(prop.get("lat")), _f(prop.get("lng"))) if prop else (None, None)
+        key = (crew_id, sdt.date().isoformat())
+        if lat and lng and key not in crew_loc:
+            crew_loc[key] = (lat, lng)
+
+    points = list(set(crew_loc.values()))
+    if points:
+        clat = sum(p[0] for p in points) / len(points)
+        clng = sum(p[1] for p in points) / len(points)
+    else:
+        clat, clng = 34.2257, -77.9447   # Wilmington fallback for the headline
+    points.append((clat, clng))
+
+    fc = await wx.forecasts_for(points)
+
+    def at(lat, lng, ds):
+        return (fc.get(wx.bucket(lat, lng)) or {}).get(ds)
+
+    crew_weather = {}
+    for (crew_id, ds), (lat, lng) in crew_loc.items():
+        w = at(lat, lng, ds)
+        if w and w.get("precip_probability") is not None:
+            crew_weather[f"{crew_id}:{ds}"] = w
+
+    regional = {}
+    d = s
+    while d <= e:
+        ds = d.isoformat()
+        w = at(clat, clng, ds)
+        if w and w.get("precip_probability") is not None:
+            regional[ds] = w
+        d += timedelta(days=1)
+
+    return {"crew_weather": crew_weather, "regional": regional}
