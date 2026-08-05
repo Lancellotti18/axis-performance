@@ -26,6 +26,7 @@ import WeatherReschedule from './WeatherReschedule'
 import Copilot from './Copilot'
 import MapView from './MapView'
 import AuditPanel from './AuditPanel'
+import CrewManager from './CrewManager'
 
 const BU_COLOR: Record<string, string> = {
   'bu-install': 'var(--sky)', 'bu-service': 'var(--balanced)', 'bu-gutter': 'var(--tight)', 'bu-siding': 'var(--dawn)',
@@ -96,6 +97,7 @@ export default function Board({ data, today }: { data: BoardData; today: string 
   const [view, setView] = useState<'week' | 'day' | 'map'>('week')
   const [focusDate, setFocusDate] = useState<string>(() => (days.includes(today) ? today : days[0]))
   const [auditOpen, setAuditOpen] = useState(false)
+  const [crewMgrOpen, setCrewMgrOpen] = useState(false)
   const activeRef = useRef<string | null>(null)
   const previewRef = useRef<Record<string, PreviewResult | 'loading'>>({})
 
@@ -295,7 +297,8 @@ export default function Board({ data, today }: { data: BoardData; today: string 
           </div>
         )}
         <span className="ml-auto hidden text-[11px] sm:inline" style={{ color: 'var(--muted)' }}>{view === 'week' ? 'Drag to move · click for detail' : view === 'day' ? 'One day, every crew' : 'Stops by location, routed in order'}</span>
-        <button onClick={() => setAuditOpen(true)} className="ml-auto rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-white/5 sm:ml-3" style={{ borderColor: 'var(--line)' }}>History</button>
+        <button onClick={() => setCrewMgrOpen(true)} className="ml-auto rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-white/5 sm:ml-3" style={{ borderColor: 'var(--line)' }}>Crews</button>
+        <button onClick={() => setAuditOpen(true)} className="rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>History</button>
       </div>
 
       {view === 'map' ? (
@@ -450,6 +453,7 @@ export default function Board({ data, today }: { data: BoardData; today: string 
       )}
       <JobsTray />
       {auditOpen && <AuditPanel onClose={() => setAuditOpen(false)} />}
+      {crewMgrOpen && <CrewManager data={data} onClose={() => setCrewMgrOpen(false)} />}
     </DndContext>
   )
 }

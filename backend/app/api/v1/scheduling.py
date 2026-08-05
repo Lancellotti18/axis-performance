@@ -1466,3 +1466,126 @@ async def live_weather(start: str, end: str, user: dict = Depends(require_user))
         d += timedelta(days=1)
 
     return {"crew_weather": crew_weather, "regional": regional}
+
+
+# ── M7: crew & time-off administration (add / edit / remove crews + PTO) ──────
+
+def _generate_shifts(db, crew_id: str, weekdays: list, start_t: str, end_t: str, weeks: int) -> None:
+    """Seed regular shifts so a new crew is immediately schedulable. Weekdays are
+    0=Mon..6=Sun. Idempotent-ish: clears this crew's shifts in the horizon first."""
+    today = date.today()
+    horizon = today + timedelta(days=max(1, weeks) * 7)
+    db.table("sched_shift").delete().eq("org_id", ORG).eq("crew_id", crew_id).gte("date", today.isoformat()).execute()
+    rows = []
+    d = today
+    while d < horizon:
+        if d.weekday() in weekdays:
+            rows.append({"org_id": ORG, "crew_id": crew_id, "date": d.isoformat(),
+                         "start_time": start_t, "end_time": end_t, "type": "REGULAR"})
+        d += timedelta(days=1)
+    for i in range(0, len(rows), 200):
+        db.table("sched_shift").insert(rows[i:i + 200]).execute()
+
+
+class CrewInput(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    business_unit_id: str
+    squares_per_day: float = Field(25.0, gt=0, le=200)
+    tear_off_squares_per_day: float = Field(15.0, gt=0, le=200)
+    max_pitch: float = Field(9.0, ge=1, le=20)
+    max_stories: int = Field(2, ge=1, le=6)
+    lead_id: Optional[str] = None
+    shift_weekdays: Optional[list] = None      # 0=Mon..6=Sun; default Mon–Fri
+    shift_start: str = "07:00"
+    shift_end: str = "15:30"
+    shift_weeks: int = Field(8, ge=1, le=26)
+
+
+@router.post("/crews")
+async def create_crew(body: CrewInput, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    ins = db.table("sched_crew").insert({
+        "org_id": ORG, "name": body.name, "business_unit_id": body.business_unit_id,
+        "squares_per_day": body.squares_per_day, "tear_off_squares_per_day": body.tear_off_squares_per_day,
+        "max_pitch": body.max_pitch, "max_stories": body.max_stories, "lead_id": body.lead_id or None,
+    }).execute()
+    crew = (ins.data or [None])[0]
+    if not crew:
+        raise HTTPException(status_code=500, detail="Could not create the crew.")
+    _generate_shifts(db, crew["id"], body.shift_weekdays if body.shift_weekdays is not None else [0, 1, 2, 3, 4],
+                     body.shift_start, body.shift_end, body.shift_weeks)
+    return crew
+
+
+class CrewPatch(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=80)
+    business_unit_id: Optional[str] = None
+    squares_per_day: Optional[float] = Field(None, gt=0, le=200)
+    tear_off_squares_per_day: Optional[float] = Field(None, gt=0, le=200)
+    max_pitch: Optional[float] = Field(None, ge=1, le=20)
+    max_stories: Optional[int] = Field(None, ge=1, le=6)
+    lead_id: Optional[str] = None
+
+
+@router.patch("/crews/{crew_id}")
+async def update_crew(crew_id: str, body: CrewPatch, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    if not _one(db, "sched_crew", crew_id):
+        raise HTTPException(status_code=404, detail="Crew not found.")
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not patch:
+        raise HTTPException(status_code=422, detail="Nothing to update.")
+    db.table("sched_crew").update(patch).eq("org_id", ORG).eq("id", crew_id).execute()
+    return _one(db, "sched_crew", crew_id)
+
+
+@router.delete("/crews/{crew_id}")
+async def delete_crew(crew_id: str, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    asg = _rows(db.table("sched_assignment").select("id").eq("org_id", ORG).eq("crew_id", crew_id).limit(1).execute())
+    if asg:
+        raise HTTPException(status_code=409, detail="This crew still has scheduled jobs — reassign or remove them first.")
+    for t in ("sched_shift", "sched_non_job_event", "sched_crew_skill", "sched_crew_membership"):
+        db.table(t).delete().eq("org_id", ORG).eq("crew_id", crew_id).execute()
+    db.table("sched_crew").delete().eq("org_id", ORG).eq("id", crew_id).execute()
+    return {"ok": True}
+
+
+class TimeOffInput(BaseModel):
+    crew_id: str
+    title: str = Field("Time off", max_length=80)
+    start_date: str
+    end_date: str
+    blocks_capacity: bool = True
+
+
+@router.get("/timeoff")
+async def list_timeoff(crew_id: Optional[str] = None, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    q = db.table("sched_non_job_event").select("*").eq("org_id", ORG)
+    if crew_id:
+        q = q.eq("crew_id", crew_id)
+    return {"events": _rows(q.order("start_at", desc=True).limit(200).execute())}
+
+
+@router.post("/timeoff")
+async def add_timeoff(body: TimeOffInput, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    if not _one(db, "sched_crew", body.crew_id):
+        raise HTTPException(status_code=404, detail="Crew not found.")
+    sd = _parse_date(body.start_date, "start_date"); ed = _parse_date(body.end_date, "end_date")
+    if ed < sd:
+        raise HTTPException(status_code=422, detail="End date is before start date.")
+    ins = db.table("sched_non_job_event").insert({
+        "org_id": ORG, "crew_id": body.crew_id, "title": body.title,
+        "start_at": naive_dt(sd, "00:00").isoformat(), "end_at": naive_dt(ed, "23:59").isoformat(),
+        "blocks_capacity": body.blocks_capacity,
+    }).execute()
+    return (ins.data or [None])[0] or {"ok": True}
+
+
+@router.delete("/timeoff/{event_id}")
+async def delete_timeoff(event_id: str, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    db.table("sched_non_job_event").delete().eq("org_id", ORG).eq("id", event_id).execute()
+    return {"ok": True}

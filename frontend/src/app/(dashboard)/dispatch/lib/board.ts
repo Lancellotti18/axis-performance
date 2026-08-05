@@ -179,6 +179,52 @@ export async function fetchAudit(limit = 60, appointmentId?: string): Promise<{ 
   return res.json()
 }
 
+// ── M7: crew & time-off administration ───────────────────────────────────────
+export interface TimeOffEvent { id: string; crew_id: string; title: string; start_at: string; end_at: string; blocks_capacity: boolean }
+export interface CrewInput {
+  name: string; business_unit_id: string; squares_per_day: number; tear_off_squares_per_day: number
+  max_pitch: number; max_stories: number; lead_id?: string | null
+  shift_weekdays?: number[]; shift_start?: string; shift_end?: string; shift_weeks?: number
+}
+
+export async function createCrew(body: CrewInput): Promise<Crew> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/crews`, { method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
+  return res.json()
+}
+export async function updateCrew(id: string, patch: Partial<CrewInput>): Promise<Crew> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/crews/${id}`, { method: 'PATCH', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
+  if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
+  return res.json()
+}
+export async function deleteCrew(id: string): Promise<{ ok: boolean }> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/crews/${id}`, { method: 'DELETE', headers: h })
+  if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
+  return res.json()
+}
+export async function listTimeOff(crewId?: string): Promise<{ events: TimeOffEvent[] }> {
+  const h = await authHeaders()
+  const qs = crewId ? `?crew_id=${crewId}` : ''
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/timeoff${qs}`, { headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+export async function addTimeOff(body: { crew_id: string; title: string; start_date: string; end_date: string; blocks_capacity?: boolean }): Promise<TimeOffEvent> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/timeoff`, { method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
+  return res.json()
+}
+export async function deleteTimeOff(id: string): Promise<{ ok: boolean }> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/timeoff/${id}`, { method: 'DELETE', headers: h })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 // ── M7: live per-crew weather ─────────────────────────────────────────────────
 export interface LiveWx {
   precip_probability: number | null; precip_in: number | null
