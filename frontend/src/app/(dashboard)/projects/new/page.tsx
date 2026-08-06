@@ -1,108 +1,86 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
-import { STATES, COUNTIES, CITIES } from '@/lib/jurisdictions'
 
-type Stage = 'idle' | 'creating-project' | 'uploading' | 'registering' | 'analyzing' | 'done' | 'error'
+// New-project flow (#2): start from the property address (auto-fills city/county/
+// state via the Census geocoder) + optional customer, then straight into the
+// satellite/roof workflow. No blueprint upload.
+type Match = {
+  matched_address: string; street: string; city: string; state: string
+  zip: string; lat: number; lng: number; county: string; county_fips: string
+}
 
 export default function NewProjectPage() {
   const router = useRouter()
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
-  const [stateCode, setStateCode] = useState('')
-  const [county, setCounty] = useState('')
-  const [city, setCity] = useState('')
-  const [blueprintType, setBlueprintType] = useState<'residential' | 'commercial'>('residential')
-  const [file, setFile] = useState<File | null>(null)
-  const [dragOver, setDragOver] = useState(false)
-  const [stage, setStage] = useState<Stage>('idle')
-  const [uploadProgress, setUploadProgress] = useState(0)
+  const [address, setAddress] = useState('')
+  const [matches, setMatches] = useState<Match[]>([])
+  const [selected, setSelected] = useState<Match | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [custName, setCustName] = useState('')
+  const [custPhone, setCustPhone] = useState('')
+  const [custEmail, setCustEmail] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const counties = stateCode ? (COUNTIES[stateCode] || []) : []
-  const cities = (stateCode && county) ? (CITIES[stateCode]?.[county] || []) : []
+  // Debounced address search. Skips once a match is locked in.
+  useEffect(() => {
+    if (selected || address.trim().length < 4) { setMatches([]); return }
+    const t = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const r = await api.roofing.v2.locationSearch(address.trim(), false)
+        setMatches((r.matches || []).slice(0, 6))
+      } catch { setMatches([]) } finally { setSearching(false) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [address, selected])
 
-  const STAGES: { key: Stage; label: string; pct: number }[] = [
-    { key: 'creating-project', label: 'Creating project...', pct: 10 },
-    { key: 'uploading',        label: 'Uploading blueprint...', pct: 40 },
-    { key: 'registering',      label: 'Registering file...', pct: 60 },
-    { key: 'analyzing',        label: 'Starting AI analysis...', pct: 80 },
-    { key: 'done',             label: 'Done!', pct: 100 },
-  ]
+  async function pick(m: Match) {
+    setSelected(m); setAddress(m.matched_address); setMatches([])
+    // Enrich with county/FIPS (with_geographies is slower, so only on selection).
+    try {
+      const r = await api.roofing.v2.locationSearch(m.matched_address, true)
+      if (r.matches?.[0]) setSelected(r.matches[0] as Match)
+    } catch { /* county stays blank — non-fatal */ }
+  }
 
-  function onDrop(e: React.DragEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
-    setDragOver(false)
-    const f = e.dataTransfer.files[0]
-    if (f) validateAndSetFile(f)
-  }
-
-  function validateAndSetFile(f: File) {
-    const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg']
-    if (!allowed.includes(f.type)) { setError('Only PDF, PNG, and JPEG files are supported.'); return }
-    if (f.size > 100 * 1024 * 1024) { setError('File must be under 100MB.'); return }
-    setError('')
-    setFile(f)
-  }
-
-  async function uploadToS3(presignedUrl: string, file: File): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
-      }
-      xhr.onload = () => (xhr.status < 400 ? resolve() : reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText}`)))
-      xhr.onerror = () => reject(new Error('Upload failed'))
-      xhr.open('PUT', presignedUrl)
-      xhr.setRequestHeader('Content-Type', file.type)
-      xhr.send(file)
-    })
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!file) { setError('Please select a blueprint file.'); return }
-    if (!name.trim()) { setError('Please enter a project name.'); return }
-    setError('')
+    if (!name.trim()) { setError('Give the project a name.'); return }
+    if (!selected) { setError('Search and select the property address.'); return }
+    setSubmitting(true); setError('')
     try {
       const user = await getUser()
       if (!user) { router.push('/login'); return }
-
-      setStage('creating-project')
-      const region = stateCode ? `US-${stateCode}` : 'US-TX'
-      const project = await api.projects.create({ name, region, blueprint_type: blueprintType, city: city || undefined }, user.id)
-
-      const locationStr = [city, county, stateCode].filter(Boolean).join(', ')
+      const s = selected
+      const project = await api.projects.create({
+        name: name.trim(),
+        region: s.state ? `US-${s.state}` : 'US-TX',
+        blueprint_type: 'residential',
+        address: s.street || s.matched_address,
+        city: s.city || undefined,
+        state: s.state || undefined,
+        zip_code: s.zip || undefined,
+        county: s.county || undefined,
+        lat: s.lat, lng: s.lng,
+        customer_name: custName.trim() || undefined,
+        customer_phone: custPhone.trim() || undefined,
+        customer_email: custEmail.trim() || undefined,
+      }, user.id)
+      const locationStr = [s.city, s.county, s.state].filter(Boolean).join(', ')
       api.compliance.triggerForProject(project.id, locationStr || undefined).catch(() => {})
-
-      setStage('uploading')
-      const { upload_url, key } = await api.blueprints.getUploadUrl(project.id, file.name, file.type)
-      await uploadToS3(upload_url, file)
-
-      setStage('registering')
-      const ext = file.name.split('.').pop() || 'pdf'
-      const blueprint = await api.blueprints.register(project.id, key, ext, Math.round(file.size / 1024))
-
-      setStage('analyzing')
-      // Fire and forget — backend runs pipeline in background.
-      // Project page polls blueprint status every 4s until complete.
-      api.blueprints.triggerAnalysis(blueprint.id).catch(() => {})
-
-      setStage('done')
-      setTimeout(() => router.push(`/projects/${project.id}`), 800)
-    } catch (err: any) {
-      setError(err.message || 'Something went wrong. Please try again.')
-      setStage('error')
+      router.push(`/projects/${project.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      setSubmitting(false)
     }
   }
 
-  const currentStageIdx = STAGES.findIndex(s => s.key === stage)
-  const isProcessing = stage !== 'idle' && stage !== 'error'
-
-  const inputCls = 'w-full bg-white/[0.04]/[0.05] border border-white/10 focus:border-blue-400/40 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none transition-all text-sm [&>option]:bg-slate-900'
+  const inputCls = 'w-full bg-white/[0.04] border border-white/10 focus:border-blue-400/40 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none transition-all text-sm'
   const labelCls = 'block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2'
   const cardStyle = { boxShadow: '0 8px 32px rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.10)' }
 
@@ -110,186 +88,79 @@ export default function NewProjectPage() {
     <div className="relative min-h-full" style={{ background: '#040810' }}>
       <div className="pointer-events-none absolute inset-0 opacity-[0.11]" style={{ backgroundImage: 'linear-gradient(rgba(96,165,250,1) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(96,165,250,1) 1.5px, transparent 1.5px)', backgroundSize: '34px 34px' }} />
       <div className="relative p-8 max-w-2xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-8">
-        <Link href="/dashboard" className="text-slate-400 hover:text-slate-200 transition-colors text-sm">← Dashboard</Link>
-        <span className="text-slate-600">/</span>
-        <span className="text-slate-200 text-sm font-semibold">Upload Blueprint</span>
-      </div>
-
-      <h1 className="text-2xl font-black text-white mb-6">Upload Blueprint</h1>
-
-      {isProcessing ? (
-        <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
-          <div className="mb-6">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: stage === 'done' ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)' }}>
-              {stage === 'done' ? (
-                <svg className="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              ) : (
-                <svg className="w-8 h-8 text-blue-500 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                </svg>
-              )}
-            </div>
-            <p className="text-white font-semibold">{STAGES[currentStageIdx]?.label || 'Processing...'}</p>
-            {stage === 'uploading' && <p className="text-slate-400 text-sm mt-1">{uploadProgress}%</p>}
-          </div>
-          <div className="w-full bg-white/[0.04]/10 rounded-full h-2 mb-6">
-            <div
-              className="h-2 rounded-full transition-all duration-500"
-              style={{ width: `${STAGES[currentStageIdx]?.pct || 0}%`, background: 'linear-gradient(90deg, #3b82f6, #1d4ed8)' }}
-            />
-          </div>
-          <div className="space-y-2.5">
-            {STAGES.map((s, i) => (
-              <div key={s.key} className={`flex items-center gap-3 text-sm ${i <= currentStageIdx ? 'text-slate-200' : 'text-slate-600'}`}>
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${i < currentStageIdx ? 'bg-emerald-500' : i === currentStageIdx ? 'bg-blue-500' : 'bg-white/[0.04]/[0.08]'}`}>
-                  {i < currentStageIdx && (
-                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-                {s.label}
-              </div>
-            ))}
-          </div>
+        <div className="flex items-center gap-3 mb-8">
+          <Link href="/dashboard" className="text-slate-400 hover:text-slate-200 transition-colors text-sm">← Dashboard</Link>
+          <span className="text-slate-600">/</span>
+          <span className="text-slate-200 text-sm font-semibold">New Project</span>
         </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-5">
 
-          {/* Project details card */}
+        <h1 className="text-2xl font-black text-white mb-1">New project</h1>
+        <p className="text-slate-400 text-sm mb-6">Name it, drop in the address, and we’ll pull the satellite view next.</p>
+
+        <form onSubmit={submit} className="space-y-5">
+          {/* Project + address */}
           <div className="bg-white/[0.04] rounded-2xl p-6 space-y-5" style={cardStyle}>
             <div>
-              <label className={labelCls}>Project Name</label>
+              <label className={labelCls}>Project name</label>
+              <input type="text" required value={name} onChange={e => setName(e.target.value)} className={inputCls}
+                placeholder="e.g. Johnson Reroof — 123 Oak St" />
+            </div>
+
+            <div className="relative">
+              <label className={labelCls}>Property address</label>
               <input
-                type="text" required value={name} onChange={e => setName(e.target.value)}
-                className={inputCls}
-                placeholder="e.g. 123 Oak Street — Residential Addition"
-              />
-            </div>
+                type="text" value={address} autoComplete="off"
+                onChange={e => { setAddress(e.target.value); setSelected(null) }}
+                className={inputCls} placeholder="Start typing the address…" />
+              {searching && <div className="absolute right-3 top-9 text-xs text-slate-500">searching…</div>}
 
-            {/* State / County / City — 3 columns */}
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className={labelCls}>State</label>
-                <select
-                  value={stateCode}
-                  onChange={e => { setStateCode(e.target.value); setCounty(''); setCity('') }}
-                  className={inputCls}
-                >
-                  <option value="">Select state…</option>
-                  {STATES.map(s => (
-                    <option key={s.code} value={s.code}>{s.name}</option>
+              {matches.length > 0 && !selected && (
+                <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-white/10 bg-slate-900 shadow-2xl">
+                  {matches.map((m, i) => (
+                    <button key={i} type="button" onClick={() => pick(m)}
+                      className="block w-full px-4 py-2.5 text-left text-sm text-slate-200 hover:bg-blue-600/20">
+                      {m.matched_address}
+                    </button>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>County</label>
-                <select
-                  value={county}
-                  onChange={e => { setCounty(e.target.value); setCity('') }}
-                  disabled={!stateCode}
-                  className={`${inputCls} disabled:opacity-40`}
-                >
-                  <option value="">Select county…</option>
-                  {counties.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>City</label>
-                <select
-                  value={city}
-                  onChange={e => setCity(e.target.value)}
-                  disabled={!county}
-                  className={`${inputCls} disabled:opacity-40`}
-                >
-                  <option value="">Select city…</option>
-                  {cities.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
+                </div>
+              )}
 
-            {/* Blueprint type */}
-            <div>
-              <label className={labelCls}>Blueprint Type</label>
-              <div className="flex gap-2">
-                {(['residential', 'commercial'] as const).map(type => (
-                  <button
-                    key={type} type="button" onClick={() => setBlueprintType(type)}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all capitalize ${
-                      blueprintType === type
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-white/[0.04]/[0.05] text-slate-400 border border-white/10 hover:border-blue-400/30 hover:text-white'
-                    }`}
-                  >
-                    {type}
-                  </button>
-                ))}
-              </div>
+              {selected && (
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                  <span>✓</span>
+                  <span>
+                    {[selected.city, selected.county && `${selected.county} County`, selected.state, selected.zip].filter(Boolean).join(' · ')}
+                    {!selected.county && <span className="text-emerald-300/70"> · county lookup pending</span>}
+                  </span>
+                  <button type="button" onClick={() => { setSelected(null); setAddress('') }} className="ml-auto text-emerald-300/80 hover:text-white">change</button>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Drop zone */}
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={onDrop}
-            className="rounded-2xl p-12 text-center cursor-pointer transition-all duration-200"
-            style={{
-              border: `2px dashed ${dragOver ? '#3b82f6' : file ? '#10b981' : '#334155'}`,
-              background: dragOver ? 'rgba(59,130,246,0.12)' : file ? 'rgba(16,185,129,0.10)' : 'rgba(255,255,255,0.03)',
-              boxShadow: '0 2px 12px rgba(59,130,246,0.08)',
-            }}
-          >
-            <input
-              ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg"
-              className="hidden" onChange={e => { if (e.target.files?.[0]) validateAndSetFile(e.target.files[0]) }}
-            />
-            {file ? (
-              <div>
-                <div className="text-4xl mb-3"></div>
-                <p className="text-white font-semibold">{file.name}</p>
-                <p className="text-slate-400 text-sm mt-1">{(file.size / 1024 / 1024).toFixed(1)} MB — click to change</p>
-              </div>
-            ) : (
-              <div>
-                <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                </div>
-                <p className="text-slate-200 font-semibold">Drop blueprint here</p>
-                <p className="text-slate-400 text-sm mt-1">PDF, PNG, JPEG — up to 100MB</p>
-                <p className="text-blue-500 text-sm mt-3 font-medium">or click to browse</p>
-              </div>
-            )}
+          {/* Customer (optional but recommended) */}
+          <div className="bg-white/[0.04] rounded-2xl p-6 space-y-4" style={cardStyle}>
+            <div className="flex items-baseline justify-between">
+              <label className={labelCls} style={{ marginBottom: 0 }}>Customer</label>
+              <span className="text-[11px] text-slate-500">optional, but recommended</span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <input type="text" value={custName} onChange={e => setCustName(e.target.value)} className={inputCls} placeholder="Name" />
+              <input type="tel" value={custPhone} onChange={e => setCustPhone(e.target.value)} className={inputCls} placeholder="Phone" />
+              <input type="email" value={custEmail} onChange={e => setCustEmail(e.target.value)} className={inputCls} placeholder="Email" />
+            </div>
           </div>
 
           {error && (
-            <div className="bg-rose-500/10 border border-rose-400/30 rounded-xl px-4 py-3 text-rose-300 text-sm">
-              {error}
-            </div>
+            <div className="bg-rose-500/10 border border-rose-400/30 rounded-xl px-4 py-3 text-rose-300 text-sm">{error}</div>
           )}
 
-          <button
-            type="submit"
-            disabled={!file || !name}
+          <button type="submit" disabled={submitting || !name.trim() || !selected}
             className="w-full text-white font-bold py-3.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.01]"
-            style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
-          >
-            Analyze Blueprint
+            style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+            {submitting ? 'Creating…' : 'Create project & pull satellite'}
           </button>
         </form>
-      )}
       </div>
     </div>
   )

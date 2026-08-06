@@ -21,6 +21,12 @@ class ProjectCreate(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     zip_code: Optional[str] = None
+    county: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_email: Optional[str] = None
 
 
 @router.get("/")
@@ -80,7 +86,7 @@ async def create_project(
     db = get_supabase()
     # Ensure profile exists (auto-create if missing)
     db.table("profiles").upsert({"id": user["id"]}, on_conflict="id").execute()
-    result = db.table("projects").insert({
+    base = {
         "user_id": user["id"],
         "name": payload.name,
         "description": payload.description,
@@ -91,7 +97,24 @@ async def create_project(
         "state": payload.state,
         "zip_code": payload.zip_code,
         "status": "pending",
-    }).execute()
+    }
+    extra = {
+        "county": payload.county, "lat": payload.lat, "lng": payload.lng,
+        "customer_name": payload.customer_name, "customer_phone": payload.customer_phone,
+        "customer_email": payload.customer_email,
+    }
+    row = {**base, **{k: v for k, v in extra.items() if v is not None}}
+    try:
+        result = db.table("projects").insert(row).execute()
+    except Exception as e:
+        # Pre-migration schema (no customer/geo columns) — retry with base fields
+        # so project creation still works; the extras land post-migration.
+        msg = str(e).lower()
+        if ("column" in msg and "does not exist" in msg) or "pgrst204" in msg:
+            logger.warning("projects missing customer/geo columns — run 20260806_project_customer.sql")
+            result = db.table("projects").insert(base).execute()
+        else:
+            raise
     return result.data[0]
 
 
@@ -115,7 +138,7 @@ async def get_project(project_id: str, user: dict = Depends(require_user)):
 async def update_project(project_id: str, payload: dict, user: dict = Depends(require_user)):
     db = get_supabase()
     require_owned_project(db, project_id, user)
-    allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region", "address", "city", "state", "zip_code", "archived", "hero_render_url")}
+    allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region", "address", "city", "state", "zip_code", "archived", "hero_render_url", "county", "lat", "lng", "customer_name", "customer_phone", "customer_email")}
     if not allowed:
         raise HTTPException(status_code=400, detail="No valid fields to update")
     result = db.table("projects").update(allowed).eq("id", project_id).execute()
