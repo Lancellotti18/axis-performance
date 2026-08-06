@@ -13,6 +13,13 @@ import type { BoardData, Crew, CrewInput, TimeOffEvent } from './lib/board'
 import { num, createCrew, updateCrew, deleteCrew, listTimeOff, addTimeOff, deleteTimeOff } from './lib/board'
 
 const WEEKDAYS = [['Mon', 0], ['Tue', 1], ['Wed', 2], ['Thu', 3], ['Fri', 4], ['Sat', 5], ['Sun', 6]] as const
+const INPUT_CLS = 'w-full rounded-md border px-2 py-1.5 text-[12px]'
+const INPUT_STYLE = { background: 'var(--panel)', borderColor: 'var(--line)', color: 'var(--text)' } as React.CSSProperties
+
+// Defined at module scope (NOT inside CrewForm) so typing doesn't remount inputs.
+function CrewField({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="text-[11px] font-medium" style={{ color: 'var(--muted)' }}>{label}<div className="mt-1">{children}</div></label>
+}
 const DEFAULTS: CrewInput = { name: '', business_unit_id: '', squares_per_day: 25, tear_off_squares_per_day: 15, max_pitch: 9, max_stories: 2, lead_id: null, shift_weekdays: [0, 1, 2, 3, 4], shift_start: '07:00', shift_end: '15:30', shift_weeks: 8 }
 
 export default function CrewManager({ data, onClose }: { data: BoardData; onClose: () => void }) {
@@ -97,33 +104,30 @@ function CrewForm({ data, initial, isNew, onSubmit, onCancel }: {
     finally { setBusy(false) }
   }
 
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <label className="text-[11px] font-medium" style={{ color: 'var(--muted)' }}>{label}<div className="mt-1">{children}</div></label>
-  )
-  const inputCls = 'w-full rounded-md border px-2 py-1.5 text-[12px]'
-  const inputStyle = { background: 'var(--panel)', borderColor: 'var(--line)', color: 'var(--text)' } as React.CSSProperties
+  const inputCls = INPUT_CLS
+  const inputStyle = INPUT_STYLE
 
   return (
     <div className="rounded-xl border p-3" style={{ borderColor: 'var(--sky)', background: 'var(--panel2)' }}>
       <div className="mb-2 text-[12px] font-bold">{isNew ? 'New crew' : 'Edit crew'}</div>
       <div className="grid grid-cols-2 gap-2">
-        <div className="col-span-2"><Field label="Crew name"><input className={inputCls} style={inputStyle} value={f.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Kevin's Crew" /></Field></div>
-        <Field label="Business unit">
+        <div className="col-span-2"><CrewField label="Crew name"><input className={inputCls} style={inputStyle} value={f.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Kevin's Crew" /></CrewField></div>
+        <CrewField label="Business unit">
           <select className={inputCls} style={inputStyle} value={f.business_unit_id} onChange={e => set('business_unit_id', e.target.value)}>
             <option value="">Select…</option>
             {data.business_units.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
-        </Field>
-        <Field label="Lead (optional)">
+        </CrewField>
+        <CrewField label="Lead (optional)">
           <select className={inputCls} style={inputStyle} value={f.lead_id || ''} onChange={e => set('lead_id', e.target.value || null)}>
             <option value="">None</option>
             {data.persons.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
           </select>
-        </Field>
-        <Field label="Squares / day"><input type="number" className={inputCls} style={inputStyle} value={f.squares_per_day} onChange={e => set('squares_per_day', parseFloat(e.target.value) || 0)} /></Field>
-        <Field label="Tear-off sq / day"><input type="number" className={inputCls} style={inputStyle} value={f.tear_off_squares_per_day} onChange={e => set('tear_off_squares_per_day', parseFloat(e.target.value) || 0)} /></Field>
-        <Field label="Max pitch (/12)"><input type="number" className={inputCls} style={inputStyle} value={f.max_pitch} onChange={e => set('max_pitch', parseFloat(e.target.value) || 0)} /></Field>
-        <Field label="Max stories"><input type="number" className={inputCls} style={inputStyle} value={f.max_stories} onChange={e => set('max_stories', parseInt(e.target.value) || 1)} /></Field>
+        </CrewField>
+        <CrewField label="Squares / day"><input type="number" className={inputCls} style={inputStyle} value={f.squares_per_day} onChange={e => set('squares_per_day', parseFloat(e.target.value) || 0)} /></CrewField>
+        <CrewField label="Tear-off sq / day"><input type="number" className={inputCls} style={inputStyle} value={f.tear_off_squares_per_day} onChange={e => set('tear_off_squares_per_day', parseFloat(e.target.value) || 0)} /></CrewField>
+        <CrewField label="Max pitch (/12)"><input type="number" className={inputCls} style={inputStyle} value={f.max_pitch} onChange={e => set('max_pitch', parseFloat(e.target.value) || 0)} /></CrewField>
+        <CrewField label="Max stories"><input type="number" className={inputCls} style={inputStyle} value={f.max_stories} onChange={e => set('max_stories', parseInt(e.target.value) || 1)} /></CrewField>
       </div>
 
       {isNew && (

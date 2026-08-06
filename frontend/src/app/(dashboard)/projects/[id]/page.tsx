@@ -701,7 +701,7 @@ Thank you for your time.`
     { id: 'cost',       label: 'Cost Estimate' },
     { id: 'view3d',     label: 'Renders' },
     { id: 'compliance', label: 'Compliance', badge: (requiredCount + (matCheckResult?.violations?.length ?? 0)) || undefined },
-    { id: 'permits',    label: 'Permits' },
+    // Permits tab hidden per request — the section still exists but isn't surfaced.
     { id: 'photos',     label: 'Photos' },
   ]
 
