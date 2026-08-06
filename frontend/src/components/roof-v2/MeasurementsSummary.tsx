@@ -16,7 +16,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { VendorOption } from '@/types'
-import AxisSpinner from '@/components/AxisSpinner'
+import RoofScanSpinner from '@/components/roof-v2/RoofScanSpinner'
 
 interface Aggregates {
   total_plan_sqft?: number
@@ -311,7 +311,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
           edge confirmation. It only disappears when the totals are real. */}
       {(loading || unlabeledCount > 0) && (
         <div className="flex items-center gap-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4">
-          <AxisSpinner size={46} color="#fbbf24" />
+          <RoofScanSpinner size={46} className="flex-shrink-0" />
           {loading ? (
             <div>
               <div className="text-sm font-semibold text-amber-200">Crunching the latest measurements…</div>

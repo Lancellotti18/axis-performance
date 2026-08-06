@@ -50,6 +50,24 @@ DEFAULT_TIERS = [
 ]
 
 
+def _tier_rates(db, user_id: str) -> list:
+    """Good/Better/Best $/square. Uses the contractor's RoofIQ widget rates when
+    set, so the instant quote, report, and proposal all speak the same numbers;
+    falls back to the turnkey defaults otherwise. Best = the widget high, Good =
+    the widget low, Better = the midpoint."""
+    rate_low = rate_high = None
+    try:
+        w = db.table("quote_widgets").select("price_low, price_high").eq("user_id", user_id).limit(1).execute()
+        if w.data:
+            rate_low = float(w.data[0].get("price_low") or 0) or None
+            rate_high = float(w.data[0].get("price_high") or 0) or None
+    except Exception:
+        pass
+    good = rate_low or DEFAULT_TIERS[0]["rate"]
+    best = rate_high or DEFAULT_TIERS[2]["rate"]
+    return [good, round((good + best) / 2.0), best]
+
+
 def _snapshot_contractor(db, user_id: str) -> dict:
     try:
         prof = db.table("contractor_profiles").select("*").eq("user_id", user_id).limit(1).execute()
@@ -114,14 +132,15 @@ async def create_from_run(
     address = ", ".join(p for p in parts if p) or proj.data.get("name")
 
     order_sq = squares * 1.10   # waste
+    rates = _tier_rates(db, user["id"])   # the contractor's own $/sq when set
     tiers = []
-    for t in DEFAULT_TIERS:
+    for t, rate in zip(DEFAULT_TIERS, rates):
         tiers.append({
             "name": t["name"],
             "headline": t["headline"],
             "description": t["description"],
             "features": t["features"],
-            "price": round(order_sq * t["rate"] / 50.0) * 50,
+            "price": round(order_sq * rate / 50.0) * 50,
         })
 
     from datetime import date, timedelta
@@ -180,21 +199,8 @@ async def create_from_lead(
             detail="This lead has no measured roof size — open the address in the roof editor to measure it first.",
         )
 
-    rate_low, rate_high = None, None
-    try:
-        w = db.table("quote_widgets").select("price_low, price_high").eq("user_id", user["id"]).limit(1).execute()
-        if w.data:
-            rate_low = float(w.data[0].get("price_low") or 0) or None
-            rate_high = float(w.data[0].get("price_high") or 0) or None
-    except Exception:
-        pass
-
     order_sq = squares * 1.10
-    rates = [
-        rate_low or DEFAULT_TIERS[0]["rate"],
-        ((rate_low or DEFAULT_TIERS[0]["rate"]) + (rate_high or DEFAULT_TIERS[2]["rate"])) / 2,
-        rate_high or DEFAULT_TIERS[2]["rate"],
-    ]
+    rates = _tier_rates(db, user["id"])   # shared with create_from_run
     # RoofVision: the homeowner already saw their own roof in these colors on
     # the report. Carry the renders onto the matching-tier proposal cards, and
     # spotlight the color they chose — so the proposal opens on the exact look

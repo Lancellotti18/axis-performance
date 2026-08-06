@@ -137,7 +137,11 @@ export default function PublicProposalPage() {
               {p.tiers.map((t, i) => (
                 <div
                   key={t.name}
-                  className={`relative flex flex-col rounded-2xl border bg-white p-5 ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => { setChoosing(t); setError(null) }}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setChoosing(t); setError(null) } }}
+                  className={`relative flex cursor-pointer flex-col rounded-2xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                     i === popularIdx
                       ? 'border-blue-400 shadow-[0_16px_44px_-14px_rgba(59,130,246,0.35)]'
                       : 'border-slate-200 shadow-[0_8px_30px_-14px_rgba(15,40,80,0.15)]'
@@ -176,7 +180,7 @@ export default function PublicProposalPage() {
                     ))}
                   </ul>
                   <button
-                    onClick={() => { setChoosing(t); setError(null) }}
+                    onClick={e => { e.stopPropagation(); setChoosing(t); setError(null) }}
                     className={`mt-4 rounded-lg py-2.5 text-sm font-semibold transition ${
                       i === popularIdx
                         ? 'text-white hover:scale-[1.02]'
