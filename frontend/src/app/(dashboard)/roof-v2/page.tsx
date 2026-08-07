@@ -95,6 +95,7 @@ export default function RoofV2Page() {
   const [location, setLocation] = useState<LocationSelected | null>(null)
   const [imagery, setImagery] = useState<ImageryPayload | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
+  const [runConfirmed, setRunConfirmed] = useState(false)   // a finalized roof shows its saved numbers without re-confirming edges
   const [facets, setFacets] = useState<Facet[]>([])
   const [edges, setEdges] = useState<LabeledEdge[]>([])
   const [geometryStamp, setGeometryStamp] = useState(0)
@@ -149,7 +150,7 @@ export default function RoofV2Page() {
       await api.projects.delete(id)
       setProjects(prev => prev.filter(p => p.id !== id))
       setProjectId(prev => {
-        if (prev === id) { setProject(null); setRunId(null); setFacets([]); setEdges([]) }
+        if (prev === id) { setProject(null); setRunId(null); setFacets([]); setEdges([]); setRunConfirmed(false) }
         return prev === id ? null : prev
       })
     } catch (e) {
@@ -172,6 +173,7 @@ export default function RoofV2Page() {
         if (run_id) {
           const data = await api.roofing.v2.getRun(run_id)
           const run = data.run as Record<string, unknown>
+          setRunConfirmed(!!run.confirmed)   // finalized roof → show its saved numbers on resume
           const sp = run.subject_point as { x: number; y: number } | null
           setSubjectPoint(sp && typeof sp.x === 'number' ? { x: sp.x, y: sp.y } : null)
           setSavedScaleDesc((run.scale_reference_description as string) || null)
@@ -343,6 +345,7 @@ export default function RoofV2Page() {
         return
       }
       setRunId((run as { id: string }).id)
+      setRunConfirmed(false)   // a freshly created run starts unconfirmed → gate until reviewed
       setStep('editor')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown'
@@ -440,6 +443,7 @@ export default function RoofV2Page() {
     setError(null)
     try {
       await api.roofing.v2.patchRun(runId, { confirmed: true })
+      setRunConfirmed(true)
       await api.roofing.v2.downloadReport(runId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Report download failed')
@@ -788,6 +792,7 @@ export default function RoofV2Page() {
             geometryStamp={geometryStamp}
             onConfidenceChange={setConfidence}
             unlabeledCount={edges.filter(e => e.edgeType === 'unlabeled' || !e.userConfirmed).length}
+            runConfirmed={runConfirmed}
             zip={project?.zip}
             city={project?.city}
             onForceSave={async () => { await persistGeometry(facets, edges) }}

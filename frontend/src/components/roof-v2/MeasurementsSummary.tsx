@@ -69,6 +69,9 @@ interface Props {
   /** Edges still unlabeled. While > 0 the confidence badge shows a neutral
    *  'Labeling…' state — a mid-workflow 40% is accurate but reads as failure. */
   unlabeledCount?: number
+  /** A finalized run shows its saved numbers immediately — the confirm-edges gate
+   *  only applies while actively labeling a new, unconfirmed roof. */
+  runConfirmed?: boolean
   onForceSave?: () => void | Promise<void>   // optional: lets the parent force-save + recompute
   /** Project ZIP — regionalizes live price checks. */
   zip?: string
@@ -141,7 +144,7 @@ function confidenceTag(c: number | undefined) {
   return { label: 'Low', cls: 'bg-rose-500/20 text-rose-300 border-rose-400/40' }
 }
 
-export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave, unlabeledCount = 0, zip, city }: Props) {
+export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave, unlabeledCount = 0, runConfirmed = false, zip, city }: Props) {
   const [aggregates, setAggregates] = useState<Aggregates | null>(null)
   const [materials, setMaterials] = useState<MaterialsResponse | null>(null)
   const [wastePct, setWastePct] = useState<number>(12)
@@ -280,7 +283,9 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
 
   // #7: measurements, roof lines, and the material list stay hidden until every
   // edge is confirmed/denied/changed — so nobody quotes off unreviewed AI labels.
-  if (unlabeledCount > 0) {
+  // A finalized (confirmed) roof always shows its saved numbers on revisit, so you
+  // never re-label a roof you already finished.
+  if (unlabeledCount > 0 && !runConfirmed) {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4">
