@@ -278,6 +278,26 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
     )
   }, [aggregates])
 
+  // #7: measurements, roof lines, and the material list stay hidden until every
+  // edge is confirmed/denied/changed — so nobody quotes off unreviewed AI labels.
+  if (unlabeledCount > 0) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4">
+          <RoofScanSpinner size={46} className="flex-shrink-0" />
+          <div>
+            <div className="text-sm font-semibold text-amber-200">Confirm your edges to unlock the numbers</div>
+            <p className="mt-0.5 text-xs leading-relaxed text-amber-100/80">
+              Measurements, roof-line lengths, and the material list stay hidden until every edge is
+              confirmed. Trace each plane, hit <strong>✨ Auto-label edges</strong>, then accept or fix each one.
+              <span className="mt-1 block text-amber-300/90">{unlabeledCount} edge{unlabeledCount === 1 ? '' : 's'} still need confirming.</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {hasNoData && (
