@@ -18,7 +18,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
-import WalkAroundCamera from '@/components/roof-v2/WalkAroundCamera'
 
 type Findings = NonNullable<Awaited<ReturnType<typeof api.roofing.v2.analyzeGroundPhoto>>['findings']>
 type PageResult = { page: number; findings: Findings | null; message: string }
@@ -106,7 +105,6 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
   const [photos, setPhotos] = useState<PhotoEntry[]>([])
   const idRef = useRef(0)
 
-  const [cameraOpen, setCameraOpen] = useState(false)
 
   const handleFiles = useCallback(async (slot: string, files: FileList | File[] | null) => {
     if (!files || files.length === 0) return
@@ -219,27 +217,10 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
         </p>
       </div>
 
-      {cameraOpen && (
-        <WalkAroundCamera
-          slots={SLOTS.map(s => ({ key: s.key, label: s.label }))}
-          initialSlot={SLOTS[0].key}
-          onCapture={(file, slot) => handleFiles(slot, [file])}
-          onClose={() => setCameraOpen(false)}
-        />
-      )}
-
       <PhotoGuide />
 
-      {/* One-tap live camera, right where you capture — shoot the whole
-          walk-around without leaving the panel. */}
-      <button onClick={() => setCameraOpen(true)}
-        className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-500">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        Open camera — guided walk-around
-      </button>
-
-      {/* Guided walk-around: drop each photo into the slot where you're standing,
-          or tap 📷 on any slot to shoot just that one. */}
+      {/* Tap the green 📷 on a section to open your camera and shoot straight into
+          that slot (or ＋ to upload). No walk-around mode. */}
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {SLOTS.map(slot => (
           <PhotoSlot key={slot.key} slot={slot}
