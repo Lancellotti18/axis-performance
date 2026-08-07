@@ -30,6 +30,7 @@ const CENSUS_COUNTIES = [
   { key: 'bladen', name: 'Bladen (Elizabethtown)' },
   { key: 'duplin', name: 'Duplin (Kenansville)' },
   { key: 'carteret', name: 'Carteret (Morehead City)' },
+  { key: 'york_pa', name: 'York / Hanover, PA' },
 ]
 
 // Free, no-key satellite thumbnail from Esri World Imagery (tight crop on the roof).

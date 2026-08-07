@@ -88,6 +88,10 @@ COUNTY_FIPS: dict[str, tuple[str, str, str]] = {
     "bladen": ("37", "017", "Bladen County, NC"),
     "duplin": ("37", "061", "Duplin County, NC"),
     "carteret": ("37", "031", "Carteret County, NC"),
+    # Pennsylvania expansion. York County contains Hanover borough. Census-heat
+    # works off FIPS today; rich per-home parcel data (owner/year-built, "like
+    # Onslow") awaits York County's verified parcel ArcGIS endpoint in PARCEL_SOURCES.
+    "york_pa": ("42", "133", "York County, PA (Hanover, York)"),
 }
 
 
