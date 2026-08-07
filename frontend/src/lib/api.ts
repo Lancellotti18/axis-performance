@@ -726,6 +726,13 @@ export const api = {
     publicGallery: (token: string) =>
       apiRequest<{ project: { name: string | null; address: string | null; city: string | null }; photos: ProjectPhoto[]; phases: string[] }>(`/api/v1/project-photos/public/${token}`),
   },
+  // ── Dispatch: stage a project onto the crew scheduling board ──────────────
+  dispatch: {
+    addProject: (projectId: string) =>
+      apiRequest<{ created: boolean; job_id: string; message: string }>(`/api/v1/scheduling/from-project`, {
+        method: 'POST', body: JSON.stringify({ project_id: projectId }),
+      }),
+  },
   // ── Growth engine: instant quote widget + lead inbox ─────────────────────
   instantQuote: {
     // Public (homeowner-facing; no auth required)

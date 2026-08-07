@@ -14,6 +14,7 @@ const RenderViewer      = dynamic(() => import('./RenderViewer'),      { ssr: fa
 const ExteriorCarousel  = dynamic(() => import('./ExteriorCarousel'),  { ssr: false })
 import RoofingSection from './RoofingSection'
 import PermitPortalSection from './PermitPortalSection'
+import AddToDispatchButton from './AddToDispatchButton'
 import ProjectPhotos from './ProjectPhotos'
 import { computeMaterialConfidence, loadReviewedIds, saveReviewedIds } from './materialConfidence'
 import { CitationInline, CitationBibliography, ComplianceLimitations } from '@/components/MaterialComplianceCitations'
@@ -727,9 +728,7 @@ Thank you for your time.`
             <span className={`w-1.5 h-1.5 rounded-full ${blueprintStatus === 'complete' ? 'bg-emerald-500' : blueprintStatus === 'failed' ? 'bg-rose-500' : 'bg-amber-400 animate-pulse'}`} />
             {blueprintStatus === 'complete' ? 'Analysis Complete' : blueprintStatus === 'failed' ? 'Failed' : 'Processing…'}
           </span>
-          <Link href="/permits" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-all">
-            Submit Permit
-          </Link>
+          <AddToDispatchButton projectId={projectId} />
         </div>
       </div>
 

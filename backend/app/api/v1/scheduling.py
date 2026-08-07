@@ -1589,3 +1589,79 @@ async def delete_timeoff(event_id: str, user: dict = Depends(require_user)) -> d
     db = get_supabase()
     db.table("sched_non_job_event").delete().eq("org_id", ORG).eq("id", event_id).execute()
     return {"ok": True}
+
+
+# ── M7: create a dispatch job FROM a project (the write side of the link) ─────
+
+VALID_JOB_TYPES = {"REROOF", "NEW_ROOF_INSTALL", "ROOF_REPAIR", "GUTTER_REPAIR",
+                   "GUTTER_INSTALL", "SIDING_REPAIR", "NEW_SIDING_INSTALL", "INSPECTION"}
+
+
+class ProjectToDispatch(BaseModel):
+    project_id: str
+    job_type: str = "REROOF"
+    priority: str = "ROUTINE"
+
+
+@router.post("/from-project")
+async def create_job_from_project(body: ProjectToDispatch, user: dict = Depends(require_user)) -> dict:
+    """Stage a project onto the dispatch board: creates a linked sched_job (+ its
+    customer/property) so it lands in the tray, ready to assign to a crew. Idempotent
+    per project. Reuses the project's address/customer/squares so nothing is retyped."""
+    db = get_supabase()
+    pr = _rows(db.table("projects").select("*").eq("id", body.project_id).limit(1).execute())
+    if not pr or pr[0].get("user_id") != user.get("id"):
+        raise HTTPException(status_code=404, detail="Project not found.")
+    p = pr[0]
+
+    existing = _rows(db.table("sched_job").select("id").eq("org_id", ORG).eq("project_id", body.project_id).limit(1).execute())
+    if existing:
+        return {"created": False, "job_id": existing[0]["id"], "message": "This project is already on the dispatch board."}
+
+    lat, lng = _f(p.get("lat")), _f(p.get("lng"))
+    if lat is None or lng is None:  # older projects — geocode from the address
+        addr = ", ".join(x for x in [p.get("address"), p.get("city"), p.get("state"), p.get("zip_code")] if x)
+        if addr:
+            try:
+                from app.services import location_service
+                res = await location_service.search_address(addr, with_geographies=False)
+                if res.matches:
+                    lat, lng = res.matches[0].lat, res.matches[0].lng
+            except Exception as e:
+                logger.info("from-project geocode failed: %s", e)
+    if lat is None or lng is None:
+        raise HTTPException(status_code=422, detail="This project has no location yet — add an address before scheduling it.")
+
+    bu = _rows(db.table("sched_business_unit").select("id").eq("org_id", ORG).order("sort_order").limit(1).execute())
+    if not bu:
+        raise HTTPException(status_code=409, detail="No business unit is configured for scheduling yet.")
+
+    full = (p.get("customer_name") or "").strip()
+    first, _, last = full.partition(" ") if full else ((p.get("name") or "Customer"), "", "")
+    cust = (db.table("sched_customer").insert({
+        "org_id": ORG, "first_name": first or "Customer", "last_name": last or "",
+        "phone": p.get("customer_phone"), "email": p.get("customer_email"),
+    }).execute().data or [None])[0]
+    prop = (db.table("sched_property").insert({
+        "org_id": ORG, "line1": p.get("address") or p.get("name") or "Address TBD",
+        "city": p.get("city") or "", "state": p.get("state") or "", "postal_code": p.get("zip_code") or "",
+        "lat": lat, "lng": lng,
+    }).execute().data or [None])[0]
+    if not cust or not prop:
+        raise HTTPException(status_code=500, detail="Could not stage the job.")
+
+    run = _latest_run(db, body.project_id)
+    job = (db.table("sched_job").insert({
+        "org_id": ORG, "business_unit_id": bu[0]["id"], "customer_id": cust["id"], "property_id": prop["id"],
+        "project_id": body.project_id,
+        "job_type": body.job_type if body.job_type in VALID_JOB_TYPES else "REROOF",
+        "status": "SOLD", "priority": body.priority if body.priority in ("ROUTINE", "HIGH", "URGENT") else "ROUTINE",
+        "squares": _f(run.get("squares")),
+    }).execute().data or [None])[0]
+    if not job:
+        raise HTTPException(status_code=500, detail="Could not create the job.")
+
+    db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "job",
+        "entity_id": job["id"], "action": "CREATE_FROM_PROJECT", "before_json": None,
+        "after_json": {"project_id": body.project_id}, "request_id": str(uuid.uuid4())}).execute()
+    return {"created": True, "job_id": job["id"], "message": "Added to the dispatch board — open the tray to schedule it."}
