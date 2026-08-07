@@ -43,6 +43,44 @@ const mapsLink = (lat: number, lng: number) => `https://www.google.com/maps/sear
 // shows the surrounding neighborhood so the contractor recognizes the area.
 const mapAreaLink = (lat: number, lng: number) => `https://www.google.com/maps/@${lat},${lng},15z`
 
+// Satellite by default (free Esri); tap for a street-level photo aimed at the
+// house (Google Street View, fetched lazily so we don't hit the API 60× up front).
+function LeadImage({ lat, lng }: { lat: number; lng: number }) {
+  const [mode, setMode] = useState<'sat' | 'street'>('sat')
+  const [street, setStreet] = useState<'idle' | 'loading' | 'none' | string>('idle')
+  const toggle = async () => {
+    if (mode === 'street') { setMode('sat'); return }
+    setMode('street')
+    if (street === 'idle') {
+      setStreet('loading')
+      try {
+        const r = await api.roofing.v2.getStreetView(lat, lng)
+        setStreet(r.available && r.image ? r.image : 'none')
+      } catch { setStreet('none') }
+    }
+  }
+  const imgCls = 'h-full w-full rounded-lg bg-slate-800 object-cover ring-1 ring-white/10'
+  return (
+    <div className="relative h-28 w-36 flex-shrink-0">
+      {mode === 'street' && typeof street === 'string' && street.startsWith('data:') ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={street} alt="Street view" className={imgCls} />
+      ) : mode === 'street' && street === 'loading' ? (
+        <div className={`flex items-center justify-center text-[10px] text-slate-400 ${imgCls}`}>Loading street view…</div>
+      ) : mode === 'street' && street === 'none' ? (
+        <div className={`flex items-center justify-center px-2 text-center text-[10px] text-slate-500 ${imgCls}`}>No street view here</div>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={roofThumb(lat, lng)} alt="Roof satellite" loading="lazy" className={imgCls} />
+      )}
+      <button onClick={toggle} type="button"
+        className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white backdrop-blur transition-colors hover:bg-black/80">
+        {mode === 'street' ? '🛰 Satellite' : '📷 Street'}
+      </button>
+    </div>
+  )
+}
+
 const TIER: Record<string, string> = {
   Hot: 'bg-rose-500/15 text-rose-300 ring-rose-400/30',
   Warm: 'bg-amber-500/15 text-amber-300 ring-amber-400/30',
@@ -166,9 +204,7 @@ export default function FindRoofsPage() {
                     <div key={p.pin}
                       className="group flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all duration-200 hover:-translate-y-1 hover:border-blue-400/30 hover:shadow-[0_12px_30px_rgba(59,130,246,0.15)]">
                       <div className="flex gap-3 p-3">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={roofThumb(p.lat, p.lng)} alt="Roof" loading="lazy"
-                          className="h-28 w-36 flex-shrink-0 rounded-lg bg-slate-800 object-cover ring-1 ring-white/10" />
+                        <LeadImage lat={p.lat} lng={p.lng} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <div className="truncate text-sm font-semibold text-white">{p.address}</div>
