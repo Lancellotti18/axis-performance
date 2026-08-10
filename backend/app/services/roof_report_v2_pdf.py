@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -117,6 +118,39 @@ def _centered_lines(draw, cx, cy, lines, font, fontb) -> None:
             draw.text((cx - w / 2 + dx, y + dy), txt, fill=(255, 255, 255), font=fnt)
         draw.text((cx - w / 2, y), txt, fill=(17, 24, 39), font=fnt)
         y += h + 5
+
+
+def _format_phone(raw) -> str | None:
+    """DEFECT-09: format a phone as (XXX) XXX-XXXX. Falls back to the raw string
+    if it isn't a recognizable 10-digit US number."""
+    if not raw:
+        return None
+    digits = re.sub(r"\D", "", str(raw))
+    if len(digits) == 11 and digits[0] == "1":
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f"({digits[0:3]}) {digits[3:6]}-{digits[6:]}"
+    return str(raw).strip()
+
+
+def _normalize_address(address, city, state, zipc) -> str:
+    """DEFECT-09: build a clean single-line address without duplicating the city
+    or ZIP already embedded in the street line (e.g. the '…RICHLANDS 28574,
+    RICHLANDS, NC' bug)."""
+    address = (address or "").strip().rstrip(",").strip()
+    city = (city or "").strip()
+    state = (state or "").strip()
+    zipc = (zipc or "").strip()
+    al = address.lower()
+    parts: list[str] = []
+    if address:
+        parts.append(address)
+    if city and city.lower() not in al:
+        parts.append(city)
+    tail = state if (zipc and zipc in address) else f"{state} {zipc}".strip()
+    if tail:
+        parts.append(tail)
+    return ", ".join(p for p in parts if p)
 
 
 def _crop_image_to_facets(img_bytes: bytes, facets: list[dict], margin: float = 0.35, subject_point: dict | None = None) -> bytes | None:
@@ -258,9 +292,8 @@ def _section_1_executive(
 ) -> list:
     """Executive Summary — top of the report."""
     flow: list = []
-    addr_parts = [project.get("address"), project.get("city"),
-                  f"{(project.get('state') or '').strip()} {(project.get('zip') or '').strip()}".strip()]
-    full_address = ", ".join(p for p in addr_parts if p)
+    full_address = _normalize_address(project.get("address"), project.get("city"),
+                                      project.get("state"), project.get("zip"))
     if not full_address:
         full_address = project.get("name") or "Property"
 
@@ -294,7 +327,7 @@ def _section_1_executive(
     left_stack.append(Paragraph(company, title_left))
     prepared_bits = [b for b in [
         f"License {c['license_number']}" if c.get("license_number") else None,
-        c.get("phone"), c.get("email"),
+        _format_phone(c.get("phone")), c.get("email"),
     ] if b]
     if prepared_bits:
         left_stack.append(Paragraph(" · ".join(prepared_bits), muted_left))
@@ -363,19 +396,10 @@ def _section_1_executive(
     flow.append(ft)
     flow.append(Spacer(1, 12))
 
-    # Roof Visualizer "after" render (if the contractor saved one to the project)
-    # — the emotional hero shot. Always labeled illustrative so it never reads as
-    # a guarantee of the exact product/color.
-    hero_url = (project or {}).get("hero_render_url")
-    if hero_url:
-        hero_bytes = _fetch_satellite_image(hero_url)   # generic URL → bytes fetch
-        if hero_bytes:
-            try:
-                flow.append(Image(io.BytesIO(hero_bytes), width=6.5 * inch, height=4.0 * inch, kind="proportional"))
-                flow.append(Paragraph("Your new roof — illustrative preview (AI-rendered; final color and product per your selection)", styles["muted"]))
-                flow.append(Spacer(1, 12))
-            except Exception:
-                logger.debug("v2 report: hero render embed failed", exc_info=True)
+    # DEFECT-09: the measurement/adjuster report cover must show the SUBJECT property
+    # or nothing — never an AI "after" render (those are homeowner/sales assets and
+    # read as a stock photo to an adjuster). The satellite crop below is always the
+    # real house. The Roof Visualizer render lives only on the homeowner report.
 
     # Satellite image (if available)
     img_url = run.get("satellite_image_url")
