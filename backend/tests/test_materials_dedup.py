@@ -39,3 +39,17 @@ def test_takeoff_skus_are_unique():
     lines = compute_material_lines(catalog, _totals())
     skus = [l.sku for l in lines]
     assert len(skus) == len(set(skus)), f"duplicate SKUs in takeoff: {skus}"
+
+
+def test_only_one_underlayment_system_is_ordered():
+    # DEFECT-05: synthetic + felt are alternatives — never order both.
+    catalog = [
+        {"sku": "SYN-UND-10", "item_name": "Synthetic underlayment", "category": "underlayment",
+         "coverage_basis": "per_square", "coverage_value": 10.0, "unit_cost": 55.0, "unit": "roll", "active": True},
+        {"sku": "FELT15-4SQ", "item_name": "15# felt", "category": "underlayment",
+         "coverage_basis": "per_square", "coverage_value": 4.0, "unit_cost": 22.0, "unit": "roll", "active": True},
+    ]
+    lines = compute_material_lines(catalog, _totals())
+    unders = [l for l in lines if l.category == "underlayment"]
+    assert len(unders) == 1, f"expected one underlayment, got {[l.sku for l in unders]}"
+    assert unders[0].sku == "SYN-UND-10"   # synthetic preferred

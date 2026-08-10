@@ -54,6 +54,19 @@ def waste_factor(pct: float) -> float:
     return 1.0 + (max(0.0, float(pct)) / 100.0)
 
 
+def _enforce_underlayment_xor(items: list[dict]) -> list[dict]:
+    """DEFECT-05 guard. Synthetic underlayment and 15# felt are ALTERNATIVES,
+    not additions — ordering both double-covers the whole roof (e.g. 112 squares
+    of underlayment on a 44-square roof). Keep exactly one underlayment: prefer
+    synthetic (the modern default); otherwise the first. Everything else passes.
+    A per-contractor 'which underlayment' setting is a Phase-0+ enhancement."""
+    unders = [it for it in items if it.get("category") == "underlayment"]
+    if len(unders) <= 1:
+        return items
+    keep = next((it for it in unders if (it.get("sku") or "").upper().startswith("SYN")), unders[0])
+    return [it for it in items if it.get("category") != "underlayment" or it is keep]
+
+
 def _dedupe_catalog_by_sku(items: list[dict]) -> list[dict]:
     """DEFECT-01 guard. The catalog can contain duplicate SKU rows (a region
     price row alongside the national one, or seed duplicates). Emitting one line
@@ -378,6 +391,7 @@ def compute_material_lines(
     # double-order. Keep synthetic by default; let the catalog mark felt with
     # active=false for jobs that don't need it.
     items = _dedupe_catalog_by_sku([it for it in catalog if it.get("active", True)])
+    items = _enforce_underlayment_xor(items)   # DEFECT-05: synthetic OR felt, never both
 
     lines: list[MaterialLine] = []
     for item in items:
