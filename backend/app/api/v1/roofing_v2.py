@@ -3389,12 +3389,31 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
     except Exception as e:
         logger.info("project photos for report failed: %s", e)
 
+    # §4.4 / DEFECT-06: physical-plausibility gate. A report is never generated from
+    # impossible geometry (e.g. ridge+hip > perimeter). Warnings pass through and are
+    # surfaced in the report so a zero is never presented as reviewed fact.
+    from app.services.report_validators import validate_report_inputs, blocking
+    confirmed_pens = len(pens_res.data or [])
+    issues = validate_report_inputs(aggregates, confirmed_penetration_count=confirmed_pens)
+    blockers = blocking(issues)
+    if blockers:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Report cannot be generated — the geometry failed validation.",
+                "failures": [{"code": b.code, "message": b.message} for b in blockers],
+            },
+        )
+    report_warnings = [{"code": i.code, "message": i.message}
+                       for i in issues if i.severity == "warn"]
+
     pdf_bytes = await asyncio.to_thread(
         generate_v2_report,
         proj.data, run, aggregates, facets_res.data or [], edges,
         pens_res.data or [], material_lines, siding_res.data or [], flashing_summary,
         contractor, calibration,
         project_photos=project_photos,
+        report_warnings=report_warnings,
     )
 
     slug = (proj.data.get("name") or "project").strip().lower()

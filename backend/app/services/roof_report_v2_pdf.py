@@ -1060,6 +1060,7 @@ def generate_v2_report(
     contractor: dict | None = None,     # white-label: company_name, license_number, phone, email, logo_bytes
     calibration: dict | None = None,    # accuracy flywheel: {jobs, mean_abs_pct_error}
     project_photos: list[dict] | None = None,  # crew gallery: [{phase, caption, url}]
+    report_warnings: list[dict] | None = None,  # §4.4 non-blocking notices: [{code, message}]
 ) -> bytes:
     """Render the full report PDF and return bytes."""
     buf = io.BytesIO()
@@ -1077,6 +1078,12 @@ def generate_v2_report(
     story: list = []
     story.extend(_section_1_executive(project, run, aggregates, len(facets), styles, facets, contractor))
     story.append(Spacer(1, 12))
+    # §4.4: surface non-blocking notices so an assumed value (e.g. zero penetrations)
+    # is never presented as a reviewed fact.
+    for w in (report_warnings or []):
+        story.append(Paragraph(f"⚠ {w.get('message', '')}", styles["muted"]))
+    if report_warnings:
+        story.append(Spacer(1, 8))
     story.extend(_section_2_roof_summary(aggregates, facets, styles))
     story.append(PageBreak())
     story.extend(_section_3_roof_lines(aggregates, edges, styles))
