@@ -688,6 +688,9 @@ class FacetIn(BaseModel):
     confidence: float = 0.7
     user_confirmed: bool = False
     ai_suggested: bool = False   # true when this facet originated from AI (training provenance)
+    # Phase 1: where this facet's pitch came from. Kept so the report/editor can
+    # show a MEASURED pitch as measured, not as a guess. See _resolve_pitch.
+    pitch_source: Optional[str] = None
 
     @field_validator("polygon")
     @classmethod
@@ -739,12 +742,19 @@ async def put_facets(
         mult = geo.slope_multiplier(f.pitch)
         deg = geo.pitch_string_to_degrees(f.pitch)
         orient = geo.longest_edge_orientation_deg(f.polygon)
+        # Phase 1: never lose pitch provenance. Trust an explicit source from the
+        # client; otherwise infer — a non-default pitch that arrives without a
+        # source was set by the contractor ('manual'); the bare 6/12 is 'default'.
+        pitch_source = f.pitch_source
+        if not pitch_source:
+            pitch_source = "default" if (f.pitch or "6/12") == "6/12" else "manual"
         rows.append({
             "run_id": run_id,
             "facet_label": f.facet_label,
             "polygon": f.polygon,
             "pitch": f.pitch,
             "pitch_degrees": round(deg, 2),
+            "pitch_source": pitch_source,
             "orientation_deg": round(orient, 1) if orient is not None else None,
             "slope_direction": geo.compass_direction(orient),
             "plan_area_sqft": round(plan, 1),
@@ -1828,19 +1838,26 @@ def _expected_facets_from_shape(shape: Optional[str]) -> Optional[int]:
     return {"gable": 2, "hip": 4, "shed": 1, "flat": 1}.get((shape or "").strip().lower())
 
 
-def _resolve_pitch(solar_pitch: Optional[str], ground: Optional[dict], ai_pitch) -> tuple[str, str]:
+def _resolve_pitch(
+    solar_pitch: Optional[str], ground: Optional[dict], ai_pitch,
+    lidar_pitch: Optional[str] = None,
+) -> tuple[str, str]:
     """Pick the best pitch + its provenance, killing the silent 6/12 default.
 
     Precedence: Google Solar's MEASURED pitch (Google's own photogrammetry) >
+    USGS 3DEP LiDAR's MEASURED pitch (coverage fallback where Solar has none) >
     a confident GROUND-PHOTO read (off a gable end) > the satellite AI's
     foreshortened guess > the bare default. The AI's own '6/12' is treated as
     'default' because the detection prompt returns 6/12 precisely when it is
     UNSURE — so it must be flagged for the contractor, not trusted. Returns
-    (pitch_string, source) with source one of
-    'solar_measured' | 'ground_photo' | 'ai_satellite' | 'default'."""
+    (pitch_string, source) with source one of 'solar_measured' |
+    'lidar_measured' | 'ground_photo' | 'ai_satellite' | 'default'."""
     sp = str(solar_pitch or "").strip()
     if sp:
         return sp, "solar_measured"
+    lp = str(lidar_pitch or "").strip()
+    if lp:
+        return lp, "lidar_measured"
     if ground:
         gp = str(ground.get("roof_pitch") or "").strip()
         if gp and ground.get("pitch_confidence") in ("high", "medium"):
@@ -2406,7 +2423,23 @@ suggestions and trust your high-confidence ones.
             continue
 
         # Seed pitch from the best available source instead of blindly defaulting.
-        pitch, pitch_source = _resolve_pitch(solar_pitch, ground_findings, f.get("predicted_pitch"))
+        # LiDAR is a coverage fallback (off by default; returns None until the 3DEP
+        # point-cloud path is implemented + validated), so it only ever helps where
+        # Google Solar has no data — it never overrides a Solar-measured pitch.
+        lidar_pitch = None
+        if solar_pitch is None and s_lat is not None and s_lng is not None:
+            try:
+                from app.services.lidar_pitch import facet_pitch_from_3dep
+                res = facet_pitch_from_3dep(
+                    valid, lat=float(s_lat), lng=float(s_lng), zoom=int(s_zoom),
+                    image_width_px=2048, image_height_px=1366,
+                )
+                lidar_pitch = res[0] if res else None
+            except Exception as e:
+                logger.debug("lidar pitch lookup failed: %s", e)
+        pitch, pitch_source = _resolve_pitch(
+            solar_pitch, ground_findings, f.get("predicted_pitch"), lidar_pitch=lidar_pitch,
+        )
         cleaned.append({
             "polygon": valid,
             "confidence": geo.normalize_confidence(f.get("confidence")),

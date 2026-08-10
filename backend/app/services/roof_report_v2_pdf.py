@@ -423,6 +423,26 @@ def _section_1_executive(
     return flow
 
 
+# Phase 1: human-readable pitch provenance for the report. A MEASURED pitch reads
+# as measured; a default guess reads as one — never presented interchangeably.
+_PITCH_SOURCE_LABELS = {
+    "solar_measured": "Measured (Google Solar)",
+    "solar_direction": "Measured (Solar, direction)",
+    "lidar_measured": "Measured (USGS LiDAR)",
+    "ground_photo": "Ground photo",
+    "ai_satellite": "AI estimate",
+    "manual": "Contractor entered",
+    "default": "Default — unverified",
+}
+
+
+def _pitch_source_label(source) -> str:
+    s = str(source or "").strip()
+    if not s:
+        return "Unverified"
+    return _PITCH_SOURCE_LABELS.get(s, s)
+
+
 def _section_2_roof_summary(aggregates: dict, facets: list[dict], styles: dict) -> list:
     flow = [_section_header("Roof Summary", 2, styles)]
 
@@ -457,7 +477,7 @@ def _section_2_roof_summary(aggregates: dict, facets: list[dict], styles: dict) 
     if facets:
         flow.append(Spacer(1, 8))
         flow.append(Paragraph("Per-facet breakdown", styles["body"]))
-        fac_rows = [["Facet", "Pitch", "Direction", "Plan ft²", "True ft²", "Confidence"]]
+        fac_rows = [["Facet", "Pitch", "Pitch source", "Direction", "Plan ft²", "True ft²", "Conf."]]
         for f in facets:
             label = f.get("facet_label") or "—"
             pitch = f.get("pitch") or "—"
@@ -466,10 +486,10 @@ def _section_2_roof_summary(aggregates: dict, facets: list[dict], styles: dict) 
             true = f.get("true_area_sqft") or 0
             conf = (f.get("confidence") or 0) * 100
             fac_rows.append([
-                label, pitch, direction,
+                label, pitch, _pitch_source_label(f.get("pitch_source")), direction,
                 f"{plan:,.1f}", f"{true:,.1f}", f"{conf:.0f}%",
             ])
-        ft = Table(fac_rows, colWidths=[0.8 * inch, 1.0 * inch, 1.1 * inch, 1.2 * inch, 1.2 * inch, 1.0 * inch])
+        ft = Table(fac_rows, colWidths=[0.6 * inch, 0.8 * inch, 1.5 * inch, 0.9 * inch, 1.0 * inch, 1.0 * inch, 0.6 * inch])
         ft.setStyle(_table_style(header_color=ACCENT))
         flow.append(ft)
     return flow
