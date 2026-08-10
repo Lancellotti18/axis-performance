@@ -356,6 +356,45 @@ def compute_facet_geometry(
     }
 
 
+def edge_totals_by_type(edges: list) -> dict:
+    """Roof-line totals (slope-adjusted lf) by edge type from stored edge rows,
+    de-duplicating shared edges by GEOMETRY rather than label (DEFECT-02/03).
+
+    A shared boundary (ridge/hip/valley) is stored once per adjacent facet, and
+    the AI may also leave an UNCONFIRMED suggestion of a *different* type on the
+    same boundary (a phantom 'ridge 19.6, No' over a confirmed 'hip 19.6, Yes').
+    Keying by (facet-pair, length) — never by type — collapses both the per-facet
+    duplicate and the phantom mislabel into ONE edge, counted under the CONFIRMED
+    label when one exists. Two genuinely different shared edges between the same
+    pair have different lengths, so they survive. This is what makes
+    ridge ≤ perimeter hold, and gives every report section one identical total.
+
+    Each edge row is a dict: {edge_type, slope_adjusted_ft, facet_id,
+    shared_with_facet, user_confirmed}.
+    """
+    totals: dict = {"eave": 0.0, "rake": 0.0, "ridge": 0.0, "hip": 0.0,
+                    "valley": 0.0, "gable_end": 0.0, "wall_intersection": 0.0}
+    shared_groups: dict = {}   # (facet_a, facet_b, len_1dp) -> chosen edge
+    for e in edges:
+        t = e.get("edge_type") or "unlabeled"
+        if t == "unlabeled":
+            continue
+        if e.get("shared_with_facet") and t in ("ridge", "hip", "valley"):
+            a, b = e["facet_id"], e["shared_with_facet"]
+            length = round(float(e.get("slope_adjusted_ft") or 0), 1)
+            key = (min(a, b), max(a, b), length)
+            cur = shared_groups.get(key)
+            if cur is None or (e.get("user_confirmed") and not cur.get("user_confirmed")):
+                shared_groups[key] = e
+        elif t in totals:
+            totals[t] += float(e.get("slope_adjusted_ft") or 0)
+    for e in shared_groups.values():
+        t = e.get("edge_type")
+        if t in totals:
+            totals[t] += float(e.get("slope_adjusted_ft") or 0)
+    return totals
+
+
 def aggregate_edges_by_type(edges: Iterable[EdgeMeasure]) -> dict[EdgeType, dict[str, float]]:
     """
     Sum (plan_length_ft, slope_adjusted_ft) by edge_type across a list of

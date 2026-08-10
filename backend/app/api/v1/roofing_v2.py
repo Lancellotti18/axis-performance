@@ -940,28 +940,9 @@ def _aggregate_run(run_id: str) -> dict:
     total_true = round(sum((f.get("true_area_sqft") or 0) for f in facets), 1)
     squares = round(total_true / 100.0, 2) if total_true > 0 else 0
 
-    # Edge totals — de-duplicate shared edges.
-    # Strategy: for shared edges (ridge, hip, valley), each shared pair appears
-    # twice (once per facet). We hash by an unordered (facet_id, shared_with) pair
-    # AND edge_type to count each shared edge exactly once.
-    seen_shared: set[tuple[str, str, str]] = set()
-    totals_by_type: dict[str, float] = {
-        "eave": 0.0, "rake": 0.0, "ridge": 0.0, "hip": 0.0, "valley": 0.0,
-        "gable_end": 0.0, "wall_intersection": 0.0,
-    }
-    for e in edges:
-        t = e.get("edge_type") or "unlabeled"
-        if t == "unlabeled":
-            continue
-        slope = float(e.get("slope_adjusted_ft") or 0)
-        if e.get("shared_with_facet") and t in ("ridge", "hip", "valley"):
-            a, b = e["facet_id"], e["shared_with_facet"]
-            key = (min(a, b), max(a, b), t)
-            if key in seen_shared:
-                continue
-            seen_shared.add(key)
-        if t in totals_by_type:
-            totals_by_type[t] += slope
+    # Single source of truth for edge totals — one geometry-deduped computation
+    # every report section reads from (DEFECT-02/03).
+    totals_by_type = geo.edge_totals_by_type(edges)
 
     eaves_ft = round(totals_by_type["eave"], 1)
     rakes_ft = round(totals_by_type["rake"], 1)
