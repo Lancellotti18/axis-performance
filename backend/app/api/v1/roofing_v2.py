@@ -3081,9 +3081,11 @@ async def get_run_materials(
             detail="Run has no computed totals yet — call /recompute after adding facets+edges.",
         )
 
-    # Project region for pricing
-    proj = db.table("projects").select("region").eq("id", run.data["project_id"]).single().execute()
+    # Project region for pricing + state/county for the regional ice & water rule
+    proj = db.table("projects").select("*").eq("id", run.data["project_id"]).single().execute()
     region = (proj.data or {}).get("region")
+    proj_state = (proj.data or {}).get("state")
+    proj_county = (proj.data or {}).get("county")
 
     catalog_q = db.table("materials_catalog").select("*").eq("active", True).execute()
     my_prices = _apply_price_book(db, catalog_q.data or [], user["id"])
@@ -3118,7 +3120,10 @@ async def get_run_materials(
     )
     penetrations = PenetrationSummary.from_rows(pen_rows)
 
-    lines = compute_material_lines(catalog, totals, penetrations, default_waste_pct=waste_pct)
+    lines = compute_material_lines(
+        catalog, totals, penetrations, default_waste_pct=waste_pct,
+        state=proj_state, county=proj_county,
+    )
     # Append priced flashing line items (quantities from the flashing engine).
     try:
         from app.services.flashing_engine import build_input_from_rows, compute_flashing
@@ -3312,7 +3317,10 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
     )
     pens = PenetrationSummary.from_rows(pens_res.data or [])
     default_waste = int(run.get("waste_pct_default") or aggregates["waste_pct_default"])
-    material_lines = compute_material_lines(catalog, totals, pens, default_waste_pct=default_waste)
+    material_lines = compute_material_lines(
+        catalog, totals, pens, default_waste_pct=default_waste,
+        state=proj.data.get("state"), county=proj.data.get("county"),
+    )
 
     siding_res = db.table("manual_siding_measurements").select("*").eq("project_id", run["project_id"]).execute()
 

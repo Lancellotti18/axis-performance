@@ -188,6 +188,7 @@ def _base_quantity_for(
     totals: RoofTotals,
     penetrations: PenetrationSummary,
     item_category: str,
+    ice_water_policy=None,
 ) -> tuple[float, str]:
     """
     Return (base_quantity, trace_string) for a single catalog item BEFORE
@@ -236,7 +237,16 @@ def _base_quantity_for(
         return qty, f"{lf:.1f} valley lf ÷ {cov:g} lf/roll = {qty:.2f}"
 
     if coverage_basis == "per_eave_iwshield":
-        # Code-standard ice & water: 3 ft past wall at eaves + 3 ft each side of valleys
+        # DEFECT-07: ice & water coverage is regional. The policy (from
+        # ice_water_rules.policy_for) decides how many eave courses and whether
+        # valleys are covered — warm climates get valleys only, cold climates get
+        # eave-to-24"-past-wall. Falls back to the mixed-climate (1 course +
+        # valleys) rule when no region is supplied, matching the prior behavior.
+        if ice_water_policy is not None:
+            from app.services.ice_water_rules import ice_water_area_sqft
+            sf, trace = ice_water_area_sqft(totals.eaves_ft, totals.valleys_ft, ice_water_policy)
+            qty = sf / cov
+            return qty, f"{trace} ÷ {cov:g} = {qty:.2f}"
         sf = (totals.eaves_ft * 3.0) + (totals.valleys_ft * 6.0)
         qty = sf / cov
         return qty, f"({totals.eaves_ft:.1f}×3 eave + {totals.valleys_ft:.1f}×6 valley) = {sf:.1f} sf ÷ {cov:g} = {qty:.2f}"
@@ -368,6 +378,8 @@ def compute_material_lines(
     penetrations: PenetrationSummary | None = None,
     *,
     default_waste_pct: int = 12,
+    state: str | None = None,
+    county: str | None = None,
 ) -> list[MaterialLine]:
     """
     Generate the full material ordering list.
@@ -385,6 +397,10 @@ def compute_material_lines(
     penetrations = penetrations or PenetrationSummary()
     if default_waste_pct not in STANDARD_WASTE_PCTS:
         default_waste_pct = 12
+
+    # DEFECT-07: resolve the regional ice & water policy once per takeoff.
+    from app.services.ice_water_rules import policy_for
+    ice_water_policy = policy_for(state, county)
 
     # Optional rows we filter out: roofing felt is an alternative to synthetic
     # underlayment. If we shipped both at full quantity the contractor would
@@ -409,6 +425,7 @@ def compute_material_lines(
 
         base_qty, trace = _base_quantity_for(
             coverage_basis, coverage_value, totals, penetrations, category,
+            ice_water_policy=ice_water_policy,
         )
         if base_qty <= 0:
             continue
