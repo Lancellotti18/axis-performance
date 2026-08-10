@@ -1152,6 +1152,7 @@ export const api = {
           facet_label: string
           polygon: [number, number][]
           pitch: string
+          pitch_source?: string
           confidence?: number
           user_confirmed?: boolean
           ai_suggested?: boolean

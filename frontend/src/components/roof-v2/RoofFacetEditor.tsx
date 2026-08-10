@@ -41,6 +41,7 @@ export interface Facet {
   label: string                  // 'A', 'B', etc.
   polygon: Pt[]                   // closed ring, do NOT repeat first vertex
   pitch: string                   // 'X/12'
+  pitchSource?: string            // provenance: solar_measured | lidar_measured | ... | manual | default
   confidence: number              // 0..1
   userConfirmed: boolean
   aiSuggested?: boolean           // true if it originated from AI (training provenance)
@@ -70,6 +71,21 @@ interface Props {
 }
 
 const PITCH_OPTIONS = ['2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '9/12', '10/12', '12/12']
+
+// Phase 1: label + color for a facet's pitch provenance, so a MEASURED pitch reads
+// green (trusted) and the bare default reads amber (needs a look). Mirrors the
+// labels FacetSuggestions uses and the report's _pitch_source_label.
+function pitchSourceMeta(src?: string): { label: string; color: string } {
+  switch (src) {
+    case 'solar_measured': return { label: '📐 measured (Solar)', color: 'text-emerald-400' }
+    case 'solar_direction': return { label: '📐 measured (Solar dir.)', color: 'text-emerald-400' }
+    case 'lidar_measured': return { label: '📐 measured (LiDAR)', color: 'text-emerald-400' }
+    case 'ground_photo': return { label: '📷 ground photo', color: 'text-sky-400' }
+    case 'ai_satellite': return { label: '🛰 AI estimate', color: 'text-amber-400' }
+    case 'manual': return { label: '✎ you set this', color: 'text-slate-300' }
+    default: return { label: '⚠ default — verify', color: 'text-amber-400' }
+  }
+}
 
 const EDGE_COLORS: Record<EdgeType, string> = {
   eave: '#fb923c',
@@ -642,6 +658,7 @@ export function RoofFacetEditor({
       label,
       polygon: drawingPoly,
       pitch: '6/12',
+      pitchSource: 'default',   // hand-drawn facet starts on the unverified default
       confidence: 0.8,
       userConfirmed: true,
     }
@@ -730,7 +747,9 @@ export function RoofFacetEditor({
 
   // ---- Facet pitch / delete ----
   const setFacetPitch = useCallback((facetIdx: number, pitch: string) => {
-    setFacets(prev => prev.map((f, i) => (i === facetIdx ? { ...f, pitch } : f)))
+    // A contractor-typed pitch is provenance 'manual' — it overrides any prior
+    // measured/default source so the report shows who set the value.
+    setFacets(prev => prev.map((f, i) => (i === facetIdx ? { ...f, pitch, pitchSource: 'manual' } : f)))
   }, [])
 
   const deleteFacet = useCallback((facetIdx: number) => {
@@ -1303,6 +1322,10 @@ export function RoofFacetEditor({
                     >
                       {PITCH_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
+                    {(() => {
+                      const m = pitchSourceMeta(f.pitchSource)
+                      return <span className={`text-[11px] ${m.color}`} title="Where this pitch came from">{m.label}</span>
+                    })()}
                   </div>
                   <div className="text-xs text-slate-500">
                     {f.polygon.length} vertices · {labeled}/{facetEdges.length} edges labeled

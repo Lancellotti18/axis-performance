@@ -161,6 +161,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
       label: nextLabel(existingFacets, idx),
       polygon: await refinePolygon(s.polygon),
       pitch: s.predicted_pitch || '6/12',
+      pitchSource: s.pitch_source,   // keep measured provenance (Solar/LiDAR) on accept
       confidence: 0.7,
       userConfirmed: true,
       aiSuggested: true,   // AI-origin → captured as 'ai_corrected' training data
@@ -192,6 +193,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
         label: nextLabel(existingFacets, i),
         polygon: await refinePolygon(s.polygon),
         pitch: s.predicted_pitch || '6/12',
+        pitchSource: s.pitch_source,
         confidence: 0.7,
         userConfirmed: true,
         aiSuggested: true,
