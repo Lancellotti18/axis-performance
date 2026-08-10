@@ -54,6 +54,24 @@ def waste_factor(pct: float) -> float:
     return 1.0 + (max(0.0, float(pct)) / 100.0)
 
 
+def _dedupe_catalog_by_sku(items: list[dict]) -> list[dict]:
+    """DEFECT-01 guard. The catalog can contain duplicate SKU rows (a region
+    price row alongside the national one, or seed duplicates). Emitting one line
+    per row double-orders every material and roughly doubles the grand total —
+    a real financial-loss bug. Keep exactly one row per SKU (first wins). Rows
+    without a SKU pass through (nothing to key on)."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    for it in items:
+        sku = (it.get("sku") or "").strip()
+        if sku:
+            if sku in seen:
+                continue
+            seen.add(sku)
+        out.append(it)
+    return out
+
+
 # ----------------------------------------------------------------------------
 # Input struct
 # ----------------------------------------------------------------------------
@@ -286,9 +304,7 @@ def compute_flashing_material_lines(
         default_waste_pct = 12
     totals = flashing.get("totals") or {}
     lines: list[MaterialLine] = []
-    for item in catalog:
-        if not item.get("active", True):
-            continue
+    for item in _dedupe_catalog_by_sku([it for it in catalog if it.get("active", True)]):
         cat = item.get("category")
         spec = _FLASHING_QTY_SOURCE.get(cat)
         if not spec:
@@ -361,7 +377,7 @@ def compute_material_lines(
     # underlayment. If we shipped both at full quantity the contractor would
     # double-order. Keep synthetic by default; let the catalog mark felt with
     # active=false for jobs that don't need it.
-    items = [it for it in catalog if it.get("active", True)]
+    items = _dedupe_catalog_by_sku([it for it in catalog if it.get("active", True)])
 
     lines: list[MaterialLine] = []
     for item in items:

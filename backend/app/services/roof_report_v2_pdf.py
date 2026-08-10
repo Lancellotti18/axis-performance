@@ -888,17 +888,12 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
         for w in run.get("warnings") or []:
             flow.append(Paragraph(f"• {w}", styles["muted"]))
 
-    # Accuracy flywheel: real calibration from field-verified jobs. Only shown
-    # once there's enough data to be meaningful — never a made-up number.
-    if calibration and int(calibration.get("jobs") or 0) >= 3:
-        err = float(calibration.get("mean_abs_pct_error") or 0)
-        flow.append(Spacer(1, 6))
-        flow.append(Paragraph(
-            f"<b>Verified accuracy:</b> across {int(calibration['jobs'])} field-verified "
-            f"jobs, Axis roof-area measurements averaged within {err:.1f}% of the "
-            "crew's actual measurements.",
-            styles["body"],
-        ))
+    # DEFECT-08: the old "verified accuracy: within X% across N jobs" line is
+    # removed. At n=3 it was statistically meaningless and, at 41.7%, actively
+    # advertised a huge possible error. Per Phase 4 / rule #5, Axis makes NO
+    # published accuracy claim until the validation set exists (50+ field-verified
+    # jobs, reporting mean absolute % error AND 90th-percentile error stratified by
+    # complexity band). That section will be reintroduced here in Phase 4.
 
     flow.append(Spacer(1, 8))
     flow.append(Paragraph(
