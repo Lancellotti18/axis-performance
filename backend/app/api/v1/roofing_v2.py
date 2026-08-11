@@ -3195,6 +3195,77 @@ async def get_run_materials(
     }
 
 
+@router.get("/runs/{run_id}/adjuster-estimate")
+async def get_adjuster_estimate(
+    run_id: str,
+    waste_pct: float = Query(15.0, ge=0, le=50),
+    depreciation_pct: Optional[float] = Query(None, ge=0, le=100),
+    deductible: Optional[float] = Query(None, ge=0),
+    recoverable: bool = Query(True),
+    include_tearoff: bool = Query(True),
+    underlayment: str = Query("synthetic"),
+    user: dict = Depends(require_user),
+) -> dict:
+    """Adjuster Mode: the Xactimate-style quantity survey (line code + unit +
+    quantity) derived straight from the confirmed geometry, plus an RCV/ACV claim
+    summary when the caller supplies depreciation/deductible.
+
+    Quantities are always returned. Unit PRICES are the adjuster's Xactimate price
+    list (regional, labor-inclusive), so pricing is left to them — RCV is computed
+    only over lines the caller prices, and nothing is fabricated."""
+    require_owned_run(get_supabase(), run_id, user)
+    db = get_supabase()
+    run = db.table("roof_measurement_runs").select("*").eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    if not run.data.get("total_roof_sqft"):
+        raise HTTPException(status_code=422, detail="Run has no computed totals yet — call /recompute first.")
+
+    aggregates = _aggregate_run(run_id)
+    pen_rows = (db.table("roof_penetrations").select("*")
+                .eq("run_id", run_id).eq("user_confirmed", True).execute().data or [])
+    totals = RoofTotals(
+        total_roof_sqft=float(aggregates["total_roof_sqft"] or 0),
+        squares=float(aggregates["squares"] or 0),
+        eaves_ft=float(aggregates["eaves_ft"] or 0),
+        rakes_ft=float(aggregates["rakes_ft"] or 0),
+        ridges_ft=float(aggregates["ridges_ft"] or 0),
+        hips_ft=float(aggregates["hips_ft"] or 0),
+        valleys_ft=float(aggregates["valleys_ft"] or 0),
+        wall_intersection_ft=float(aggregates.get("wall_intersection_ft") or 0),
+        stories=int(run.data.get("stories") or 1),
+        pitch=str(aggregates["predominant_pitch"] or "6/12"),
+    )
+    pens = PenetrationSummary.from_rows(pen_rows)
+
+    from app.services.xactimate_estimate import (
+        build_adjuster_lines, summarize_claim,
+    )
+    lines = build_adjuster_lines(
+        totals, pens, waste_pct=waste_pct,
+        include_tearoff=include_tearoff, underlayment=underlayment,
+    )
+    # Pricing is deliberately not auto-filled from the material catalog (that's
+    # material-only cost, not a labor-inclusive Xactimate unit price). The summary
+    # will note that lines are unpriced until the adjuster applies their price list.
+    summary = summarize_claim(
+        lines, depreciation_pct=depreciation_pct,
+        deductible=deductible, recoverable=recoverable,
+    )
+    return {
+        "run_id": run_id,
+        "waste_pct": waste_pct,
+        "lines": [l.to_dict() for l in lines],
+        "claim_summary": summary.to_dict(),
+        "disclaimer": (
+            "Quantities are measured from the confirmed roof geometry. Line codes "
+            "follow the standard RFG category and should be verified against your "
+            "active Xactimate price list. Unit pricing, depreciation, and deductible "
+            "are provided by the adjuster."
+        ),
+    }
+
+
 # ----------------------------------------------------------------------------
 # Report
 # ----------------------------------------------------------------------------
