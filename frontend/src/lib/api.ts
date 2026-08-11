@@ -1496,6 +1496,46 @@ export const api = {
           totals_input: Record<string, number | string>
           penetrations_confirmed: Array<Record<string, unknown>>
         }>(`/api/v1/roofing/v2/runs/${runId}/materials?waste_pct=${wastePct}`),
+      getAdjusterEstimate: (
+        runId: string,
+        opts?: { wastePct?: number; depreciationPct?: number; deductible?: number; recoverable?: boolean; includeTearoff?: boolean; underlayment?: string },
+      ) => {
+        const q = new URLSearchParams()
+        if (opts?.wastePct != null) q.set('waste_pct', String(opts.wastePct))
+        if (opts?.depreciationPct != null) q.set('depreciation_pct', String(opts.depreciationPct))
+        if (opts?.deductible != null) q.set('deductible', String(opts.deductible))
+        if (opts?.recoverable != null) q.set('recoverable', String(opts.recoverable))
+        if (opts?.includeTearoff != null) q.set('include_tearoff', String(opts.includeTearoff))
+        if (opts?.underlayment) q.set('underlayment', opts.underlayment)
+        const qs = q.toString()
+        return apiRequest<{
+          run_id: string
+          waste_pct: number
+          lines: Array<{
+            code: string
+            description: string
+            unit: string
+            quantity: number
+            category: string
+            trace: string
+            unit_price: number | null
+            rcv: number | null
+          }>
+          claim_summary: {
+            rcv: number | null
+            depreciation_pct: number | null
+            depreciation_amount: number | null
+            acv: number | null
+            deductible: number | null
+            net_claim: number | null
+            recoverable_depreciation: number | null
+            priced_line_count: number
+            unpriced_line_count: number
+            notes: string[]
+          }
+          disclaimer: string
+        }>(`/api/v1/roofing/v2/runs/${runId}/adjuster-estimate${qs ? `?${qs}` : ''}`)
+      },
       downloadReport: async (runId: string) => {
         const session = await getCachedSession()
         const token = session?.access_token

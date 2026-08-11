@@ -31,6 +31,7 @@ import GroundPhotoPanel from '@/components/roof-v2/GroundPhotoPanel'
 import CollapsibleSection from '@/components/roof-v2/CollapsibleSection'
 import JobVerificationPanel from '@/components/roof-v2/JobVerificationPanel'
 import ProposalPanel from '@/components/roof-v2/ProposalPanel'
+import AdjusterModePanel from '@/components/roof-v2/AdjusterModePanel'
 import ClientPortalPanel from '@/components/roof-v2/ClientPortalPanel'
 import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
@@ -928,6 +929,9 @@ export default function RoofV2Page() {
 
           {/* Good/Better/Best proposal — the last mile from measurement to signed job */}
           <ProposalPanel runId={runId} projectId={projectId} />
+
+          {/* Adjuster Mode — Xactimate line codes + RCV/ACV claim summary */}
+          <AdjusterModePanel runId={runId} />
 
           {/* Homeowner portal — one link with live status, proposal, report, photos */}
           {projectId && <ClientPortalPanel projectId={projectId} />}
