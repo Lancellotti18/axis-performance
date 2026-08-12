@@ -26,6 +26,18 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Home swap (temporary): serve the cinematic scroll-reel landing (public/home.html)
+  // at "/". beforeFiles runs ahead of filesystem routing so it wins over the old
+  // React landing at app/page.tsx, which stays in place so this is a one-line revert.
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: "/", destination: "/home.html" },
+      ],
+      afterFiles: [],
+      fallback: [],
+    };
+  },
 };
 
 export default nextConfig;
