@@ -38,7 +38,19 @@
   .topbar .nav{pointer-events:auto;appearance:none;border:1px solid rgba(180,205,235,.28);background:rgba(120,175,255,.10);color:#EAF2FB;
     font-family:var(--sans);font-weight:600;font-size:12.5px;letter-spacing:.02em;padding:9px 18px;border-radius:999px;cursor:pointer;transition:background .3s,border-color .3s}
   .topbar .nav:hover{background:rgba(120,175,255,.2);border-color:rgba(180,205,235,.5)}
-  @media (max-width:620px){ .topbar .tag{display:none} .topbar .nav{display:none} }
+  /* auth actions sit together at the right of the bar */
+  .topbar .actions{display:flex;align-items:center;gap:10px;pointer-events:auto}
+  .topbar a.nav{text-decoration:none;display:inline-block}
+  /* secondary (Log in) reads quieter than the primary Get Started */
+  .topbar .nav.ghost{background:transparent;border-color:rgba(180,205,235,.22);color:#C8DAF0}
+  .topbar .nav.ghost:hover{background:rgba(120,175,255,.10);border-color:rgba(180,205,235,.45);color:#EAF2FB}
+  /* Previously the whole nav was hidden under 620px, which left NO way to sign
+     in on a phone. Keep the auth buttons, just tighten them. */
+  @media (max-width:620px){
+    .topbar .tag{display:none}
+    .topbar .actions{gap:7px}
+    .topbar .nav{font-size:11.5px;padding:7px 12px}
+  }
 
   /* ---- cinematic ---- */
   .film{position:relative;height:560vh}
@@ -126,7 +138,10 @@
     <svg class="mk" viewBox="0 0 32 32"><path class="a" d="M4 21 L16 7 L28 21"/><path class="b" d="M9 21 L16 12.5 L23 21"/></svg>
     <span class="tx">AXIS</span><span class="tag">PERFORMANCE</span>
   </div>
-  <button class="nav" id="navCta">Get Started</button>
+  <div class="actions">
+    <a class="nav ghost" href="/login">Log in</a>
+    <a class="nav" href="/register">Get Started</a>
+  </div>
 </header>
 
 <div class="film" id="top">
@@ -297,7 +312,13 @@
 
   const toPlatform=()=>document.getElementById('platform').scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'});
   document.getElementById('replay').addEventListener('click',()=>document.getElementById('top').scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'}));
-  ['getStarted','getStarted2','navCta'].forEach(id=>document.getElementById(id).addEventListener('click',toPlatform));
+  // navCta is now a real <a href="/register"> in the topbar, so it is no longer
+  // in this list. Guard against missing ids anyway: this runs inside one IIFE,
+  // and a null here would throw and take the whole scroll reel down with it.
+  ['getStarted','getStarted2'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.addEventListener('click',toPlatform);
+  });
 })();
 </script>
 </body>
