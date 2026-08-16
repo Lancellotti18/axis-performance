@@ -24,6 +24,71 @@ function StaggeredRender({ src, label, totalSqft }: { src: string; label: string
   return <RenderViewer src={src} label={label} totalSqft={totalSqft} />
 }
 
+/**
+ * The top of a roofing project: the satellite view the roof was measured from,
+ * with the Visualizer's before/after beside it.
+ *
+ * The render used to be the hero on its own. It's the most flattering image in
+ * the app but the least informative — it can't tell you which house this is or
+ * whether anything has been measured, and shown without a "before" it isn't
+ * even a good sales asset. The satellite leads; the pair sits alongside and
+ * collapses gracefully when a project only has one of them.
+ */
+function ProjectHero({
+  satelliteUrl, beforeUrl, afterUrl, measured, cardStyle,
+}: {
+  satelliteUrl: string | null
+  beforeUrl: string | null
+  afterUrl: string | null
+  measured: boolean
+  cardStyle: React.CSSProperties
+}) {
+  const hasPair = !!afterUrl
+  if (!satelliteUrl && !hasPair) return null
+
+  return (
+    <div className={`grid gap-5 ${satelliteUrl && hasPair ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
+      {satelliteUrl && (
+        <figure className="overflow-hidden rounded-2xl bg-white/[0.04]" style={cardStyle}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={satelliteUrl} alt="Top-down satellite view of the property"
+            className="h-[280px] w-full object-cover" />
+          <figcaption className="flex items-center justify-between gap-2 px-4 py-2.5 text-xs">
+            <span className="font-semibold text-slate-200">Satellite view</span>
+            <span className={measured ? 'text-emerald-300' : 'text-slate-400'}>
+              {measured ? 'Measured from this tile ✓' : 'Not measured yet'}
+            </span>
+          </figcaption>
+        </figure>
+      )}
+
+      {hasPair && (
+        <figure className="overflow-hidden rounded-2xl bg-white/[0.04]" style={cardStyle}>
+          <div className={`grid ${beforeUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-px bg-white/10`}>
+            {beforeUrl && (
+              <div className="relative bg-slate-900">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={beforeUrl} alt="The home before" className="h-[280px] w-full object-cover" />
+                <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Before</span>
+              </div>
+            )}
+            <div className="relative bg-slate-900">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={afterUrl!} alt="Roof visualization" className="h-[280px] w-full object-cover" />
+              <span className="absolute left-2 top-2 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">After</span>
+            </div>
+          </div>
+          <figcaption className="px-4 py-2.5 text-xs text-slate-400">
+            {beforeUrl
+              ? 'Roof Visualizer — saved to this project’s report'
+              : 'Roof Visualizer render — re-run the Visualizer to save a “before” alongside it'}
+          </figcaption>
+        </figure>
+      )}
+    </div>
+  )
+}
+
 type Tab = 'overview' | 'materials' | 'cost' | 'view3d' | 'compliance' | 'permits' | 'roofing' | 'photos'
 type SortMode = 'lowest_price' | 'best_value'
 
@@ -146,6 +211,8 @@ export default function ProjectPage() {
   // Roofing projects (no blueprint) — surface the saved measurement + report.
   const [roofRunId, setRoofRunId] = useState<string | null>(null)
   const [roofFacetCount, setRoofFacetCount] = useState<number | null>(null)
+  const [roofSatelliteUrl, setRoofSatelliteUrl] = useState<string | null>(null)
+  const [beforePhotoUrl, setBeforePhotoUrl] = useState<string | null>(null)
   const [openingReport, setOpeningReport] = useState(false)
   // 3D Model
   // scene3d state removed — floor plan viewer removed
@@ -228,11 +295,31 @@ export default function ProjectPage() {
       setRoofRunId(run_id)
       try {
         const r = await api.roofing.v2.getRun(run_id)
-        if (!cancelled) setRoofFacetCount(Array.isArray(r.facets) ? r.facets.length : 0)
+        if (cancelled) return
+        setRoofFacetCount(Array.isArray(r.facets) ? r.facets.length : 0)
+        // The top-down tile this roof was measured on — the overview's primary
+        // image. It's the view that actually identifies the property.
+        const run = (r.run || {}) as Record<string, unknown>
+        setRoofSatelliteUrl((run.satellite_image_url as string) || null)
       } catch { /* run summary is best-effort */ }
     }).catch(() => {})
     return () => { cancelled = true }
   }, [project, projectId])
+
+  // The "before" photo the Roof Visualizer saved alongside its render, so the
+  // overview can show the pair rather than an after with nothing to compare to.
+  useEffect(() => {
+    if (!project?.hero_render_url) return
+    let cancelled = false
+    api.projectPhotos.list(projectId)
+      .then(({ photos }) => {
+        if (cancelled) return
+        const before = photos.find(p => p.phase === 'before' && p.url)
+        if (before?.url) setBeforePhotoUrl(before.url)
+      })
+      .catch(() => { /* the pair is a nicety — the render still shows alone */ })
+    return () => { cancelled = true }
+  }, [project?.hero_render_url, projectId])
 
   async function openRoofReport() {
     if (!roofRunId) return
@@ -735,14 +822,17 @@ Thank you for your time.`
       {!hasBlueprint ? (
         <div className="flex-1 overflow-y-auto p-6">
           <div className="mx-auto max-w-4xl space-y-5">
-            {/* Saved Roof Visualizer render — the hero shot */}
-            {project?.hero_render_url && (
-              <div className="overflow-hidden rounded-2xl bg-white/[0.04]" style={cardStyle}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={project.hero_render_url} alt="Roof visualization" className="w-full object-cover" style={{ maxHeight: 340 }} />
-                <div className="px-4 py-2.5 text-xs text-slate-400">Roof Visualizer preview — saved to this project&apos;s report</div>
-              </div>
-            )}
+            {/* The property, top-down, as the primary view — it's what identifies
+                the job and what the measurements were taken from. The Visualizer
+                render is a sales asset and sits beside it, paired with the before
+                so the comparison is the thing you actually look at. */}
+            <ProjectHero
+              satelliteUrl={roofSatelliteUrl}
+              beforeUrl={beforePhotoUrl}
+              afterUrl={project?.hero_render_url || null}
+              measured={!!roofRunId}
+              cardStyle={cardStyle}
+            />
 
             <div className="grid gap-5 md:grid-cols-2">
               {/* Project details */}

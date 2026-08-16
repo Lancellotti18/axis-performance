@@ -84,7 +84,9 @@ const STEP_LABELS: Record<Step, string> = {
   imagery: 'Locate roof',
   editor: 'Measure roof',
   details: 'Details & flashing',
-  siding: 'Siding',
+  // Everything that needs somebody standing at the property, gathered in one
+  // optional stop rather than sprinkled through the desk workflow.
+  siding: 'On-site extras',
   report: 'Report',
 }
 
@@ -547,9 +549,11 @@ export default function RoofV2Page() {
       {/* Stepper — sticky so it stays visible while scrolling the editor.
           Completed steps (before the current one) show a checkmark. */}
       {(() => {
-        // 'siding' intentionally omitted — off-mission for a pure roofer.
-        // The step block + tool remain in the code; drop it back in here to re-enable.
-        const order: Step[] = ['project', 'location', 'imagery', 'editor', 'details', 'report']
+        // 'siding' is the optional on-site stop (ground photos + siding). It sits
+        // AFTER the report is reachable, because the whole promise of the product
+        // is a finished report without going to the property — anything needing a
+        // site visit is an add-on, never a step you have to pass through.
+        const order: Step[] = ['project', 'location', 'imagery', 'editor', 'details', 'report', 'siding']
         const currentIdx = order.indexOf(step)
         return (
           <nav className="sticky top-0 z-20 -mx-6 flex flex-wrap items-center gap-1.5 border-b border-white/10 bg-slate-950/85 px-6 py-2 text-xs backdrop-blur">
@@ -560,7 +564,7 @@ export default function RoofV2Page() {
                 (s === 'imagery' && !!location) ||
                 (s === 'editor' && !!imagery && imagery.status !== 'unavailable') ||
                 (s === 'details' && !!runId && facets.length > 0) ||
-                (s === 'siding' && !!runId) ||
+                (s === 'siding' && (!!runId || !!projectId)) ||
                 (s === 'report' && !!runId && facets.length > 0)
               const completed = reached && i < currentIdx
               return (
@@ -911,26 +915,19 @@ export default function RoofV2Page() {
             and compute flashing. Optional but recommended; everything here lands in your report.
           </div>
 
-          <CollapsibleSection
-            title="Ground-photo intelligence"
-            subtitle="A few phone photos read pitch, chimneys/skylights, dormers, roof shape & materials — then apply the measured pitch to your drawn facets."
-            badge="pitch + features"
-            defaultOpen
-          >
-          <GroundPhotoPanel
-            runId={runId}
-            onApplyPitch={(pitch) => {
-              if (facets.length === 0) return false
-              const updated = facets.map(f => ({ ...f, pitch }))
-              setFacets(updated)
-              setGeometryStamp(s => s + 1)
-              setEditorSyncRev(r => r + 1)
-              void persistGeometry(updated, edges)
-              return true
-            }}
-            onChimneyAdded={() => setGeometryStamp(s => s + 1)}
-          />
-          </CollapsibleSection>
+          {/* Ground-photo intelligence used to sit here, in the middle of the
+              desk workflow, which implied you needed to be at the house to
+              finish — the opposite of the product's promise. It now lives in
+              the optional on-site section with the siding tool. */}
+          <div className="rounded-lg border border-white/10 bg-slate-900/50 p-3 text-xs text-slate-300">
+            <strong className="text-slate-100">Standing at the property?</strong>{' '}
+            A few phone photos can read the real pitch, chimneys, skylights and materials — and you can
+            measure siding while you&apos;re there. Everything on this page works without it.
+            <button
+              onClick={() => setStep('siding')}
+              className="ml-2 underline hover:text-white"
+            >Open on-site extras →</button>
+          </div>
 
           <CollapsibleSection
             title="Penetrations"
@@ -977,24 +974,61 @@ export default function RoofV2Page() {
         </section>
       )}
 
-      {/* SIDING step */}
-      {step === 'siding' && projectId && (
+      {/* ON-SITE EXTRAS — the one place that assumes somebody is at the house.
+          Kept deliberately separate from the measure → report path: the report
+          is complete without any of it, and these two tools are the only things
+          that need a site visit, so they belong together and nowhere else. */}
+      {step === 'siding' && (
         <section className="space-y-4">
-          <div className="rounded-lg border border-white/10 bg-slate-900/50 p-3 text-xs text-slate-300">
-            <span className="mr-2 rounded-full bg-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-200">Optional</span>
-            <strong>Siding</strong> measures exterior wall square footage from elevation photos — for
-            quoting <strong>siding replacement, house-wrap, or exterior paint</strong>, or insurance/exterior
-            scopes. Skip it if this job is roof-only.
+          <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/[0.06] p-3 text-xs text-emerald-100/90">
+            <span className="mr-2 rounded-full bg-emerald-600/80 px-2 py-0.5 text-[10px] font-semibold text-white">Optional — needs a site visit</span>
+            Your report is already complete without this. If you happen to be at the property, these two
+            tools sharpen it: ground photos confirm the <strong>real pitch</strong> and catch penetrations the
+            satellite can&apos;t see, and the siding tool measures exterior wall area for
+            siding, house-wrap, or paint scopes.
             <button
               onClick={() => setStep('report')}
               className="ml-2 underline hover:text-white"
-            >Skip to report →</button>
+            >Back to report →</button>
           </div>
-          <SidingMeasurementTool projectId={projectId} />
+
+          {runId && (
+            <CollapsibleSection
+              title="Ground-photo intelligence"
+              subtitle="A few phone photos read pitch, chimneys/skylights, dormers, roof shape & materials — then apply the measured pitch to your drawn facets."
+              badge="pitch + features"
+              defaultOpen
+            >
+              <GroundPhotoPanel
+                runId={runId}
+                onApplyPitch={(pitch) => {
+                  if (facets.length === 0) return false
+                  const updated = facets.map(f => ({ ...f, pitch }))
+                  setFacets(updated)
+                  setGeometryStamp(s => s + 1)
+                  setEditorSyncRev(r => r + 1)
+                  void persistGeometry(updated, edges)
+                  return true
+                }}
+                onChimneyAdded={() => setGeometryStamp(s => s + 1)}
+              />
+            </CollapsibleSection>
+          )}
+
+          {projectId && (
+            <CollapsibleSection
+              title="Siding measurement"
+              subtitle="Exterior wall square footage from elevation photos — for siding replacement, house-wrap, exterior paint, or an insurance exterior scope."
+              badge="wall sq ft"
+            >
+              <SidingMeasurementTool projectId={projectId} />
+            </CollapsibleSection>
+          )}
+
           <button
             onClick={() => setStep('report')}
             className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500"
-          >Continue to report →</button>
+          >Back to report →</button>
         </section>
       )}
 

@@ -61,6 +61,18 @@ export default function HomeVisualizerPage() {
     setSavingTo(projectId)
     try {
       await api.projects.setHeroRender(projectId, result.generated_image_url)
+      // Send the source photo along as the "before". The render on its own is
+      // just a nice picture; it only sells the job next to what's there today,
+      // and until now the original never left the browser — so the project page
+      // had nothing to pair it with. Best-effort: a failed upload must not lose
+      // the render we just attached.
+      if (file) {
+        try {
+          await api.projectPhotos.upload(projectId, file, 'before', 'Before — Roof Visualizer')
+        } catch {
+          toast('Render saved, but the "before" photo didn’t upload.', { icon: '⚠️' })
+        }
+      }
       setSavedTo(projectName)
       setPickerOpen(false)
       toast.success(`Added to “${projectName}” — it’ll appear at the top of that project’s report`)
@@ -69,7 +81,7 @@ export default function HomeVisualizerPage() {
     } finally {
       setSavingTo(null)
     }
-  }, [result])
+  }, [result, file])
 
   const handleFile = (f: File) => {
     setFile(f)

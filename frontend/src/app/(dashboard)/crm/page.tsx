@@ -786,10 +786,12 @@ export default function CRMPage() {
         {loading ? (
           <div className="flex items-center justify-center h-full text-slate-400">Loading…</div>
         ) : viewMode === 'kanban' ? (
-          <div className="h-full overflow-x-auto">
-            {/* Columns flex to fill the width so the whole pipeline is visible at
-                once (no horizontal scroll on desktop); they shrink to a readable
-                min and only scroll on narrow screens. */}
+          <div className="h-full overflow-x-auto overflow-y-hidden pb-1">
+            {/* Column width is set by what a lead card needs to stay readable —
+                name, value, location and notes without everything wrapping — not
+                by cramming all six stages onto one screen. They grow to share any
+                extra width on a wide monitor and scroll horizontally when there
+                isn't enough, which beats six columns too narrow to read. */}
             <div className="flex gap-4 h-full min-w-full">
               {STAGES.map(stage => {
                 const stageLeads = filtered.filter(l => l.stage === stage.key)
@@ -797,7 +799,7 @@ export default function CRMPage() {
                 const isOver = dragOverStage === stage.key
                 return (
                   <div key={stage.key}
-                    className={`flex flex-col rounded-2xl flex-1 min-w-[230px] transition-all ${isOver ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
+                    className={`flex flex-col rounded-2xl min-w-[300px] flex-[1_1_300px] transition-all ${isOver ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
                     style={{ background: isOver ? 'rgba(255,255,255,0.4)' : 'rgba(248,250,252,0.8)', border: '1px solid rgba(255,255,255,0.10)' }}
                     onDragOver={e => handleDragOver(e, stage.key)}
                     onDrop={e => handleDrop(e, stage.key)}
