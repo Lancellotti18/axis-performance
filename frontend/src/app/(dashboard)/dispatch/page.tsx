@@ -1,19 +1,24 @@
 'use client'
 
 /**
- * Crew Scheduling & Dispatch — the board (M2: read-only).
+ * Crew Scheduling & Dispatch — the board.
  * Self-contained section: its own QueryClient (global layout untouched), its own
  * data layer, and a design grounded in the subject (dawn on a worksite) rather
  * than the app's default blue-on-black. Numbers are the hero — tabular figures,
  * squares loud, a capacity meter per cell.
+ *
+ * Date model: the *focused day* is the single source of truth and the visible
+ * week is derived from it. That's what lets ‹ › keep walking day by day straight
+ * through Sunday into the next week instead of dead-ending at the week edge, and
+ * it keeps the week view, the day view and the map view all pointed at the same
+ * day when you switch between them.
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { addDays, format, startOfWeek } from 'date-fns'
+import { format } from 'date-fns'
 import { fetchBoard } from './lib/board'
+import { fromISODate, shiftISODate, startOfISOWeek, useToday } from './lib/today'
 import Board from './Board'
-
-const TZ_TODAY = new Date(2026, 7, 3) // board demo week anchor (Mon Aug 3, 2026)
 
 export default function DispatchPage() {
   const [client] = useState(() => new QueryClient({
@@ -27,13 +32,43 @@ export default function DispatchPage() {
 }
 
 function BoardScreen() {
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(TZ_TODAY, { weekStartsOn: 1 }))
-  const start = format(weekStart, 'yyyy-MM-dd')
-  const endInclusive = format(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6), 'yyyy-MM-dd')
+  const today = useToday()
+  // `null` means "nobody has navigated" — the board simply *is* today, and keeps
+  // being today when the clock rolls past midnight on an untouched board. The
+  // moment the dispatcher navigates, their choice takes over. Derived rather
+  // than synced in an effect, so there's no frame where the two disagree.
+  const [picked, setPicked] = useState<string | null>(null)
+  const focusDate = picked ?? today
+
+  const goToday = useCallback(() => setPicked(null), [])
+  const nudge = useCallback((days: number) => {
+    if (!focusDate) return
+    setPicked(shiftISODate(focusDate, days))
+  }, [focusDate])
+  const setFocusDate = useCallback((d: string) => setPicked(d), [])
+
+  // ← → walk a day, ⇧← ⇧→ a week, T snaps back to today. The board is a
+  // keyboard tool for anyone who lives in it all morning.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(e.shiftKey ? -7 : -1) }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(e.shiftKey ? 7 : 1) }
+      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); goToday() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [nudge, goToday])
+
+  const weekStart = focusDate ? startOfISOWeek(focusDate) : null
+  const weekEnd = weekStart ? shiftISODate(weekStart, 6) : null
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['board', start, endInclusive],
-    queryFn: () => fetchBoard(start, endInclusive),
+    queryKey: ['board', weekStart, weekEnd],
+    queryFn: () => fetchBoard(weekStart!, weekEnd!),
+    enabled: !!weekStart && !!weekEnd,
   })
 
   const rootStyle = useMemo(() => ({
@@ -51,6 +86,8 @@ function BoardScreen() {
     ['--over' as string]: '#f5566c',
   }) as React.CSSProperties, [])
 
+  const onToday = !!today && focusDate === today
+
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ ...rootStyle, background: 'var(--ink)', color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
       {/* Toolbar */}
@@ -60,15 +97,15 @@ function BoardScreen() {
           <p className="text-[11px]" style={{ color: 'var(--muted)' }}>Production scheduling — squares, not slots.</p>
         </div>
         <div className="ml-2 flex items-center gap-0.5">
-          <button onClick={() => setWeekStart(w => addDays(w, -7))} className="rounded-md px-1.5 py-1 text-sm hover:bg-white/5" aria-label="Back one week" title="Back a week">«</button>
-          <button onClick={() => setWeekStart(w => addDays(w, -1))} className="rounded-md px-2 py-1 text-sm hover:bg-white/5" aria-label="Back one day" title="Back a day">‹</button>
-          <button onClick={() => setWeekStart(startOfWeek(TZ_TODAY, { weekStartsOn: 1 }))} className="rounded-md border px-2.5 py-1 text-xs font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Today</button>
-          <button onClick={() => setWeekStart(w => addDays(w, 1))} className="rounded-md px-2 py-1 text-sm hover:bg-white/5" aria-label="Forward one day" title="Forward a day">›</button>
-          <button onClick={() => setWeekStart(w => addDays(w, 7))} className="rounded-md px-1.5 py-1 text-sm hover:bg-white/5" aria-label="Forward one week" title="Forward a week">»</button>
+          <button onClick={() => nudge(-7)} disabled={!focusDate} className="rounded-md px-1.5 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Back one week" title="Back a week (⇧←)">«</button>
+          <button onClick={() => nudge(-1)} disabled={!focusDate} className="rounded-md px-2 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Back one day" title="Back a day (←)">‹</button>
+          <button onClick={goToday} disabled={!today || onToday}
+            className="rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors hover:bg-white/5 disabled:opacity-40"
+            style={{ borderColor: 'var(--line)' }} title="Jump to today (T)">Today</button>
+          <button onClick={() => nudge(1)} disabled={!focusDate} className="rounded-md px-2 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Forward one day" title="Forward a day (→)">›</button>
+          <button onClick={() => nudge(7)} disabled={!focusDate} className="rounded-md px-1.5 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Forward one week" title="Forward a week (⇧→)">»</button>
         </div>
-        <div className="text-sm font-semibold">
-          {format(weekStart, 'MMM d')} – {format(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6), 'MMM d, yyyy')}
-        </div>
+        <DateJump value={focusDate} onChange={setFocusDate} weekStart={weekStart} weekEnd={weekEnd} />
         <div className="ml-auto flex items-center gap-2 text-[11px]" style={{ color: 'var(--muted)' }}>
           {isFetching && <span>updating…</span>}
           <button onClick={() => refetch()} className="rounded-md border px-2.5 py-1 font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Refresh</button>
@@ -77,7 +114,7 @@ function BoardScreen() {
 
       {/* Body */}
       <div className="min-h-0 flex-1 overflow-auto">
-        {isLoading ? (
+        {isLoading || !focusDate || !today ? (
           <BoardSkeleton />
         ) : error ? (
           <div className="p-8">
@@ -90,10 +127,37 @@ function BoardScreen() {
         ) : data && data.crews.length === 0 ? (
           <div className="p-10 text-center text-sm" style={{ color: 'var(--muted)' }}>No crews yet. Add a crew to start scheduling.</div>
         ) : data ? (
-          <Board data={data} today={format(TZ_TODAY, 'yyyy-MM-dd')} />
+          <Board data={data} today={today} focusDate={focusDate} onFocusDate={setFocusDate} />
         ) : null}
       </div>
     </div>
+  )
+}
+
+/**
+ * The visible range doubles as the date picker: click the dates, get a native
+ * calendar (which is also the good mobile one), pick any day, the board follows.
+ */
+function DateJump({
+  value, onChange, weekStart, weekEnd,
+}: {
+  value: string | null; onChange: (d: string) => void; weekStart: string | null; weekEnd: string | null
+}) {
+  if (!value || !weekStart || !weekEnd) return <div className="h-[26px] w-44 animate-pulse rounded-md bg-white/5" />
+  const label = `${format(fromISODate(weekStart), 'MMM d')} – ${format(fromISODate(weekEnd), 'MMM d, yyyy')}`
+  return (
+    <label className="relative cursor-pointer rounded-md px-2 py-1 text-sm font-semibold transition-colors hover:bg-white/5"
+      title="Jump to a date">
+      {label}
+      <span className="ml-1.5 text-[10px]" style={{ color: 'var(--muted)' }}>▾</span>
+      <input
+        type="date"
+        value={value}
+        onChange={e => { if (e.target.value) onChange(e.target.value) }}
+        aria-label="Jump to date"
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+    </label>
   )
 }
 

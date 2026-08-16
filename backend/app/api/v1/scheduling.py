@@ -1294,10 +1294,44 @@ def _project_addr(p: dict) -> Optional[str]:
     return ", ".join(x for x in [p.get("address"), p.get("city"), p.get("state")] if x) or None
 
 
-def _latest_run(db, project_id: str) -> dict:
-    r = _rows(db.table("roof_measurement_runs").select("satellite_image_url,squares,facet_count,total_roof_sqft,created_at")
+# Everything the board can say about a roof without the dispatcher retyping it:
+# the totals, the pitch/stories that drive crew-days, and the linear footage the
+# materials list is built from.
+_RUN_COLS = (
+    "satellite_image_url,squares,facet_count,total_roof_sqft,total_plan_sqft,"
+    "predominant_pitch,predominant_pitch_degrees,stories,roof_type,waste_pct_default,"
+    "ridges_ft,hips_ft,valleys_ft,eaves_ft,rakes_ft,perimeter_ft,ridge_total_ft,"
+    "confidence,confirmed,measurement_unverified,created_at"
+)
+
+
+def _latest_run(db, project_id: str, cols: str = _RUN_COLS) -> dict:
+    r = _rows(db.table("roof_measurement_runs").select(cols)
               .eq("project_id", project_id).order("created_at", desc=True).limit(1).execute())
     return r[0] if r else {}
+
+
+def _pitch_rise(v) -> Optional[float]:
+    """Rise-over-12 as a number, from either "6/12" or a bare 6.
+
+    `roof_measurement_runs.predominant_pitch` is free text; `sched_job` wants a
+    numeric(3,1). A pitch on a different run (e.g. "9/16") is normalized to its
+    equivalent rise over 12 so the crew-days multiplier stays comparable.
+    """
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace(" ", "")
+    if not s:
+        return None
+    if "/" in s:
+        rise, _, run = s.partition("/")
+        r, u = _f(rise), _f(run)
+        if r is None or not u:
+            return None
+        return round(r * 12.0 / u, 1)
+    return _f(s)
 
 
 def _signed_photo(db, path: str) -> Optional[str]:
@@ -1322,7 +1356,7 @@ async def dispatch_project_search(q: str = "", user: dict = Depends(require_user
                 or ql in (r.get("address") or "").lower() or ql in (r.get("city") or "").lower()]
     out = []
     for r in rows[:15]:
-        t = _latest_run(db, r["id"])
+        t = _latest_run(db, r["id"], "satellite_image_url,created_at")  # thumbnails only
         out.append({"id": r["id"], "name": r.get("name") or "Untitled project",
                     "address": _project_addr(r), "status": r.get("status"),
                     "thumbnail_url": t.get("satellite_image_url")})
@@ -1333,21 +1367,59 @@ class JobLink(BaseModel):
     project_id: Optional[str] = None
 
 
+def _measurements_from_run(run: dict) -> dict:
+    """The subset of a roof run that `sched_job` itself stores.
+
+    Only keys the run actually has a value for — a project with no pitch on file
+    must not blank out a pitch the dispatcher typed in by hand.
+    """
+    patch: dict = {}
+    squares = _f(run.get("squares"))
+    if squares is not None:
+        patch["squares"] = round(squares, 2)
+    pitch = _pitch_rise(run.get("predominant_pitch"))
+    if pitch is not None:
+        patch["predominant_pitch"] = pitch
+    if run.get("stories") is not None:
+        patch["stories"] = run["stories"]
+    waste = _f(run.get("waste_pct_default"))
+    if waste is not None:
+        patch["waste_factor_pct"] = round(waste, 2)
+    return patch
+
+
 @router.patch("/jobs/{job_id}/link")
 async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(require_user)) -> dict:
+    """Attach a job to a roofing project — and inherit its measurements.
+
+    Linking is the moment the board learns the roof. We copy the latest run's
+    squares/pitch/stories/waste onto the job so capacity math, the crew-days
+    breakdown and the card all reflect the real roof immediately, instead of
+    showing "no measurements" next to a project that has them. The audit event
+    records the before/after, so an unwanted overwrite is visible and reversible.
+    """
     db = get_supabase()
     job = _one(db, "sched_job", job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
+
+    update: dict = {"project_id": body.project_id}
+    inherited: dict = {}
     if body.project_id:  # verify the project is the caller's before linking
         pr = _rows(db.table("projects").select("id,user_id").eq("id", body.project_id).limit(1).execute())
         if not pr or pr[0].get("user_id") != user.get("id"):
             raise HTTPException(status_code=404, detail="Project not found.")
-    db.table("sched_job").update({"project_id": body.project_id}).eq("id", job_id).execute()
+        inherited = _measurements_from_run(_latest_run(db, body.project_id))
+        update.update(inherited)
+
+    db.table("sched_job").update(update).eq("id", job_id).execute()
     db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "job",
-        "entity_id": job_id, "action": "LINK_PROJECT", "before_json": {"project_id": job.get("project_id")},
-        "after_json": {"project_id": body.project_id}, "request_id": str(uuid.uuid4())}).execute()
-    return {"ok": True, "project_id": body.project_id}
+        "entity_id": job_id, "action": "LINK_PROJECT",
+        "before_json": {"project_id": job.get("project_id"),
+                        **{k: job.get(k) for k in inherited}},
+        "after_json": {"project_id": body.project_id, **inherited},
+        "request_id": str(uuid.uuid4())}).execute()
+    return {"ok": True, "project_id": body.project_id, "inherited": inherited}
 
 
 @router.get("/jobs/{job_id}/project")
@@ -1400,6 +1472,28 @@ async def get_job_project(job_id: str, user: dict = Depends(require_user)) -> di
         "squares": _f(run.get("squares")),
         "facet_count": run.get("facet_count"),
         "roof_sqft": _f(run.get("total_roof_sqft")),
+        "plan_sqft": _f(run.get("total_plan_sqft")),
+        # What the roof *is* — the dispatcher shouldn't have to open the project
+        # to find out it's a 6/12 two-story.
+        "pitch": run.get("predominant_pitch"),
+        "pitch_rise": _pitch_rise(run.get("predominant_pitch")),
+        "stories": run.get("stories"),
+        "roof_type": run.get("roof_type"),
+        "waste_pct": _f(run.get("waste_pct_default")),
+        # Linear footage — the basis for ridge cap, drip edge, valley metal.
+        "linear": {
+            "ridges_ft": _f(run.get("ridges_ft")),
+            "hips_ft": _f(run.get("hips_ft")),
+            "valleys_ft": _f(run.get("valleys_ft")),
+            "eaves_ft": _f(run.get("eaves_ft")),
+            "rakes_ft": _f(run.get("rakes_ft")),
+            "perimeter_ft": _f(run.get("perimeter_ft")),
+            "ridge_total_ft": _f(run.get("ridge_total_ft")),
+        },
+        # How much to trust the numbers above.
+        "confidence": _f(run.get("confidence")),
+        "confirmed": bool(run.get("confirmed")),
+        "measured_at": run.get("created_at"),
         "photos": photos,
         "has_report": has_report,
         "share_token": share_token,

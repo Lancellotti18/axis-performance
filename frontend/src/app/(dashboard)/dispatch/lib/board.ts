@@ -241,6 +241,11 @@ export async function fetchLiveWeather(start: string, end: string): Promise<Live
 
 // ── M7: dispatch ↔ project link ──────────────────────────────────────────────
 export interface ProjectSearchResult { id: string; name: string; address: string | null; status: string | null; thumbnail_url: string | null }
+export interface RoofLinear {
+  ridges_ft: number | null; hips_ft: number | null; valleys_ft: number | null
+  eaves_ft: number | null; rakes_ft: number | null
+  perimeter_ft: number | null; ridge_total_ft: number | null
+}
 export interface JobProject {
   linked: boolean
   project?: { id: string; name: string; status: string | null; address: string | null }
@@ -248,6 +253,19 @@ export interface JobProject {
   squares?: number | null
   facet_count?: number | null
   roof_sqft?: number | null
+  plan_sqft?: number | null
+  /** As measured, e.g. "6/12". */
+  pitch?: string | null
+  /** Same pitch as a number (rise over 12), for math and comparison. */
+  pitch_rise?: number | null
+  stories?: number | null
+  roof_type?: string | null
+  waste_pct?: number | null
+  /** Linear footage behind the materials list — ridge cap, drip edge, valley metal. */
+  linear?: RoofLinear | null
+  confidence?: number | null
+  confirmed?: boolean
+  measured_at?: string | null
   photos?: { url: string; caption: string | null; phase: string | null }[]
   has_report?: boolean
   share_token?: string | null
@@ -268,7 +286,10 @@ export async function searchProjects(q: string): Promise<{ projects: ProjectSear
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
-export async function linkJobProject(jobId: string, projectId: string | null): Promise<{ ok: boolean; project_id: string | null }> {
+/** `inherited` reports the measurement fields the job just picked up from the roof. */
+export async function linkJobProject(
+  jobId: string, projectId: string | null,
+): Promise<{ ok: boolean; project_id: string | null; inherited?: Record<string, number> }> {
   const h = await authHeaders()
   const res = await fetch(`${API_BASE}/api/v1/scheduling/jobs/${jobId}/link`, {
     method: 'PATCH', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: projectId }),

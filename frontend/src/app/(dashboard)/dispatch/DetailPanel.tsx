@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import type { BoardData, CrewDaysBreakdown, ProjectSearchResult } from './lib/board'
+import type { BoardData, CrewDaysBreakdown, ProjectSearchResult, RoofLinear } from './lib/board'
 import { num, patchAppointment, previewMove, fetchAudit, fetchJobProject, searchProjects, linkJobProject, mediaUrl } from './lib/board'
 
 const STATUSES = ['SCHEDULED', 'DISPATCHED', 'WORKING', 'PAUSED', 'DONE', 'HOLD', 'CANCELED', 'UNASSIGNED']
@@ -32,6 +32,12 @@ export default function DetailPanel({
   const [est, setEst] = useState<CrewDaysBreakdown | null>(null)
   const [savingStatus, setSavingStatus] = useState(false)
   const { data: history } = useQuery({ queryKey: ['audit', appointmentId], queryFn: () => fetchAudit(15, appointmentId), staleTime: 15_000 })
+  // Same query key as JobProjectSection below — react-query serves both from one
+  // fetch, so the measurement rows can fall back to the linked roof immediately.
+  const { data: proj } = useQuery({
+    queryKey: ['job-project', job?.id], queryFn: () => fetchJobProject(job!.id),
+    enabled: !!job, staleTime: 30_000,
+  })
 
   useEffect(() => {
     if (!appt || !crewId) return
@@ -45,6 +51,10 @@ export default function DetailPanel({
   const sq = job.squares != null ? num(job.squares) : null
   const series = data.appointments.filter(a => a.job_id === job.id).sort((a, b) => a.sequence - b.sequence)
 
+  // What the linked roof knows, for rows the job record hasn't been given yet.
+  const projSquares = proj?.squares ?? null
+  const projPitch = proj?.pitch || (proj?.pitch_rise != null ? `${proj.pitch_rise}/12` : null)
+
   async function setStatus(status: string) {
     setSavingStatus(true)
     try {
@@ -56,10 +66,14 @@ export default function DetailPanel({
     } finally { setSavingStatus(false) }
   }
 
-  const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
+  const Row = ({ k, v, from }: { k: string; v: React.ReactNode; from?: boolean }) => (
     <div className="flex justify-between gap-3 border-b py-1.5 text-[12px]" style={{ borderColor: 'var(--line)' }}>
       <span style={{ color: 'var(--muted)' }}>{k}</span>
-      <span className="text-right font-semibold">{v}</span>
+      <span className="flex items-center gap-1.5 text-right font-semibold">
+        {/* A dot means "this came from the linked roof, not from this job record". */}
+        {from && <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--sky)' }} title="From the linked project" />}
+        {v}
+      </span>
     </div>
   )
 
@@ -82,11 +96,19 @@ export default function DetailPanel({
           {/* Measurements + the crew-days calculation shown as work */}
           <section>
             <div className="mb-2 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Measurements → production</div>
-            <Row k="Squares" v={sq != null ? `${sq} sq` : <span style={{ color: 'var(--tight)' }}>none — needs measurement</span>} />
-            <Row k="Pitch" v={job.predominant_pitch != null ? `${num(job.predominant_pitch)}/12` : '—'} />
-            <Row k="Stories" v={job.stories ?? '—'} />
+            <Row k="Squares" from={sq == null && projSquares != null}
+              v={sq != null ? `${sq} sq`
+                : projSquares != null ? `${num(projSquares)} sq`
+                : <span style={{ color: 'var(--tight)' }}>none — needs measurement</span>} />
+            <Row k="Pitch" from={job.predominant_pitch == null && !!projPitch}
+              v={job.predominant_pitch != null ? `${num(job.predominant_pitch)}/12` : projPitch || '—'} />
+            <Row k="Stories" from={job.stories == null && proj?.stories != null}
+              v={job.stories ?? proj?.stories ?? '—'} />
             <Row k="Tear-off layers" v={job.tear_off_layers} />
-            <Row k="Waste factor" v={job.waste_factor_pct != null ? `${num(job.waste_factor_pct)}%` : '—'} />
+            <Row k="Waste factor" from={job.waste_factor_pct == null && proj?.waste_pct != null}
+              v={job.waste_factor_pct != null ? `${num(job.waste_factor_pct)}%`
+                : proj?.waste_pct != null ? `${num(proj.waste_pct)}%` : '—'} />
+            {proj?.roof_type && proj.roof_type !== 'unknown' && <Row k="Roof type" from v={proj.roof_type} />}
             {crew && <Row k="Crew" v={`${crew.name} · ${num(crew.squares_per_day)} sq/day`} />}
             {est && (
               <div className="mt-3 rounded-lg p-3" style={{ background: 'var(--panel2)' }}>
@@ -108,6 +130,9 @@ export default function DetailPanel({
               </div>
             )}
           </section>
+
+          {/* What the truck needs to carry — straight off the linked roof */}
+          <MaterialsBasis linear={proj?.linear} squares={sq ?? projSquares} />
 
           {/* Schedule / series */}
           <section>
@@ -163,6 +188,42 @@ export default function DetailPanel({
 
 const jobTypeLabel = (t: string) => t.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 
+/**
+ * Linear footage from the linked roof, labelled by what it buys rather than by
+ * its geometry name — a dispatcher loading a truck thinks in "drip edge", not
+ * "eaves + rakes". Hidden entirely when the roof has no edge data.
+ */
+function MaterialsBasis({ linear, squares }: { linear?: RoofLinear | null; squares: number | null }) {
+  if (!linear) return null
+  const ft = (v: number | null | undefined) => (v != null && v > 0 ? Math.round(v) : null)
+  const ridgeCap = ft(linear.ridge_total_ft) ?? ft((linear.ridges_ft ?? 0) + (linear.hips_ft ?? 0))
+  const dripEdge = ft(linear.perimeter_ft) ?? ft((linear.eaves_ft ?? 0) + (linear.rakes_ft ?? 0))
+  const valley = ft(linear.valleys_ft)
+  const items = [
+    squares != null ? { k: 'Shingles', v: `${num(squares)} sq` } : null,
+    ridgeCap != null ? { k: 'Ridge cap', v: `${ridgeCap.toLocaleString()} lf` } : null,
+    dripEdge != null ? { k: 'Drip edge', v: `${dripEdge.toLocaleString()} lf` } : null,
+    valley != null ? { k: 'Valley metal', v: `${valley.toLocaleString()} lf` } : null,
+    ft(linear.eaves_ft) != null ? { k: 'Eaves', v: `${ft(linear.eaves_ft)!.toLocaleString()} lf` } : null,
+    ft(linear.rakes_ft) != null ? { k: 'Rakes', v: `${ft(linear.rakes_ft)!.toLocaleString()} lf` } : null,
+  ].filter(Boolean) as { k: string; v: string }[]
+  if (items.length === 0) return null
+  return (
+    <section>
+      <div className="mb-2 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Materials basis</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {items.map(it => (
+          <div key={it.k} className="rounded-md px-2.5 py-1.5" style={{ background: 'var(--panel2)' }}>
+            <div className="text-[10px]" style={{ color: 'var(--muted)' }}>{it.k}</div>
+            <div className="text-[13px] font-bold">{it.v}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 text-[10px]" style={{ color: 'var(--muted)' }}>From the linked roof measurement — excludes waste.</div>
+    </section>
+  )
+}
+
 // ── Linked roofing project: roof tile, stats, crew photos, deep links ─────────
 function JobProjectSection({ jobId }: { jobId: string }) {
   const qc = useQueryClient()
@@ -172,9 +233,18 @@ function JobProjectSection({ jobId }: { jobId: string }) {
   const relink = async (projectId: string | null) => {
     setBusy(true)
     try {
-      await linkJobProject(jobId, projectId)
+      const res = await linkJobProject(jobId, projectId)
       await qc.invalidateQueries({ queryKey: ['job-project', jobId] })
-      toast.success(projectId ? 'Project linked' : 'Project unlinked')
+      // Linking rewrites the job's measurements, which move capacity and
+      // crew-days — the board and the tray have to hear about it too.
+      qc.invalidateQueries({ queryKey: ['board'] })
+      qc.invalidateQueries({ queryKey: ['tray'] })
+      const inh = res.inherited || {}
+      const picked = [
+        inh.squares != null ? `${inh.squares} sq` : null,
+        inh.predominant_pitch != null ? `${inh.predominant_pitch}/12 pitch` : null,
+      ].filter(Boolean).join(' · ')
+      toast.success(projectId ? (picked ? `Project linked — ${picked}` : 'Project linked') : 'Project unlinked')
     } catch { toast.error('Could not update the link') } finally { setBusy(false) }
   }
 
@@ -184,8 +254,11 @@ function JobProjectSection({ jobId }: { jobId: string }) {
 
   const p = data.project
   const thumb = mediaUrl(data.thumbnail_url)
+  const pitch = data.pitch || (data.pitch_rise != null ? `${data.pitch_rise}/12` : null)
   const stats = [
     data.squares != null ? `${data.squares} sq` : null,
+    pitch ? `${pitch} pitch` : null,
+    data.stories ? `${data.stories} story` : null,
     data.facet_count ? `${data.facet_count} facets` : null,
     data.roof_sqft != null ? `${Math.round(data.roof_sqft).toLocaleString()} ft²` : null,
   ].filter(Boolean).join(' · ')

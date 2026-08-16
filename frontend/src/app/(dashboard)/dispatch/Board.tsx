@@ -9,6 +9,7 @@
  * detail slide-over. Read-only visuals from M2 are preserved.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { shiftISODate } from './lib/today'
 import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable,
   useSensor, useSensors, type DragEndEvent, type DragOverEvent, type DragStartEvent,
@@ -85,7 +86,14 @@ function mergeAffected(old: BoardData, aff: AffectedMulti): BoardData {
 }
 const isTrayDrag = (id: string | null): boolean => !!id && id.startsWith('tray:')
 
-export default function Board({ data, today }: { data: BoardData; today: string }) {
+export default function Board({
+  data, today, focusDate, onFocusDate,
+}: {
+  data: BoardData; today: string
+  /** The day in focus, owned by the page so the week can follow it across edges. */
+  focusDate: string
+  onFocusDate: (d: string) => void
+}) {
   const qc = useQueryClient()
   const queryKey = ['board', data.range.start, data.range.end]
   const days = data.range.days
@@ -95,15 +103,15 @@ export default function Board({ data, today }: { data: BoardData; today: string 
   const [previewMap, setPreviewMap] = useState<Record<string, PreviewResult | 'loading'>>({})
   const [detailId, setDetailId] = useState<string | null>(null)
   const [view, setView] = useState<'week' | 'day' | 'map'>('week')
-  const [focusDate, setFocusDate] = useState<string>(() => (days.includes(today) ? today : days[0]))
   const [auditOpen, setAuditOpen] = useState(false)
   const [crewMgrOpen, setCrewMgrOpen] = useState(false)
   const activeRef = useRef<string | null>(null)
   const previewRef = useRef<Record<string, PreviewResult | 'loading'>>({})
 
-  // Keep the focused day valid as the visible week changes; default to a mobile-friendly day view.
-  useEffect(() => { if (!days.includes(focusDate)) setFocusDate(days.includes(today) ? today : days[0]) }, [days]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Default to the mobile-friendly day view on small screens.
   useEffect(() => { if (typeof window !== 'undefined' && window.innerWidth < 640) setView('day') }, [])
+
+  const swipe = useDaySwipe(focusDate, onFocusDate)
 
   const [dragLabel, setDragLabel] = useState<string | null>(null)
   const sel = useSelection()
@@ -288,12 +296,14 @@ export default function Board({ data, today }: { data: BoardData; today: string 
           ))}
         </div>
         {view !== 'week' && (
+          // Never dead-ends at the week edge — stepping past Sunday pulls the
+          // next week in behind it, because the page derives the week from this.
           <div className="flex items-center gap-1">
-            <button onClick={() => { const i = days.indexOf(focusDate); if (i > 0) setFocusDate(days[i - 1]) }} disabled={days.indexOf(focusDate) <= 0}
-              className="rounded-md px-2 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Previous day">←</button>
+            <button onClick={() => onFocusDate(shiftISODate(focusDate, -1))}
+              className="rounded-md px-2 py-1 text-sm hover:bg-white/5" aria-label="Previous day" title="Previous day (←)">←</button>
             <span className="min-w-[132px] text-center text-[13px] font-semibold">{format(parseISO(focusDate), 'EEE, MMM d')}{focusDate === today && <span className="ml-1.5 rounded px-1 text-[9px] font-bold uppercase" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>Today</span>}</span>
-            <button onClick={() => { const i = days.indexOf(focusDate); if (i < days.length - 1) setFocusDate(days[i + 1]) }} disabled={days.indexOf(focusDate) >= days.length - 1}
-              className="rounded-md px-2 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Next day">→</button>
+            <button onClick={() => onFocusDate(shiftISODate(focusDate, 1))}
+              className="rounded-md px-2 py-1 text-sm hover:bg-white/5" aria-label="Next day" title="Next day (→)">→</button>
           </div>
         )}
         <span className="ml-auto hidden text-[11px] sm:inline" style={{ color: 'var(--muted)' }}>{view === 'week' ? 'Drag to move · click for detail' : view === 'day' ? 'One day, every crew' : 'Stops by location, routed in order'}</span>
@@ -304,7 +314,7 @@ export default function Board({ data, today }: { data: BoardData; today: string 
       {view === 'map' ? (
         <MapView data={data} focusDate={focusDate} onDetail={setDetailId} />
       ) : view === 'day' ? (
-        <div className="flex flex-wrap gap-3 p-3 pb-16">
+        <div className="flex flex-wrap gap-3 p-3 pb-16" {...swipe}>
           {data.business_units.map(bu => (idx.crewsByBu.get(bu.id) || []).map(crew => {
             const d = focusDate
             const load = data.day_loads[`${crew.id}:${d}`]
@@ -351,11 +361,20 @@ export default function Board({ data, today }: { data: BoardData; today: string 
           <div className="sticky left-0 z-30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ background: 'var(--ink)', color: 'var(--muted)' }}>Crew</div>
           {days.map(d => {
             const dt = parseISO(d); const isToday = d === today; const storm = rainy(d)
+            const isFocus = d === focusDate
             const reg = liveWx?.regional[d]; const seeded = idx.wxBy.get(d)
             const pp = reg?.precip_probability ?? seeded?.precip_probability ?? null
             const hi = reg?.temp_high_f ?? seeded?.temp_high_f ?? null
             return (
-              <div key={d} className="border-l px-3 py-2" style={{ borderColor: 'var(--line)', background: storm ? 'rgba(90,169,255,0.05)' : undefined }}>
+              // Clicking a day focuses it, so switching to Day or Map lands on
+              // the column you were already reading.
+              <button key={d} onClick={() => onFocusDate(d)} title={`Focus ${format(dt, 'EEE, MMM d')}`}
+                className="border-l px-3 py-2 text-left transition-colors hover:bg-white/[0.03]"
+                style={{
+                  borderColor: 'var(--line)',
+                  background: storm ? 'rgba(90,169,255,0.05)' : undefined,
+                  boxShadow: isFocus ? 'inset 0 -2px 0 0 var(--sky)' : undefined,
+                }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-[11px] uppercase tracking-wide" style={{ color: isToday ? 'var(--dawn)' : 'var(--muted)' }}>{format(dt, 'EEE')}</span>
@@ -364,7 +383,7 @@ export default function Board({ data, today }: { data: BoardData; today: string 
                   </div>
                   {pp != null && <WeatherChip pp={pp} hi={hi} storm={storm} />}
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>
@@ -458,6 +477,34 @@ export default function Board({ data, today }: { data: BoardData; today: string 
   )
 }
 
+/**
+ * Swipe left/right on the day view to walk days — the gesture a dispatcher
+ * reaches for on a phone in a truck. Deliberately narrow so it can't misfire:
+ * it ignores anything starting on a job card (that's a drag-to-reschedule), and
+ * only fires on a decisively horizontal travel of 60px+, so vertical scrolling
+ * through a long crew list is never swallowed.
+ */
+function useDaySwipe(focusDate: string, onFocusDate: (d: string) => void) {
+  const start = useRef<{ x: number; y: number } | null>(null)
+  return {
+    onTouchStart: (e: React.TouchEvent) => {
+      if ((e.target as HTMLElement).closest('[data-job-card]')) { start.current = null; return }
+      const t = e.touches[0]
+      start.current = { x: t.clientX, y: t.clientY }
+    },
+    onTouchEnd: (e: React.TouchEvent) => {
+      const s = start.current
+      start.current = null
+      if (!s) return
+      const t = e.changedTouches[0]
+      const dx = t.clientX - s.x
+      const dy = t.clientY - s.y
+      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+      onFocusDate(shiftISODate(focusDate, dx < 0 ? 1 : -1))
+    },
+  }
+}
+
 function Cell({ id, rainy, dragging, preview, children }: { id: string; rainy: boolean; dragging: boolean; preview?: PreviewResult | 'loading'; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id })
   let ring = 'transparent'; let bg: string | undefined = rainy ? 'rgba(90,169,255,0.04)' : undefined
@@ -481,7 +528,7 @@ function DraggableCard({
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id })
   return (
-    <div ref={setNodeRef} className="group relative rounded-md"
+    <div ref={setNodeRef} data-job-card className="group relative rounded-md"
       style={{ opacity: isDragging || dragging ? 0.4 : 1, boxShadow: selected ? '0 0 0 2px var(--sky)' : undefined }}>
       <div {...listeners} {...attributes} onClick={onClick} className="cursor-grab active:cursor-grabbing">{children}</div>
       <button
