@@ -21,7 +21,7 @@ Coordinate convention:
 from __future__ import annotations
 
 import math
-from typing import Iterable, Literal, TypedDict
+from typing import Iterable, Literal, Optional, TypedDict
 
 
 # ----------------------------------------------------------------------------
@@ -356,38 +356,133 @@ def compute_facet_geometry(
     }
 
 
-def edge_totals_by_type(edges: list) -> dict:
+# Interior lines only exist where two planes meet, so a segment that two facets
+# both claim is one of these — never an eave or a rake.
+_INTERIOR_EDGE_TYPES = ("valley", "hip", "ridge")
+
+# Coincidence tolerance for two facet edges describing the same roof line, in
+# image-fraction units (polygons are stored 0..1). ~0.006 is about 12px on a
+# 2048px tile — comfortably more than hand-tracing jitter, far less than the gap
+# between two genuinely different roof lines.
+_EDGE_COINCIDENCE_TOL = 0.006
+
+
+def _edge_segment(edge: dict, facet_polys: dict) -> Optional[tuple]:
+    """The edge's two endpoints in image-fraction space, or None if unresolvable."""
+    poly = facet_polys.get(edge.get("facet_id"))
+    if not poly or len(poly) < 2:
+        return None
+    n = len(poly)
+    i = edge.get("vertex_index_start")
+    if i is None:
+        return None
+    j = edge.get("vertex_index_end")
+    if j is None:
+        j = (i + 1) % n
+    try:
+        i, j = int(i), int(j)
+        if not (0 <= i < n and 0 <= j < n):
+            return None
+        p, q = poly[i], poly[j]
+        return ((float(p[0]), float(p[1])), (float(q[0]), float(q[1])))
+    except (TypeError, ValueError, IndexError, KeyError):
+        return None
+
+
+def _segment_length(seg: tuple) -> float:
+    (x1, y1), (x2, y2) = seg
+    return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+
+
+def _same_segment(s1: tuple, s2: tuple) -> bool:
+    """True when two segments describe the same physical line, either direction.
+
+    The tolerance shrinks for short edges so two small, nearby dormer edges are
+    never fused just because they sit within a fixed absolute distance.
+    """
+    tol = min(_EDGE_COINCIDENCE_TOL, 0.3 * min(_segment_length(s1), _segment_length(s2)))
+    if tol <= 0:
+        return False
+
+    def close(a, b):
+        return abs(a[0] - b[0]) <= tol and abs(a[1] - b[1]) <= tol
+
+    (a1, b1), (a2, b2) = s1, s2
+    return (close(a1, a2) and close(b1, b2)) or (close(a1, b2) and close(b1, a2))
+
+
+def _better_representative(cur: dict, cand: dict) -> bool:
+    """Should `cand` replace `cur` as the label for a de-duplicated roof line?"""
+    cur_conf = bool(cur.get("user_confirmed"))
+    cand_conf = bool(cand.get("user_confirmed"))
+    if cand_conf != cur_conf:
+        return cand_conf                      # a human beats a guess
+    cur_interior = (cur.get("edge_type") in _INTERIOR_EDGE_TYPES)
+    cand_interior = (cand.get("edge_type") in _INTERIOR_EDGE_TYPES)
+    if cand_interior != cur_interior:
+        return cand_interior                  # coincidence proves it's interior
+    return False                              # otherwise first one wins
+
+
+def edge_totals_by_type(edges: list, facets: Optional[list] = None) -> dict:
     """Roof-line totals (slope-adjusted lf) by edge type from stored edge rows,
     de-duplicating shared edges by GEOMETRY rather than label (DEFECT-02/03).
 
     A shared boundary (ridge/hip/valley) is stored once per adjacent facet, and
     the AI may also leave an UNCONFIRMED suggestion of a *different* type on the
     same boundary (a phantom 'ridge 19.6, No' over a confirmed 'hip 19.6, Yes').
-    Keying by (facet-pair, length) — never by type — collapses both the per-facet
-    duplicate and the phantom mislabel into ONE edge, counted under the CONFIRMED
-    label when one exists. Two genuinely different shared edges between the same
-    pair have different lengths, so they survive. This is what makes
-    ridge ≤ perimeter hold, and gives every report section one identical total.
+    Both must collapse to ONE line, counted under the CONFIRMED label.
+
+    When `facets` are supplied we dedupe on the edges' actual coordinates. That
+    matters because the older key — (facet-pair, length) — only fired when
+    `shared_with_facet` was populated, so two facets drawn against each other by
+    hand (or labeled one side at a time) kept the back-reference NULL, fell
+    through to the plain sum, and counted the shared line TWICE. Every square of
+    that inflation flows straight into ridge cap and valley metal on the order.
+    Geometry can't be forgotten to be filled in, so it catches those.
+
+    Without `facets` (older callers, fixtures) it falls back to the pair+length
+    key. Individual edges whose geometry can't be resolved also fall back, so a
+    malformed polygon degrades one edge instead of the whole roof.
 
     Each edge row is a dict: {edge_type, slope_adjusted_ft, facet_id,
-    shared_with_facet, user_confirmed}.
+    vertex_index_start, vertex_index_end, shared_with_facet, user_confirmed}.
     """
     totals: dict = {"eave": 0.0, "rake": 0.0, "ridge": 0.0, "hip": 0.0,
                     "valley": 0.0, "gable_end": 0.0, "wall_intersection": 0.0}
-    shared_groups: dict = {}   # (facet_a, facet_b, len_1dp) -> chosen edge
+    facet_polys = {f["id"]: (f.get("polygon") or []) for f in (facets or []) if f.get("id")}
+
+    geo_groups: list = []      # [[segment, chosen_edge], ...] — deduped by coordinates
+    shared_groups: dict = {}   # (facet_a, facet_b, len_1dp) -> chosen edge (legacy path)
+
     for e in edges:
         t = e.get("edge_type") or "unlabeled"
-        if t == "unlabeled":
+        if t == "unlabeled" or t not in totals:
             continue
-        if e.get("shared_with_facet") and t in ("ridge", "hip", "valley"):
+
+        seg = _edge_segment(e, facet_polys) if facet_polys else None
+        if seg is not None and _segment_length(seg) > 0:
+            for group in geo_groups:
+                if _same_segment(group[0], seg):
+                    if _better_representative(group[1], e):
+                        group[1] = e
+                    break
+            else:
+                geo_groups.append([seg, e])
+            continue
+
+        if e.get("shared_with_facet") and t in _INTERIOR_EDGE_TYPES:
             a, b = e["facet_id"], e["shared_with_facet"]
             length = round(float(e.get("slope_adjusted_ft") or 0), 1)
             key = (min(a, b), max(a, b), length)
             cur = shared_groups.get(key)
-            if cur is None or (e.get("user_confirmed") and not cur.get("user_confirmed")):
+            if cur is None or _better_representative(cur, e):
                 shared_groups[key] = e
-        elif t in totals:
+        else:
             totals[t] += float(e.get("slope_adjusted_ft") or 0)
+
+    for _, e in geo_groups:
+        totals[e.get("edge_type")] += float(e.get("slope_adjusted_ft") or 0)
     for e in shared_groups.values():
         t = e.get("edge_type")
         if t in totals:

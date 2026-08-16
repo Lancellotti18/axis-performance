@@ -66,9 +66,14 @@ interface Props {
   runId: string
   geometryStamp: number       // bump to trigger a recompute (debounced)
   onConfidenceChange?: (c: number) => void
-  /** Edges still unlabeled. While > 0 the confidence badge shows a neutral
-   *  'Labeling…' state — a mid-workflow 40% is accurate but reads as failure. */
+  /** Roof lines with no type yet. While > 0 the confidence badge shows a neutral
+   *  'Labeling…' state — a mid-workflow 40% is accurate but reads as failure.
+   *  Counted in distinct lines (see `edgeGeometry.ts`), not stored edge rows. */
   unlabeledCount?: number
+  /** Roof lines that have a type but no sign-off. Kept separate from
+   *  `unlabeledCount` so the panel never asks you to confirm an edge that has
+   *  nothing to confirm, or to label one that is already labeled. */
+  unconfirmedCount?: number
   /** A finalized run shows its saved numbers immediately — the confirm-edges gate
    *  only applies while actively labeling a new, unconfirmed roof. */
   runConfirmed?: boolean
@@ -144,7 +149,24 @@ function confidenceTag(c: number | undefined) {
   return { label: 'Low', cls: 'bg-rose-500/20 text-rose-300 border-rose-400/40' }
 }
 
-export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave, unlabeledCount = 0, runConfirmed = false, zip, city }: Props) {
+/**
+ * Says exactly what's outstanding, in the same words as the action that clears
+ * it. "Needs labeling" and "needs confirming" are different jobs in different
+ * places, and reporting one as the other sends the contractor hunting for work
+ * that isn't there.
+ */
+function EdgeWorkRemaining({ unlabeled, unconfirmed }: { unlabeled: number; unconfirmed: number }) {
+  const line = (n: number) => `${n} roof line${n === 1 ? '' : 's'}`
+  const parts: string[] = []
+  if (unlabeled > 0) parts.push(`${line(unlabeled)} still need${unlabeled === 1 ? 's' : ''} labeling`)
+  if (unconfirmed > 0) parts.push(`${line(unconfirmed)} labeled but not confirmed`)
+  if (parts.length === 0) return null
+  return <>{parts.join(' · ')}.</>
+}
+
+export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave, unlabeledCount = 0, unconfirmedCount = 0, runConfirmed = false, zip, city }: Props) {
+  // Anything still standing between the contractor and final numbers.
+  const pendingCount = unlabeledCount + unconfirmedCount
   const [aggregates, setAggregates] = useState<Aggregates | null>(null)
   const [materials, setMaterials] = useState<MaterialsResponse | null>(null)
   const [wastePct, setWastePct] = useState<number>(12)
@@ -243,7 +265,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
     }
   }, [runId])
 
-  const conf = unlabeledCount > 0
+  const conf = pendingCount > 0
     ? { label: 'Labeling…', cls: 'bg-slate-600/30 text-slate-300 border-slate-500/40' }
     : confidenceTag(aggregates?.confidence)
   const hasNoData = aggregates && (aggregates.facet_count ?? 0) === 0 && !loading
@@ -285,7 +307,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
   // edge is confirmed/denied/changed — so nobody quotes off unreviewed AI labels.
   // A finalized (confirmed) roof always shows its saved numbers on revisit, so you
   // never re-label a roof you already finished.
-  if (unlabeledCount > 0 && !runConfirmed) {
+  if (pendingCount > 0 && !runConfirmed) {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4">
@@ -295,7 +317,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
             <p className="mt-0.5 text-xs leading-relaxed text-amber-100/80">
               Measurements, roof-line lengths, and the material list stay hidden until every edge is
               confirmed. Trace each plane, hit <strong>✨ Auto-label edges</strong>, then accept or fix each one.
-              <span className="mt-1 block text-amber-300/90">{unlabeledCount} edge{unlabeledCount === 1 ? '' : 's'} still need confirming.</span>
+              <span className="mt-1 block text-amber-300/90"><EdgeWorkRemaining unlabeled={unlabeledCount} unconfirmed={unconfirmedCount} /></span>
             </p>
           </div>
         </div>
@@ -334,7 +356,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
           BOTH done computing (loading === false) AND final (all edges labeled).
           While recomputing we say so; once settled but unlabeled, we prompt for
           edge confirmation. It only disappears when the totals are real. */}
-      {(loading || unlabeledCount > 0) && (
+      {(loading || pendingCount > 0) && (
         <div className="flex items-center gap-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4">
           <RoofScanSpinner size={46} className="flex-shrink-0" />
           {loading ? (
@@ -352,7 +374,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                 Roof-line lengths, true roof area, confidence, and the material list stay <strong>provisional</strong> until
                 you confirm the edges. Trace every plane, then hit <strong>✨ Auto-label edges</strong> and accept or fix
                 each one — the totals lock in the moment you do.
-                <span className="mt-1 block text-amber-300/90">{unlabeledCount} edge{unlabeledCount === 1 ? '' : 's'} still need labeling.</span>
+                <span className="mt-1 block text-amber-300/90"><EdgeWorkRemaining unlabeled={unlabeledCount} unconfirmed={unconfirmedCount} /></span>
               </p>
             </div>
           )}

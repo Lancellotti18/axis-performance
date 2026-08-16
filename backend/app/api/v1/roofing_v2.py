@@ -952,7 +952,10 @@ def _aggregate_run(run_id: str) -> dict:
 
     # Single source of truth for edge totals — one geometry-deduped computation
     # every report section reads from (DEFECT-02/03).
-    totals_by_type = geo.edge_totals_by_type(edges)
+    # Facets carry the polygons, so the dedup can key on where each edge
+    # actually is — catching shared lines whose `shared_with_facet` was never
+    # filled in, which otherwise get counted from both sides.
+    totals_by_type = geo.edge_totals_by_type(edges, facets)
 
     eaves_ft = round(totals_by_type["eave"], 1)
     rakes_ft = round(totals_by_type["rake"], 1)

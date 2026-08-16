@@ -17,6 +17,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Facet, LabeledEdge, EdgeType } from './RoofFacetEditor'
+import { labelLine } from './edgeGeometry'
 
 export interface EdgeSuggestion {
   facet_label: string
@@ -25,6 +26,9 @@ export interface EdgeSuggestion {
   confidence: number
   reason: string
   shared_with_facet_label?: string | null
+  /** An existing label being re-reviewed rather than a fresh AI proposal —
+   *  there's no meaningful confidence to show for one, so the pill is hidden. */
+  existing?: boolean
 }
 
 interface Props {
@@ -107,12 +111,14 @@ export default function EdgeReviewModal({
 
   const applyTypeToDraft = useCallback((type: EdgeType) => {
     if (!current) return
-    setDraft(prev => prev.map(e =>
-      (e.facetLabel === current.facet_label && e.vertexIndexStart === current.vertex_index_start)
-        ? { ...e, edgeType: type, userConfirmed: true }
-        : e,
+    // Confirms both sides of a shared line — the ruling is on the roof line,
+    // not on one facet's stored copy of it.
+    setDraft(prev => labelLine(
+      facets, prev,
+      { facetLabel: current.facet_label, vertexIndexStart: current.vertex_index_start },
+      type,
     ))
-  }, [current])
+  }, [current, facets])
 
   const goNext = useCallback(() => setIdx(i => Math.min(total - 1, i + 1)), [total])
   const goPrev = useCallback(() => setIdx(i => Math.max(0, i - 1)), [])
@@ -219,7 +225,9 @@ export default function EdgeReviewModal({
 
           {/* AI verdict + reclassify */}
           <div className="flex flex-col">
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">AI classification</div>
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">
+              {current.existing ? 'Current label' : 'AI classification'}
+            </div>
             <div className="flex items-center gap-2">
               <span
                 className="inline-block h-3 w-3 rounded-full"
@@ -228,7 +236,7 @@ export default function EdgeReviewModal({
               <span className="text-lg font-bold capitalize text-white">
                 {current.suggested_edge_type.replace('_', ' ')}
               </span>
-              <ConfidencePill v={current.confidence} />
+              {!current.existing && <ConfidencePill v={current.confidence} />}
             </div>
             {current.reason && (
               <div className="mt-1 text-xs text-slate-400">{current.reason}</div>

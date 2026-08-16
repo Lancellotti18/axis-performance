@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { Facet, LabeledEdge, EdgeType } from './RoofFacetEditor'
+import { distinctLines, edgeReviewCounts } from './edgeGeometry'
 import EdgeReviewModal from './EdgeReviewModal'
 
 interface Suggestion {
@@ -74,6 +75,46 @@ export function EdgeLabelSuggestions({
     () => edges.filter(e => e.edgeType === 'unlabeled'),
     [edges],
   )
+
+  // Counted in distinct roof lines so these numbers agree with the measurements
+  // panel — a shared line is stored once per facet and must not read as two.
+  const counts = useMemo(() => edgeReviewCounts(facets, edges), [facets, edges])
+
+  // Edges that DO have a type but nobody signed off on. The suggester ignores
+  // them (it only proposes types), so without an explicit action here they were
+  // uncleaable: the panel counted them as outstanding while this card said
+  // "all edges are labeled ✓" and offered nothing to do about it.
+  const unconfirmedLabeled = useMemo(
+    () => edges.filter(e => e.edgeType !== 'unlabeled' && !e.userConfirmed),
+    [edges],
+  )
+
+  const confirmAllLabeled = useCallback(() => {
+    onAcceptEdges(edges.map(e => (
+      e.edgeType !== 'unlabeled' && !e.userConfirmed ? { ...e, userConfirmed: true } : e
+    )))
+  }, [edges, onAcceptEdges])
+
+  /**
+   * What the visual reviewer steps through: fresh AI proposals when there are
+   * any, otherwise the existing labels nobody has signed off on. Deduped to one
+   * entry per roof line so a shared edge isn't reviewed twice.
+   */
+  const reviewSuggestions = useMemo<Suggestion[]>(() => {
+    if (suggestions.length > 0) return suggestions
+    const pending = new Set(unconfirmedLabeled)
+    return distinctLines(facets, edges)
+      .filter(e => pending.has(e))
+      .map(e => ({
+        facet_label: e.facetLabel,
+        vertex_index_start: e.vertexIndexStart,
+        suggested_edge_type: e.edgeType,
+        confidence: 0,
+        reason: 'Applied automatically — confirm it, or tap the correct type.',
+        shared_with_facet_label: e.sharedWithFacetLabel ?? null,
+        existing: true,
+      }))
+  }, [suggestions, unconfirmedLabeled, facets, edges])
 
   const runSuggest = useCallback(async () => {
     if (unlabeledEdges.length === 0) {
@@ -238,11 +279,39 @@ export function EdgeLabelSuggestions({
 
       {/* Explain a disabled button instead of looking broken. */}
       {!loading && unlabeledEdges.length === 0 && (
-        <p className="mt-2 text-xs text-slate-500">
-          {edges.length === 0
-            ? 'No edges to label yet — accept or draw a facet first (step ②). Edges are created automatically from each facet.'
-            : 'All edges are labeled ✓ — nothing to auto-label. Move on to flashing.'}
-        </p>
+        edges.length === 0 ? (
+          <p className="mt-2 text-xs text-slate-500">
+            No edges to label yet — accept or draw a facet first (step ②). Edges are created automatically from each facet.
+          </p>
+        ) : unconfirmedLabeled.length > 0 ? (
+          // Every edge has a type, but some are still the machine's opinion.
+          // This is the one place that can clear them, so it says so plainly.
+          <div className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/5 p-3">
+            <p className="text-xs text-amber-100/90">
+              Every edge has a label, but <strong>{counts.needsConfirm} roof line{counts.needsConfirm === 1 ? '' : 's'}</strong>{' '}
+              {counts.needsConfirm === 1 ? 'is' : 'are'} still unconfirmed — labels applied automatically that nobody has
+              signed off on. The measurements stay provisional until you do.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                onClick={confirmAllLabeled}
+                className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
+                title="Mark every existing label as reviewed"
+              >✓ Confirm all labels</button>
+              {imageUrl && (
+                <button
+                  onClick={() => setReviewing(true)}
+                  className="rounded bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-500"
+                  title="Step through each edge with a zoomed view before confirming"
+                >🔍 Review one by one</button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-slate-500">
+            All {counts.totalLines} roof line{counts.totalLines === 1 ? '' : 's'} labeled and confirmed ✓ — move on to flashing.
+          </p>
+        )
       )}
 
       {suggestions.length > 0 && (
@@ -342,7 +411,7 @@ export function EdgeLabelSuggestions({
           imageHeightPx={imageHeightPx}
           facets={facets}
           edges={edges}
-          suggestions={suggestions}
+          suggestions={reviewSuggestions}
           onApply={(updated) => {
             onAcceptEdges(updated)
             // Clear suggestions that are now confirmed in the applied edges.

@@ -22,6 +22,7 @@ import { api } from '@/lib/api'
 import { getUser } from '@/lib/auth'
 import LocationPicker, { type LocationSelected } from '@/components/roof-v2/LocationPicker'
 import RoofFacetEditor, { type Facet, type LabeledEdge } from '@/components/roof-v2/RoofFacetEditor'
+import { edgeReviewCounts } from '@/components/roof-v2/edgeGeometry'
 import MeasurementsSummary from '@/components/roof-v2/MeasurementsSummary'
 import PenetrationSuggestions from '@/components/roof-v2/PenetrationSuggestions'
 import EdgeLabelSuggestions from '@/components/roof-v2/EdgeLabelSuggestions'
@@ -99,6 +100,10 @@ export default function RoofV2Page() {
   const [runConfirmed, setRunConfirmed] = useState(false)   // a finalized roof shows its saved numbers without re-confirming edges
   const [facets, setFacets] = useState<Facet[]>([])
   const [edges, setEdges] = useState<LabeledEdge[]>([])
+  // Counted in distinct roof LINES, not stored edge records — a shared line is
+  // stored once per facet, so raw counts double it and the panel ends up asking
+  // for confirmations the editor has nothing left to show.
+  const edgeCounts = useMemo(() => edgeReviewCounts(facets, edges), [facets, edges])
   const [geometryStamp, setGeometryStamp] = useState(0)
   const [editorSyncRev, setEditorSyncRev] = useState(0)   // bump to push external edits into the editor canvas
   const [autoLabelTrigger, setAutoLabelTrigger] = useState(0)   // editor toolbar → run edge auto-label
@@ -794,7 +799,8 @@ export default function RoofV2Page() {
             runId={runId}
             geometryStamp={geometryStamp}
             onConfidenceChange={setConfidence}
-            unlabeledCount={edges.filter(e => e.edgeType === 'unlabeled' || !e.userConfirmed).length}
+            unlabeledCount={edgeCounts.needsLabel}
+            unconfirmedCount={edgeCounts.needsConfirm}
             runConfirmed={runConfirmed}
             zip={project?.zip}
             city={project?.city}
