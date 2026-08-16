@@ -30,6 +30,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildEdgeMap, clearEdgeCache, snapToNearestEdge } from '@/lib/edgeSnap'
+import MagnifierLoupe from './MagnifierLoupe'
 
 export type EdgeType =
   | 'eave' | 'rake' | 'ridge' | 'hip' | 'valley'
@@ -1161,23 +1162,19 @@ export function RoofFacetEditor({
             </svg>
           </div>
 
-          {/* Magnifier loupe — a fixed zoomed view centered on the cursor with a
-              crosshair, so contractors can place a corner EXACTLY even at low
-              zoom (the "I can't pinpoint it" problem). Draw mode only. */}
+          {/* Magnifier loupe — the close-up for landing a corner exactly on a
+              roof edge, showing the geometry as well as the pixels so a shared
+              vertex is visible before you commit to it. Draw mode only. */}
           {mode === 'draw' && hoverPt && imageUrl && (
-            <div className="pointer-events-none absolute right-3 top-3 z-20 h-36 w-36 overflow-hidden rounded-full border-2 border-white/80 shadow-xl"
-              style={{
-                backgroundImage: `url("${imageUrl}")`,
-                backgroundRepeat: 'no-repeat',
-                backgroundSize: `${imageDims.w * 3.5}px ${imageDims.h * 3.5}px`,
-                backgroundPosition: `${72 - hoverPt[0] * imageDims.w * 3.5}px ${72 - hoverPt[1] * imageDims.h * 3.5}px`,
-              }}>
-              {/* crosshair */}
-              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-cyan-300/70" />
-              <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-cyan-300/70" />
-              <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300 bg-cyan-300/30" />
-              <div className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 text-[9px] text-white">3.5×</div>
-            </div>
+            <MagnifierLoupe
+              imageUrl={imageUrl}
+              imageDims={imageDims}
+              hoverPt={hoverPt}
+              viewScale={view.scale}
+              facets={facets}
+              drawingPoly={drawingPoly}
+              snapped={hoverSnappedVertex}
+            />
           )}
 
           {/* First-use coachmark — dismissible tips, shown once. */}

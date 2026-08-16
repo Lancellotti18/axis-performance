@@ -97,6 +97,13 @@ export default function RoofV2Page() {
   const [location, setLocation] = useState<LocationSelected | null>(null)
   const [imagery, setImagery] = useState<ImageryPayload | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
+  // `startRun` runs before persistGeometry is defined and must not re-create
+  // itself every time the save closure changes — a ref keeps the wiring stable.
+  const persistGeometryRef = useRef<((f: Facet[], e: LabeledEdge[]) => Promise<void>) | null>(null)
+  // Whether the contractor's work is actually on the server. Drawing is the
+  // most expensive thing they do in this app; they should never have to guess.
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [savedAt, setSavedAt] = useState<number | null>(null)
   const [runConfirmed, setRunConfirmed] = useState(false)   // a finalized roof shows its saved numbers without re-confirming edges
   const [facets, setFacets] = useState<Facet[]>([])
   const [edges, setEdges] = useState<LabeledEdge[]>([])
@@ -179,10 +186,47 @@ export default function RoofV2Page() {
         if (run_id) {
           const data = await api.roofing.v2.getRun(run_id)
           const run = data.run as Record<string, unknown>
+
+          // Adopt the run BEFORE deciding what else we can restore. Everything
+          // the contractor draws saves against this id, and it used to be set
+          // only on the imagery branch below — so a run with no pinned tile left
+          // the page with runId === null and every later save refused itself
+          // with "No measurement run created yet". Nothing they drew could ever
+          // be stored, on a project that already had a perfectly good run.
+          setRunId(run_id)
           setRunConfirmed(!!run.confirmed)   // finalized roof → show its saved numbers on resume
           const sp = run.subject_point as { x: number; y: number } | null
           setSubjectPoint(sp && typeof sp.x === 'number' ? { x: sp.x, y: sp.y } : null)
           setSavedScaleDesc((run.scale_reference_description as string) || null)
+
+          // Geometry doesn't depend on the tile being pinned — restore it either way.
+          const byId: Record<string, string> = {}
+          const fcts: Facet[] = (data.facets as Record<string, unknown>[]).map(f => {
+            byId[f.id as string] = f.facet_label as string
+            return {
+              label: (f.facet_label as string) || '?',
+              polygon: (f.polygon as [number, number][]) || [],
+              pitch: (f.pitch as string) || '6/12',
+              pitchSource: (f.pitch_source as string) || undefined,
+              confidence: (f.confidence as number) ?? 0.8,
+              userConfirmed: !!f.user_confirmed,
+              aiSuggested: !!f.ai_suggested,
+            }
+          })
+          const edgs: LabeledEdge[] = (data.edges as Record<string, unknown>[]).map(e => ({
+            facetLabel: byId[e.facet_id as string] || '',
+            vertexIndexStart: e.vertex_index_start as number,
+            vertexIndexEnd: e.vertex_index_end as number,
+            edgeType: (e.edge_type as LabeledEdge['edgeType']) || 'unlabeled',
+            userConfirmed: !!e.user_confirmed,
+            sharedWithFacetLabel: e.shared_with_facet ? (byId[e.shared_with_facet as string] || undefined) : undefined,
+          })).filter(e => e.facetLabel)
+
+          setFacets(fcts)
+          setEdges(edgs)
+          setGeometryStamp(s => s + 1)
+          setEditorSyncRev(r => r + 1)
+
           const url = (run.satellite_image_url as string) || ''
           if (url) {
             const lat = Number(run.satellite_lat) || 0
@@ -195,41 +239,21 @@ export default function RoofV2Page() {
               lat, lng, zoom, feet_per_pixel: mpp * 3.28084, display_mode: 'original',
             } as ImageryPayload)
             setLocation({ lat, lng } as LocationSelected)
-
-            const byId: Record<string, string> = {}
-            const fcts: Facet[] = (data.facets as Record<string, unknown>[]).map(f => {
-              byId[f.id as string] = f.facet_label as string
-              return {
-                label: (f.facet_label as string) || '?',
-                polygon: (f.polygon as [number, number][]) || [],
-                pitch: (f.pitch as string) || '6/12',
-                pitchSource: (f.pitch_source as string) || undefined,
-                confidence: (f.confidence as number) ?? 0.8,
-                userConfirmed: !!f.user_confirmed,
-                aiSuggested: !!f.ai_suggested,
-              }
-            })
-            const edgs: LabeledEdge[] = (data.edges as Record<string, unknown>[]).map(e => ({
-              facetLabel: byId[e.facet_id as string] || '',
-              vertexIndexStart: e.vertex_index_start as number,
-              vertexIndexEnd: e.vertex_index_end as number,
-              edgeType: (e.edge_type as LabeledEdge['edgeType']) || 'unlabeled',
-              userConfirmed: !!e.user_confirmed,
-              sharedWithFacetLabel: e.shared_with_facet ? (byId[e.shared_with_facet as string] || undefined) : undefined,
-            })).filter(e => e.facetLabel)
-
-            setRunId(run_id)
-            setFacets(fcts)
-            setEdges(edgs)
-            setGeometryStamp(s => s + 1)
-            setEditorSyncRev(r => r + 1)
             setStep('editor')
             setBusy(false)
             return
           }
+          // No tile pinned: the run and its geometry are intact, but the
+          // contractor has to re-pick imagery before drawing. Fall through to
+          // the location step — `startRun` reuses this run rather than
+          // orphaning the facets we just restored.
         }
-      } catch {
-        // Resume is best-effort — fall through to a fresh start below.
+      } catch (e) {
+        // Resume is best-effort — fall through to a fresh start below. Logged
+        // rather than swallowed: a silent failure here presents as "my roof
+        // vanished", which is the hardest kind of bug to hear about second-hand.
+        // eslint-disable-next-line no-console
+        console.warn('[axis] resume failed — starting fresh', e)
       }
 
       const addr = [(p as Project).address, (p as Project).city, (p as Project).state, (p as Project).zip].filter(Boolean).join(', ')
@@ -325,6 +349,17 @@ export default function RoofV2Page() {
     setBusy(true)
     setError(null)
     try {
+      // A run we already resumed keeps its facets — creating a second one here
+      // would strand them on the old run and read to the contractor as "my
+      // drawing disappeared". Re-pin the chosen tile onto the run we have.
+      if (runId) {
+        // eslint-disable-next-line no-console
+        console.log('[axis] startRun → reusing resumed run', runId)
+        await persistGeometryRef.current?.(facets, edges)
+        setStep('editor')
+        setBusy(false)
+        return
+      }
       // eslint-disable-next-line no-console
       console.log('[axis] startRun → POST /runs', {
         project_id: projectId,
@@ -365,7 +400,7 @@ export default function RoofV2Page() {
     } finally {
       setBusy(false)
     }
-  }, [projectId, location, imagery])
+  }, [projectId, location, imagery, runId, facets, edges])
 
   // Persist facets + edges to backend whenever the editor publishes them.
   // Surfaces specific errors instead of silently failing so the contractor
@@ -374,14 +409,17 @@ export default function RoofV2Page() {
     setFacets(newFacets)
     setEdges(newEdges)
     if (!runId) {
+      setSaveState('error')
       setError('No measurement run created yet — refresh the page if this persists.')
       return
     }
     if (!imagery) {
+      setSaveState('error')
       setError('Satellite imagery not loaded — go back to the Imagery step.')
       return
     }
     if (!location) {
+      setSaveState('error')
       setError('Address not validated — go back to the Location step. Without a lat/lng, geometry cannot be measured.')
       return
     }
@@ -389,6 +427,7 @@ export default function RoofV2Page() {
       // Empty editor state isn't an error — just nothing to save
       return
     }
+    setSaveState('saving')
     const lat = location.lat
     const lng = location.lng
     if (lat === 0 && lng === 0) {
@@ -429,21 +468,55 @@ export default function RoofV2Page() {
         })),
       })
       setGeometryStamp(s => s + 1)
+      setSaveState('saved')
+      setSavedAt(Date.now())
       setError(null)   // clear any prior visible error on success
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown save error'
+      setSaveState('error')
       setError(`Save failed: ${msg}. Check browser DevTools Network tab for the failing request.`)
     }
   }, [runId, imagery, location])
+  persistGeometryRef.current = persistGeometry
 
-  // Debounced wrapper so we don't hammer the API on every vertex drag
-  const debouncedRef = useMemo(() => ({ t: null as ReturnType<typeof setTimeout> | null }), [])
+  // Debounced wrapper so we don't hammer the API on every vertex drag.
+  const debouncedRef = useMemo(() => ({
+    t: null as ReturnType<typeof setTimeout> | null,
+    pending: null as { facets: Facet[]; edges: LabeledEdge[] } | null,
+  }), [])
+
+  const flushPending = useCallback(() => {
+    if (debouncedRef.t) { clearTimeout(debouncedRef.t); debouncedRef.t = null }
+    const p = debouncedRef.pending
+    debouncedRef.pending = null
+    if (p) void persistGeometryRef.current?.(p.facets, p.edges)
+  }, [debouncedRef])
+
   const onEditorChange = useCallback((newFacets: Facet[], newEdges: LabeledEdge[]) => {
     setFacets(newFacets)
     setEdges(newEdges)
+    debouncedRef.pending = { facets: newFacets, edges: newEdges }
     if (debouncedRef.t) clearTimeout(debouncedRef.t)
-    debouncedRef.t = setTimeout(() => { void persistGeometry(newFacets, newEdges) }, 800)
+    debouncedRef.t = setTimeout(() => {
+      debouncedRef.t = null
+      debouncedRef.pending = null
+      void persistGeometry(newFacets, newEdges)
+    }, 800)
   }, [persistGeometry, debouncedRef])
+
+  // A debounce that loses its last edit is indistinguishable from "it doesn't
+  // save". Flush the pending write when the tab is hidden or the page is being
+  // torn down — the two moments a contractor's last polygon used to vanish.
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') flushPending() }
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', flushPending)
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', flushPending)
+      flushPending()
+    }
+  }, [flushPending])
 
   const confirmAndDownload = useCallback(async () => {
     if (!runId) return
@@ -749,6 +822,10 @@ export default function RoofV2Page() {
           )}
 
           {editorSub === 'draw' && (<>
+          {/* Save state, always on screen while drawing. Tracing is the most
+              expensive work in the app and it saves on a debounce — the
+              contractor should never have to wonder whether it landed. */}
+          <SaveIndicator state={saveState} savedAt={savedAt} onRetry={() => { void persistGeometry(facets, edges) }} />
           {/* Vision auto-detect retired: field testing showed it didn't reliably
               pick up houses. The workflow is now trace the roof by hand →
               ✨ Auto-label edges (kept, below the canvas). */}
@@ -1045,6 +1122,49 @@ function QuickCreateProject({
         disabled={creating || busy || name.trim().length < 2}
         className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
       >{creating ? 'Creating…' : '+ Create and continue →'}</button>
+    </div>
+  )
+}
+
+/**
+ * Whether the traced roof is on the server. Deliberately quiet when everything
+ * is fine and loud when it isn't: a failed save used to surface only as an
+ * error string far up the page, which is how "my facets don't save" went
+ * unnoticed long enough to become a habit.
+ */
+function SaveIndicator({
+  state, savedAt, onRetry,
+}: {
+  state: 'idle' | 'saving' | 'saved' | 'error'
+  savedAt: number | null
+  onRetry: () => void
+}) {
+  if (state === 'idle') return null
+  if (state === 'error') {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2">
+        <span className="text-xs font-semibold text-rose-200">⚠ Your roof isn&apos;t saved</span>
+        <span className="text-[11px] text-rose-200/70">The last change didn&apos;t reach the server.</span>
+        <button
+          onClick={onRetry}
+          className="ml-auto rounded bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-rose-500"
+        >Retry save</button>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-2 px-1 text-[11px] text-slate-400">
+      {state === 'saving' ? (
+        <>
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+          Saving…
+        </>
+      ) : (
+        <>
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          Saved{savedAt ? ` at ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
+        </>
+      )}
     </div>
   )
 }
