@@ -13,6 +13,7 @@
  * endpoint). Nothing is invented client-side, and each half degrades on its own:
  * if the board is unreachable the CRM read still renders, and vice versa.
  */
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import { api, type CRMPulse } from '@/lib/api'
@@ -33,6 +34,19 @@ export default function MorningBriefing() {
     // instantly when the user comes back to the dashboard.
     staleTime: 5 * 60_000,
   })
+
+  // Homeowner-booked inspections. These live in their own section (they're a
+  // different thing from crew dispatch — inbound requests, not production work)
+  // but the *briefing* is where the day gets read, so they surface here too.
+  const { data: appts } = useQuery({
+    queryKey: ['appointments', 'upcoming'],
+    queryFn: () => api.appointments.list(true),
+    staleTime: 5 * 60_000,
+  })
+  const upcoming = useMemo(() => {
+    const rows = (appts?.appointments || []).filter(a => a.status !== 'cancelled')
+    return rows.slice(0, 3)
+  }, [appts])
 
   const greeting = (() => {
     const h = new Date().getHours()
@@ -58,6 +72,28 @@ export default function MorningBriefing() {
           Open CRM →
         </Link>
       </div>
+
+      {upcoming.length > 0 && (
+        <div className="border-b border-white/[0.07] px-5 py-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Booked inspections</span>
+            <Link href="/schedule" className="text-[11px] font-medium text-blue-400 hover:text-blue-300">See all →</Link>
+          </div>
+          <ul className="space-y-1">
+            {upcoming.map(a => (
+              <li key={a.id} className="flex items-center justify-between gap-3 text-[13px]">
+                <span className="min-w-0 truncate text-slate-200">{a.homeowner_name || 'Homeowner'}</span>
+                <span className="flex-shrink-0 text-[11px] text-slate-400">
+                  {a.preferred_date}
+                  {a.status === 'requested' && (
+                    <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">needs confirming</span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="p-5">
         {isLoading ? (

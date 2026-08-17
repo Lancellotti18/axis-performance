@@ -5,19 +5,22 @@ import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
 import type { Project } from '@/types'
 
+// Mirrors the sidebar. Anything hidden from the nav must be hidden here too —
+// search that jumps to a retired section is worse than no search. Permits,
+// Upload Blueprint, Exterior Module and Training Data are all off-theme or
+// pre-MVP; their routes still work if you type them.
 const PAGES: { label: string; href: string }[] = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Projects', href: '/projects' },
-  { label: 'Upload Blueprint', href: '/projects/new' },
   { label: 'Roof Report', href: '/roof-v2' },
-  { label: 'Exterior Module', href: '/exterior' },
+  { label: 'Find Roofs', href: '/find-roofs' },
   { label: 'Material Compliance', href: '/material-check' },
   { label: 'Roof Visualizer', href: '/home-visualizer' },
   { label: 'Storm Risk Report', href: '/storm-report' },
-  { label: 'Training Data', href: '/training-data' },
   { label: 'CRM', href: '/crm' },
+  { label: 'Inspections', href: '/schedule' },
+  { label: 'Dispatch', href: '/dispatch' },
   { label: 'Reports', href: '/reports' },
-  { label: 'Permits', href: '/permits' },
   { label: 'Settings', href: '/settings' },
 ]
 

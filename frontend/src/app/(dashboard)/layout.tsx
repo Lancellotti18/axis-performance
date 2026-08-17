@@ -43,10 +43,19 @@ const NAV_GROUPS: { title: string; items: { href: string; label: string; icon: (
     title: 'Business',
     items: [
       { href: '/crm',      label: 'CRM',      icon: IconCRM },
-      { href: '/schedule', label: 'Schedule', icon: IconSchedule },
+      // "Schedule" next to "Dispatch" read as two calendars for the same thing.
+      // They aren't: this is inbound homeowner-booked inspections
+      // (inspection_appointments, created from a public report link), while
+      // Dispatch is crew production scheduling (sched_*). The label now says
+      // which is which; upcoming inspections also surface in the dashboard
+      // briefing so the day can be read in one place.
+      { href: '/schedule', label: 'Inspections', icon: IconSchedule },
       { href: '/dispatch', label: 'Dispatch', icon: IconDispatch },
       { href: '/reports',  label: 'Reports',  icon: IconReports },
-      { href: '/permits',  label: 'Permits',  icon: IconPermits },
+      // Permits hidden — off-theme for a pure roofing product. Route + code
+      // kept (same convention as Blueprint upload and the Exterior Module), so
+      // restoring it is this one line.
+      // { href: '/permits',  label: 'Permits',  icon: IconPermits },
     ],
   },
 ]
