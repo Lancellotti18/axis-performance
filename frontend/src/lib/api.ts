@@ -717,6 +717,9 @@ export const api = {
   },
   // ── Project photos: crew gallery, phases, markup, shareable link ─────────
   projectPhotos: {
+    /** Photo count + a cover thumbnail per project, for list views. */
+    counts: () =>
+      apiRequest<{ counts: Record<string, number>; covers: Record<string, string> }>(`/api/v1/project-photos/counts`),
     list: (projectId: string) =>
       apiRequest<{ photos: ProjectPhoto[]; phases: string[] }>(`/api/v1/project-photos/projects/${projectId}`),
     upload: async (projectId: string, file: File, phase: string, caption?: string): Promise<ProjectPhoto> => {

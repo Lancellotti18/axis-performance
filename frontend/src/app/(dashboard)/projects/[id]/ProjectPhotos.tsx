@@ -192,12 +192,18 @@ export default function ProjectPhotos({ projectId }: { projectId: string }) {
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  useEffect(() => {
-    api.projectPhotos.list(projectId)
-      .then(r => setPhotos(r.photos))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+  // Re-fetch the gallery, which mints fresh signed URLs. Also the retry behind
+  // an expired-link tile — the photo is fine, only its URL went stale.
+  const reload = useCallback(async () => {
+    try {
+      const r = await api.projectPhotos.list(projectId)
+      setPhotos(r.photos)
+    } catch { /* the existing tiles stay on screen */ }
   }, [projectId])
+
+  useEffect(() => {
+    void reload().finally(() => setLoading(false))
+  }, [reload])
 
   const handleFiles = useCallback(async (phase: string, files: FileList | null) => {
     if (!files?.length) return
@@ -271,7 +277,18 @@ export default function ProjectPhotos({ projectId }: { projectId: string }) {
                     {p.url
                       // eslint-disable-next-line @next/next/no-img-element
                       ? <img src={p.url} alt={p.caption || ''} loading="lazy" className="h-full w-full object-cover" />
-                      : <div className="flex h-full items-center justify-center text-[10px] text-slate-600">unavailable</div>}
+                      // A photo that uploaded fine but couldn't be signed showed
+                      // a bare "unavailable" tile with no cause and no way out —
+                      // indistinguishable from a lost photo. Say what happened
+                      // and offer the retry, since re-signing usually works.
+                      : (
+                        <div className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center">
+                          <span className="text-base leading-none">🔒</span>
+                          <span className="text-[9px] leading-tight text-slate-400">Link expired</span>
+                          <span onClick={e => { e.stopPropagation(); void reload() }}
+                            className="cursor-pointer text-[9px] font-semibold text-blue-400 underline">Refresh</span>
+                        </div>
+                      )}
                     <PhotoMarkup annotations={p.annotations || []} />
                     {(p.annotations?.length || p.caption) && (
                       <span className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-white">✎ marked</span>

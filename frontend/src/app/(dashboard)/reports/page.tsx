@@ -1,6 +1,7 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -97,6 +98,7 @@ function Section({ title, icon, children, defaultOpen = true }: {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function ReportsPage() {
   const router = useRouter()
+  const qc = useQueryClient()
   const [user, setUser]         = useState<any>(null)
   const [projects, setProjects] = useState<any[]>([])
   const [selectedId, setSelectedId] = useState<string>('')
@@ -108,21 +110,42 @@ export default function ReportsPage() {
   const [savedFlash, setSavedFlash] = useState(false)
   const [exporting, setExporting]   = useState(false)
   const saveTimer = useRef<any>(null)
-  const [roofReports, setRoofReports] = useState<Array<{ run_id: string; project_id: string; project_name: string; address: string | null; created_at: string; pdf_url: string | null }>>([])
   const [roofBusy, setRoofBusy] = useState<string>('')
 
   useEffect(() => {
     getUser().then(u => {
       if (!u) { router.push('/login'); return }
       setUser(u)
-      api.projects.list(u.id).then(data => {
-        const all = (data || []).filter((p: any) => !p.archived)
-        setProjects(all)
-        if (all.length > 0) setSelectedId(all[0].id)
-      }).catch(() => {}).finally(() => setLoadingProjects(false))
-      api.roofing.v2.listReports(u.id).then(r => setRoofReports(r.reports || [])).catch(() => {})
     })
   }, [router])
+
+  // Both lists come from the app-wide cache, so returning to Reports repaints
+  // immediately instead of re-fetching from a possibly-cold backend.
+  const { data: projectRows, isLoading: projectsLoading } = useQuery({
+    queryKey: ['projects', user?.id],
+    queryFn: () => api.projects.list(user!.id),
+    enabled: !!user?.id,
+  })
+  const { data: roofReportData } = useQuery({
+    queryKey: ['roof-reports', user?.id],
+    queryFn: () => api.roofing.v2.listReports(user!.id),
+    enabled: !!user?.id,
+  })
+  const roofReports = useMemo(() => roofReportData?.reports || [], [roofReportData])
+
+  // A URL minted on demand is worth keeping — write it back to the cache so the
+  // same report doesn't get re-signed every time it's opened or shared.
+  const cacheReportUrl = useCallback((runId: string, url: string) => {
+    qc.setQueryData<{ reports: typeof roofReports }>(['roof-reports', user?.id], old =>
+      old ? { ...old, reports: old.reports.map(x => x.run_id === runId ? { ...x, pdf_url: url } : x) } : old)
+  }, [qc, user?.id])
+
+  useEffect(() => {
+    const all = (projectRows || []).filter((p: { archived?: boolean }) => !p.archived)
+    setProjects(all)
+    setLoadingProjects(projectsLoading)
+    setSelectedId(prev => prev || (all.length > 0 ? all[0].id : prev))
+  }, [projectRows, projectsLoading])
 
   async function openRoofReport(rep: { run_id: string; pdf_url: string | null }) {
     if (rep.pdf_url) { window.open(rep.pdf_url, '_blank'); return }
@@ -130,7 +153,7 @@ export default function ReportsPage() {
     try {
       const { url } = await api.roofing.v2.getReportShareUrl(rep.run_id)
       window.open(url, '_blank')
-      setRoofReports(prev => prev.map(x => x.run_id === rep.run_id ? { ...x, pdf_url: url } : x))
+      cacheReportUrl(rep.run_id, url)
     } catch { try { await api.roofing.v2.downloadReport(rep.run_id) } catch {} }
     finally { setRoofBusy('') }
   }
@@ -139,7 +162,7 @@ export default function ReportsPage() {
     try {
       const url = rep.pdf_url || (await api.roofing.v2.getReportShareUrl(rep.run_id)).url
       await navigator.clipboard.writeText(url)
-      setRoofReports(prev => prev.map(x => x.run_id === rep.run_id ? { ...x, pdf_url: url } : x))
+      cacheReportUrl(rep.run_id, url)
       toast.success('Share link copied to clipboard')
     } catch { toast.error('Could not create a share link') }
     finally { setRoofBusy('') }

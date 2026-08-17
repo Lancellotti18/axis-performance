@@ -49,7 +49,39 @@ def _signed(db, path: str) -> Optional[str]:
         return None
 
 
-def _photo_out(db, row: dict) -> dict:
+def _signed_many(db, paths: list[str]) -> dict[str, str]:
+    """Sign many storage paths in ONE round trip.
+
+    Signing per photo meant a gallery of 30 shots made 30 sequential calls to
+    storage. On a cold free-tier backend that reads as "my photos aren't there" —
+    the request is still in flight, or has already timed out. Falls back to
+    signing individually if the batch call isn't available.
+    """
+    if not paths:
+        return {}
+    try:
+        rows = db.storage.from_(BUCKET).create_signed_urls(paths, _URL_TTL)
+        out: dict[str, str] = {}
+        for row in (rows or []):
+            if not isinstance(row, dict) or row.get("error"):
+                continue
+            url = row.get("signedURL") or row.get("signedUrl") or row.get("signed_url")
+            path = (row.get("path") or "").lstrip("/")
+            if not url or not path:
+                continue
+            for p in paths:
+                if path == p or path.endswith(p):
+                    out[p] = url
+                    break
+        if out:
+            return out
+    except Exception:
+        logger.debug("batch signing unavailable — falling back", exc_info=True)
+    return {p: u for p in paths if (u := _signed(db, p))}
+
+
+def _photo_out(db, row: dict, urls: Optional[dict] = None) -> dict:
+    path = row["storage_path"]
     return {
         "id": row["id"],
         "phase": row.get("phase") or "before",
@@ -57,7 +89,7 @@ def _photo_out(db, row: dict) -> dict:
         "annotations": row.get("annotations") or [],
         "sort_order": row.get("sort_order") or 0,
         "created_at": row.get("created_at"),
-        "url": _signed(db, row["storage_path"]),
+        "url": urls.get(path) if urls is not None else _signed(db, path),
     }
 
 
@@ -107,8 +139,45 @@ async def list_photos(project_id: str, user: dict = Depends(require_user)) -> di
     _own_project(db, project_id, user["id"])
     res = (db.table("project_photos").select("*").eq("project_id", project_id)
            .order("phase").order("sort_order").order("created_at").execute())
-    photos = [_photo_out(db, r) for r in (res.data or [])]
+    rows = res.data or []
+    urls = _signed_many(db, [r["storage_path"] for r in rows])
+    photos = [_photo_out(db, r, urls) for r in rows]
     return {"photos": photos, "phases": list(PHASES)}
+
+
+@router.get("/counts")
+async def photo_counts(user: dict = Depends(require_user)) -> dict:
+    """How many photos each of the caller's projects has, plus one cover shot.
+
+    Photos existed only inside a project's own page, so there was no way to tell
+    from anywhere else in the app that a job had any — which is what "uploaded
+    photos don't appear anywhere" actually described. This lets the project lists
+    show a count and a thumbnail without N requests.
+
+    One query and one signing call regardless of how many projects there are.
+    """
+    db = get_supabase()
+    rows = (db.table("project_photos")
+            .select("project_id, storage_path, created_at")
+            .eq("user_id", user["id"])
+            .order("created_at", desc=True).execute().data or [])
+
+    counts: dict[str, int] = {}
+    cover_path: dict[str, str] = {}
+    for r in rows:
+        pid = r.get("project_id")
+        if not pid:
+            continue
+        counts[pid] = counts.get(pid, 0) + 1
+        # Rows arrive newest-first, so the last one seen per project is its oldest
+        # — but the newest photo is the better cover, so keep the first.
+        cover_path.setdefault(pid, r["storage_path"])
+
+    urls = _signed_many(db, list(cover_path.values()))
+    return {
+        "counts": counts,
+        "covers": {pid: urls.get(path) for pid, path in cover_path.items() if urls.get(path)},
+    }
 
 
 class PhotoPatch(BaseModel):
@@ -212,7 +281,11 @@ async def public_gallery(token: str) -> dict:
     prow = (proj.data or [{}])[0]
     res = (db.table("project_photos").select("*").eq("project_id", project_id)
            .order("phase").order("sort_order").order("created_at").execute())
-    photos = [_photo_out(db, r) for r in (res.data or [])]
+    rows = res.data or []
+    # The public crew/customer gallery is the most latency-sensitive of the lot —
+    # it's opened on a phone, on site. One signing call, not one per photo.
+    urls = _signed_many(db, [r["storage_path"] for r in rows])
+    photos = [_photo_out(db, r, urls) for r in rows]
     return {
         "project": {"name": prow.get("name"), "address": prow.get("address"), "city": prow.get("city")},
         "photos": photos, "phases": list(PHASES),

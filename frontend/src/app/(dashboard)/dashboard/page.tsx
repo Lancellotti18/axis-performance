@@ -43,11 +43,13 @@ function ThumbPlaceholder({ id }: { id: string }) {
 }
 
 function ProjectCard({
-  project, onRename, onArchive,
+  project, onRename, onArchive, photoCount = 0,
 }: {
   project: Project
   onRename: (id: string, name: string) => void
   onArchive: (id: string) => void
+  /** Job photos on this project — 0 hides the badge entirely. */
+  photoCount?: number
 }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
@@ -128,6 +130,15 @@ function ProjectCard({
 
         <div className="mt-3 pt-3 border-t border-white/[0.07] flex items-center justify-between">
           <StatusBadge status={project.status} />
+          {photoCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-slate-300"
+              title={`${photoCount} job photo${photoCount === 1 ? '' : 's'}`}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="12" cy="12" r="3" />
+              </svg>
+              {photoCount}
+            </span>
+          )}
           <span className="text-[11px] text-slate-500">{relTime(project.updated_at || project.created_at)}</span>
         </div>
       </div>
@@ -174,6 +185,15 @@ export default function DashboardPage() {
     queryKey: ['projects', user?.id],
     queryFn: () => api.projects.listArchived(user!.id!) as Promise<Project[]>,
     enabled: !!user?.id,
+  })
+
+  // Photo counts for the cards. Until now a project's photos were invisible from
+  // anywhere except its own page, so there was no way to see a job had any.
+  const { data: photoIndex } = useQuery({
+    queryKey: ['photo-counts', user?.id],
+    queryFn: () => api.projectPhotos.counts(),
+    enabled: !!user?.id,
+    staleTime: 5 * 60_000,
   })
 
   const projects = useMemo(() => allProjects.filter(p => !p.archived), [allProjects])
@@ -287,7 +307,10 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {recent.map(p => <ProjectCard key={p.id} project={p} onRename={handleRename} onArchive={handleArchive} />)}
+            {recent.map(p => (
+              <ProjectCard key={p.id} project={p} onRename={handleRename} onArchive={handleArchive}
+                photoCount={photoIndex?.counts?.[p.id] ?? 0} />
+            ))}
           </div>
         )}
 

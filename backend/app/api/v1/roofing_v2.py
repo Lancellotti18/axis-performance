@@ -3289,6 +3289,41 @@ def _signed_report_url(run_id: str) -> Optional[str]:
     return None
 
 
+def _signed_report_urls(run_ids: list[str]) -> dict[str, str]:
+    """Signed URLs for many stored reports in ONE storage round trip.
+
+    The reports list used to sign per row inside its loop, so opening the page
+    cost one network call per report — the reason it crawled for anyone with a
+    real history of jobs. Falls back to signing individually only if the batch
+    call isn't available, so a client-version difference degrades to the old
+    speed rather than an error.
+    """
+    if not run_ids:
+        return {}
+    keys = [_report_key(r) for r in run_ids]
+    bucket = get_supabase().storage.from_(_REPORTS_BUCKET)
+    try:
+        rows = bucket.create_signed_urls(keys, 31_536_000)
+        out: dict[str, str] = {}
+        for row in (rows or []):
+            if not isinstance(row, dict) or row.get("error"):
+                continue
+            url = row.get("signedURL") or row.get("signedUrl")
+            path = (row.get("path") or "").lstrip("/")
+            if not url or not path:
+                continue
+            # Map the returned path back to its run id.
+            for rid, key in zip(run_ids, keys):
+                if path == key or path.endswith(key):
+                    out[rid] = url
+                    break
+        if out:
+            return out
+    except Exception:
+        logger.info("batch report signing unavailable — falling back", exc_info=True)
+    return {rid: u for rid in run_ids if (u := _signed_report_url(rid))}
+
+
 # ----------------------------------------------------------------------------
 # Accuracy flywheel — field-verified actuals + calibration
 # ----------------------------------------------------------------------------
@@ -3590,6 +3625,10 @@ async def list_roof_reports(user_id: Optional[str] = Query(None), user: dict = D
                 stored.add(nm[:-4])
     except Exception:
         pass
+    # Sign every stored PDF in one call rather than once per row — this loop is
+    # what made the reports page slow to open as a contractor's history grew.
+    signed_urls = _signed_report_urls([r["id"] for r in runs
+                                       if r["id"] in reportable and r["id"] in stored])
     out = []
     for r in runs:
         if r["id"] not in reportable:
@@ -3601,7 +3640,7 @@ async def list_roof_reports(user_id: Optional[str] = Query(None), user: dict = D
             "project_name": p.get("name") or "Project",
             "address": ", ".join([x for x in [p.get("address"), p.get("city")] if x]) or None,
             "created_at": r.get("created_at"),
-            "pdf_url": _signed_report_url(r["id"]) if r["id"] in stored else None,
+            "pdf_url": signed_urls.get(r["id"]),
         })
     return {"reports": out}
 
