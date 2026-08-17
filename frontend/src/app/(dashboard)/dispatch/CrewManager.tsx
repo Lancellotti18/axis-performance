@@ -67,9 +67,17 @@ export default function CrewManager({ data, onClose }: { data: BoardData; onClos
                   <button onClick={() => { setTimeoffId(timeoffId === crew.id ? null : crew.id) }} className="rounded-md border px-2 py-1 text-[11px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Time off</button>
                   <button onClick={() => { setEditingId(crew.id); setAddOpen(false) }} className="rounded-md border px-2 py-1 text-[11px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Edit</button>
                   <button onClick={async () => {
-                    if (!confirm(`Remove ${crew.name}? This deletes its shifts and time off.`)) return
-                    try { await deleteCrew(crew.id); toast.success('Crew removed'); refresh() }
-                    catch (e) { toast.error(e instanceof Error ? e.message : 'Could not remove crew') }
+                    if (!confirm(`Remove ${crew.name}? This clears its shifts and time off. Finished jobs keep their history.`)) return
+                    try {
+                      const res = await deleteCrew(crew.id)
+                      // A crew with completed work is archived, not deleted, so
+                      // the record of who did those jobs survives. Say so —
+                      // otherwise "removed" is a quiet half-truth.
+                      toast.success(res.archived
+                        ? `${crew.name} archived — off the board, ${res.completed_jobs} completed job${res.completed_jobs === 1 ? '' : 's'} keep their history`
+                        : 'Crew removed')
+                      refresh()
+                    } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not remove crew') }
                   }} className="rounded-md px-2 py-1 text-[11px]" style={{ color: 'var(--over)' }}>Delete</button>
                 </div>
               </div>

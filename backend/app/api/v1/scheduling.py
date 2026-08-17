@@ -22,7 +22,7 @@ from app.core.supabase import get_supabase
 from app.services.scheduling.capacity import (
     AppointmentLoadInput, ConflictContext, CrewCapacityInput, JobProductionInput,
     NonJobEventInput, ProposedAssignment, ShiftInput, compute_crew_days,
-    compute_day_load, detect_conflicts, has_block,
+    compute_day_load, detect_conflicts, has_block, split_crew_work,
 )
 from app.services.scheduling.timeutil import naive_dt
 from app.services.scheduling.copilot import (
@@ -1635,14 +1635,66 @@ async def update_crew(crew_id: str, body: CrewPatch, user: dict = Depends(requir
 
 @router.delete("/crews/{crew_id}")
 async def delete_crew(crew_id: str, user: dict = Depends(require_user)) -> dict:
+    """Retire a crew.
+
+    The old guard refused whenever ANY sched_assignment row existed for the
+    crew — all time, any status. The board only ever loads the visible week, so
+    a job finished last month (or booked three weeks out) produced "this crew
+    still has scheduled jobs" while the dispatcher stared at an empty row and
+    concluded the app was broken. Only work that still needs this crew blocks,
+    and the message says which job and when so it can actually be acted on.
+
+    A crew with finished work is archived rather than deleted: sched_assignment
+    cascades on crew delete, so hard-deleting would strip the crew off historical
+    appointments and quietly rewrite who did the work. Archiving takes it off the
+    board and leaves the record intact.
+    """
     db = get_supabase()
-    asg = _rows(db.table("sched_assignment").select("id").eq("org_id", ORG).eq("crew_id", crew_id).limit(1).execute())
-    if asg:
-        raise HTTPException(status_code=409, detail="This crew still has scheduled jobs — reassign or remove them first.")
+    crew = _one(db, "sched_crew", crew_id)
+    if not crew:
+        raise HTTPException(status_code=404, detail="Crew not found.")
+
+    appt_ids = [a["appointment_id"] for a in
+                _rows(db.table("sched_assignment").select("appointment_id")
+                      .eq("org_id", ORG).eq("crew_id", crew_id).execute())
+                if a.get("appointment_id")]
+
+    upcoming: list[dict] = []
+    finished = 0
+    if appt_ids:
+        upcoming, finished = split_crew_work(
+            _rows(db.table("sched_appointment")
+                  .select("id,scheduled_start,status,job_id").in_("id", appt_ids).execute()),
+            date.today().isoformat(),
+        )
+
+    if upcoming:
+        nxt = (upcoming[0].get("scheduled_start") or "")[:10]
+        n = len(upcoming)
+        raise HTTPException(status_code=409, detail=(
+            f"{crew.get('name') or 'This crew'} still has {n} upcoming job{'' if n == 1 else 's'}, "
+            f"the next on {nxt}. Move or cancel {'it' if n == 1 else 'them'} first — the board shows "
+            f"one week at a time, so jump to that date to find {'it' if n == 1 else 'them'}."
+        ))
+
+    # Scheduling scaffolding is the crew's own and goes either way.
     for t in ("sched_shift", "sched_non_job_event", "sched_crew_skill", "sched_crew_membership"):
         db.table(t).delete().eq("org_id", ORG).eq("crew_id", crew_id).execute()
-    db.table("sched_crew").delete().eq("org_id", ORG).eq("id", crew_id).execute()
-    return {"ok": True}
+
+    archived = finished > 0
+    if archived:
+        db.table("sched_crew").update({"is_active": False}).eq("org_id", ORG).eq("id", crew_id).execute()
+    else:
+        db.table("sched_crew").delete().eq("org_id", ORG).eq("id", crew_id).execute()
+
+    db.table("sched_audit_event").insert({
+        "org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "crew",
+        "entity_id": crew_id, "action": "ARCHIVE_CREW" if archived else "DELETE_CREW",
+        "before_json": {"name": crew.get("name"), "is_active": crew.get("is_active")},
+        "after_json": {"archived": archived, "completed_jobs": finished},
+        "request_id": str(uuid.uuid4())}).execute()
+
+    return {"ok": True, "archived": archived, "completed_jobs": finished}
 
 
 class TimeOffInput(BaseModel):

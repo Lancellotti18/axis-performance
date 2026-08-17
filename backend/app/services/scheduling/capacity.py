@@ -377,3 +377,36 @@ def detect_conflicts(p: ProposedAssignment, ctx: ConflictContext) -> List[Confli
 
 def has_block(conflicts: List[Conflict]) -> bool:
     return any(c.severity == "BLOCK" for c in conflicts)
+
+
+# ── Crew lifecycle ────────────────────────────────────────────────────────────
+
+# Work that no longer needs the crew: finished, called off, or back in the tray.
+# None of it is a reason to refuse to retire a crew.
+RELEASED_STATUSES = {"DONE", "CANCELED", "UNASSIGNED"}
+
+
+def split_crew_work(appointments: List[dict], today: str) -> Tuple[List[dict], int]:
+    """Split a crew's appointments into (still needs this crew, already behind it).
+
+    An appointment only holds a crew if it is both in the future and in a live
+    status. Anything finished, called off, back in the tray, or simply in the
+    past is history and must not stop the crew being retired — the board shows
+    one week at a time, so a job in any other week is invisible to the
+    dispatcher and makes a refusal look like a phantom.
+
+    An appointment with no date is treated as live: we can't prove it's behind
+    us, and wrongly retiring a crew that's still on the hook is the worse error.
+    Returned upcoming list is sorted soonest-first, so callers can name the date
+    the dispatcher needs to go find.
+    """
+    upcoming: List[dict] = []
+    finished = 0
+    for r in appointments:
+        starts = (r.get("scheduled_start") or "")[:10]
+        if (r.get("status") or "").upper() in RELEASED_STATUSES or (starts and starts < today):
+            finished += 1
+        else:
+            upcoming.append(r)
+    upcoming.sort(key=lambda r: r.get("scheduled_start") or "")
+    return upcoming, finished

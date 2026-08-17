@@ -199,7 +199,12 @@ export async function updateCrew(id: string, patch: Partial<CrewInput>): Promise
   if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
   return res.json()
 }
-export async function deleteCrew(id: string): Promise<{ ok: boolean }> {
+/**
+ * Retires a crew. `archived` is true when it had completed work — the crew comes
+ * off the board but the record of who did those jobs is preserved rather than
+ * cascaded away. Only genuinely upcoming jobs block the call (409).
+ */
+export async function deleteCrew(id: string): Promise<{ ok: boolean; archived?: boolean; completed_jobs?: number }> {
   const h = await authHeaders()
   const res = await fetch(`${API_BASE}/api/v1/scheduling/crews/${id}`, { method: 'DELETE', headers: h })
   if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
