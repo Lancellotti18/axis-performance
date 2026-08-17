@@ -4,6 +4,8 @@ Two complementary free layers:
 
 1. Parcel/address layer (per-home) — public county ArcGIS services. Depth varies:
      - Onslow: address + owner + YEARBUILT + SALEDATE/SALEPRICE  (richest)
+     - York PA (Hanover, York): address + owner + mailing + YRBLT + sale +
+       appraised value — as deep as Onslow
      - Brunswick: address + owner, no age
      - New Hanover (Wilmington): address points only — no free owner/age (parcel
        service is token-locked), so it's a canvassing list.
@@ -76,6 +78,24 @@ PARCEL_SOURCES: dict[str, dict] = {
         "city_field": "ADDR",
         "f": {"full_address": "ADDR", "owner": "NAME", "pin": "OBJECTID", "sale_price": "SALE_PRICE"},
     },
+    # York County PA (Hanover, York) — the Planning Commission's live parcel
+    # service. Verified against the layer's own metadata: it carries owner,
+    # mailing address, year built and sale date/price, so PA gets the same
+    # depth as Onslow rather than the tract-level heat layer it had before.
+    # CLASS='R' is the county's residential flag; APRBLDG>0 drops vacant land,
+    # and YRBLT>1901 drops the "unknown/very old" sentinel. SALEDT is a
+    # 'DD-MON-YY' string, which _sale_recency already understands.
+    "york_pa": {
+        "name": "York County, PA (Hanover, York)",
+        "url": "https://arcweb1.ycpc.org/server/rest/services/OPEN_DATA/Parcels/MapServer/0/query",
+        "residential_where": "CLASS='R' AND YRBLT>1901 AND APRBLDG>0",
+        # No municipality column on this layer; the full property address is the
+        # only place a town name appears — same approach as Pender.
+        "city_field": "PROPADR",
+        "f": {"full_address": "PROPADR", "owner": "OWNER_FULL", "owner_mail": "MAIL_ADDR_FULL",
+              "pin": "PIDN", "year_built": "YRBLT", "sale_date": "SALEDT",
+              "sale_price": "PRICE", "tax_value": "APRTOTAL"},
+    },
 }
 
 # NC region county FIPS for the Census heat layer (state 37 = North Carolina).
@@ -88,9 +108,9 @@ COUNTY_FIPS: dict[str, tuple[str, str, str]] = {
     "bladen": ("37", "017", "Bladen County, NC"),
     "duplin": ("37", "061", "Duplin County, NC"),
     "carteret": ("37", "031", "Carteret County, NC"),
-    # Pennsylvania expansion. York County contains Hanover borough. Census-heat
-    # works off FIPS today; rich per-home parcel data (owner/year-built, "like
-    # Onslow") awaits York County's verified parcel ArcGIS endpoint in PARCEL_SOURCES.
+    # Pennsylvania expansion. York County contains Hanover borough. Now backed by
+    # a verified per-home parcel source in PARCEL_SOURCES as well, so PA returns
+    # real addresses rather than only tract-level heat.
     "york_pa": ("42", "133", "York County, PA (Hanover, York)"),
 }
 

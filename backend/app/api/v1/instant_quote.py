@@ -176,6 +176,44 @@ def _ring_centroid(ring: list[dict]) -> tuple[float, float]:
     return sum(p["lat"] for p in ring) / n, sum(p["lng"] for p in ring) / n
 
 
+# Median US single-family footprint, near enough for a highlight that only has
+# to read as "your house" — it is never used as a measurement.
+_TYPICAL_HOUSE_FT = (46.0, 32.0)
+
+
+def _approximate_house_ring(fpp: float, w: int, h: int) -> Optional[list[dict]]:
+    """A house-sized highlight centred on the tile, in normalized tile coords.
+
+    Used when no real building outline is available. The tile is already centred
+    on the subject, so a correctly-scaled rectangle sits over the house and reads
+    the way contractors expect this screen to look. Corners are clipped to give
+    it a roof-ish silhouette rather than a survey box, and the caller flags it as
+    approximate so the copy never overclaims.
+
+    Returns None when the tile scale is unknown — better a pin than a shape at
+    the wrong size, which would look like a broken measurement.
+    """
+    if not fpp or fpp <= 0 or not w or not h:
+        return None
+    half_w = (_TYPICAL_HOUSE_FT[0] / fpp) / 2.0 / w
+    half_h = (_TYPICAL_HOUSE_FT[1] / fpp) / 2.0 / h
+    # If the tile is so zoomed out that a house is a speck, a highlight is noise.
+    if half_w <= 0.01 or half_w > 0.48 or half_h <= 0.01 or half_h > 0.48:
+        return None
+    cut_x, cut_y = half_w * 0.28, half_h * 0.28
+    cx = cy = 0.5
+    return [
+        {"x": cx - half_w + cut_x, "y": cy - half_h},
+        {"x": cx + half_w - cut_x, "y": cy - half_h},
+        {"x": cx + half_w,         "y": cy - half_h + cut_y},
+        {"x": cx + half_w,         "y": cy + half_h - cut_y},
+        {"x": cx + half_w - cut_x, "y": cy + half_h},
+        {"x": cx - half_w + cut_x, "y": cy + half_h},
+        {"x": cx - half_w,         "y": cy + half_h - cut_y},
+        {"x": cx - half_w,         "y": cy - half_h + cut_y},
+    ]
+
+
 def _project_ring_to_tile(ring: list[dict], clat: float, clng: float, fpp: float, w: int, h: int) -> list[dict]:
     """Project a lat/lng footprint ring onto a tile centered at (clat, clng) with
     scale `fpp` feet/pixel, returned as normalized [{x,y}] in 0..1 (north up).
@@ -233,7 +271,8 @@ def _branding_for(db, w: dict) -> dict:
         pass
     return {"company_name": company or "Your local roofing pro", "phone": phone or "",
             "show_instant_price": bool(w.get("show_instant_price")),
-            "brand_color": w.get("brand_color") or None}
+            "brand_color": w.get("brand_color") or None,
+            "background_color": w.get("background_color") or None}
 
 
 @router.get("/w/{widget_key}")
@@ -295,6 +334,14 @@ async def locate(widget_key: str, payload: LocateRequest, request: Request) -> d
         from urllib.parse import quote as _q
         tile = await imagery_service.fetch_satellite_image(center_lat, center_lng, zoom=zoom, width_px=1280, height_px=960)
         footprint_norm = _project_ring_to_tile(ring, center_lat, center_lng, tile.feet_per_pixel, tile.width_px, tile.height_px) if ring else None
+        # When OSM has no building here — or Overpass refused the lookup, which
+        # it does readily from cloud IPs — fall back to a correctly-scaled house
+        # shape rather than a map pin. A pin says "somewhere around here"; the
+        # whole point of this screen is "that one, right there".
+        approximate = False
+        if not footprint_norm:
+            footprint_norm = _approximate_house_ring(tile.feet_per_pixel, tile.width_px, tile.height_px)
+            approximate = footprint_norm is not None
         return {
             "found": True,
             # Anchor measurement on the building centroid when we found the footprint.
@@ -307,6 +354,9 @@ async def locate(widget_key: str, payload: LocateRequest, request: Request) -> d
                 "feet_per_pixel": tile.feet_per_pixel,
             },
             "footprint": footprint_norm,
+            # The client softens its copy for an approximation — it must never
+            # claim "we found your home" over a shape we guessed.
+            "footprint_approximate": approximate,
         }
     except Exception as e:
         logger.info("widget locate imagery failed: %s", e)
@@ -738,9 +788,16 @@ async def my_widget(user: dict = Depends(require_user)) -> dict:
 
 @router.get("/roofvision/catalog")
 async def roofvision_catalog(user: dict = Depends(require_user)) -> dict:
-    """The pickable shingle catalog for the palette-curation setting."""
-    from app.services.roofvision_service import catalog
-    return {"catalog": catalog()}
+    """The pickable shingle catalog for the palette-curation setting.
+
+    `enabled` reports whether renders are actually being generated. Curating a
+    palette that silently never renders is why the colors looked like a dead
+    feature to homeowners — the picker on the report has always been interactive,
+    but with generation switched off the report falls back to a plain satellite
+    image and the swatches never appear at all.
+    """
+    from app.services.roofvision_service import catalog, roofvision_enabled
+    return {"catalog": catalog(), "enabled": roofvision_enabled()}
 
 
 class WidgetSettings(BaseModel):
@@ -753,6 +810,11 @@ class WidgetSettings(BaseModel):
     # Brand accent color (cosmetic white-label). Hex only — it's injected into a
     # CSS variable on the public pages, so the pattern guards against CSS breakout.
     brand_color: Optional[str] = Field(None, pattern=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+    # Page background, separate from the accent. Overloading one color meant
+    # contractors setting "brand color" and seeing only the buttons change; two
+    # controls also keep button-on-background contrast the contractor's choice
+    # rather than something we derive and get wrong.
+    background_color: Optional[str] = Field(None, pattern=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
     # RoofVision palette — ordered catalog keys the contractor wants rendered.
     roofvision_palette: Optional[list[str]] = Field(None, max_length=8)
 
@@ -776,7 +838,7 @@ async def update_widget(payload: WidgetSettings, user: dict = Depends(require_us
         # lights up once its migration runs. `updated_at` keeps patch non-empty.
         msg = str(e).lower()
         schema_miss = ("column" in msg and "does not exist" in msg) or "pgrst204" in msg
-        newer = [k for k in ("roofvision_palette", "show_instant_price", "brand_color") if k in patch]
+        newer = [k for k in ("roofvision_palette", "show_instant_price", "brand_color", "background_color") if k in patch]
         if schema_miss and newer:
             logger.warning("quote_widgets missing newer column(s) %s — run pending migration", newer)
             for k in newer:
@@ -906,6 +968,7 @@ async def homeowner_report(token: str, request: Request, count: bool = True) -> 
         "company_phone": prof.get("phone") or company.get("phone") or "",
         "show_instant_price": bool(company.get("show_instant_price")),
         "brand_color": company.get("brand_color") or None,
+        "background_color": company.get("background_color") or None,
         "company_license": prof.get("license_number") or None,
         "company_logo_url": prof.get("logo_url") or None,
         "service_area": service_area,

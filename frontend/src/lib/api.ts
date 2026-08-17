@@ -53,6 +53,7 @@ export interface QuoteWidget {
   price_high: number
   show_instant_price?: boolean
   brand_color?: string | null
+  background_color?: string | null
   roofvision_palette?: string[] | null
 }
 
@@ -758,7 +759,7 @@ export const api = {
   instantQuote: {
     // Public (homeowner-facing; no auth required)
     widgetConfig: (key: string) =>
-      apiRequest<{ company_name: string; phone: string; show_instant_price?: boolean; brand_color?: string | null }>(`/api/v1/instant-quote/w/${key}`),
+      apiRequest<{ company_name: string; phone: string; show_instant_price?: boolean; brand_color?: string | null; background_color?: string | null }>(`/api/v1/instant-quote/w/${key}`),
     locate: (key: string, payload: { address?: string; lat?: number; lng?: number }) =>
       apiRequest<{
         found: boolean
@@ -768,6 +769,9 @@ export const api = {
         message?: string
         imagery?: { url: string; width_px: number; height_px: number; feet_per_pixel: number } | null
         footprint?: { x: number; y: number }[] | null   // building outline, normalized to the tile
+        /** True when the outline is a scaled house-shaped approximation rather
+         *  than a real OSM building — the copy must not claim we found the home. */
+        footprint_approximate?: boolean
       }>(`/api/v1/instant-quote/w/${key}/locate`, {
         method: 'POST', body: JSON.stringify(payload),
       }, 45000),
@@ -840,7 +844,7 @@ export const api = {
         method: 'POST', body: JSON.stringify({ key }),
       }),
     roofvisionCatalog: () =>
-      apiRequest<{ catalog: { key: string; name: string; tier: string }[] }>(`/api/v1/instant-quote/roofvision/catalog`),
+      apiRequest<{ catalog: { key: string; name: string; tier: string }[]; enabled?: boolean }>(`/api/v1/instant-quote/roofvision/catalog`),
     analytics: () =>
       apiRequest<{ funnel: Record<string, number>; leads_30d: number; avg_score: number | null }>(
         `/api/v1/instant-quote/analytics`, undefined, 30000, 60000),
@@ -862,7 +866,7 @@ export const api = {
     // Contractor
     myWidget: () =>
       apiRequest<QuoteWidget>(`/api/v1/instant-quote/my-widget`),
-    updateWidget: (patch: Partial<Pick<QuoteWidget, 'enabled' | 'company_name' | 'phone' | 'price_low' | 'price_high' | 'show_instant_price' | 'brand_color' | 'roofvision_palette'>>) =>
+    updateWidget: (patch: Partial<Pick<QuoteWidget, 'enabled' | 'company_name' | 'phone' | 'price_low' | 'price_high' | 'show_instant_price' | 'brand_color' | 'background_color' | 'roofvision_palette'>>) =>
       apiRequest<QuoteWidget>(`/api/v1/instant-quote/my-widget`, {
         method: 'PATCH', body: JSON.stringify(patch),
       }),

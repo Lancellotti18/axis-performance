@@ -18,7 +18,11 @@ export default function RoofIQTools() {
   const [priceHigh, setPriceHigh] = useState('550')
   const [showPrice, setShowPrice] = useState(false)
   const [brandColor, setBrandColor] = useState('')
+  const [bgColor, setBgColor] = useState('')
   const [catalog, setCatalog] = useState<{ key: string; name: string; tier: string }[]>([])
+  // Whether renders are actually being generated. The homeowner-facing picker
+  // has always been interactive; with generation off it simply never appears.
+  const [roofVisionOn, setRoofVisionOn] = useState(true)
   const [palette, setPalette] = useState<string[]>([])
 
   useEffect(() => {
@@ -27,10 +31,13 @@ export default function RoofIQTools() {
       setPriceLow(String(w.price_low)); setPriceHigh(String(w.price_high))
       setShowPrice(!!w.show_instant_price)
       setBrandColor(w.brand_color || '')
+      setBgColor(w.background_color || '')
       setPalette(w.roofvision_palette || [])
     }).catch(() => {})
     api.instantQuote.analytics().then(setAnalytics).catch(() => {})
-    api.instantQuote.roofvisionCatalog().then(r => setCatalog(r.catalog)).catch(() => {})
+    api.instantQuote.roofvisionCatalog()
+      .then(r => { setCatalog(r.catalog); setRoofVisionOn(r.enabled !== false) })
+      .catch(() => {})
   }, [])
 
   const toggleColor = (key: string) =>
@@ -63,8 +70,18 @@ export default function RoofIQTools() {
     try {
       const w = await api.instantQuote.updateWidget({ brand_color: hex || null })
       setWidget(w)
-      toast.success(hex ? 'Brand color saved' : 'Reverted to the default blue')
+      toast.success(hex ? 'Accent color saved' : 'Accent reverted to the default blue')
     } catch { toast.error('Could not save color') }
+  }, [])
+
+  const saveBackground = useCallback(async (hex: string) => {
+    setBgColor(hex)
+    if (hex && !/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex)) return  // wait for a full hex
+    try {
+      const w = await api.instantQuote.updateWidget({ background_color: hex || null })
+      setWidget(w)
+      toast.success(hex ? 'Background color saved' : 'Background reverted to the default')
+    } catch { toast.error('Could not save background') }
   }, [])
 
   const saveSettings = useCallback(async () => {
@@ -195,14 +212,19 @@ export default function RoofIQTools() {
             </button>
           </div>
 
-          {/* Brand color — cosmetic white-label; layout + Axis footer stay locked */}
+          {/* Two separate controls on purpose. One "brand color" that only moved
+              the buttons was the single most confusing setting here — people set
+              it expecting the page to change. Splitting them also leaves button
+              contrast in the contractor's hands instead of us deriving it. */}
           <div className="border-t border-white/10 pt-3">
-            <div className="mb-1 font-semibold text-slate-300">🎨 Brand color</div>
-            <p className="mb-2 text-[11px] text-slate-500">
-              The accent on your report and quote page — buttons and highlights pick this up. Layout, trust language, and the “Powered by Axis” footer stay the same. Blank = the default blue.
+            <div className="mb-1 font-semibold text-slate-300">🎨 Colors</div>
+            <p className="mb-3 text-[11px] text-slate-500">
+              Cosmetic white-label for your report and quote page. Layout, trust language, and the “Powered by Axis” footer stay the same.
             </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <input type="color" value={brandColor || '#2563eb'} aria-label="Brand color"
+
+            <div className="mb-1 text-[11px] font-semibold text-slate-400">Accent — buttons &amp; highlights</div>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <input type="color" value={brandColor || '#2563eb'} aria-label="Accent color"
                 onChange={e => setBrandColor(e.target.value)} onBlur={e => saveBrand(e.target.value)}
                 className="h-9 w-12 cursor-pointer rounded border border-slate-700 bg-slate-800 p-0.5" />
               <input type="text" value={brandColor} placeholder="#2563eb"
@@ -210,10 +232,33 @@ export default function RoofIQTools() {
                 onBlur={() => saveBrand(brandColor)}
                 onKeyDown={e => { if (e.key === 'Enter') saveBrand(brandColor) }}
                 className="w-28 rounded border border-slate-700 bg-slate-800 px-2 py-1.5 font-mono text-white" />
-              <span className="rounded px-2.5 py-1.5 text-[11px] font-semibold text-white" style={{ background: brandColor || '#2563eb' }}>Sample button</span>
               {brandColor && (
-                <button onClick={() => saveBrand('')} className="rounded bg-slate-700 px-2.5 py-1.5 text-slate-200 hover:bg-slate-600">Reset to blue</button>
+                <button onClick={() => saveBrand('')} className="rounded bg-slate-700 px-2.5 py-1.5 text-slate-200 hover:bg-slate-600">Reset</button>
               )}
+            </div>
+
+            <div className="mb-1 text-[11px] font-semibold text-slate-400">Page background</div>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <input type="color" value={bgColor || '#f8fafc'} aria-label="Background color"
+                onChange={e => setBgColor(e.target.value)} onBlur={e => saveBackground(e.target.value)}
+                className="h-9 w-12 cursor-pointer rounded border border-slate-700 bg-slate-800 p-0.5" />
+              <input type="text" value={bgColor} placeholder="#f8fafc"
+                onChange={e => setBgColor(e.target.value.trim())}
+                onBlur={() => saveBackground(bgColor)}
+                onKeyDown={e => { if (e.key === 'Enter') saveBackground(bgColor) }}
+                className="w-28 rounded border border-slate-700 bg-slate-800 px-2 py-1.5 font-mono text-white" />
+              {bgColor && (
+                <button onClick={() => saveBackground('')} className="rounded bg-slate-700 px-2.5 py-1.5 text-slate-200 hover:bg-slate-600">Reset</button>
+              )}
+            </div>
+
+            {/* Live pairing preview — the only reliable way to catch a dark
+                button on a dark background before a homeowner sees it. */}
+            <div className="rounded-lg p-3 ring-1 ring-white/10" style={{ background: bgColor || '#f8fafc' }}>
+              <div className="mb-1.5 text-[10px] font-semibold" style={{ color: bgColor ? '#ffffffaa' : '#64748b' }}>Preview</div>
+              <span className="inline-block rounded px-2.5 py-1.5 text-[11px] font-semibold text-white" style={{ background: brandColor || '#2563eb' }}>
+                Get my free estimate
+              </span>
             </div>
           </div>
 
@@ -222,8 +267,19 @@ export default function RoofIQTools() {
               <div className="mb-1 font-semibold text-slate-300">✨ RoofVision shingle colors</div>
               <p className="mb-2 text-[11px] text-slate-500">
                 Pick the colors homeowners see their own roof rendered in — only the shingles you install.
+                Homeowners tap between them on their report and their choice comes back to you on the lead.
                 {palette.length === 0 && ' None selected uses a default palette.'}
               </p>
+              {!roofVisionOn && (
+                // Curating a palette that never renders is worse than no setting
+                // at all — say plainly that the switch is off and where it lives.
+                <div className="mb-2 rounded-lg border border-amber-400/25 bg-amber-500/[0.07] p-2.5 text-[11px] text-amber-100/90">
+                  <strong className="text-amber-200">Rendering is switched off.</strong> Your picks save, but homeowner
+                  reports currently show the plain satellite image instead of color previews. Turn on{' '}
+                  <code className="rounded bg-black/30 px-1 font-mono">ROOFVISION_ENABLED</code> (and set an image-provider
+                  API key) on the backend to activate it.
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5">
                 {catalog.map(c => {
                   const on = palette.includes(c.key)

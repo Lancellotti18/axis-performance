@@ -98,6 +98,7 @@ export default function RoofIQPage() {
   const [companyPhone, setCompanyPhone] = useState('')
   const [showPrice, setShowPrice] = useState(false)
   const [brandColor, setBrandColor] = useState('')
+  const [bgColor, setBgColor] = useState('')
   const [notFound, setNotFound] = useState(false)
   const [step, setStep] = useState<Step>('address')
   const [busy, setBusy] = useState(false)
@@ -109,6 +110,9 @@ export default function RoofIQPage() {
   const [imagery, setImagery] = useState<{ url: string; width_px: number; height_px: number; feet_per_pixel: number } | null>(null)
   const [pin, setPin] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 })
   const [footprint, setFootprint] = useState<{ x: number; y: number }[] | null>(null)
+  // The outline is a scaled house shape, not a real building outline — shown the
+  // same way (a pin reads as "somewhere near here") but described honestly.
+  const [footprintApprox, setFootprintApprox] = useState(false)
   const [tapped, setTapped] = useState(false)   // homeowner overrode the auto outline
   const [confirmed, setConfirmed] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
@@ -152,7 +156,7 @@ export default function RoofIQPage() {
   useEffect(() => {
     if (!widgetKey) return
     api.instantQuote.widgetConfig(widgetKey)
-      .then(c => { setCompany(c.company_name); setCompanyPhone(c.phone); setShowPrice(!!c.show_instant_price); setBrandColor(c.brand_color || ''); track('view') })
+      .then(c => { setCompany(c.company_name); setCompanyPhone(c.phone); setShowPrice(!!c.show_instant_price); setBrandColor(c.brand_color || ''); setBgColor(c.background_color || ''); track('view') })
       .catch(() => setNotFound(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgetKey])
@@ -167,6 +171,7 @@ export default function RoofIQPage() {
       setLocated({ lat: r.lat, lng: r.lng as number, address: r.address || address.trim() })
       setImagery(r.imagery || null)
       setFootprint(r.footprint && r.footprint.length >= 3 ? r.footprint : null)
+      setFootprintApprox(!!r.footprint_approximate)
       setPin({ x: 0.5, y: 0.5 })   // tile is centered on the building; center = the house
       setTapped(false)
       setConfirmed(false)
@@ -284,7 +289,14 @@ export default function RoofIQPage() {
   return (
     <main
       className={`min-h-screen text-slate-900 ${embedded ? 'p-3' : 'flex items-start justify-center p-4 pt-8 sm:items-center sm:p-8'}`}
-      style={{ background: 'radial-gradient(1100px 420px at 50% -8%, #dcebff 0%, rgba(220,235,255,0) 62%), linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)', ['--brand' as string]: brandColor || '#2563eb' }}
+      style={{
+        // A contractor-set background replaces the default gradient outright;
+        // blending the two produced muddy, unbrandable results.
+        background: bgColor
+          ? `radial-gradient(1100px 420px at 50% -8%, color-mix(in srgb, ${bgColor} 82%, white) 0%, ${bgColor} 62%), ${bgColor}`
+          : 'radial-gradient(1100px 420px at 50% -8%, #dcebff 0%, rgba(220,235,255,0) 62%), linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)',
+        ['--brand' as string]: brandColor || '#2563eb',
+      }}
     >
       <div className="w-full max-w-xl">
         {/* Header */}
@@ -340,7 +352,9 @@ export default function RoofIQPage() {
           {/* ── 2. CONFIRM ── */}
           {step === 'confirm' && imagery && (
             <>
-              <div className="text-sm font-semibold">{showOutline ? 'We found your home' : 'Is this your roof?'}</div>
+              <div className="text-sm font-semibold">
+                {showOutline ? (footprintApprox ? 'Is this your roof?' : 'We found your home') : 'Is this your roof?'}
+              </div>
               <p className="mt-0.5 text-xs text-slate-500">
                 {showOutline
                   ? <>{located?.address} — confirm the highlighted roof is yours, or <strong>tap</strong> to adjust.</>
@@ -371,7 +385,9 @@ export default function RoofIQPage() {
                       <polygon points={footprint!.map(p => `${p.x * 100},${p.y * 100}`).join(' ')}
                         style={{ fill: 'var(--brand)', fillOpacity: 0.22, stroke: 'var(--brand)', strokeWidth: 0.9, strokeLinejoin: 'round', filter: 'drop-shadow(0 0 2.5px rgba(0,0,0,0.55))' }} />
                     </svg>
-                    <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">✓ Your home</div>
+                    <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
+                      {footprintApprox ? 'Tap to adjust' : '✓ Your home'}
+                    </div>
                   </>
                 ) : (
                   <>
