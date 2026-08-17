@@ -1,11 +1,13 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
 import type { Project } from '@/types'
 import { ButtonLink, CountUp, PageTransition, StatusBadge } from '@/components/ui'
+import MorningBriefing from '@/components/MorningBriefing'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function relTime(s?: string): string {
@@ -153,52 +155,53 @@ const ICON = {
   folder: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>,
   clock: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
   check: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>,
+  roof: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>,
 }
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [user, setUser] = useState<{ user_metadata?: { full_name?: string } } | null>(null)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [archivedProjects, setArchivedProjects] = useState<Project[]>([])
+  const qc = useQueryClient()
+  const [user, setUser] = useState<{ id?: string; user_metadata?: { full_name?: string } } | null>(null)
   const [showTrash, setShowTrash] = useState(false)
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    (async () => {
-      const u = await getUser()
-      if (!u) { router.push('/login'); return }
-      setUser(u)
-      setLoading(false)
-      try {
-        const allData = await api.projects.listArchived(u.id)
-        setProjects((allData || []).filter((p: Project) => !p.archived))
-        setArchivedProjects((allData || []).filter((p: Project) => p.archived))
-      } catch {}
-    })()
+    getUser().then(u => { if (!u) router.push('/login'); else setUser(u) })
   }, [router])
+
+  // Projects live in the app-wide cache, so coming back from CRM or Dispatch
+  // paints instantly instead of blanking and refetching (see lib/app-query).
+  const { data: allProjects = [], isLoading } = useQuery<Project[]>({
+    queryKey: ['projects', user?.id],
+    queryFn: () => api.projects.listArchived(user!.id!) as Promise<Project[]>,
+    enabled: !!user?.id,
+  })
+
+  const projects = useMemo(() => allProjects.filter(p => !p.archived), [allProjects])
+  const archivedProjects = useMemo(() => allProjects.filter(p => p.archived), [allProjects])
+
+  // One place to write the cached list, so every mutation below stays in sync
+  // with whatever Projects and the rest of the app are reading.
+  const patchCache = useCallback((fn: (rows: Project[]) => Project[]) => {
+    qc.setQueryData<Project[]>(['projects', user?.id], old => fn(old || []))
+  }, [qc, user?.id])
 
   async function handleDelete(id: string) {
     try { await api.projects.delete(id) } catch {}
-    setProjects(prev => prev.filter(p => p.id !== id))
-    setArchivedProjects(prev => prev.filter(p => p.id !== id))
+    patchCache(rows => rows.filter(p => p.id !== id))
   }
   function handleRename(id: string, newName: string) {
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, name: newName } : p))
+    patchCache(rows => rows.map(p => p.id === id ? { ...p, name: newName } : p))
   }
   async function handleArchive(id: string) {
     try {
       await api.projects.archive(id)
-      const proj = projects.find(p => p.id === id)
-      if (proj) setArchivedProjects(prev => [{ ...proj, archived: true }, ...prev])
-      setProjects(prev => prev.filter(p => p.id !== id))
+      patchCache(rows => rows.map(p => p.id === id ? { ...p, archived: true } : p))
     } catch {}
   }
   async function handleRestore(id: string) {
     try {
       await api.projects.restore(id)
-      const proj = archivedProjects.find(p => p.id === id)
-      if (proj) setProjects(prev => [{ ...proj, archived: false }, ...prev])
-      setArchivedProjects(prev => prev.filter(p => p.id !== id))
+      patchCache(rows => rows.map(p => p.id === id ? { ...p, archived: false } : p))
     } catch {}
   }
 
@@ -206,6 +209,7 @@ export default function DashboardPage() {
   const inProgress = projects.filter(p => p.status === 'processing' || p.status === 'pending').length
   const recent = projects.slice(0, 8)
   const name = user?.user_metadata?.full_name?.split(' ')[0] || 'there'
+  const loading = isLoading || !user
 
   return (
     <div className="relative min-h-full" style={{ background: '#040810' }}>
@@ -241,11 +245,15 @@ export default function DashboardPage() {
           </ButtonLink>
         </div>
 
+        {/* The briefing leads: what needs doing today, before the file list. */}
+        <MorningBriefing />
+
         {/* Stats bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-9">
+        <div className="grid grid-cols-2 gap-4 mb-9 sm:grid-cols-4">
           <StatTile label="Total projects" value={projects.length} icon={ICON.folder} />
           <StatTile label="In progress" value={inProgress} icon={ICON.clock} />
           <StatTile label="Completed" value={completed} icon={ICON.check} />
+          <StatTile label="Measured roofs" value={projects.filter(p => p.thumbnail_url).length} icon={ICON.roof} />
         </div>
 
         {/* Projects */}

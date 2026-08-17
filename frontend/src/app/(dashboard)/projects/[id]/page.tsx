@@ -1,6 +1,7 @@
 'use client'
 import React from 'react'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
@@ -22,6 +23,60 @@ import { useRegisterChatContext } from '@/lib/chat-context'
 // Images are base64 data URIs from backend — no staggering needed
 function StaggeredRender({ src, label, totalSqft }: { src: string; label: string; totalSqft?: number }) {
   return <RenderViewer src={src} label={label} totalSqft={totalSqft} />
+}
+
+/**
+ * Mark a job done — the only thing in the app that sets `projects.status` to
+ * 'complete'.
+ *
+ * The dashboard has always counted "Completed" as `status === 'complete'`, but
+ * nothing ever wrote that value: projects were created 'pending' and the PATCH
+ * endpoint didn't even accept `status`. So the tile was permanently 0 and the
+ * question "does Completed sync automatically?" had the unhappy answer "there is
+ * nothing to sync". This is the missing half; the count is derived, so it
+ * updates the moment this is toggled.
+ */
+function CompleteToggle({ projectId, status, onChanged }: {
+  projectId: string
+  status?: string
+  onChanged: (status: string) => void
+}) {
+  const qc = useQueryClient()
+  const [busy, setBusy] = useState(false)
+  const done = status === 'complete'
+
+  async function toggle() {
+    const next = done ? 'processing' : 'complete'
+    setBusy(true)
+    try {
+      await api.projects.setStatus(projectId, next)
+      onChanged(next)
+      // The dashboard reads projects from the shared cache — keep its Completed
+      // count honest without waiting for a refetch.
+      qc.setQueriesData<{ id: string; status?: string }[]>(
+        { queryKey: ['projects'] },
+        (old) => old?.map((p) => (p.id === projectId ? { ...p, status: next } : p)),
+      )
+      toast.success(done ? 'Reopened' : 'Marked complete')
+    } catch {
+      toast.error('Could not update the project status')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={busy}
+      title={done ? 'Reopen this job' : 'Mark this job complete'}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
+        done
+          ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+          : 'border-white/12 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]'
+      }`}
+    >
+      {done ? '✓ Complete' : 'Mark complete'}
+    </button>
+  )
 }
 
 /**
@@ -815,6 +870,11 @@ Thank you for your time.`
             <span className={`w-1.5 h-1.5 rounded-full ${blueprintStatus === 'complete' ? 'bg-emerald-500' : blueprintStatus === 'failed' ? 'bg-rose-500' : 'bg-amber-400 animate-pulse'}`} />
             {blueprintStatus === 'complete' ? 'Analysis Complete' : blueprintStatus === 'failed' ? 'Failed' : 'Processing…'}
           </span>
+          <CompleteToggle
+            projectId={projectId}
+            status={project?.status}
+            onChanged={(s: string) => setProject((p: any) => (p ? { ...p, status: s } : p))}
+          />
           <AddToDispatchButton projectId={projectId} />
         </div>
       </div>

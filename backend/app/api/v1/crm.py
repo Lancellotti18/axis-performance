@@ -12,13 +12,18 @@ GET    /crm/leads/{lead_id}/notes    — get activity notes for a lead
 POST   /crm/leads/{lead_id}/notes    — add a note to a lead
 DELETE /crm/leads/{lead_id}/notes/{note_id} — delete a note
 """
+import logging
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 from app.core.auth import require_user
 from app.core.ownership import require_owned_crm_lead
 from app.core.supabase import get_supabase
+from app.services.crm_pulse import pulse_lines, summarize_leads
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 VALID_STAGES = {"new", "contacted", "site_visit", "estimate_sent", "won", "lost"}
@@ -65,6 +70,26 @@ async def list_leads(user_id: Optional[str] = Query(None), user: dict = Depends(
         return result.data or []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch leads: {str(e)}")
+
+
+@router.get("/pulse")
+async def crm_pulse(user: dict = Depends(require_user)):
+    """Deterministic CRM signal for the dashboard morning briefing.
+
+    Pipeline value, win rate, and — the part that earns its place — which leads
+    have gone quiet long enough to need chasing. Never raises: the briefing is a
+    read-only glance and must degrade to an empty pulse rather than take the
+    whole dashboard down with it.
+    """
+    db = get_supabase()
+    try:
+        rows = db.table("crm_leads").select("*").eq("user_id", user["id"]).execute().data or []
+    except Exception:
+        logger.warning("crm pulse: lead fetch failed", exc_info=True)
+        rows = []
+    summary = summarize_leads(rows, date.today())
+    summary["lines"] = pulse_lines(summary)
+    return summary
 
 
 @router.post("/leads")

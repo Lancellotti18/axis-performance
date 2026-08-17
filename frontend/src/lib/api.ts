@@ -22,6 +22,20 @@ export type PhotoAnnotation =
   | { type: 'arrow'; x1: number; y1: number; x2: number; y2: number; color?: string }
   | { type: 'circle'; cx: number; cy: number; r: number; color?: string }
   | { type: 'text'; x: number; y: number; text: string; color?: string }
+/** Pipeline signal behind the dashboard's morning briefing (see crm_pulse.py). */
+export type CRMPulse = {
+  total: number
+  by_stage: Record<string, number>
+  open_count: number
+  open_value: number
+  won_value: number
+  win_rate_pct: number | null
+  stale_count: number
+  stale: { id: string; name: string; stage: string; days: number; value: number }[]
+  awaiting_estimate_response: number
+  lines: string[]
+}
+
 export type ProjectPhoto = {
   id: string; phase: string; caption: string | null
   annotations: PhotoAnnotation[]; sort_order: number; created_at: string | null; url: string | null
@@ -395,6 +409,13 @@ export const api = {
       apiRequest<Project>(`/api/v1/projects/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ archived: false }),
+      }),
+    /** Move a project through its lifecycle. 'complete' is what the dashboard's
+     *  Completed count reads — nothing else sets it. */
+    setStatus: (id: string, status: 'pending' | 'processing' | 'complete') =>
+      apiRequest<Project>(`/api/v1/projects/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
       }),
     listArchived: (userId: string) =>
       apiRequest<Project[]>(`/api/v1/projects/?user_id=${userId}&include_archived=true`),
@@ -1787,6 +1808,8 @@ export const api = {
   crm: {
     listLeads: (userId: string) =>
       apiRequest<CRMLead[]>(`/api/v1/crm/leads?user_id=${userId}`),
+    /** Deterministic pipeline signal for the dashboard briefing. */
+    pulse: () => apiRequest<CRMPulse>(`/api/v1/crm/pulse`),
     createLead: (lead: Partial<CRMLead>, userId: string) =>
       apiRequest<CRMLead>(`/api/v1/crm/leads?user_id=${userId}`, { method: 'POST', body: JSON.stringify(lead) }),
     updateLead: (leadId: string, patch: Partial<CRMLead>) =>

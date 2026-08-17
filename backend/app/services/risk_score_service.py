@@ -106,32 +106,76 @@ def _parse_risk_json(text: str) -> dict:
             return {}
 
 
-def _empty_risk_payload(location: str, reason: str) -> dict:
-    """Graceful fallback when the LLM response can't be parsed."""
+_HAZARD_LABELS: list[tuple[str, str]] = [
+    ("hail",       "Hail"),
+    ("wind",       "Wind / Severe Thunderstorm"),
+    ("tornado",    "Tornado"),
+    ("hurricane",  "Hurricane / Tropical Storm"),
+    ("flood",      "Flood / Storm Surge"),
+    ("wildfire",   "Wildfire"),
+    ("earthquake", "Earthquake"),
+    ("winter",     "Winter Storm / Ice"),
+]
+
+
+def _baseline_risk_payload(location: str, state: str, reason: str) -> dict:
+    """Fallback when the LLM response can't be parsed at all.
+
+    This used to return every hazard at 0 with an apology as the summary, which
+    is how "Could not generate a structured risk report for Wilmington, NC" ended
+    up on screen — a flat-zero chart claiming a coastal NC address has no
+    hurricane or flood exposure. That's not a degraded answer, it's a wrong one.
+
+    The all-zeros path further down already falls back to the FEMA-calibrated
+    state baseline; a total parse failure is the same situation and gets the same
+    treatment. The payload is explicitly labelled as a regional estimate so
+    nobody mistakes it for a per-address analysis.
+    """
+    baseline = _state_baseline_hazards(state)
+    hazards = [
+        {
+            "key": key,
+            "label": label,
+            "score": baseline.get(key, 3),
+            "rationale": f"Regional baseline for {state or 'this area'} — not address-specific.",
+        }
+        for key, label in _HAZARD_LABELS
+    ]
+    # Overall mirrors the visible bars: the worst hazard, tempered by the spread,
+    # so a single 9 doesn't read the same as a uniformly severe region.
+    scores = [h["score"] for h in hazards]
+    overall = int(round((max(scores) * 2 + sum(scores) / len(scores)) / 3)) if scores else 0
+    overall = max(0, min(10, overall))
+    label, color = (
+        ("Low", "emerald") if overall <= 3 else
+        ("Moderate", "amber") if overall <= 7 else
+        ("High", "red")
+    )
+    score_by_key = {h["key"]: h["score"] for h in hazards}
     return {
-        "overall_risk": 0,
-        "risk_label": "Unknown",
-        "risk_color": "amber",
-        "summary": f"Could not generate a structured risk report for {location}. {reason}",
-        "scoring_rationale": "",
+        "overall_risk": overall,
+        "risk_label": label,
+        "risk_color": color,
+        "summary": (
+            f"Showing the regional storm-risk baseline for {location}. "
+            f"The detailed AI analysis didn't come back this time ({reason.rstrip('.').lower()}), "
+            "so these are typical exposures for the area rather than an address-specific read — "
+            "refresh to try the full analysis again."
+        ),
+        "scoring_rationale": (
+            "Scores come from a FEMA National Risk Index-calibrated state baseline, "
+            "not from an analysis of this specific property."
+        ),
         "significance": "",
-        "hazards": [
-            {"key": "hail",      "label": "Hail",                          "score": 0, "rationale": ""},
-            {"key": "wind",      "label": "Wind / Severe Thunderstorm",    "score": 0, "rationale": ""},
-            {"key": "tornado",   "label": "Tornado",                       "score": 0, "rationale": ""},
-            {"key": "hurricane", "label": "Hurricane / Tropical Storm",    "score": 0, "rationale": ""},
-            {"key": "flood",     "label": "Flood / Storm Surge",           "score": 0, "rationale": ""},
-            {"key": "wildfire",  "label": "Wildfire",                      "score": 0, "rationale": ""},
-            {"key": "earthquake","label": "Earthquake",                    "score": 0, "rationale": ""},
-            {"key": "winter",    "label": "Winter Storm / Ice",            "score": 0, "rationale": ""},
-        ],
+        "is_baseline_estimate": True,
+        "hazards": hazards,
         "recent_events": [],
         "reinforcement_recommendations": [],
         "insurance_note": "",
-        "data_source": "",
-        "hail_risk": 0,
-        "wind_risk": 0,
-        "flood_risk": 0,
+        "data_source": f"Regional baseline ({state or 'national default'})",
+        "hail_risk": score_by_key.get("hail", 0),
+        "wind_risk": score_by_key.get("wind", 0),
+        "flood_risk": score_by_key.get("flood", 0),
     }
 
 
@@ -277,9 +321,12 @@ Keep recent_events to at most 5 items, newest first."""
             logger.warning("risk_score: JSON-only retry failed", exc_info=True)
 
     if not result:
-        fallback = _empty_risk_payload(
-            location,
-            "The AI response could not be parsed as JSON — try refreshing in a moment.",
+        logger.warning(
+            "risk_score: both LLM passes unparseable for %s — serving state baseline", location,
+        )
+        fallback = _baseline_risk_payload(
+            location, state,
+            "the AI response could not be read",
         )
         fallback["articles"] = _filter_disaster_articles(articles)
         return fallback
@@ -287,16 +334,8 @@ Keep recent_events to at most 5 items, newest first."""
     # Always guarantee all 8 canonical hazards are present so the graph never
     # renders empty. Missing entries default to score=0; the model is allowed
     # to fill in any subset.
-    CANONICAL_HAZARDS = [
-        ("hail",       "Hail"),
-        ("wind",       "Wind / Severe Thunderstorm"),
-        ("tornado",    "Tornado"),
-        ("hurricane",  "Hurricane / Tropical Storm"),
-        ("flood",      "Flood / Storm Surge"),
-        ("wildfire",   "Wildfire"),
-        ("earthquake", "Earthquake"),
-        ("winter",     "Winter Storm / Ice"),
-    ]
+    # Single list shared with the baseline payload — two copies would drift.
+    CANONICAL_HAZARDS = _HAZARD_LABELS
 
     def _coerce_score(v) -> int:
         """Accept ints, floats, stringified numbers ('7', '7.5', '7/10'), and

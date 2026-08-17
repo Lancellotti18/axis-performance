@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { getUser, signOut } from '@/lib/auth'
 import { PrecisionToggle } from '@/components/axis'
 import { ChatContextProvider } from '@/lib/chat-context'
+import { AppQueryProvider, clearAppQueryCache } from '@/lib/app-query'
 import AxisChat from '@/components/AxisChat'
 import GlobalSearch from '@/components/GlobalSearch'
 import NotificationBell from '@/components/NotificationBell'
@@ -245,6 +246,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   async function handleSignOut() {
     setSigningOut(true)
+    // The app-wide cache outlives page navigation by design, so it has to be
+    // torn down explicitly here — otherwise the next account signing in on this
+    // tab paints the previous one's data before their own arrives.
+    clearAppQueryCache()
     await signOut()
     router.push('/')
   }
@@ -254,6 +259,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     : user?.email?.slice(0, 2).toUpperCase() ?? '?'
 
   return (
+    <AppQueryProvider>
     <ChatContextProvider>
     <div className="flex flex-col h-screen overflow-hidden font-sans axis-bench">
 
@@ -419,5 +425,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <AxisChat />
     </div>
     </ChatContextProvider>
+    </AppQueryProvider>
   )
 }

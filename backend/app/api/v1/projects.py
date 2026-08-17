@@ -134,11 +134,29 @@ async def get_project(project_id: str, user: dict = Depends(require_user)):
     return result.data
 
 
+# The full lifecycle of a project. Everything starts 'pending'; 'complete' is
+# set by the contractor marking the job done (there was previously no way to do
+# it at all, which is why the dashboard's Completed count could never leave 0).
+VALID_PROJECT_STATUS = {"pending", "processing", "complete"}
+
+_PATCHABLE_FIELDS = (
+    "name", "description", "region", "address", "city", "state", "zip_code",
+    "archived", "hero_render_url", "county", "lat", "lng",
+    "customer_name", "customer_phone", "customer_email",
+    "status",
+)
+
+
 @router.patch("/{project_id}")
 async def update_project(project_id: str, payload: dict, user: dict = Depends(require_user)):
     db = get_supabase()
     require_owned_project(db, project_id, user)
-    allowed = {k: v for k, v in payload.items() if k in ("name", "description", "region", "address", "city", "state", "zip_code", "archived", "hero_render_url", "county", "lat", "lng", "customer_name", "customer_phone", "customer_email")}
+    allowed = {k: v for k, v in payload.items() if k in _PATCHABLE_FIELDS}
+    if "status" in allowed and allowed["status"] not in VALID_PROJECT_STATUS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid status '{allowed['status']}'. Expected one of: {', '.join(sorted(VALID_PROJECT_STATUS))}.",
+        )
     if not allowed:
         raise HTTPException(status_code=400, detail="No valid fields to update")
     result = db.table("projects").update(allowed).eq("id", project_id).execute()

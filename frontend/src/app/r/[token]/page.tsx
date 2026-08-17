@@ -401,15 +401,14 @@ export default function ReportPage() {
 
         {/* CTAs */}
         <section className="mb-6 grid gap-2 print:hidden">
+          {/* Call only — the Text CTA was removed deliberately: in-app texting
+              carries carrier/compliance overhead we decided isn't worth it, and
+              an sms: link just dumps the homeowner into their own messages app
+              with no thread the contractor can track. */}
           {r.company_phone && (
-            <>
-              <a href={`tel:${r.company_phone}`}
-                className="rounded-lg bg-slate-100 py-3 text-center text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-200"
-              >📞 Prefer to call? {r.company_phone}</a>
-              <a href={`sms:${r.company_phone}`}
-                className="rounded-lg bg-emerald-600 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-500"
-              >💬 Text {r.company_name}</a>
-            </>
+            <a href={`tel:${r.company_phone}`}
+              className="rounded-lg bg-emerald-600 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-500"
+            >📞 Call {r.company_name} — {r.company_phone}</a>
           )}
           <div className="flex gap-2">
             <button

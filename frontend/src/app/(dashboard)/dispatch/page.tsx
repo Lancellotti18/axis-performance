@@ -14,21 +14,20 @@
  * day when you switch between them.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { fetchBoard } from './lib/board'
 import { fromISODate, shiftISODate, startOfISOWeek, useToday } from './lib/today'
 import Board from './Board'
 
+/**
+ * Dispatch used to mount its own QueryClient, which meant its board data was
+ * thrown away the moment you navigated to CRM or Projects. It now shares the
+ * app-wide cache from the dashboard layout, so coming back to the board repaints
+ * the week you were looking at instead of reloading it.
+ */
 export default function DispatchPage() {
-  const [client] = useState(() => new QueryClient({
-    defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } },
-  }))
-  return (
-    <QueryClientProvider client={client}>
-      <BoardScreen />
-    </QueryClientProvider>
-  )
+  return <BoardScreen />
 }
 
 function BoardScreen() {
