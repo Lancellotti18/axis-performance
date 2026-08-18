@@ -1825,6 +1825,11 @@ export const api = {
   briefing: {
     /** The whole morning read in one call — ordered and capped server-side. */
     today: () => apiRequest<{ date: string; items: BriefingItem[] }>(`/api/v1/briefing/today`),
+    /** Put one line away. Server-side so it follows the contractor across devices. */
+    snooze: (key: string, days = 7) =>
+      apiRequest<{ ok: boolean; key: string; snoozed_until: string }>(`/api/v1/briefing/snooze`, {
+        method: 'POST', body: JSON.stringify({ key, days }),
+      }),
   },
   crm: {
     listLeads: (userId: string) =>

@@ -32,6 +32,11 @@ MAX_ITEMS = 6
 
 # Rain probability at which a roof day is worth moving rather than gambling.
 RAIN_MOVE_THRESHOLD = 60
+# Sustained wind at which you can't safely run shingles or keep people on a
+# roof. Roofers lose more days to wind than most weather widgets suggest, and a
+# dry, windy day still costs the crew — so it's a first-class trigger, not a
+# footnote on the rain line.
+WIND_MOVE_THRESHOLD = 25
 
 
 def _item(kind: str, key: str, text: str, href: Optional[str] = None) -> dict:
@@ -80,25 +85,47 @@ def waiting_items(open_threads: list[dict], unconfirmed_appointments: list[dict]
 
 
 def weather_items(crew_days: list[dict], tomorrow: str) -> list[dict]:
-    """Jobs worth moving because of tomorrow's forecast.
+    """Jobs worth moving because of tomorrow's forecast at the actual job site.
 
     Deliberately TOMORROW only. Today's weather is not a decision — the crew is
     already loading the truck — and putting it here just makes the briefing feel
     like something that reports problems instead of preventing them.
+
+    Each row is expected to carry the WORST conditions across everywhere that
+    crew is due to be that day, not the first stop only: a crew with a dry
+    morning in Leland and a soaked afternoon in Hampstead still needs the call
+    made. `site_count` and `location` let the line name where, which is the
+    difference between a warning someone acts on and one they scroll past.
     """
     out = []
     for c in crew_days:
         if (c.get("date") or "") != tomorrow:
             continue
-        pp = c.get("precip_probability")
-        if pp is None or pp < RAIN_MOVE_THRESHOLD:
-            continue
-        crew = (c.get("crew_name") or "A crew").strip()
         jobs = c.get("job_count") or 0
         if not jobs:
             continue
+        pp = c.get("precip_probability")
+        wind = c.get("wind_mph")
+        rainy = pp is not None and pp >= RAIN_MOVE_THRESHOLD
+        windy = wind is not None and wind >= WIND_MOVE_THRESHOLD
+        if not rainy and not windy:
+            continue
+
+        crew = (c.get("crew_name") or "A crew").strip()
+        # Name the site when it's a single location; say how many when it isn't.
+        sites = c.get("site_count") or 1
+        where = c.get("location")
+        at = f" at {where}" if where and sites == 1 else (f" across {sites} sites" if sites > 1 else "")
+
+        if rainy and windy:
+            cond = f"{round(pp)}% rain and {round(wind)} mph wind"
+        elif rainy:
+            cond = f"{round(pp)}% rain"
+        else:
+            cond = f"{round(wind)} mph wind"
+
         out.append(_item("weather", f"wx:{c.get('crew_id')}:{c.get('date')}",
-                         f"{crew}: {round(pp)}% rain tomorrow on {jobs} job{'' if jobs == 1 else 's'} — move or call ahead.",
+                         f"{crew}: {cond} tomorrow{at} on {jobs} job{'' if jobs == 1 else 's'} — move or call ahead.",
                          "/dispatch"))
     return out
 
@@ -134,18 +161,23 @@ def stuck_items(unfinalized_roofs: int, unsent_reports: int) -> list[dict]:
     return out
 
 
-def assemble(groups: list[list[dict]], limit: int = MAX_ITEMS) -> list[dict]:
-    """Flatten, order by decay speed, and cap.
+def assemble(groups: list[list[dict]], limit: int = MAX_ITEMS,
+             exclude: Optional[set] = None) -> list[dict]:
+    """Flatten, drop snoozed keys, order by decay speed, and cap.
 
     De-duplicates on `key` so the same thing can't arrive from two sources and
     appear twice — which would be the fastest way to make this look untrustworthy.
+
+    `exclude` is applied BEFORE the cap on purpose: snoozing a line should hand
+    its slot to the next real item, not leave a five-line card with a hole in it.
     """
+    exclude = exclude or set()
     seen: set = set()
     flat: list[dict] = []
     for g in groups:
         for item in g:
             k = item.get("key")
-            if k in seen:
+            if k in seen or k in exclude:
                 continue
             seen.add(k)
             flat.append(item)

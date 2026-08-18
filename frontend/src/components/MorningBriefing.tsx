@@ -17,13 +17,10 @@
  * The whole thing is one request (`/briefing/today`), assembled and capped
  * server-side, with each source failing independently — see services/briefing.py.
  */
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { api, type BriefingItem } from '@/lib/api'
-
-const SNOOZE_KEY = 'axis_briefing_snoozed_v1'
-const SNOOZE_DAYS = 7
 
 const KIND_STYLE: Record<BriefingItem['kind'], { dot: string; label: string }> = {
   accepted: { dot: 'bg-emerald-400', label: 'Accepted' },
@@ -33,17 +30,6 @@ const KIND_STYLE: Record<BriefingItem['kind'], { dot: string; label: string }> =
   stuck:    { dot: 'bg-slate-400',   label: 'Unfinished' },
 }
 
-/** { key: epochMillisUntil } — a line stays gone for a week, then comes back. */
-function parseSnoozes(raw: string): Record<string, number> {
-  if (!raw) return {}
-  try {
-    const parsed = JSON.parse(raw) as Record<string, number>
-    const now = Date.now()
-    // Drop expired entries on read so the store can't grow without bound.
-    return Object.fromEntries(Object.entries(parsed).filter(([, until]) => until > now))
-  } catch { return {} }
-}
-
 export default function MorningBriefing() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['briefing-today'],
@@ -51,30 +37,23 @@ export default function MorningBriefing() {
     staleTime: 5 * 60_000,
   })
 
-  // Snoozes live client-side: they're a personal reading preference, not
-  // business state, and this keeps the feature free of a schema change. The
-  // tradeoff is they don't follow you to another device.
-  const stored = useSyncExternalStore(
-    () => () => {},
-    () => localStorage.getItem(SNOOZE_KEY) || '',
-    () => '',
-  )
-  // Writes go through local state as well as storage, so the raw JSON is a
-  // genuine dependency below rather than a cache-busting counter.
-  const [override, setOverride] = useState<string | null>(null)
-  const raw = override ?? stored
-  const snoozed = useMemo(() => parseSnoozes(raw), [raw])
-
+  // Snoozing is per-user state, not a rendering preference, so it lives on the
+  // server — a line put away in the truck stays away at the office.
+  const qc = useQueryClient()
+  const [pending, setPending] = useState<string[]>([])
+  const { mutate: snoozeItem } = useMutation({
+    mutationFn: (key: string) => api.briefing.snooze(key),
+    onSettled: () => { qc.invalidateQueries({ queryKey: ['briefing-today'] }) },
+  })
   const snooze = useCallback((key: string) => {
-    const next = JSON.stringify({ ...parseSnoozes(override ?? (localStorage.getItem(SNOOZE_KEY) || '')),
-                                  [key]: Date.now() + SNOOZE_DAYS * 86_400_000 })
-    try { localStorage.setItem(SNOOZE_KEY, next) } catch { /* private mode */ }
-    setOverride(next)
-  }, [override])
+    // Hide it immediately; the refetch confirms it.
+    setPending(p => [...p, key])
+    snoozeItem(key)
+  }, [snoozeItem])
 
   const items = useMemo(
-    () => (data?.items || []).filter(i => !snoozed[i.key]),
-    [data, snoozed],
+    () => (data?.items || []).filter(i => !pending.includes(i.key)),
+    [data, pending],
   )
 
   const greeting = (() => {
@@ -116,7 +95,7 @@ export default function MorningBriefing() {
         ) : items.length === 0 ? (
           // A quiet morning is a real answer and worth saying plainly.
           <p className="text-sm text-slate-300">
-            ✅ Nothing needs you this morning. Nobody&apos;s waiting on a reply, no leads have gone quiet,
+            ✅ Nothing needs your attention this morning. Nobody&apos;s waiting on a reply, no leads have gone quiet,
             and tomorrow&apos;s weather is clear for the crews that are booked.
           </p>
         ) : (

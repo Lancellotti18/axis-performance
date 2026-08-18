@@ -11,9 +11,10 @@ could build, not a stack trace.
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from app.core.auth import require_user
 from app.core.supabase import get_supabase
@@ -65,11 +66,17 @@ def _waiting(db, user_id: str, today: date) -> list[dict]:
 
 
 async def _weather(db, tomorrow: date) -> list[dict]:
-    """Tomorrow's job-site forecast per crew, for crews that actually have work.
+    """Tomorrow's forecast at every job site each crew is actually due at.
 
-    Mirrors the board's own live-weather logic: each crew's earliest located
-    stop that day is the point we forecast from, so it's the weather at the roof
-    rather than at the office.
+    Earlier this took only a crew's FIRST stop, which is wrong the moment a crew
+    works two towns in a day — a dry morning in Leland told you nothing about a
+    soaked afternoon in Hampstead. We now forecast every located stop for the
+    crew and report the WORST conditions across them, so the line reflects the
+    day the crew will actually have.
+
+    Forecasts are keyed on a ~1 km grid (weather_service.bucket), so this is
+    genuinely job-site weather rather than a city-wide average, and nearby stops
+    share one upstream call.
     """
     from app.api.v1.scheduling import ORG, _dt, _f, _rows
     from app.services.scheduling import weather_service as wx
@@ -80,6 +87,10 @@ async def _weather(db, tomorrow: date) -> list[dict]:
                   .lt("scheduled_start", (tomorrow + timedelta(days=1)).isoformat()).execute())
     if not appts:
         return []
+    # A crew that's been stood down for the day doesn't need a weather call.
+    active = {a["id"] for a in appts if (a.get("status") or "").upper() not in ("CANCELED", "DONE")}
+    if not active:
+        return []
 
     appt_crew = {a["appointment_id"]: a["crew_id"]
                  for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute())
@@ -87,31 +98,52 @@ async def _weather(db, tomorrow: date) -> list[dict]:
     crews = {c["id"]: c for c in _rows(db.table("sched_crew").select("id,name")
                                        .eq("org_id", ORG).eq("is_active", True).execute())}
     jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("id,property_id").eq("org_id", ORG).execute())}
-    props = {p["id"]: p for p in _rows(db.table("sched_property").select("id,lat,lng").eq("org_id", ORG).execute())}
+    props = {p["id"]: p for p in _rows(db.table("sched_property").select("id,city,lat,lng").eq("org_id", ORG).execute())}
 
-    crew_loc: dict = {}
+    # Every located stop per crew, not just the earliest.
+    sites: dict = {}          # crew_id -> [(lat, lng, city), ...]
     jobs_per_crew: dict = {}
-    for a in sorted(appts, key=lambda x: x.get("scheduled_start") or ""):
+    for a in appts:
+        if a["id"] not in active:
+            continue
         crew_id = appt_crew.get(a["id"])
         if not crew_id or crew_id not in crews or not _dt(a.get("scheduled_start")):
             continue
         jobs_per_crew[crew_id] = jobs_per_crew.get(crew_id, 0) + 1
         job = jobs.get(a["job_id"])
         prop = props.get(job["property_id"]) if job else None
-        lat, lng = (_f(prop.get("lat")), _f(prop.get("lng"))) if prop else (None, None)
-        if lat and lng and crew_id not in crew_loc:
-            crew_loc[crew_id] = (lat, lng)
+        if not prop:
+            continue
+        lat, lng = _f(prop.get("lat")), _f(prop.get("lng"))
+        if lat is None or lng is None:
+            continue
+        sites.setdefault(crew_id, []).append((lat, lng, prop.get("city")))
 
-    if not crew_loc:
+    if not sites:
         return []
-    fc = await wx.forecasts_for(list(set(crew_loc.values())))
+    points = list({(lat, lng) for pts in sites.values() for (lat, lng, _c) in pts})
+    fc = await wx.forecasts_for(points)
 
     rows = []
-    for crew_id, (lat, lng) in crew_loc.items():
-        w = (fc.get(wx.bucket(lat, lng)) or {}).get(tstr) or {}
-        rows.append({"crew_id": crew_id, "crew_name": crews[crew_id].get("name"), "date": tstr,
-                     "precip_probability": w.get("precip_probability"),
-                     "job_count": jobs_per_crew.get(crew_id, 0)})
+    for crew_id, pts in sites.items():
+        worst_pp, worst_wind, worst_city = None, None, None
+        distinct = {(round(lat, 2), round(lng, 2)) for (lat, lng, _c) in pts}
+        for (lat, lng, city) in pts:
+            w = (fc.get(wx.bucket(lat, lng)) or {}).get(tstr) or {}
+            pp, wind = w.get("precip_probability"), w.get("wind_mph")
+            # Track the single worst site, and remember where it was.
+            if pp is not None and (worst_pp is None or pp > worst_pp):
+                worst_pp, worst_city = pp, city
+            if wind is not None and (worst_wind is None or wind > worst_wind):
+                worst_wind = wind
+                if worst_pp is None:
+                    worst_city = city
+        rows.append({
+            "crew_id": crew_id, "crew_name": crews[crew_id].get("name"), "date": tstr,
+            "precip_probability": worst_pp, "wind_mph": worst_wind,
+            "job_count": jobs_per_crew.get(crew_id, 0),
+            "location": worst_city, "site_count": len(distinct),
+        })
     return weather_items(rows, tstr)
 
 
@@ -153,6 +185,45 @@ def _stuck(db, user_id: str) -> list[dict]:
     return stuck_items(unfinalized, unsent)
 
 
+def _active_snoozes(db, user_id: str) -> set:
+    """Item keys this contractor has put away that haven't come back yet.
+
+    Tolerates the table not existing so the briefing still renders on an
+    environment where the migration hasn't been run — it just won't hide
+    anything, which is the safe direction to fail.
+    """
+    try:
+        rows = (db.table("briefing_snoozes").select("item_key,snoozed_until")
+                .eq("user_id", user_id)
+                .gt("snoozed_until", datetime.now(timezone.utc).isoformat())
+                .execute().data or [])
+        return {r["item_key"] for r in rows}
+    except Exception:
+        logger.info("briefing: snooze table unavailable", exc_info=True)
+        return set()
+
+
+class SnoozeIn(BaseModel):
+    key: str = Field(..., min_length=1, max_length=200)
+    days: int = Field(7, ge=1, le=90)
+
+
+@router.post("/snooze")
+async def snooze_item(payload: SnoozeIn, user: dict = Depends(require_user)) -> dict:
+    """Put one briefing line away for a while. Idempotent per (user, key)."""
+    db = get_supabase()
+    until = datetime.now(timezone.utc) + timedelta(days=payload.days)
+    try:
+        db.table("briefing_snoozes").upsert({
+            "user_id": user["id"], "item_key": payload.key,
+            "snoozed_until": until.isoformat(),
+        }).execute()
+    except Exception:
+        logger.warning("briefing: could not snooze %s", payload.key, exc_info=True)
+        raise HTTPException(status_code=503, detail="Could not snooze that just now — try again.")
+    return {"ok": True, "key": payload.key, "snoozed_until": until.isoformat()}
+
+
 @router.get("/today")
 async def briefing_today(user: dict = Depends(require_user)) -> dict:
     """One ordered, capped list of things that need a decision this morning."""
@@ -181,4 +252,7 @@ async def briefing_today(user: dict = Depends(require_user)) -> dict:
             logger.info("briefing: %s section unavailable", name, exc_info=True)
             groups.append([])
 
-    return {"date": today.isoformat(), "items": assemble(groups)}
+    # Snoozed keys are excluded before the cap, so putting a line away promotes
+    # the next real one instead of leaving a gap.
+    return {"date": today.isoformat(),
+            "items": assemble(groups, exclude=_active_snoozes(db, uid))}

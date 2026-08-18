@@ -52,38 +52,58 @@ def test_waiting_handles_missing_names_without_crashing():
 
 # ── weather ──────────────────────────────────────────────────────────────────
 
-def test_rainy_tomorrow_with_work_surfaces():
-    items = weather_items(
-        [{"crew_id": "c1", "crew_name": "Ramirez", "date": TOMORROW, "precip_probability": 78, "job_count": 2}],
-        TOMORROW)
+def _wx(pp=None, wind=None, jobs=2, city="Hampstead", sites=1, date=TOMORROW):
+    return {"crew_id": "c1", "crew_name": "Ramirez", "date": date,
+            "precip_probability": pp, "wind_mph": wind, "job_count": jobs,
+            "location": city, "site_count": sites}
+
+
+def test_rainy_tomorrow_names_crew_condition_and_site():
+    items = weather_items([_wx(pp=78)], TOMORROW)
     assert len(items) == 1
-    assert "Ramirez" in items[0]["text"] and "78%" in items[0]["text"]
+    t = items[0]["text"]
+    assert "Ramirez" in t and "78% rain" in t and "at Hampstead" in t
+
+
+def test_high_wind_alone_grounds_a_crew():
+    # A dry, windy day still costs the crew — you can't run shingles at 30mph.
+    items = weather_items([_wx(wind=32)], TOMORROW)
+    assert len(items) == 1
+    assert "32 mph wind" in items[0]["text"]
+    assert "rain" not in items[0]["text"]
+
+
+def test_rain_and_wind_report_together():
+    items = weather_items([_wx(pp=70, wind=28)], TOMORROW)
+    assert "70% rain and 28 mph wind" in items[0]["text"]
+
+
+def test_breezy_but_dry_is_not_worth_a_line():
+    assert weather_items([_wx(pp=10, wind=18)], TOMORROW) == []
+
+
+def test_multi_site_day_says_how_many_rather_than_naming_one():
+    # Naming one town when the crew is in three is worse than saying "3 sites".
+    items = weather_items([_wx(pp=80, sites=3)], TOMORROW)
+    assert "across 3 sites" in items[0]["text"]
+    assert "Hampstead" not in items[0]["text"]
 
 
 def test_todays_weather_is_never_briefed():
     # The crew is already loading the truck — it isn't a decision any more.
-    items = weather_items(
-        [{"crew_id": "c1", "crew_name": "Ramirez", "date": "2026-08-18", "precip_probability": 90, "job_count": 2}],
-        TOMORROW)
-    assert items == []
+    assert weather_items([_wx(pp=90, date="2026-08-18")], TOMORROW) == []
 
 
 def test_rain_below_threshold_is_not_worth_moving_a_job():
-    items = weather_items(
-        [{"crew_id": "c1", "crew_name": "R", "date": TOMORROW, "precip_probability": 35, "job_count": 2}], TOMORROW)
-    assert items == []
+    assert weather_items([_wx(pp=35)], TOMORROW) == []
 
 
 def test_rain_on_a_day_with_no_work_is_not_a_briefing_line():
-    items = weather_items(
-        [{"crew_id": "c1", "crew_name": "R", "date": TOMORROW, "precip_probability": 95, "job_count": 0}], TOMORROW)
-    assert items == []
+    assert weather_items([_wx(pp=95, jobs=0)], TOMORROW) == []
 
 
 def test_missing_forecast_does_not_crash():
-    items = weather_items(
-        [{"crew_id": "c1", "crew_name": "R", "date": TOMORROW, "precip_probability": None, "job_count": 2}], TOMORROW)
-    assert items == []
+    assert weather_items([_wx()], TOMORROW) == []
 
 
 # ── cold leads ───────────────────────────────────────────────────────────────
@@ -144,3 +164,23 @@ def test_days_since_parses_and_degrades():
     assert days_since("2026-08-11T09:00:00Z", TODAY) == 7
     assert days_since(None, TODAY) is None
     assert days_since("not a date", TODAY) is None
+
+
+# ── snooze ───────────────────────────────────────────────────────────────────
+
+def test_snoozed_key_is_hidden():
+    accepted = accepted_items([{"id": "n1", "type": "proposal_accepted", "title": "Ortiz", "read": False}])
+    assert assemble([accepted], exclude={"accepted:n1"}) == []
+
+
+def test_snoozing_promotes_the_next_item_rather_than_leaving_a_gap():
+    # 7 candidates, cap of 6: snoozing one must pull the 7th up, not show 5.
+    many = [{"id": f"n{i}", "type": "proposal_accepted", "title": f"C{i}", "read": False} for i in range(7)]
+    items = assemble([accepted_items(many)], exclude={"accepted:n0"})
+    assert len(items) == MAX_ITEMS
+    assert "accepted:n0" not in {i["key"] for i in items}
+
+
+def test_unknown_exclusions_are_harmless():
+    accepted = accepted_items([{"id": "n1", "type": "proposal_accepted", "title": "Ortiz", "read": False}])
+    assert len(assemble([accepted], exclude={"nothing:matches"})) == 1
