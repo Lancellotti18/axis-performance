@@ -17,6 +17,8 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import { api, type CRMPulse } from '@/lib/api'
+import { fetchBrief } from '@/app/(dashboard)/dispatch/lib/board'
+import { shiftISODate, toISODate } from '@/app/(dashboard)/dispatch/lib/today'
 
 const money = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
@@ -48,6 +50,24 @@ export default function MorningBriefing() {
     return rows.slice(0, 3)
   }, [appts])
 
+  // The dispatch board's own morning read — who's overbooked or idle, what
+  // still needs placing, what the weather threatens. This used to live on the
+  // Dispatch page; the whole point of moving it here is that a contractor
+  // shouldn't have to open the board to find out the board needs attention.
+  const weekStart = toISODate(new Date())
+  const { data: brief } = useQuery({
+    queryKey: ['ai-brief', weekStart],
+    queryFn: () => fetchBrief(weekStart, shiftISODate(weekStart, 6)),
+    staleTime: 5 * 60_000,
+    // The board is a separate service call; if it's down the CRM half of this
+    // briefing must still render.
+    retry: 1,
+  })
+  const boardItems = useMemo(
+    () => (brief ? [...brief.risk, ...brief.gaps, ...brief.load].slice(0, 5) : []),
+    [brief],
+  )
+
   const greeting = (() => {
     const h = new Date().getHours()
     if (h < 12) return 'This morning'
@@ -72,6 +92,29 @@ export default function MorningBriefing() {
           Open CRM →
         </Link>
       </div>
+
+      {/* The board, first: overbooked crews and unplaced jobs are the things
+          that actually break a day if nobody looks at them. */}
+      {(brief?.prose || boardItems.length > 0) && (
+        <div className="border-b border-white/[0.07] px-5 py-3">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-amber-300">On the board</span>
+            <Link href="/dispatch" className="text-[11px] font-medium text-blue-400 hover:text-blue-300">Open dispatch →</Link>
+          </div>
+          {brief?.prose && (
+            <p className="text-[13px] leading-relaxed text-slate-300">{brief.prose}</p>
+          )}
+          {boardItems.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {boardItems.map((it, i) => (
+                <span key={i} className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] text-slate-300">
+                  {it.text}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {upcoming.length > 0 && (
         <div className="border-b border-white/[0.07] px-5 py-3">

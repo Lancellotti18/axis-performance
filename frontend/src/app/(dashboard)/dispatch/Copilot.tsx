@@ -14,15 +14,9 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
-  bulkOp, bulkUndo, reschedule, fetchBrief, fetchThroughputReview, applyThroughput, planIntent,
-  type AffectedMulti, type BriefItem, type Crew, type PlanResult, type ThroughputRow,
+  bulkOp, bulkUndo, reschedule, fetchThroughputReview, applyThroughput, planIntent,
+  type AffectedMulti, type Crew, type PlanResult, type ThroughputRow,
 } from './lib/board'
-
-const KIND_META: Record<string, { color: string; glyph: string }> = {
-  LOAD_OVER: { color: 'var(--over)', glyph: '●' }, LOAD_IDLE: { color: 'var(--idle)', glyph: '○' },
-  GAP: { color: 'var(--sky)', glyph: '◇' }, RISK_WEATHER: { color: 'var(--tight)', glyph: '⛈' },
-  RISK_SERIES: { color: 'var(--tight)', glyph: '⧗' }, RISK_DEADLINE: { color: 'var(--over)', glyph: '⚑' },
-}
 
 export default function Copilot({
   start, end, crews, onApplied, onInvalidate,
@@ -43,27 +37,30 @@ export default function Copilot({
 
   return (
     <>
-      <BriefCard start={start} end={end} onOpenBar={() => setBarOpen(true)} onApplied={onApplied} onInvalidate={onInvalidate} />
+      <CapacityCard onOpenBar={() => setBarOpen(true)} onInvalidate={onInvalidate} />
       {barOpen && <CommandBar start={start} end={end} crews={crews} onClose={() => setBarOpen(false)} onApplied={onApplied} onInvalidate={onInvalidate} />}
     </>
   )
 }
 
 // ── Morning Brief + capacity flywheel ────────────────────────────────────────
-function BriefCard({
-  start, end, onOpenBar, onApplied, onInvalidate,
+/** Crew-capacity suggestions + the ⌘K entry point. Named for what it does now
+ *  that the morning brief has moved to the dashboard. */
+function CapacityCard({
+  onOpenBar, onInvalidate,
 }: {
-  start: string; end: string; onOpenBar: () => void
-  onApplied: (aff: AffectedMulti) => void; onInvalidate: () => void
+  onOpenBar: () => void
+  onInvalidate: () => void
 }) {
   const [dismissed, setDismissed] = useState(false)
-  const { data: brief } = useQuery({ queryKey: ['ai-brief', start, end], queryFn: () => fetchBrief(start, end), staleTime: 5 * 60_000 })
+  // The morning brief itself now lives on the dashboard — a contractor reads
+  // their day in one place, and repeating it here just meant two copies of the
+  // same prose drifting apart. What stays is the part that is an ACTION on this
+  // board and nowhere else: the capacity flywheel, and the ⌘K entry point.
   const { data: flywheel } = useQuery({ queryKey: ['ai-throughput'], queryFn: fetchThroughputReview, staleTime: 10 * 60_000 })
   const suggestions = flywheel?.suggestions ?? []
 
-  if (dismissed || (!brief && suggestions.length === 0)) return null
-
-  const items = brief ? [...brief.risk, ...brief.gaps, ...brief.load] : []
+  if (dismissed || suggestions.length === 0) return null
 
   return (
     <div className="border-b px-4 py-3" style={{ borderColor: 'var(--line)', background: 'color-mix(in srgb, var(--dawn) 5%, var(--ink))' }}>
@@ -71,18 +68,10 @@ function BriefCard({
         <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>✦</span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--dawn)' }}>Morning brief</span>
-            {brief && !brief.narrated && <span className="text-[10px]" style={{ color: 'var(--muted)' }}>· offline summary</span>}
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--dawn)' }}>Crew capacity</span>
             <button onClick={onOpenBar} className="ml-auto rounded-md border px-2 py-0.5 text-[11px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)', color: 'var(--muted)' }}>⌘K to dispatch by voice</button>
             <button onClick={() => setDismissed(true)} className="rounded-md px-1.5 py-0.5 text-[12px]" style={{ color: 'var(--muted)' }}>✕</button>
           </div>
-          <p className="mt-1 text-[13px] leading-snug" style={{ color: 'var(--text)' }}>{brief?.prose ?? 'The board’s clean for this range.'}</p>
-
-          {items.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {items.slice(0, 8).map((it, i) => <BriefChip key={i} item={it} />)}
-            </div>
-          )}
 
           {suggestions.length > 0 && (
             <div className="mt-3 rounded-lg border p-2.5" style={{ borderColor: 'var(--line)', background: 'var(--panel)' }}>
@@ -98,15 +87,6 @@ function BriefCard({
         </div>
       </div>
     </div>
-  )
-}
-
-function BriefChip({ item }: { item: BriefItem }) {
-  const m = KIND_META[item.kind] || { color: 'var(--muted)', glyph: '·' }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]" style={{ background: 'var(--panel)', color: 'var(--text)' }}>
-      <span style={{ color: m.color }}>{m.glyph}</span>{item.text}
-    </span>
   )
 }
 

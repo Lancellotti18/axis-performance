@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
@@ -8,6 +8,7 @@ import { api } from '@/lib/api'
 import type { Project } from '@/types'
 import { ButtonLink, CountUp, PageTransition, StatusBadge } from '@/components/ui'
 import MorningBriefing from '@/components/MorningBriefing'
+import FirstRunGreeting, { WELCOME_COACH_KEY } from '@/components/FirstRunGreeting'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function relTime(s?: string): string {
@@ -231,6 +232,24 @@ export default function DashboardPage() {
   const name = user?.user_metadata?.full_name?.split(' ')[0] || 'there'
   const loading = isLoading || !user
 
+  // Read the dismissal without setState-in-an-effect. The server snapshot says
+  // "dismissed" so the greeting never flashes during SSR for someone who has
+  // already sent it away; the client then reports the real value.
+  const storedDismissed = useSyncExternalStore(
+    () => () => {},
+    () => { try { return localStorage.getItem(WELCOME_COACH_KEY) === '1' } catch { return true } },
+    () => true,
+  )
+  const [justDismissed, setJustDismissed] = useState(false)
+  const dismissWelcome = useCallback(() => {
+    try { localStorage.setItem(WELCOME_COACH_KEY, '1') } catch { /* private mode */ }
+    setJustDismissed(true)
+  }, [])
+  // Having no projects is the honest signal of a new account — far more
+  // reliable than counting logins, which misses someone who has signed in
+  // repeatedly without ever tracing a roof.
+  const showWelcome = !loading && projects.length === 0 && !storedDismissed && !justDismissed
+
   return (
     <div className="relative min-h-full" style={{ background: '#040810' }}>
       {/* Blueprint-grid background + corner glow */}
@@ -265,8 +284,10 @@ export default function DashboardPage() {
           </ButtonLink>
         </div>
 
-        {/* The briefing leads: what needs doing today, before the file list. */}
-        <MorningBriefing />
+        {/* The briefing leads: what needs doing today, before the file list.
+            On a brand-new account it has nothing to report, so the welcome
+            takes its place rather than stacking two near-empty cards. */}
+        {showWelcome ? <FirstRunGreeting name={name} onDismiss={dismissWelcome} /> : <MorningBriefing />}
 
         {/* Stats bar */}
         <div className="grid grid-cols-2 gap-4 mb-9 sm:grid-cols-4">
@@ -278,9 +299,22 @@ export default function DashboardPage() {
 
         {/* Projects */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-white">Your projects</h2>
+          {/* Named "Recent" and counted on purpose: this grid is a glance at the
+              8 newest, while /projects is the working list with status filters,
+              search and a table view. Without the count it reads as "all your
+              projects", which makes the Projects nav item look redundant. */}
+          <h2 className="text-base font-semibold text-white">
+            Recent projects
+            {projects.length > recent.length && (
+              <span className="ml-2 text-xs font-normal text-slate-500">
+                {recent.length} of {projects.length}
+              </span>
+            )}
+          </h2>
           {projects.length > 0 && (
-            <Link href="/projects" className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors">View all →</Link>
+            <Link href="/projects" className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors">
+              {projects.length > recent.length ? `View all ${projects.length} →` : 'View all →'}
+            </Link>
           )}
         </div>
 
