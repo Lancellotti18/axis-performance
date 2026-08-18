@@ -22,6 +22,16 @@ export type PhotoAnnotation =
   | { type: 'arrow'; x1: number; y1: number; x2: number; y2: number; color?: string }
   | { type: 'circle'; cx: number; cy: number; r: number; color?: string }
   | { type: 'text'; x: number; y: number; text: string; color?: string }
+/** One line of the owner-operator morning briefing (see services/briefing.py). */
+export type BriefingItem = {
+  kind: 'accepted' | 'waiting' | 'weather' | 'cold' | 'stuck'
+  /** Stable across refreshes — used to snooze a line. */
+  key: string
+  severity: number
+  text: string
+  href: string | null
+}
+
 /** Pipeline signal behind the dashboard's morning briefing (see crm_pulse.py). */
 export type CRMPulse = {
   total: number
@@ -1811,6 +1821,10 @@ export const api = {
         { method: 'POST', body: JSON.stringify(payload) },
         45000,
       ),
+  },
+  briefing: {
+    /** The whole morning read in one call — ordered and capped server-side. */
+    today: () => apiRequest<{ date: string; items: BriefingItem[] }>(`/api/v1/briefing/today`),
   },
   crm: {
     listLeads: (userId: string) =>

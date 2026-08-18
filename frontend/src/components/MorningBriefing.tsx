@@ -3,69 +3,78 @@
 /**
  * The morning briefing — the first thing on the dashboard.
  *
- * This lived inside Dispatch, which meant it only spoke for the board: crews,
- * capacity, weather. That's half a contractor's morning, and it was buried a
- * click away from where anyone starts their day. It now leads the dashboard and
- * covers both halves of the business — the work that's booked, and the money
- * that hasn't been chased.
+ * Written for an owner-operator: someone who sells AND runs the crews, reading
+ * this on a phone at 6:30am. Their question is "what do I do first, and who do
+ * I call", so every line is a decision. Ordering is by how fast the opportunity
+ * decays, not by how interesting it is — an accepted proposal nobody has called
+ * back outranks a lead going quiet, which outranks half-finished paperwork.
  *
- * Every number here is engine-computed (`crm_pulse.py`, the dispatch brief
- * endpoint). Nothing is invented client-side, and each half degrades on its own:
- * if the board is unreachable the CRM read still renders, and vice versa.
+ * Deliberately NOT here: crew utilization, funnel counts, win-rate trends.
+ * They're real numbers and they live on the pages that own them. Mixing status
+ * reporting into an action list is how a briefing becomes wallpaper, and once
+ * it's wallpaper the urgent lines stop landing too.
+ *
+ * The whole thing is one request (`/briefing/today`), assembled and capped
+ * server-side, with each source failing independently — see services/briefing.py.
  */
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
-import { api, type CRMPulse } from '@/lib/api'
-import { fetchBrief } from '@/app/(dashboard)/dispatch/lib/board'
-import { shiftISODate, toISODate } from '@/app/(dashboard)/dispatch/lib/today'
+import { api, type BriefingItem } from '@/lib/api'
 
-const money = (n: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
+const SNOOZE_KEY = 'axis_briefing_snoozed_v1'
+const SNOOZE_DAYS = 7
 
-const STAGE_LABEL: Record<string, string> = {
-  new: 'new', contacted: 'contacted', site_visit: 'site visit',
-  estimate_sent: 'estimate sent', won: 'won', lost: 'lost',
+const KIND_STYLE: Record<BriefingItem['kind'], { dot: string; label: string }> = {
+  accepted: { dot: 'bg-emerald-400', label: 'Accepted' },
+  waiting:  { dot: 'bg-amber-400',   label: 'Waiting on you' },
+  weather:  { dot: 'bg-sky-400',     label: 'Weather' },
+  cold:     { dot: 'bg-rose-400',    label: 'Going cold' },
+  stuck:    { dot: 'bg-slate-400',   label: 'Unfinished' },
+}
+
+/** { key: epochMillisUntil } — a line stays gone for a week, then comes back. */
+function parseSnoozes(raw: string): Record<string, number> {
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw) as Record<string, number>
+    const now = Date.now()
+    // Drop expired entries on read so the store can't grow without bound.
+    return Object.fromEntries(Object.entries(parsed).filter(([, until]) => until > now))
+  } catch { return {} }
 }
 
 export default function MorningBriefing() {
-  const { data: pulse, isLoading, isError } = useQuery<CRMPulse>({
-    queryKey: ['crm-pulse'],
-    queryFn: () => api.crm.pulse(),
-    // Fresh enough for a morning read; the app-wide cache keeps it painted
-    // instantly when the user comes back to the dashboard.
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['briefing-today'],
+    queryFn: () => api.briefing.today(),
     staleTime: 5 * 60_000,
   })
 
-  // Homeowner-booked inspections. These live in their own section (they're a
-  // different thing from crew dispatch — inbound requests, not production work)
-  // but the *briefing* is where the day gets read, so they surface here too.
-  const { data: appts } = useQuery({
-    queryKey: ['appointments', 'upcoming'],
-    queryFn: () => api.appointments.list(true),
-    staleTime: 5 * 60_000,
-  })
-  const upcoming = useMemo(() => {
-    const rows = (appts?.appointments || []).filter(a => a.status !== 'cancelled')
-    return rows.slice(0, 3)
-  }, [appts])
+  // Snoozes live client-side: they're a personal reading preference, not
+  // business state, and this keeps the feature free of a schema change. The
+  // tradeoff is they don't follow you to another device.
+  const stored = useSyncExternalStore(
+    () => () => {},
+    () => localStorage.getItem(SNOOZE_KEY) || '',
+    () => '',
+  )
+  // Writes go through local state as well as storage, so the raw JSON is a
+  // genuine dependency below rather than a cache-busting counter.
+  const [override, setOverride] = useState<string | null>(null)
+  const raw = override ?? stored
+  const snoozed = useMemo(() => parseSnoozes(raw), [raw])
 
-  // The dispatch board's own morning read — who's overbooked or idle, what
-  // still needs placing, what the weather threatens. This used to live on the
-  // Dispatch page; the whole point of moving it here is that a contractor
-  // shouldn't have to open the board to find out the board needs attention.
-  const weekStart = toISODate(new Date())
-  const { data: brief } = useQuery({
-    queryKey: ['ai-brief', weekStart],
-    queryFn: () => fetchBrief(weekStart, shiftISODate(weekStart, 6)),
-    staleTime: 5 * 60_000,
-    // The board is a separate service call; if it's down the CRM half of this
-    // briefing must still render.
-    retry: 1,
-  })
-  const boardItems = useMemo(
-    () => (brief ? [...brief.risk, ...brief.gaps, ...brief.load].slice(0, 5) : []),
-    [brief],
+  const snooze = useCallback((key: string) => {
+    const next = JSON.stringify({ ...parseSnoozes(override ?? (localStorage.getItem(SNOOZE_KEY) || '')),
+                                  [key]: Date.now() + SNOOZE_DAYS * 86_400_000 })
+    try { localStorage.setItem(SNOOZE_KEY, next) } catch { /* private mode */ }
+    setOverride(next)
+  }, [override])
+
+  const items = useMemo(
+    () => (data?.items || []).filter(i => !snoozed[i.key]),
+    [data, snoozed],
   )
 
   const greeting = (() => {
@@ -88,55 +97,10 @@ export default function MorningBriefing() {
             Briefing
           </span>
         </div>
-        <Link href="/crm" className="text-xs font-medium text-blue-400 transition-colors hover:text-blue-300">
-          Open CRM →
-        </Link>
+        {items.length > 0 && (
+          <span className="text-[11px] text-slate-400">{items.length} to action</span>
+        )}
       </div>
-
-      {/* The board, first: overbooked crews and unplaced jobs are the things
-          that actually break a day if nobody looks at them. */}
-      {(brief?.prose || boardItems.length > 0) && (
-        <div className="border-b border-white/[0.07] px-5 py-3">
-          <div className="mb-1.5 flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-amber-300">On the board</span>
-            <Link href="/dispatch" className="text-[11px] font-medium text-blue-400 hover:text-blue-300">Open dispatch →</Link>
-          </div>
-          {brief?.prose && (
-            <p className="text-[13px] leading-relaxed text-slate-300">{brief.prose}</p>
-          )}
-          {boardItems.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {boardItems.map((it, i) => (
-                <span key={i} className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] text-slate-300">
-                  {it.text}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {upcoming.length > 0 && (
-        <div className="border-b border-white/[0.07] px-5 py-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Booked inspections</span>
-            <Link href="/schedule" className="text-[11px] font-medium text-blue-400 hover:text-blue-300">See all →</Link>
-          </div>
-          <ul className="space-y-1">
-            {upcoming.map(a => (
-              <li key={a.id} className="flex items-center justify-between gap-3 text-[13px]">
-                <span className="min-w-0 truncate text-slate-200">{a.homeowner_name || 'Homeowner'}</span>
-                <span className="flex-shrink-0 text-[11px] text-slate-400">
-                  {a.preferred_date}
-                  {a.status === 'requested' && (
-                    <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">needs confirming</span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       <div className="p-5">
         {isLoading ? (
@@ -144,76 +108,44 @@ export default function MorningBriefing() {
             <div className="h-3.5 w-2/3 animate-pulse rounded bg-white/10" />
             <div className="h-3.5 w-1/2 animate-pulse rounded bg-white/[0.07]" />
           </div>
-        ) : isError || !pulse ? (
-          // A briefing that can't load must not look like a business with no work.
+        ) : isError ? (
+          // Never imply an empty business when we simply couldn't read it.
           <p className="text-sm text-slate-400">
-            Couldn&apos;t reach your pipeline just now — the numbers below are still accurate.
+            Couldn&apos;t put your briefing together just now — the numbers below are still accurate.
           </p>
-        ) : pulse.total === 0 ? (
+        ) : items.length === 0 ? (
+          // A quiet morning is a real answer and worth saying plainly.
           <p className="text-sm text-slate-300">
-            No leads in the CRM yet.{' '}
-            <Link href="/crm" className="font-semibold text-blue-400 hover:text-blue-300">Add your first lead</Link>{' '}
-            and this briefing will start tracking what needs chasing.
+            ✅ Nothing needs you this morning. Nobody&apos;s waiting on a reply, no leads have gone quiet,
+            and tomorrow&apos;s weather is clear for the crews that are booked.
           </p>
         ) : (
-          <>
-            <div className="mb-4 grid gap-3 sm:grid-cols-3">
-              <Figure label="Open pipeline" value={money(pulse.open_value)} sub={`${pulse.open_count} live lead${pulse.open_count === 1 ? '' : 's'}`} />
-              <Figure label="Won" value={money(pulse.won_value)} sub={pulse.win_rate_pct != null ? `${pulse.win_rate_pct}% win rate` : 'no closed leads yet'} />
-              <Figure
-                label="Needs chasing"
-                value={String(pulse.stale_count)}
-                sub={pulse.stale_count === 0 ? 'all leads are current' : 'gone quiet too long'}
-                tone={pulse.stale_count > 0 ? 'warn' : 'ok'}
-              />
-            </div>
-
-            {pulse.lines.length > 0 && (
-              <ul className="mb-3 space-y-1.5">
-                {pulse.lines.map((line, i) => (
-                  <li key={i} className="flex gap-2 text-[13px] leading-relaxed text-slate-300">
-                    <span className="mt-[7px] h-1 w-1 flex-shrink-0 rounded-full bg-blue-400" />
-                    {line}
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {pulse.stale.length > 0 && (
-              <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.06] p-3">
-                <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-amber-300">
-                  Call these first
-                </div>
-                <ul className="space-y-1">
-                  {pulse.stale.map(lead => (
-                    <li key={lead.id} className="flex items-center justify-between gap-3 text-[13px]">
-                      <span className="min-w-0 truncate text-slate-200">{lead.name}</span>
-                      <span className="flex-shrink-0 text-[11px] text-slate-400">
-                        {lead.value > 0 && <span className="mr-2 font-semibold text-emerald-400">{money(lead.value)}</span>}
-                        {lead.days}d in {STAGE_LABEL[lead.stage] || lead.stage}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </>
+          <ul className="space-y-1.5">
+            {items.map(item => {
+              const style = KIND_STYLE[item.kind] || KIND_STYLE.stuck
+              const body = (
+                <>
+                  <span className={`mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full ${style.dot}`} />
+                  <span className="min-w-0 flex-1 text-[13px] leading-relaxed text-slate-200">{item.text}</span>
+                </>
+              )
+              return (
+                <li key={item.key} className="group flex items-start gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-white/[0.04]">
+                  {item.href
+                    ? <Link href={item.href} className="flex min-w-0 flex-1 items-start gap-2">{body}</Link>
+                    : <span className="flex min-w-0 flex-1 items-start gap-2">{body}</span>}
+                  <button
+                    onClick={() => snooze(item.key)}
+                    title="Snooze for a week"
+                    aria-label={`Snooze: ${item.text}`}
+                    className="flex-shrink-0 rounded px-1.5 py-0.5 text-[11px] text-slate-500 opacity-0 transition-opacity hover:bg-white/10 hover:text-slate-200 group-hover:opacity-100"
+                  >snooze</button>
+                </li>
+              )
+            })}
+          </ul>
         )}
       </div>
     </section>
-  )
-}
-
-function Figure({ label, value, sub, tone = 'ok' }: {
-  label: string; value: string; sub: string; tone?: 'ok' | 'warn'
-}) {
-  return (
-    <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
-      <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className={`mt-0.5 text-xl font-bold leading-none ${tone === 'warn' ? 'text-amber-300' : 'text-white'}`}>
-        {value}
-      </div>
-      <div className="mt-1 text-[11px] text-slate-500">{sub}</div>
-    </div>
   )
 }
