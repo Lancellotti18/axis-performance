@@ -9,10 +9,16 @@
  * decays, not by how interesting it is — an accepted proposal nobody has called
  * back outranks a lead going quiet, which outranks half-finished paperwork.
  *
- * Deliberately NOT here: crew utilization, funnel counts, win-rate trends.
- * They're real numbers and they live on the pages that own them. Mixing status
- * reporting into an action list is how a briefing becomes wallpaper, and once
- * it's wallpaper the urgent lines stop landing too.
+ * Two parts, doing different jobs. The figures across the top are the money
+ * glance — pipeline, won, how many leads are slipping — which an owner-operator
+ * wants before anything else. Under them is the action list, where every line
+ * is a decision.
+ *
+ * The distinction that matters: a compact header of three numbers is a glance,
+ * and glances are fine. What isn't fine is mixing STATUS into the action list
+ * itself — crew utilization, funnel counts, win-rate history. That's what turns
+ * a briefing into wallpaper, and once it's wallpaper the urgent lines stop
+ * landing too. Those live on the pages that own them.
  *
  * The whole thing is one request (`/briefing/today`), assembled and capped
  * server-side, with each source failing independently — see services/briefing.py.
@@ -20,7 +26,10 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
-import { api, type BriefingItem } from '@/lib/api'
+import { api, type BriefingItem, type CRMPulse } from '@/lib/api'
+
+const money = (n: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 
 const KIND_STYLE: Record<BriefingItem['kind'], { dot: string; label: string }> = {
   accepted: { dot: 'bg-emerald-400', label: 'Accepted' },
@@ -39,6 +48,14 @@ export default function MorningBriefing() {
 
   // Snoozing is per-user state, not a rendering preference, so it lives on the
   // server — a line put away in the truck stays away at the office.
+  // The money glance. Separate call from the action list on purpose: if the
+  // briefing assembly is slow or down, these numbers still paint.
+  const { data: pulse } = useQuery<CRMPulse>({
+    queryKey: ['crm-pulse'],
+    queryFn: () => api.crm.pulse(),
+    staleTime: 5 * 60_000,
+  })
+
   const qc = useQueryClient()
   const [pending, setPending] = useState<string[]>([])
   const { mutate: snoozeItem } = useMutation({
@@ -80,6 +97,18 @@ export default function MorningBriefing() {
           <span className="text-[11px] text-slate-400">{items.length} to action</span>
         )}
       </div>
+
+      {pulse && pulse.total > 0 && (
+        <div className="grid gap-3 border-b border-white/[0.07] px-5 py-4 sm:grid-cols-3">
+          <Figure label="Open pipeline" value={money(pulse.open_value)}
+            sub={`${pulse.open_count} live lead${pulse.open_count === 1 ? '' : 's'}`} />
+          <Figure label="Won" value={money(pulse.won_value)}
+            sub={pulse.win_rate_pct != null ? `${pulse.win_rate_pct}% win rate` : 'no closed leads yet'} />
+          <Figure label="Needs chasing" value={String(pulse.stale_count)}
+            sub={pulse.stale_count === 0 ? 'all leads are current' : 'gone quiet too long'}
+            tone={pulse.stale_count > 0 ? 'warn' : 'ok'} />
+        </div>
+      )}
 
       <div className="p-5">
         {isLoading ? (
@@ -126,5 +155,19 @@ export default function MorningBriefing() {
         )}
       </div>
     </section>
+  )
+}
+
+function Figure({ label, value, sub, tone = 'ok' }: {
+  label: string; value: string; sub: string; tone?: 'ok' | 'warn'
+}) {
+  return (
+    <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
+      <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
+      <div className={`mt-0.5 text-xl font-bold leading-none ${tone === 'warn' ? 'text-amber-300' : 'text-white'}`}>
+        {value}
+      </div>
+      <div className="mt-1 text-[11px] text-slate-500">{sub}</div>
+    </div>
   )
 }
