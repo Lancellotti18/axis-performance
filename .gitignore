@@ -40,3 +40,4 @@ models/
 # Uploads (local dev)
 uploads/
 .vercel
+*.bak
