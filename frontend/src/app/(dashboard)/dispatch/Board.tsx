@@ -8,8 +8,9 @@
  * 15s Undo. BLOCK conflicts refuse the drop with a reason. Click a card for the
  * detail slide-over. Read-only visuals from M2 are preserved.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { shiftISODate } from './lib/today'
+import { addShift, removeShift } from './lib/board'
 import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable,
   useSensor, useSensors, type DragEndEvent, type DragOverEvent, type DragStartEvent,
@@ -87,12 +88,14 @@ function mergeAffected(old: BoardData, aff: AffectedMulti): BoardData {
 const isTrayDrag = (id: string | null): boolean => !!id && id.startsWith('tray:')
 
 export default function Board({
-  data, today, focusDate, onFocusDate,
+  data, today, focusDate, onFocusDate, autoOpenWeather,
 }: {
   data: BoardData; today: string
   /** The day in focus, owned by the page so the week can follow it across edges. */
   focusDate: string
   onFocusDate: (d: string) => void
+  /** Deep-linked from the briefing: open the rain-reschedule panel on arrival. */
+  autoOpenWeather?: boolean
 }) {
   const qc = useQueryClient()
   const queryKey = ['board', data.range.start, data.range.end]
@@ -101,6 +104,21 @@ export default function Board({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [hoverCell, setHoverCell] = useState<string | null>(null)
   const [previewMap, setPreviewMap] = useState<Record<string, PreviewResult | 'loading'>>({})
+  // Per-day shift toggle. Keyed crew:date so only the pressed cell shows busy.
+  const [shiftBusy, setShiftBusy] = useState<string | null>(null)
+  const toggleShift = useCallback(async (crewId: string, day: string, on: boolean) => {
+    const key = `${crewId}:${day}`
+    setShiftBusy(key)
+    try {
+      if (on) await removeShift(crewId, day)
+      else await addShift(crewId, day)
+      await qc.invalidateQueries({ queryKey })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not change that day')
+    } finally {
+      setShiftBusy(null)
+    }
+  }, [qc, queryKey])
   const [detailId, setDetailId] = useState<string | null>(null)
   const [view, setView] = useState<'week' | 'day' | 'map'>('week')
   const [auditOpen, setAuditOpen] = useState(false)
@@ -282,7 +300,7 @@ export default function Board({
           qc.invalidateQueries({ queryKey: ['ai-brief'] }); qc.invalidateQueries({ queryKey: ['ai-throughput'] })
           qc.invalidateQueries({ queryKey: ['board'] })
         }} />
-      <WeatherReschedule start={data.range.start} end={data.range.end} crews={data.crews}
+      <WeatherReschedule autoOpen={autoOpenWeather} start={data.range.start} end={data.range.end} crews={data.crews}
         onApplied={applyAffected}
         onInvalidate={() => { qc.invalidateQueries({ queryKey: ['weather-impact'] }); qc.invalidateQueries({ queryKey: ['tray'] }) }} />
 
@@ -329,7 +347,9 @@ export default function Board({
                 </div>
                 <div className="p-2">
                   {crewWx(crew.id, d) && <CrewWeatherChip wx={crewWx(crew.id, d)!} />}
-                  <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined} />
+                  <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined}
+                    busy={shiftBusy === `${crew.id}:${d}`}
+                    onToggleShift={(e) => { e.stopPropagation(); toggleShift(crew.id, d, !!shift) }} />
                 </div>
                 <Cell id={cellId(crew.id, d)} rainy={rainy(d)} dragging={!!activeId} preview={previewMap[cellId(crew.id, d)]}>
                   <div className="space-y-1.5">
@@ -412,7 +432,9 @@ export default function Board({
                     return (
                       <Cell key={d} id={cid} rainy={rainy(d)} dragging={!!activeId} preview={previewMap[cid]}>
                         {crewWx(crew.id, d) && <CrewWeatherChip wx={crewWx(crew.id, d)!} />}
-                        <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined} />
+                        <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined}
+                    busy={shiftBusy === `${crew.id}:${d}`}
+                    onToggleShift={(e) => { e.stopPropagation(); toggleShift(crew.id, d, !!shift) }} />
                         <div className="mt-1.5 space-y-1.5">
                           {appts.map(ap => {
                             const job = idx.jobs.get(ap.job_id); if (!job) return null
@@ -559,8 +581,26 @@ function CrewRail({ crew, lead, members, buColor }: { crew: Crew; lead?: { first
   )
 }
 
-function CapacityHeader({ load, hasShift, shift }: { load?: DayLoad; hasShift: boolean; shift?: string }) {
-  if (!hasShift) return <div className="rounded-md px-2 py-1.5 text-[11px]" style={{ background: 'var(--panel2)', color: 'var(--muted)' }}>No shift</div>
+function ShiftToggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick: (e: React.MouseEvent) => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      title={on ? 'Remove this working day' : 'Add a working day'}
+      aria-label={on ? 'Remove this working day' : 'Add a working day'}
+      className="grid h-5 w-5 shrink-0 place-items-center rounded border text-[13px] font-bold leading-none transition-colors hover:bg-white/10 disabled:opacity-40"
+      style={{ borderColor: 'var(--line)', color: on ? 'var(--muted)' : 'var(--ok, #4ade80)' }}
+    >{busy ? '·' : on ? '\u2212' : '+'}</button>
+  )
+}
+
+function CapacityHeader({ load, hasShift, shift, onToggleShift, busy }: { load?: DayLoad; hasShift: boolean; shift?: string; onToggleShift?: (e: React.MouseEvent) => void; busy?: boolean }) {
+  if (!hasShift) return (
+    <div className="flex items-center justify-between gap-1 rounded-md px-2 py-1.5 text-[11px]" style={{ background: 'var(--panel2)', color: 'var(--muted)' }}>
+      <span>No shift</span>
+      {onToggleShift && <ShiftToggle on={false} busy={!!busy} onClick={onToggleShift} />}
+    </div>
+  )
   if (load && load.available_hours === 0) return <div className="rounded-md px-2 py-1.5 text-[11px]" style={{ background: 'rgba(245,86,108,0.08)', color: 'var(--muted)' }}>Blocked · PTO</div>
   const st = STATE_META[(load?.state || 'IDLE') as LoadState]
   const planned = load?.planned_squares ?? 0; const cap = load?.capacity_squares ?? 0
@@ -574,9 +614,12 @@ function CapacityHeader({ load, hasShift, shift }: { load?: DayLoad; hasShift: b
       <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
         <div className="h-full rounded-full" style={{ width: `${Math.min(100, fill * 100)}%`, background: st.color }} />
       </div>
-      <div className="mt-0.5 flex justify-between text-[10px]" style={{ color: 'var(--muted)' }}>
+      <div className="mt-0.5 flex items-center justify-between gap-1 text-[10px]" style={{ color: 'var(--muted)' }}>
         <span>{load?.appointment_count ?? 0} job{(load?.appointment_count ?? 0) === 1 ? '' : 's'}</span>
-        {shift && <span>{shift}</span>}
+        <span className="flex items-center gap-1">
+          {shift && <span>{shift}</span>}
+          {onToggleShift && <ShiftToggle on busy={!!busy} onClick={onToggleShift} />}
+        </span>
       </div>
     </div>
   )

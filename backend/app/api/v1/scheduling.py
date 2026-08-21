@@ -23,6 +23,7 @@ from app.services.scheduling.capacity import (
     AppointmentLoadInput, ConflictContext, CrewCapacityInput, JobProductionInput,
     NonJobEventInput, ProposedAssignment, ShiftInput, compute_crew_days,
     compute_day_load, detect_conflicts, has_block, split_crew_work,
+    RELEASED_STATUSES,
 )
 from app.services.scheduling.timeutil import naive_dt
 from app.services.scheduling.copilot import (
@@ -1581,6 +1582,74 @@ def _generate_shifts(db, crew_id: str, weekdays: list, start_t: str, end_t: str,
         db.table("sched_shift").insert(rows[i:i + 200]).execute()
 
 
+# ── Per-day shifts: a crew works a day, or it doesn't ────────────────────────
+# Until now the only way to change a working day was to re-pick the crew's
+# weekday pattern, which wiped and regenerated every future shift. Toggling one
+# day meant rebuilding the whole horizon, so dispatchers left it alone.
+
+DEFAULT_SHIFT = ("07:00", "15:30")
+
+
+def _crew_shift_times(db, crew_id: str) -> tuple[str, str]:
+    """Reuse this crew's usual hours so an added day matches the rest."""
+    try:
+        r = _rows(db.table("sched_shift").select("start_time,end_time")
+                  .eq("org_id", ORG).eq("crew_id", crew_id)
+                  .order("date", desc=True).limit(1).execute())
+        if r:
+            return (r[0].get("start_time") or DEFAULT_SHIFT[0],
+                    r[0].get("end_time") or DEFAULT_SHIFT[1])
+    except Exception:
+        logger.debug("shift time lookup failed for %s", crew_id, exc_info=True)
+    return DEFAULT_SHIFT
+
+
+@router.put("/crews/{crew_id}/shifts/{day}")
+async def add_shift(crew_id: str, day: str, user: dict = Depends(require_user)) -> dict:
+    """Give this crew a working day. Idempotent — pressing + twice is harmless."""
+    db = get_supabase()
+    if not _one(db, "sched_crew", crew_id):
+        raise HTTPException(status_code=404, detail="Crew not found.")
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD.")
+    existing = _rows(db.table("sched_shift").select("id")
+                     .eq("org_id", ORG).eq("crew_id", crew_id).eq("date", day).execute())
+    if existing:
+        return {"ok": True, "created": False, "date": day}
+    start_t, end_t = _crew_shift_times(db, crew_id)
+    db.table("sched_shift").insert({
+        "org_id": ORG, "crew_id": crew_id, "date": day,
+        "start_time": start_t, "end_time": end_t, "type": "REGULAR"}).execute()
+    return {"ok": True, "created": True, "date": day, "start_time": start_t, "end_time": end_t}
+
+
+@router.delete("/crews/{crew_id}/shifts/{day}")
+async def remove_shift(crew_id: str, day: str, user: dict = Depends(require_user)) -> dict:
+    """Take a working day away — refused while work is still booked on it, since
+    removing the shift would leave the job assigned to a crew that isn't working."""
+    db = get_supabase()
+    if not _one(db, "sched_crew", crew_id):
+        raise HTTPException(status_code=404, detail="Crew not found.")
+    appt_ids = [a["appointment_id"] for a in
+                _rows(db.table("sched_assignment").select("appointment_id")
+                      .eq("org_id", ORG).eq("crew_id", crew_id).execute())
+                if a.get("appointment_id")]
+    if appt_ids:
+        booked = [r for r in _rows(db.table("sched_appointment")
+                                   .select("id,scheduled_start,status").in_("id", appt_ids).execute())
+                  if (r.get("scheduled_start") or "")[:10] == day
+                  and (r.get("status") or "").strip().upper() not in RELEASED_STATUSES]
+        if booked:
+            n = len(booked)
+            raise HTTPException(status_code=409, detail=(
+                f"{n} job{'' if n == 1 else 's'} still booked on {day}. "
+                f"Move {'it' if n == 1 else 'them'} to another day or crew first."))
+    db.table("sched_shift").delete().eq("org_id", ORG).eq("crew_id", crew_id).eq("date", day).execute()
+    return {"ok": True, "date": day}
+
+
 class CrewInput(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     business_unit_id: str
@@ -1669,12 +1738,27 @@ async def delete_crew(crew_id: str, user: dict = Depends(require_user)) -> dict:
         )
 
     if upcoming:
-        nxt = (upcoming[0].get("scheduled_start") or "")[:10]
-        n = len(upcoming)
+        name = crew.get("name") or "This crew"
+        dated = [r for r in upcoming if (r.get("scheduled_start") or "")[:10]]
+        undated = [r for r in upcoming if not (r.get("scheduled_start") or "")[:10]]
+        if dated:
+            nxt = (dated[0].get("scheduled_start") or "")[:10]
+            n = len(dated)
+            extra = (f" There {'is' if len(undated) == 1 else 'are'} also {len(undated)} job"
+                     f"{'' if len(undated) == 1 else 's'} with no date set.") if undated else ""
+            raise HTTPException(status_code=409, detail=(
+                f"{name} still has {n} upcoming job{'' if n == 1 else 's'}, "
+                f"the next on {nxt}. Move or cancel {'it' if n == 1 else 'them'} first — the board shows "
+                f"one week at a time, so jump to that date to find {'it' if n == 1 else 'them'}.{extra}"
+            ))
+        # Undated work only. The old message printed "the next on " with an empty
+        # date, which sent the dispatcher hunting a day that does not exist.
+        n = len(undated)
         raise HTTPException(status_code=409, detail=(
-            f"{crew.get('name') or 'This crew'} still has {n} upcoming job{'' if n == 1 else 's'}, "
-            f"the next on {nxt}. Move or cancel {'it' if n == 1 else 'them'} first — the board shows "
-            f"one week at a time, so jump to that date to find {'it' if n == 1 else 'them'}."
+            f"{name} is still on {n} job{'' if n == 1 else 's'} that {'has' if n == 1 else 'have'} "
+            f"no date set, so {'it' if n == 1 else 'they'} never appear on the board. "
+            f"Open the job{'' if n == 1 else 's'} from the project list and either schedule "
+            f"{'it' if n == 1 else 'them'} or unassign this crew."
         ))
 
     # Scheduling scaffolding is the crew's own and goes either way.

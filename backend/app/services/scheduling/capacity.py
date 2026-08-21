@@ -383,7 +383,11 @@ def has_block(conflicts: List[Conflict]) -> bool:
 
 # Work that no longer needs the crew: finished, called off, or back in the tray.
 # None of it is a reason to refuse to retire a crew.
-RELEASED_STATUSES = {"DONE", "CANCELED", "UNASSIGNED"}
+RELEASED_STATUSES = {
+    "DONE", "COMPLETE", "COMPLETED", "CLOSED",
+    "CANCELED", "CANCELLED", "VOID", "VOIDED",
+    "UNASSIGNED", "TRAY",
+}
 
 
 def split_crew_work(appointments: List[dict], today: str) -> Tuple[List[dict], int]:
@@ -395,16 +399,25 @@ def split_crew_work(appointments: List[dict], today: str) -> Tuple[List[dict], i
     one week at a time, so a job in any other week is invisible to the
     dispatcher and makes a refusal look like a phantom.
 
-    An appointment with no date is treated as live: we can't prove it's behind
-    us, and wrongly retiring a crew that's still on the hook is the worse error.
-    Returned upcoming list is sorted soonest-first, so callers can name the date
-    the dispatcher needs to go find.
+    Today counts as behind us. A job on the board this morning is either done or
+    being done; refusing to retire a crew over it strands the dispatcher with no
+    date to navigate to that would help.
+
+    Status matching is generous on purpose. The set used to hold only the exact
+    strings "DONE"/"CANCELED"/"UNASSIGNED", so a row written as "CANCELLED" or
+    "COMPLETED" read as live work forever and the crew could never be retired.
+
+    An appointment with no date at all cannot be navigated to, so blocking on it
+    is a dead end for the user. Those are reported separately by the caller.
+    Returned upcoming list is sorted soonest-first.
     """
     upcoming: List[dict] = []
     finished = 0
     for r in appointments:
         starts = (r.get("scheduled_start") or "")[:10]
-        if (r.get("status") or "").upper() in RELEASED_STATUSES or (starts and starts < today):
+        released = (r.get("status") or "").strip().upper() in RELEASED_STATUSES
+        past = bool(starts) and starts <= today
+        if released or past:
             finished += 1
         else:
             upcoming.append(r)
