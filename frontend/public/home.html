@@ -54,6 +54,16 @@
 
   /* ---- cinematic ---- */
   .film{position:relative;height:560vh}
+/* Scroll-snap only while the reel is playing. Each anchor sits at the scroll
+   offset where a beat is fully readable, so the page settles on the copy
+   instead of letting it slide past mid-sentence. `proximity` (not `mandatory`)
+   is deliberate: it nudges toward the nearest beat without seizing the wheel or
+   trapping someone who wants to keep going. The class is removed once the reel
+   finishes, so the rest of the page scrolls normally. */
+html.reel-snap{scroll-snap-type:y proximity}
+.snap{position:absolute;left:0;width:1px;height:1px;pointer-events:none;
+  opacity:0;scroll-snap-align:start}
+@media (prefers-reduced-motion:reduce){html.reel-snap{scroll-snap-type:none}}
   .stage{position:sticky;top:0;height:100vh;overflow:hidden;background:#04070c}
   #reel{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#04070c;transform:scale(1.02)}
   .grade{position:absolute;inset:0;pointer-events:none;
@@ -145,6 +155,9 @@
 </header>
 
 <div class="film" id="top">
+  <i class="snap" style="top:190.90vh"></i>
+  <i class="snap" style="top:302.45vh"></i>
+  <i class="snap" style="top:387.55vh"></i>
   <div class="stage" data-cine="0">
     <video id="reel" playsinline muted preload="auto" poster="/reel-poster.jpg" src="/reel-opt.mp4"></video>
     <div class="grade"></div>
@@ -327,7 +340,7 @@
     if(tr!==st.t){ st.t=tr; el.style.transform=tr; }
   }
 
-  let lGlow=-1,lHeroO=-1,lHeroT='',lPay=-1,lCue=-1,lCine='',lRail=-1;
+  let lGlow=-1,lHeroO=-1,lHeroT='',lPay=-1,lCue=-1,lCine='',lRail=-1,lSnap=null;
   function apply(p){
     seek(p*duration);
     const gl=+Math.max(1-smooth(0.06,0.15,p),smooth(0.90,0.965,p)).toFixed(3);
@@ -350,10 +363,31 @@
 
   // ── Scroll loop ────────────────────────────────────────────────────────
   let target=0, shown=0, ticking=false, needMeasure=true;
+  // Track geometry, cached so the snap decision costs no layout read. Refreshed
+  // on resize and on every measure(), which is the only place that reads it.
+  let filmTop=0, trackLen=1;
+  function cacheGeom(){
+    filmTop = film.getBoundingClientRect().top + window.scrollY;
+    trackLen = Math.max(1, film.offsetHeight - window.innerHeight);
+  }
+
+  /** Arm snapping while the reel is playing, release once it has run out.
+   *  Driven straight off scrollY: it must not wait on rAF (throttled in a
+   *  background tab) or on the eased value (which lags the scroll), or the
+   *  snapping outstays the reel and the rest of the page feels sticky. */
+  function syncSnap(){
+    const p = clamp((window.scrollY - filmTop) / trackLen, 0, 1);
+    // Last beat sits at p=0.843 and the payoff card is fully in by ~0.965, so
+    // releasing at 0.97 keeps the pull across all three beats and is reliably
+    // off before the reel visually ends.
+    const snap = p < 0.97;
+    if(snap!==lSnap){ lSnap=snap; document.documentElement.classList.toggle('reel-snap', snap && !reduce); }
+  }
+
   function measure(){
-    const tr=film.offsetHeight-window.innerHeight;
-    const y=clamp(-film.getBoundingClientRect().top,0,tr);
-    target=tr>0?y/tr:0;
+    cacheGeom();
+    const y=clamp(-film.getBoundingClientRect().top,0,trackLen);
+    target=trackLen>0?y/trackLen:0;
   }
   function frame(){
     // Layout read happens inside rAF, never inside the scroll handler,
@@ -364,10 +398,10 @@
     apply(shown);
     if(shown!==target) requestAnimationFrame(frame); else ticking=false;
   }
-  function kick(){ needMeasure=true; if(!ticking){ ticking=true; requestAnimationFrame(frame);} }
+  function kick(){ needMeasure=true; syncSnap(); if(!ticking){ ticking=true; requestAnimationFrame(frame);} }
   addEventListener('scroll',kick,{passive:true});
-  addEventListener('resize',kick,{passive:true});
-  measure(); apply(0); requestAnimationFrame(frame);
+  addEventListener('resize',()=>{ cacheGeom(); kick(); },{passive:true});
+  measure(); syncSnap(); apply(0); requestAnimationFrame(frame);
 
   const toPlatform=()=>document.getElementById('platform').scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'});
   document.getElementById('replay').addEventListener('click',()=>document.getElementById('top').scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'}));
