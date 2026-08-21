@@ -18,7 +18,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
-import type { BoardData, Crew, DayLoad, Job, LoadState, PreviewResult, AffectedSlice, AffectedMulti, LiveWx } from './lib/board'
+import type { BoardData, Crew, DayLoad, Job, LoadState, PreviewResult, AffectedSlice, AffectedMulti, LiveWx, Shift } from './lib/board'
 import { num, patchAppointment, previewMove, createAppointment, fetchLiveWeather } from './lib/board'
 import DetailPanel from './DetailPanel'
 import { useSelection } from './lib/selection'
@@ -104,21 +104,52 @@ export default function Board({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [hoverCell, setHoverCell] = useState<string | null>(null)
   const [previewMap, setPreviewMap] = useState<Record<string, PreviewResult | 'loading'>>({})
-  // Per-day shift toggle. Keyed crew:date so only the pressed cell shows busy.
-  const [shiftBusy, setShiftBusy] = useState<string | null>(null)
+  // Per-day shift toggle.
+  //
+  // This used to await the request and then await a full board invalidation
+  // before anything moved, so one click cost a round trip to a sleepy free-tier
+  // backend PLUS a refetch of every crew, job, appointment and weather row on
+  // screen. The cell is patched in the cache first now, so the button responds
+  // on the next frame; the request settles behind it and the cache is rolled
+  // back if the server refuses.
+  const [shiftBusy, setShiftBusy] = useState<Set<string>>(new Set())
   const toggleShift = useCallback(async (crewId: string, day: string, on: boolean) => {
     const key = `${crewId}:${day}`
-    setShiftBusy(key)
+    if (shiftBusy.has(key)) return          // ignore a second click on the same cell
+    setShiftBusy(prev => new Set(prev).add(key))
+
+    await qc.cancelQueries({ queryKey })
+    const previous = qc.getQueryData<BoardData>(queryKey)
+
+    qc.setQueryData<BoardData>(queryKey, (old) => {
+      if (!old) return old
+      if (on) {
+        return { ...old, shifts: old.shifts.filter(sh => !(sh.crew_id === crewId && sh.date === day)) }
+      }
+      // Match the hours the backend will pick: this crew's usual shift.
+      const sibling = old.shifts.find(sh => sh.crew_id === crewId)
+      const added: Shift = {
+        crew_id: crewId, date: day,
+        start_time: sibling?.start_time ?? '07:00',
+        end_time: sibling?.end_time ?? '15:30',
+        type: 'REGULAR',
+      }
+      return { ...old, shifts: [...old.shifts, added] }
+    })
+
     try {
       if (on) await removeShift(crewId, day)
       else await addShift(crewId, day)
-      await qc.invalidateQueries({ queryKey })
+      // Capacity numbers are server-derived, so reconcile — but in the
+      // background. Awaiting it here is what made the button feel stuck.
+      qc.invalidateQueries({ queryKey })
     } catch (e) {
+      if (previous) qc.setQueryData(queryKey, previous)
       toast.error(e instanceof Error ? e.message : 'Could not change that day')
     } finally {
-      setShiftBusy(null)
+      setShiftBusy(prev => { const n = new Set(prev); n.delete(key); return n })
     }
-  }, [qc, queryKey])
+  }, [qc, queryKey, shiftBusy])
   const [detailId, setDetailId] = useState<string | null>(null)
   const [view, setView] = useState<'week' | 'day' | 'map'>('week')
   const [auditOpen, setAuditOpen] = useState(false)
@@ -348,7 +379,7 @@ export default function Board({
                 <div className="p-2">
                   {crewWx(crew.id, d) && <CrewWeatherChip wx={crewWx(crew.id, d)!} />}
                   <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined}
-                    busy={shiftBusy === `${crew.id}:${d}`}
+                    busy={shiftBusy.has(`${crew.id}:${d}`)}
                     onToggleShift={(e) => { e.stopPropagation(); toggleShift(crew.id, d, !!shift) }} />
                 </div>
                 <Cell id={cellId(crew.id, d)} rainy={rainy(d)} dragging={!!activeId} preview={previewMap[cellId(crew.id, d)]}>
@@ -433,7 +464,7 @@ export default function Board({
                       <Cell key={d} id={cid} rainy={rainy(d)} dragging={!!activeId} preview={previewMap[cid]}>
                         {crewWx(crew.id, d) && <CrewWeatherChip wx={crewWx(crew.id, d)!} />}
                         <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined}
-                    busy={shiftBusy === `${crew.id}:${d}`}
+                    busy={shiftBusy.has(`${crew.id}:${d}`)}
                     onToggleShift={(e) => { e.stopPropagation(); toggleShift(crew.id, d, !!shift) }} />
                         <div className="mt-1.5 space-y-1.5">
                           {appts.map(ap => {
@@ -585,12 +616,14 @@ function ShiftToggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClic
   return (
     <button
       onClick={onClick}
-      disabled={busy}
+      // Glyph comes from the optimistically-patched cache, so it flips on the next
+      // frame. `busy` only dims while the request settles — a spinner here would
+      // throw away the instant feedback that buys us.
       title={on ? 'Remove this working day' : 'Add a working day'}
       aria-label={on ? 'Remove this working day' : 'Add a working day'}
-      className="grid h-5 w-5 shrink-0 place-items-center rounded border text-[13px] font-bold leading-none transition-colors hover:bg-white/10 disabled:opacity-40"
-      style={{ borderColor: 'var(--line)', color: on ? 'var(--muted)' : 'var(--ok, #4ade80)' }}
-    >{busy ? '·' : on ? '\u2212' : '+'}</button>
+      className="grid h-5 w-5 shrink-0 place-items-center rounded border text-[13px] font-bold leading-none transition-opacity hover:bg-white/10"
+      style={{ borderColor: 'var(--line)', color: on ? 'var(--muted)' : 'var(--ok, #4ade80)', opacity: busy ? 0.55 : 1 }}
+    >{on ? '\u2212' : '+'}</button>
   )
 }
 
