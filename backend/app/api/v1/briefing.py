@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from app.core.auth import require_user
 from app.core.supabase import get_supabase
 from app.services.briefing import (
-    accepted_items, assemble, cold_lead_items, days_since, stuck_items,
+    accepted_items, assemble, new_client_items, cold_lead_items, days_since, stuck_items,
     waiting_items, weather_items,
 )
 from app.services.crm_pulse import summarize_leads
@@ -33,6 +33,14 @@ def _accepted(db, user_id: str) -> list[dict]:
             .eq("user_id", user_id).eq("type", "proposal_accepted").eq("read", False)
             .order("created_at", desc=True).limit(10).execute().data or [])
     return accepted_items(rows)
+
+
+def _new_clients(db, user_id: str, today: date) -> list[dict]:
+    """CRM leads still at stage `new` — added but never contacted."""
+    rows = (db.table("crm_leads").select("id,name,source,created_at,stage")
+            .eq("user_id", user_id).eq("stage", "new")
+            .order("created_at").limit(20).execute().data or [])
+    return new_client_items(rows, today)
 
 
 def _waiting(db, user_id: str, today: date) -> list[dict]:
@@ -240,7 +248,8 @@ async def briefing_today(user: dict = Depends(require_user)) -> dict:
         groups.append([])
 
     for name, fn in (
-        ("accepted", lambda: _accepted(db, uid)),
+        ("accepted",   lambda: _accepted(db, uid)),
+        ("new_client", lambda: _new_clients(db, uid, today)),
         ("waiting",  lambda: _waiting(db, uid, today)),
         ("cold",     lambda: _cold(db, uid, today)),
         ("stuck",    lambda: _stuck(db, uid)),

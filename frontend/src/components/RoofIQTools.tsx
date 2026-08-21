@@ -19,11 +19,8 @@ export default function RoofIQTools() {
   const [showPrice, setShowPrice] = useState(false)
   const [brandColor, setBrandColor] = useState('')
   const [bgColor, setBgColor] = useState('')
-  const [catalog, setCatalog] = useState<{ key: string; name: string; tier: string }[]>([])
   // Whether renders are actually being generated. The homeowner-facing picker
   // has always been interactive; with generation off it simply never appears.
-  const [roofVisionOn, setRoofVisionOn] = useState(true)
-  const [palette, setPalette] = useState<string[]>([])
 
   useEffect(() => {
     api.instantQuote.myWidget().then(w => {
@@ -32,24 +29,10 @@ export default function RoofIQTools() {
       setShowPrice(!!w.show_instant_price)
       setBrandColor(w.brand_color || '')
       setBgColor(w.background_color || '')
-      setPalette(w.roofvision_palette || [])
     }).catch(() => {})
     api.instantQuote.analytics().then(setAnalytics).catch(() => {})
-    api.instantQuote.roofvisionCatalog()
-      .then(r => { setCatalog(r.catalog); setRoofVisionOn(r.enabled !== false) })
-      .catch(() => {})
   }, [])
 
-  const toggleColor = (key: string) =>
-    setPalette(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
-
-  const savePalette = useCallback(async () => {
-    try {
-      const w = await api.instantQuote.updateWidget({ roofvision_palette: palette })
-      setWidget(w); setPalette(w.roofvision_palette || palette)
-      toast.success('RoofVision colors saved')
-    } catch { toast.error('Could not save colors') }
-  }, [palette])
 
   const toggleShowPrice = useCallback(async () => {
     const next = !showPrice
@@ -262,38 +245,6 @@ export default function RoofIQTools() {
             </div>
           </div>
 
-          {catalog.length > 0 && (
-            <div className="border-t border-white/10 pt-3">
-              <div className="mb-1 font-semibold text-slate-300">✨ RoofVision shingle colors</div>
-              <p className="mb-2 text-[11px] text-slate-500">
-                Pick the colors homeowners see their own roof rendered in — only the shingles you install.
-                Homeowners tap between them on their report and their choice comes back to you on the lead.
-                {palette.length === 0 && ' None selected uses a default palette.'}
-              </p>
-              {!roofVisionOn && (
-                // Curating a palette that never renders is worse than no setting
-                // at all — say plainly that the switch is off and where it lives.
-                <div className="mb-2 rounded-lg border border-amber-400/25 bg-amber-500/[0.07] p-2.5 text-[11px] text-amber-100/90">
-                  <strong className="text-amber-200">Rendering is switched off.</strong> Your picks save, but homeowner
-                  reports currently show the plain satellite image instead of color previews. Turn on{' '}
-                  <code className="rounded bg-black/30 px-1 font-mono">ROOFVISION_ENABLED</code> (and set an image-provider
-                  API key) on the backend to activate it.
-                </div>
-              )}
-              <div className="flex flex-wrap gap-1.5">
-                {catalog.map(c => {
-                  const on = palette.includes(c.key)
-                  return (
-                    <button key={c.key} onClick={() => toggleColor(c.key)}
-                      className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${on ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-600'}`}>
-                      {on ? '✓ ' : ''}{c.name} <span className="text-slate-500">· {c.tier}</span>
-                    </button>
-                  )
-                })}
-              </div>
-              <button onClick={savePalette} className="mt-2 rounded bg-emerald-600 px-3 py-1.5 font-semibold text-white hover:bg-emerald-500">Save colors</button>
-            </div>
-          )}
         </div>
       )}
 

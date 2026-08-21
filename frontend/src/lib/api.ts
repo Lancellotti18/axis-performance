@@ -24,7 +24,7 @@ export type PhotoAnnotation =
   | { type: 'text'; x: number; y: number; text: string; color?: string }
 /** One line of the owner-operator morning briefing (see services/briefing.py). */
 export type BriefingItem = {
-  kind: 'accepted' | 'waiting' | 'weather' | 'cold' | 'stuck'
+  kind: 'accepted' | 'new_client' | 'waiting' | 'weather' | 'cold' | 'stuck'
   /** Stable across refreshes — used to snooze a line. */
   key: string
   severity: number

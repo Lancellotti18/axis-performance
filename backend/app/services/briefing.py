@@ -24,7 +24,7 @@ from typing import Optional
 
 # Lower sorts first. Kept explicit so the ordering is a stated decision rather
 # than an accident of dict order.
-SEVERITY = {"accepted": 1, "waiting": 2, "weather": 3, "cold": 4, "stuck": 5}
+SEVERITY = {"accepted": 1, "new_client": 2, "waiting": 3, "weather": 4, "cold": 5, "stuck": 6}
 
 # A phone-sized briefing. Past this nobody reads to the bottom, and the lines
 # that matter get buried by the ones that don't.
@@ -57,6 +57,36 @@ def accepted_items(notifications: list[dict]) -> list[dict]:
         out.append(_item("accepted", f"accepted:{n.get('id')}",
                          f"{who} — accepted your proposal. Call to get it on the board.",
                          n.get("link") or "/notifications"))
+    return out
+
+
+def new_client_items(leads: list[dict], today: date) -> list[dict]:
+    """Leads sitting at stage `new` — nobody has made first contact yet.
+
+    The briefing had no section for this at all, so a client added minutes ago
+    matched nothing: `accepted` needs a signed proposal, `waiting` needs the
+    homeowner to have messaged first or booked a visit, `cold` needs the lead to
+    have gone stale. A brand-new lead is the one thing on this list where speed
+    genuinely decides whether you win the job, and it was the one thing missing.
+
+    Oldest first — the lead that has been sitting longest is the one bleeding.
+    """
+    out = []
+    ranked = sorted(leads, key=lambda l: l.get("created_at") or "")
+    for l in ranked[:3]:
+        who = (l.get("name") or "A new lead").strip()
+        days = days_since(l.get("created_at"), today)
+        src = (l.get("source") or "").strip()
+        via = f" via {src}" if src else ""
+        if days is None or days <= 0:
+            when = "came in today"
+        elif days == 1:
+            when = "came in yesterday"
+        else:
+            when = f"has been waiting {days} days"
+        out.append(_item("new_client", f"new_client:{l.get('id')}",
+                         f"{who}{via} — {when} and nobody has made contact. Call before someone else does.",
+                         "/crm"))
     return out
 
 
@@ -125,8 +155,13 @@ def weather_items(crew_days: list[dict], tomorrow: str) -> list[dict]:
             cond = f"{round(wind)} mph wind"
 
         out.append(_item("weather", f"wx:{c.get('crew_id')}:{c.get('date')}",
-                         f"{crew}: {cond} tomorrow{at} on {jobs} job{'' if jobs == 1 else 's'} — move or call ahead.",
-                         "/dispatch"))
+                         f"{crew}: {cond} tomorrow{at} on {jobs} job{'' if jobs == 1 else 's'} — "
+                         f"open the board to move {'it' if jobs == 1 else 'them'} to a dry day.",
+                         # Land on the affected day with the dry-day proposals
+                         # already open. The reschedule flow has always existed
+                         # on the board; the briefing just never pointed at it,
+                         # so the warning and the fix lived on separate screens.
+                         f"/dispatch?date={c.get('date')}&reschedule=1"))
     return out
 
 

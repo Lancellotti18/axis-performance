@@ -32,7 +32,8 @@ const money = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 
 const KIND_STYLE: Record<BriefingItem['kind'], { dot: string; label: string }> = {
-  accepted: { dot: 'bg-emerald-400', label: 'Accepted' },
+  accepted:   { dot: 'bg-emerald-400', label: 'Accepted' },
+  new_client: { dot: 'bg-blue-400',    label: 'New lead' },
   waiting:  { dot: 'bg-amber-400',   label: 'Waiting on you' },
   weather:  { dot: 'bg-sky-400',     label: 'Weather' },
   cold:     { dot: 'bg-rose-400',    label: 'Going cold' },

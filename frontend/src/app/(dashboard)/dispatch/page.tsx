@@ -13,7 +13,8 @@
  * it keeps the week view, the day view and the map view all pointed at the same
  * day when you switch between them.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { fetchBoard } from './lib/board'
@@ -27,7 +28,14 @@ import Board from './Board'
  * the week you were looking at instead of reloading it.
  */
 export default function DispatchPage() {
-  return <BoardScreen />
+  // BoardScreen reads useSearchParams (the briefing deep link), which forces a
+  // Suspense boundary — without one the whole route deopts out of static
+  // rendering at build time.
+  return (
+    <Suspense fallback={null}>
+      <BoardScreen />
+    </Suspense>
+  )
 }
 
 function BoardScreen() {
@@ -37,6 +45,16 @@ function BoardScreen() {
   // moment the dispatcher navigates, their choice takes over. Derived rather
   // than synced in an effect, so there's no frame where the two disagree.
   const [picked, setPicked] = useState<string | null>(null)
+
+  // Deep link from the morning briefing's rain line: /dispatch?date=YYYY-MM-DD&reschedule=1
+  // lands on the affected day with the dry-day proposals already open, so the
+  // alert and the fix are one click apart instead of two screens.
+  const params = useSearchParams()
+  const linkedDate = params.get('date')
+  const autoOpenWeather = params.get('reschedule') === '1'
+  useEffect(() => {
+    if (linkedDate && /^\d{4}-\d{2}-\d{2}$/.test(linkedDate)) setPicked(linkedDate)
+  }, [linkedDate])
   const focusDate = picked ?? today
 
   const goToday = useCallback(() => setPicked(null), [])
@@ -126,7 +144,7 @@ function BoardScreen() {
         ) : data && data.crews.length === 0 ? (
           <div className="p-10 text-center text-sm" style={{ color: 'var(--muted)' }}>No crews yet. Add a crew to start scheduling.</div>
         ) : data ? (
-          <Board data={data} today={today} focusDate={focusDate} onFocusDate={setFocusDate} />
+          <Board data={data} today={today} focusDate={focusDate} onFocusDate={setFocusDate} autoOpenWeather={autoOpenWeather} />
         ) : null}
       </div>
     </div>

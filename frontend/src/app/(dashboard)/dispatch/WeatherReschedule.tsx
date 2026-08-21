@@ -19,13 +19,15 @@ const STATE_COLOR: Record<LoadState, string> = {
 const fmtDate = (d: string | null) => (d ? d.slice(5) : '—')
 
 export default function WeatherReschedule({
-  start, end, crews, onApplied, onInvalidate,
+  start, end, crews, onApplied, onInvalidate, autoOpen,
 }: {
   start: string; end: string; crews: Crew[]
   onApplied: (aff: AffectedMulti) => void
   onInvalidate: () => void
+  /** Opened straight from the morning briefing's rain line. */
+  autoOpen?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(!!autoOpen)
   const [skip, setSkip] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const { data } = useQuery({ queryKey: ['weather-impact', start, end], queryFn: () => fetchWeatherImpact(start, end), staleTime: 60_000 })

@@ -779,6 +779,13 @@ async def my_widget(user: dict = Depends(require_user)) -> dict:
         "widget_key": secrets.token_urlsafe(12),
         "company_name": company,
         "phone": phone,
+        # Show the estimate range by default. It used to default off, from when
+        # the only numbers available were our generic per-square defaults and
+        # publishing them risked quoting a job the contractor wouldn't honour.
+        # Contractors now set their own price_low/price_high, so the range is
+        # theirs — and a homeowner who gets a number converts far better than
+        # one who gets "someone will call you".
+        "show_instant_price": True,
     }
     ins = db.table("quote_widgets").insert(row).execute()
     if not ins.data:
@@ -806,7 +813,7 @@ class WidgetSettings(BaseModel):
     phone: Optional[str] = Field(None, max_length=32)
     price_low: Optional[float] = Field(None, ge=50, le=5000)
     price_high: Optional[float] = Field(None, ge=50, le=5000)
-    show_instant_price: Optional[bool] = None   # homeowner sees the estimate range; default off
+    show_instant_price: Optional[bool] = None   # homeowner sees the estimate range; on by default for new widgets
     # Brand accent color (cosmetic white-label). Hex only — it's injected into a
     # CSS variable on the public pages, so the pattern guards against CSS breakout.
     brand_color: Optional[str] = Field(None, pattern=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
