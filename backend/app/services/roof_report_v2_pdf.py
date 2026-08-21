@@ -1010,6 +1010,7 @@ def _section_photos(run: dict, styles: dict) -> list:
 
 _PROJECT_PHASE_LABELS = [
     ("before", "Before"),
+    ("render", "Proposed \u2014 AI Render"),
     ("damage", "Damage"),
     ("progress", "In-progress"),
     ("completed", "Completed / After"),

@@ -3531,6 +3531,21 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
     except Exception as e:
         logger.info("project photos for report failed: %s", e)
 
+    # The Home Visualizer render lives on projects.hero_render_url, NOT in
+    # project_photos — so until now the UI promised "it'll appear at the top of
+    # that project's report" and the report never read the column at all.
+    # Slot it in beside the before shot so the pair actually tells the story.
+    try:
+        hero = (proj.data or {}).get("hero_render_url")
+        if hero:
+            project_photos.append({
+                "phase": "render",
+                "caption": "Proposed roof \u2014 AI render",
+                "url": hero,
+            })
+    except Exception as e:
+        logger.info("hero render for report failed: %s", e)
+
     # §4.4 / DEFECT-06: physical-plausibility gate. A report is never generated from
     # impossible geometry (e.g. ridge+hip > perimeter). Warnings pass through and are
     # surfaced in the report so a zero is never presented as reviewed fact.

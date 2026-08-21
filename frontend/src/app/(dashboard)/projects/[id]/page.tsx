@@ -364,7 +364,7 @@ export default function ProjectPage() {
   // The "before" photo the Roof Visualizer saved alongside its render, so the
   // overview can show the pair rather than an after with nothing to compare to.
   useEffect(() => {
-    if (!project?.hero_render_url) return
+    if (!project) return
     let cancelled = false
     api.projectPhotos.list(projectId)
       .then(({ photos }) => {
@@ -374,7 +374,7 @@ export default function ProjectPage() {
       })
       .catch(() => { /* the pair is a nicety — the render still shows alone */ })
     return () => { cancelled = true }
-  }, [project?.hero_render_url, projectId])
+  }, [project, projectId])
 
   async function openRoofReport() {
     if (!roofRunId) return
@@ -1032,6 +1032,21 @@ Thank you for your time.`
             {/* ── OVERVIEW ──────────────────────────────────────────────── */}
             {tab === 'overview' && (
               <div className="grid grid-cols-12 gap-6 max-w-6xl">
+                {/* Before / Visualizer render. This used to live ONLY in the
+                    no-blueprint branch, so the moment a project had a blueprint
+                    — which every rendered project does, since Renders requires
+                    one — the pair became unreachable in the UI entirely. */}
+                {(beforePhotoUrl || project?.hero_render_url) && (
+                  <div className="col-span-12">
+                    <ProjectHero
+                      satelliteUrl={roofSatelliteUrl}
+                      beforeUrl={beforePhotoUrl}
+                      afterUrl={project?.hero_render_url || null}
+                      measured={!!roofRunId}
+                      cardStyle={cardStyle}
+                    />
+                  </div>
+                )}
                 <div className="col-span-7 space-y-4">
                   {/* Blueprint preview */}
                   <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>

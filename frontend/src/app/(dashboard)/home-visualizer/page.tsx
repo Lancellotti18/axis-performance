@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { getUser } from '@/lib/auth'
 import { STATES } from '@/lib/jurisdictions'
 import type { Project } from '@/types'
+import { toUploadable, isHeic } from '@/lib/image'
 
 const cardStyle = {
   boxShadow: '0 2px 12px rgba(59,130,246,0.07)',
@@ -68,9 +69,17 @@ export default function HomeVisualizerPage() {
       // the render we just attached.
       if (file) {
         try {
-          await api.projectPhotos.upload(projectId, file, 'before', 'Before — Roof Visualizer')
-        } catch {
-          toast('Render saved, but the "before" photo didn’t upload.', { icon: '⚠️' })
+          // HEIC must be converted here — storage accepts the bytes but nothing
+          // downstream can decode them, so the photo silently disappears.
+          const uploadable = await toUploadable(file)
+          await api.projectPhotos.upload(projectId, uploadable, 'before', 'Before — Roof Visualizer')
+        } catch (err: any) {
+          // Never swallow this. The old bare `catch {}` discarded the reason,
+          // which is why this failure went unexplained for so long.
+          console.error('[visualizer] before-photo upload failed:', err)
+          const why = err?.message ? `: ${err.message}` : ''
+          toast(`Render saved, but the "before" photo didn't upload${why}`,
+                { icon: '⚠️', duration: 9000 })
         }
       }
       setSavedTo(projectName)
@@ -96,7 +105,9 @@ export default function HomeVisualizerPage() {
     e.preventDefault()
     setDragOver(false)
     const f = e.dataTransfer.files[0]
-    if (f && f.type.startsWith('image/')) handleFile(f)
+    // `accept` does not filter drops, so a .heic dropped here used to sail
+    // straight through to storage as an undecodable "jpg".
+    if (f && (f.type.startsWith('image/') || isHeic(f))) handleFile(f)
   }, [])
 
   const canSubmit = !!file && description.trim().length > 0
@@ -155,7 +166,7 @@ export default function HomeVisualizerPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
                 className="hidden"
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
               />
