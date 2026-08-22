@@ -799,7 +799,7 @@ export default function RoofOutlineEditor({
                           width={52}
                           height={20}
                           rx={5}
-                          fill="rgba(15,23,42,0.92)"
+                          fill="rgba(26,26,26,0.88)"
                           stroke="rgba(255,255,255,0.25)"
                           strokeWidth={1}
                         />
@@ -879,7 +879,7 @@ export default function RoofOutlineEditor({
             <div
               className="absolute top-3 left-3 flex items-center gap-1 rounded-lg p-1"
               style={{
-                background: 'rgba(15,23,42,0.92)',
+                background: 'rgba(26,26,26,0.88)',
                 backdropFilter: 'blur(8px)',
                 WebkitBackdropFilter: 'blur(8px)',
                 border: '1px solid rgba(255,255,255,0.1)',
@@ -921,7 +921,7 @@ export default function RoofOutlineEditor({
             <div
               className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full text-[11px] text-[#1a1a1a] whitespace-nowrap max-w-[90%] overflow-hidden text-ellipsis"
               style={{
-                background: 'rgba(15,23,42,0.88)',
+                background: 'rgba(26,26,26,0.84)',
                 backdropFilter: 'blur(6px)',
                 WebkitBackdropFilter: 'blur(6px)',
                 border: '1px solid rgba(255,255,255,0.08)',
@@ -937,7 +937,7 @@ export default function RoofOutlineEditor({
               <div
                 className="absolute top-3 right-3 flex flex-col items-stretch gap-2 rounded-lg p-2"
                 style={{
-                  background: 'rgba(15,23,42,0.92)',
+                  background: 'rgba(26,26,26,0.88)',
                   backdropFilter: 'blur(8px)',
                   WebkitBackdropFilter: 'blur(8px)',
                   border: '1px solid rgba(255,255,255,0.1)',
@@ -1075,7 +1075,7 @@ export default function RoofOutlineEditor({
                   background:
                     polygon.length < 3 || stats.sqft == null
                       ? '#94a3b8'
-                      : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                      : '#007fff',
                 }}
               >
                 Apply measurements

@@ -222,8 +222,8 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
           {/* Measure toggle */}
           <button
             onClick={() => { setMeasuring(m => !m); setCalibrating(false); setPointA(null); setPointB(null) }}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${measuring ? 'text-[#1a1a1a]' : 'text-[#9ca3af] bg-white border hover:bg-slate-50'}`}
-            style={measuring ? { background: 'linear-gradient(135deg,#6366f1,#4f46e5)', border: 'none' } : { borderColor: 'rgba(219,234,254,0.9)' }}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${measuring ? 'text-white' : 'text-[#9ca3af] bg-white border hover:bg-slate-50'}`}
+            style={measuring ? { background: '#7c3aed', border: 'none' } : { borderColor: 'rgba(219,234,254,0.9)' }}
             title="Click two points to measure distance"
           >
             Measure
@@ -232,8 +232,8 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
           {/* Calibrate */}
           <button
             onClick={() => { setCalibrating(c => !c); setMeasuring(false); setCalA(null); setCalB(null) }}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${calibrating ? 'text-[#1a1a1a]' : 'text-[#9ca3af] bg-white border hover:bg-slate-50'}`}
-            style={calibrating ? { background: 'linear-gradient(135deg,#f59e0b,#d97706)', border: 'none' } : { borderColor: 'rgba(219,234,254,0.9)' }}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${calibrating ? 'text-white' : 'text-[#9ca3af] bg-white border hover:bg-slate-50'}`}
+            style={calibrating ? { background: '#d97706', border: 'none' } : { borderColor: 'rgba(219,234,254,0.9)' }}
             title="Set a known real-world distance to calibrate measurements"
           >
             Calibrate

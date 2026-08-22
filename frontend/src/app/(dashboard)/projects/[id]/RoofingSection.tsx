@@ -179,8 +179,8 @@ export default function RoofingSection({
               )}
               <button
                 onClick={handleAnalyze}
-                className="inline-flex items-center gap-2 text-[#1a1a1a] font-bold px-6 py-2.5 rounded-xl text-sm transition-all hover:scale-[1.02]"
-                style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
+                className="inline-flex items-center gap-2 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all hover:scale-[1.02]"
+                style={{ background: '#007fff', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
                 Analyze Roof Measurements
@@ -213,8 +213,8 @@ export default function RoofingSection({
                     <button
                       onClick={handleDownloadPdf}
                       disabled={downloadingPdf}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1a1a1a] px-3 py-1.5 rounded-xl transition-all hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed"
-                      style={{ background: 'linear-gradient(135deg, #059669, #047857)', boxShadow: '0 2px 10px rgba(5,150,105,0.25)' }}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-3 py-1.5 rounded-xl transition-all hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{ background: '#0f9d63', boxShadow: '0 2px 10px rgba(5,150,105,0.25)' }}
                       title="Download professional roof report PDF"
                     >
                       {downloadingPdf ? (
@@ -311,8 +311,8 @@ export default function RoofingSection({
                   <button
                     onClick={handleConfirm}
                     disabled={confirming}
-                    className="flex items-center gap-2 text-[#1a1a1a] font-bold px-6 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40"
-                    style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 14px rgba(16,185,129,0.25)' }}
+                    className="flex items-center gap-2 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40"
+                    style={{ background: '#0f9d63', boxShadow: '0 4px 14px rgba(16,185,129,0.25)' }}
                   >
                     {confirming ? 'Saving…' : 'Confirm Measurements'}
                   </button>

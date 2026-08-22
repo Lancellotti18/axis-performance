@@ -337,7 +337,7 @@ export default function RoofIQPage() {
                   className={`min-w-0 flex-1 ${inputCls}`}
                 />
                 <button onClick={() => void locate()} disabled={busy}
-                  className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold text-[#1a1a1a] transition hover:scale-[1.02] disabled:opacity-50"
+                  className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.02] disabled:opacity-50"
                   style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                 >{busy ? 'Finding…' : 'Continue →'}</button>
               </div>
@@ -469,7 +469,7 @@ export default function RoofIQPage() {
                   </div>
 
                   <button onClick={() => setQualifyPage(2)}
-                    className="mt-5 w-full rounded-lg py-3 text-sm font-semibold text-[#1a1a1a] transition hover:scale-[1.01]"
+                    className="mt-5 w-full rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
                     style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                   >Continue →</button>
                 </>
@@ -530,7 +530,7 @@ export default function RoofIQPage() {
                     <button onClick={() => setQualifyPage(1)}
                       className="rounded-lg bg-slate-100 px-4 py-3 text-sm font-semibold text-[#9ca3af] ring-1 ring-slate-200 hover:bg-slate-200">← Back</button>
                     <button onClick={() => void finishQualify()}
-                      className="flex-1 rounded-lg py-3 text-sm font-semibold text-[#1a1a1a] transition hover:scale-[1.01]"
+                      className="flex-1 rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
                       style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                     >Measure my roof →</button>
                   </div>
@@ -690,7 +690,7 @@ export default function RoofIQPage() {
                 )}
                 {reportUrl && (
                   <a href={reportUrl} target="_blank" rel="noreferrer"
-                    className="rounded-lg py-3 text-center text-sm font-semibold text-[#1a1a1a] transition hover:scale-[1.01]"
+                    className="rounded-lg py-3 text-center text-sm font-semibold text-white transition hover:scale-[1.01]"
                     style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                   >📄 View my full Roof Intelligence Report</a>
                 )}

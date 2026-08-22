@@ -329,7 +329,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {!collapsed && (
                 <div className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{group.title}</div>
               )}
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {group.items.map(({ href, label, icon: Icon }) => {
                   const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href) && href !== '/projects/new')
                   return (
@@ -337,10 +337,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       key={href}
                       href={href}
                       title={collapsed ? label : undefined}
-                      className={`relative flex items-center gap-3 rounded-xl text-sm font-semibold transition-all duration-200 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-[#007fff]' : 'text-[#6b7280] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'}`}
-                      style={active ? { background: 'var(--color-brand-500)', boxShadow: '0 1px 2px rgba(0,90,180,0.24)' } : {}}
+                      className={`relative flex items-center gap-3 rounded-lg text-sm font-semibold transition-all duration-150 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-white' : 'text-white hover:brightness-[0.97]'}`}
+                      style={active
+                        ? { background: 'var(--color-brand-500)', boxShadow: '0 1px 2px rgba(0,90,180,0.28)' }
+                        : { background: '#e8f2fd', border: '1px solid #d3e6fa' }}
                     >
-                      <Icon active={active} />
+                      <span style={{ color: active ? '#ffffff' : 'var(--color-brand-600)' }}><Icon active={active} /></span>
                       {!collapsed && <span className="truncate">{label}</span>}
                     </Link>
                   )
@@ -361,10 +363,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Link
                   href="/settings"
                   title={collapsed ? 'Settings' : undefined}
-                  className={`relative flex items-center gap-3 rounded-xl text-sm font-semibold transition-all duration-200 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-[#007fff]' : 'text-[#6b7280] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'}`}
-                  style={active ? { background: 'var(--color-brand-500)', boxShadow: '0 1px 2px rgba(0,90,180,0.24)' } : {}}
+                  className={`relative flex items-center gap-3 rounded-lg text-sm font-semibold transition-all duration-150 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-white' : 'text-white hover:brightness-[0.97]'}`}
+                  style={active
+                        ? { background: 'var(--color-brand-500)', boxShadow: '0 1px 2px rgba(0,90,180,0.28)' }
+                        : { background: '#e8f2fd', border: '1px solid #d3e6fa' }}
                 >
-                  <IconSettings active={active} />
+                  <span style={{ color: active ? '#ffffff' : 'var(--color-brand-600)' }}><IconSettings active={active} /></span>
                   {!collapsed && <span className="truncate">Settings</span>}
                 </Link>
               )

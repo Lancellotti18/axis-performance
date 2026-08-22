@@ -1249,7 +1249,7 @@ Thank you for your time.`
                       disabled={!blueprintId || takeoffLoading}
                       title={!blueprintId ? 'Upload a blueprint first' : 'Extract per-room quantities from the blueprint (Togal-style)'}
                       className="flex items-center gap-2 text-[#1a1a1a] font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
-                      style={{ background: takeoffLoading ? '#94a3b8' : 'linear-gradient(135deg, #f59e0b, #b45309)', boxShadow: '0 4px 14px rgba(245,158,11,0.25)' }}
+                      style={{ background: takeoffLoading ? '#94a3b8' : '#d97706', boxShadow: '0 4px 14px rgba(245,158,11,0.25)' }}
                     >
                       {takeoffLoading ? (
                         <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Reading blueprint…</>
@@ -1799,8 +1799,8 @@ Thank you for your time.`
                           <span className="text-[#6b7280] text-sm">Customer Proposal</span>
                           <button
                             onClick={() => setShowProposal(true)}
-                            className="flex items-center gap-2 text-[#1a1a1a] font-bold px-4 py-2 rounded-xl text-sm transition-all hover:scale-[1.02]"
-                            style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.2)' }}
+                            className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all hover:scale-[1.02]"
+                            style={{ background: '#7c3aed', boxShadow: '0 4px 14px rgba(124,58,237,0.2)' }}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                             Generate Proposal
@@ -1916,7 +1916,7 @@ Thank you for your time.`
                           disabled={renderLoading || !hasBlueprint}
                           title={!hasBlueprint ? 'Upload a blueprint first' : 'Generate AI renders'}
                           className="flex items-center gap-2 text-[#1a1a1a] font-bold px-4 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02] flex-shrink-0"
-                          style={{ background: renderLoading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
+                          style={{ background: renderLoading ? '#94a3b8' : '#7c3aed', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
                         >
                           {renderLoading
                             ? <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Generating…</>
@@ -2001,7 +2001,7 @@ Thank you for your time.`
                     onClick={handleMaterialsComplianceCheck}
                     disabled={matCheckLoading || !project?.city}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#1a1a1a] text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ background: matCheckLoading ? '#94a3b8' : 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.25)' }}
+                    style={{ background: matCheckLoading ? '#94a3b8' : '#7c3aed', boxShadow: '0 4px 14px rgba(124,58,237,0.25)' }}
                     title={!project?.city ? 'Add a city to the project first' : ''}
                   >
                     {matCheckLoading ? (
@@ -2292,8 +2292,8 @@ Thank you for your time.`
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-2 text-[#1a1a1a] font-bold px-4 py-2 rounded-xl text-sm transition-all"
-                  style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
+                  className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all"
+                  style={{ background: '#007fff', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                   Print / Save PDF
@@ -2452,8 +2452,8 @@ Thank you for your time.`
               {!quoteGenerated ? (
                 <button
                   onClick={() => setQuoteGenerated(true)}
-                  className="w-full flex items-center justify-center gap-2 text-[#1a1a1a] font-bold py-3 rounded-xl text-sm transition-all"
-                  style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', boxShadow: '0 4px 14px rgba(245,158,11,0.3)' }}
+                  className="w-full flex items-center justify-center gap-2 text-white font-bold py-3 rounded-xl text-sm transition-all"
+                  style={{ background: '#d97706', boxShadow: '0 4px 14px rgba(245,158,11,0.3)' }}
                 >
                   Generate Quote Request
                 </button>
@@ -2608,8 +2608,8 @@ Thank you for your time.`
               <button
                 onClick={handleApplyTakeoff}
                 disabled={takeoffApplying || takeoffLoading || !takeoffData || takeoffData.material_rows.length === 0}
-                className="px-4 py-2 rounded-xl text-sm font-bold text-[#1a1a1a] disabled:opacity-40"
-                style={{ background: 'linear-gradient(135deg, #f59e0b, #b45309)', boxShadow: '0 4px 14px rgba(245,158,11,0.25)' }}
+                className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+                style={{ background: '#d97706', boxShadow: '0 4px 14px rgba(245,158,11,0.25)' }}
               >
                 {takeoffApplying ? 'Applying…' : 'Apply to materials list'}
               </button>

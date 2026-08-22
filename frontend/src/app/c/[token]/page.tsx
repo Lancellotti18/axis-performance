@@ -168,8 +168,8 @@ export default function ClientPortalPage() {
               </div>
               <a
                 href={`/p/${p.proposal.token}`}
-                className="rounded-lg px-4 py-2.5 text-sm font-semibold text-[#1a1a1a]"
-                style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
+                className="rounded-lg px-4 py-2.5 text-sm font-semibold text-white"
+                style={{ background: '#007fff', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
               >{p.proposal.status === 'accepted' ? 'View proposal' : 'Review & accept →'}</a>
             </div>
           </section>
@@ -243,8 +243,8 @@ export default function ClientPortalPage() {
               />
               <button
                 onClick={send} disabled={sending || !draft.trim()}
-                className="shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold text-[#1a1a1a] transition disabled:opacity-40"
-                style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)' }}
+                className="shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-40"
+                style={{ background: '#007fff' }}
               >{sending ? '…' : 'Send'}</button>
             </div>
           </div>

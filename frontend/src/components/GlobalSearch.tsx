@@ -84,7 +84,7 @@ export default function GlobalSearch() {
 
       {open && q.trim() && (
         <div className="absolute left-0 right-0 top-full mt-2 rounded-xl border border-[#dededc] shadow-2xl overflow-hidden z-50"
-          style={{ background: 'rgba(10,16,28,0.96)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}>
+          style={{ background: '#f8f8f7', border: '1px solid var(--color-surface-border)', boxShadow: 'var(--shadow-pop)' }}>
           {results.length === 0 ? (
             <div className="px-4 py-3 text-sm text-[#6b7280]">No matches for “{q.trim()}”</div>
           ) : (

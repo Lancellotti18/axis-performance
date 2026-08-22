@@ -244,7 +244,7 @@ export default function HomeVisualizerPage() {
             style={{
               background: !canSubmit || loading
                 ? '#94a3b8'
-                : 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+                : '#7c3aed',
               boxShadow: canSubmit && !loading ? '0 4px 16px rgba(124,58,237,0.35)' : undefined,
             }}
           >
@@ -335,8 +335,8 @@ export default function HomeVisualizerPage() {
                   </div>
                 ) : (
                   <button onClick={openPicker}
-                    className="w-full rounded-xl py-2.5 text-sm font-bold text-[#1a1a1a] transition-all hover:scale-[1.01]"
-                    style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.3)' }}>
+                    className="w-full rounded-xl py-2.5 text-sm font-bold text-white transition-all hover:scale-[1.01]"
+                    style={{ background: '#7c3aed', boxShadow: '0 4px 14px rgba(124,58,237,0.3)' }}>
                     🖼️ Use in a report
                   </button>
                 )}

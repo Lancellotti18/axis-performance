@@ -411,8 +411,8 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
           {/* Turn the lead into a project + start measuring (pulls their address) */}
           <div className="px-5 pt-4">
             <button onClick={createProjectFromLead} disabled={creatingProject}
-              className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-[#1a1a1a] transition-all disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition-all disabled:opacity-50"
+              style={{ background: '#007fff', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
               📐 {creatingProject ? 'Creating project…' : 'Create project & measure roof'}
             </button>
             {lead.address && <p className="mt-1.5 text-center text-[11px] text-[#6b7280]">Uses {lead.address}{lead.city ? `, ${lead.city}` : ''} — just name it and start.</p>}
@@ -604,8 +604,8 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
             <button
               onClick={handleAddNote}
               disabled={!noteText.trim() || addingNote || recording || transcribing}
-              className="px-4 py-2.5 rounded-xl text-[#1a1a1a] font-semibold text-sm transition-all disabled:opacity-40"
-              style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' }}
+              className="px-4 py-2.5 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-40"
+              style={{ background: '#007fff' }}
             >
               {addingNote ? '…' : 'Add'}
             </button>
@@ -749,8 +749,8 @@ export default function CRMPage() {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="w-48 bg-[#f8f8f7] border border-[#dededc] rounded-xl pl-8 pr-4 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
         </div>
         <button onClick={() => openNew()}
-          className="flex items-center gap-2 text-[#1a1a1a] font-bold px-5 py-2 rounded-xl text-sm transition-all hover:scale-[1.02]"
-          style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+          className="flex items-center gap-2 text-white font-bold px-5 py-2 rounded-xl text-sm transition-all hover:scale-[1.02]"
+          style={{ background: '#007fff', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
           + Add Lead
         </button>
       </div>
@@ -912,8 +912,8 @@ export default function CRMPage() {
             <div className="flex gap-3 p-6 border-t" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
               <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-[#9ca3af] bg-[#f8f8f7] hover:bg-[#eeeeed] transition-all">Cancel</button>
               <button onClick={handleSave} disabled={saving || !form.name.trim()}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-[#1a1a1a] transition-all disabled:opacity-40"
-                style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.25)' }}>
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
+                style={{ background: '#007fff', boxShadow: '0 4px 14px rgba(59,130,246,0.25)' }}>
                 {saving ? 'Saving…' : editingLead ? 'Save Changes' : 'Add Lead'}
               </button>
             </div>

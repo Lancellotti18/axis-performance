@@ -45,13 +45,13 @@ export function PrecisionToggle({ className = '' }: { className?: string }) {
       className={`relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-bold tracking-wide uppercase transition-all ${className}`}
       style={{
         background: on
-          ? 'linear-gradient(180deg, #1B2433 0%, #0E1622 100%)'
+          ? 'var(--color-brand-500)'
           : 'linear-gradient(180deg, #FFFFFF 0%, #E5F2FB 100%)',
         color: on ? '#BFE6FF' : '#1E293B',
         border: `1px solid ${on ? 'rgba(127,201,244,0.55)' : 'rgba(127,201,244,0.45)'}`,
         boxShadow: on
           ? '0 0 0 1px rgba(127,201,244,0.35), 0 0 14px rgba(79,176,234,0.45)'
-          : '0 1px 2px rgba(15,23,42,0.06), 0 0 0 1px rgba(127,201,244,0.20)',
+          : '0 1px 2px rgba(15,23,42,0.06), 0 0 0 1px rgba(0,127,255,0.14)',
       }}
     >
       <span

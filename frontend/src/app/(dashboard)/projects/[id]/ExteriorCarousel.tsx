@@ -113,8 +113,8 @@ export default function ExteriorCarousel({ views }: Props) {
             {imgErrors[idx] && (
               <button
                 onClick={() => setImgErrors(prev => { const n = {...prev}; delete n[idx]; return n })}
-                className="mt-1 px-3 py-1 rounded-lg text-xs font-semibold text-[#1a1a1a]"
-                style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
+                className="mt-1 px-3 py-1 rounded-lg text-xs font-semibold text-white"
+                style={{ background: '#7c3aed' }}
               >
                 ↺ Retry
               </button>

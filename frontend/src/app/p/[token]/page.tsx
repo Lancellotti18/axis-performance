@@ -177,8 +177,8 @@ export default function PublicProposalPage() {
                   </ul>
                   <button
                     onClick={e => { e.stopPropagation(); setChoosing(t); setError(null) }}
-                    className={`mt-4 rounded-lg py-2.5 text-sm font-semibold transition ${ i === popularIdx ? 'text-[#1a1a1a] hover:scale-[1.02]' : 'bg-slate-100 text-slate-800 ring-1 ring-slate-200 hover:bg-slate-200' }`}
-                    style={i === popularIdx ? { background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' } : undefined}
+                    className={`mt-4 rounded-lg py-2.5 text-sm font-semibold transition ${ i === popularIdx ? 'text-white hover:scale-[1.02]' : 'bg-slate-100 text-slate-800 ring-1 ring-slate-200 hover:bg-slate-200' }`}
+                    style={i === popularIdx ? { background: '#007fff', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' } : undefined}
                   >Choose {t.name}</button>
                 </div>
               ))}

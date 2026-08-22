@@ -156,8 +156,8 @@ export default function NewProjectPage() {
           )}
 
           <button type="submit" disabled={submitting || !name.trim() || !selected}
-            className="w-full text-[#1a1a1a] font-bold py-3.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.01]"
-            style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+            className="w-full text-white font-bold py-3.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.01]"
+            style={{ background: '#007fff', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
             {submitting ? 'Creating…' : 'Create project & pull satellite'}
           </button>
         </form>

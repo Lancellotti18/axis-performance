@@ -25,7 +25,7 @@ function relTime(s?: string): string {
 function ThumbPlaceholder({ id }: { id: string }) {
   // Slick dark blueprint placeholder for projects with no satellite tile yet.
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0a1322 0%, #060b16 100%)' }}>
+    <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#e4e4e2' }}>
       <svg className="absolute inset-0 w-full h-full opacity-[0.18]" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <pattern id={`bp-${id}`} width="22" height="22" patternUnits="userSpaceOnUse">
@@ -34,8 +34,8 @@ function ThumbPlaceholder({ id }: { id: string }) {
         </defs>
         <rect width="100%" height="100%" fill={`url(#bp-${id})`} />
       </svg>
-      <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(96,165,250,0.25)' }}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: '#e8f2fd', border: '1px solid #d3e6fa' }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-600)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /><path d="M9 21v-6h6v6" />
         </svg>
       </div>
@@ -164,10 +164,10 @@ function StatTile({ label, value, icon }: { label: string; value: number | strin
 }
 
 const ICON = {
-  folder: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>,
-  clock: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
-  check: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>,
-  roof: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>,
+  folder: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-600)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>,
+  clock: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-600)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
+  check: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-600)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>,
+  roof: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-600)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>,
 }
 
 export default function DashboardPage() {
@@ -332,8 +332,8 @@ export default function DashboardPage() {
           </div>
         ) : recent.length === 0 ? (
           <div className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] py-16 flex flex-col items-center justify-center text-center">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(96,165,250,0.25)' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: '#e8f2fd', border: '1px solid #d3e6fa' }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-600)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
             </div>
             <div className="text-[#1a1a1a] font-semibold text-base mb-1">No projects yet</div>
             <div className="text-[#6b7280] text-sm mb-5">Create your first project to get started.</div>

@@ -26,7 +26,7 @@ export default function GlobalError({
             </pre>
             <button
               onClick={reset}
-              style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+              style={{ background: '#007fff', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
             >
               Try again
             </button>

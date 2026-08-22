@@ -456,7 +456,7 @@ export default function MaterialCheckPage() {
             style={{
               background: loading || !canSubmit
                 ? '#94a3b8'
-                : 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+                : '#7c3aed',
               boxShadow: canSubmit && !loading ? '0 4px 14px rgba(124,58,237,0.3)' : undefined,
             }}
           >

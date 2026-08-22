@@ -211,7 +211,7 @@ function Nav() {
             style={{
               background: 'linear-gradient(180deg, #1B2433 0%, #06090E 100%)',
               border: '1px solid rgba(127,201,244,0.45)',
-              boxShadow: '0 0 0 1px rgba(127,201,244,0.20), 0 4px 12px -4px rgba(127,201,244,0.45)',
+              boxShadow: '0 0 0 1px rgba(0,127,255,0.14), 0 4px 12px -4px rgba(127,201,244,0.45)',
             }}
           >
             <svg width="16" height="16" viewBox="0 0 28 28" fill="none">
@@ -243,9 +243,9 @@ function Nav() {
           </Link>
           <Link
             href="/register"
-            className="text-[#1a1a1a] text-sm font-semibold px-4 py-2 rounded-lg transition-all"
+            className="text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all"
             style={{
-              background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)',
+              background: '#007fff',
               boxShadow: '0 4px 14px rgba(59,130,246,0.45), inset 0 1px 0 rgba(255,255,255,0.2)',
             }}
           >
@@ -313,9 +313,9 @@ export default function HomePage() {
           <div className="pointer-events-auto flex flex-col sm:flex-row gap-3">
             <Link
               href="/register"
-              className="text-[#1a1a1a] font-semibold text-sm px-7 py-3.5 rounded-xl transition-all hover:scale-[1.02]"
+              className="text-white font-semibold text-sm px-7 py-3.5 rounded-xl transition-all hover:scale-[1.02]"
               style={{
-                background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)',
+                background: '#007fff',
                 boxShadow: '0 8px 28px rgba(59,130,246,0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
               }}
             >
@@ -490,7 +490,7 @@ export default function HomePage() {
               <div className="text-center md:text-left">
                 <div
                   className="font-display text-4xl md:text-5xl font-bold text-transparent bg-clip-text mb-2"
-                  style={{ backgroundImage: 'linear-gradient(180deg, #0f172a 0%, #2563eb 130%)' }}
+                  style={{ backgroundImage: '#007fff' }}
                 >
                   {s.value}
                 </div>
@@ -601,9 +601,9 @@ export default function HomePage() {
             </p>
             <Link
               href="/register"
-              className="inline-block text-[#1a1a1a] font-semibold text-base px-9 py-4 rounded-xl transition-all hover:scale-[1.03]"
+              className="inline-block text-white font-semibold text-base px-9 py-4 rounded-xl transition-all hover:scale-[1.03]"
               style={{
-                background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)',
+                background: '#007fff',
                 boxShadow: '0 12px 36px rgba(59,130,246,0.55), inset 0 1px 0 rgba(255,255,255,0.2)',
               }}
             >

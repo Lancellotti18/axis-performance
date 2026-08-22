@@ -788,7 +788,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                   onClick={handleAnalyzeRequirements}
                   disabled={reqLoading || formLoading}
                   className="w-full text-[#1a1a1a] font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-40"
-                  style={{ background: (reqLoading || formLoading) ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
+                  style={{ background: (reqLoading || formLoading) ? '#94a3b8' : '#7c3aed', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
                 >
                   {reqLoading || formLoading ? 'Processing…' : 'Analyze & Fill Permit →'}
                 </button>
@@ -805,7 +805,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 onClick={() => handleFetchForm({})}
                 disabled={reqLoading || formLoading}
                 className="w-full text-[#1a1a1a] font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-40"
-                style={{ background: (reqLoading || formLoading) ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #1d4ed8)', boxShadow: '0 4px 14px rgba(37,99,235,0.3)' }}
+                style={{ background: (reqLoading || formLoading) ? '#94a3b8' : '#007fff', boxShadow: '0 4px 14px rgba(37,99,235,0.3)' }}
               >
                 {reqLoading || formLoading ? 'Processing…' : 'Continue without documents →'}
               </button>

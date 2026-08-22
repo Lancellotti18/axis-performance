@@ -123,9 +123,9 @@ export default function AxisChat() {
           onClick={() => setOpen(true)}
           aria-label="Ask Axis"
           title="Ask Axis"
-          className="group fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full text-[#1a1a1a] opacity-70 shadow-lg transition-all hover:w-32 hover:opacity-100"
+          className="group fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full text-white opacity-70 shadow-lg transition-all hover:w-32 hover:opacity-100"
           style={{
-            background: 'linear-gradient(135deg, #2563eb 0%, #1e3a5f 100%)',
+            background: '#007fff',
             boxShadow: '0 4px 18px rgba(37,99,235,0.35), 0 0 0 1px rgba(127,201,244,0.25)',
           }}
         >
@@ -144,16 +144,16 @@ export default function AxisChat() {
             width: '380px',
             height: '560px',
             maxHeight: 'calc(100vh - 48px)',
-            boxShadow: '0 24px 60px rgba(15,23,42,0.20), 0 0 0 1px rgba(127,201,244,0.30)',
+            boxShadow: '0 24px 60px rgba(15,23,42,0.20), 0 0 0 1px rgba(0,127,255,0.18)',
           }}
         >
           {/* Header */}
           <div
-            className="flex items-center justify-between px-4 py-3 text-[#1a1a1a]"
-            style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #0f3a75 100%)' }}
+            className="flex items-center justify-between px-4 py-3 text-white"
+            style={{ background: '#007fff' }}
           >
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(127,201,244,0.20)' }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0,127,255,0.14)' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                 </svg>
@@ -250,8 +250,8 @@ export default function AxisChat() {
               <button
                 onClick={() => send()}
                 disabled={busy || !draft.trim()}
-                className="flex-shrink-0 w-9 h-9 rounded-xl text-[#1a1a1a] flex items-center justify-center transition-all disabled:opacity-40"
-                style={{ background: 'linear-gradient(135deg, #2563eb 0%, #1e3a5f 100%)' }}
+                className="flex-shrink-0 w-9 h-9 rounded-xl text-white flex items-center justify-center transition-all disabled:opacity-40"
+                style={{ background: '#007fff' }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>

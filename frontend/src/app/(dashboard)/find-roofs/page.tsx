@@ -182,8 +182,8 @@ export default function FindRoofsPage() {
                   Owner-occupied only
                 </label>
                 <button onClick={search} disabled={loading || !county}
-                  className="rounded-xl px-5 py-2.5 text-sm font-bold text-[#1a1a1a] transition-all disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+                  className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-all disabled:opacity-50"
+                  style={{ background: '#007fff', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
                   {loading ? 'Searching…' : 'Find roofs'}
                 </button>
               </div>
@@ -280,8 +280,8 @@ export default function FindRoofsPage() {
                   </select>
                 </div>
                 <button onClick={rankNeighborhoods} disabled={heatLoading}
-                  className="rounded-xl px-5 py-2.5 text-sm font-bold text-[#1a1a1a] transition-all disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+                  className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-all disabled:opacity-50"
+                  style={{ background: '#007fff', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
                   {heatLoading ? 'Ranking…' : 'Rank neighborhoods'}
                 </button>
               </div>

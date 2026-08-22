@@ -37,7 +37,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function ThumbPlaceholder({ id }: { id: string }) {
   return (
-    <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0a1322 0%, #060b16 100%)' }}>
+    <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#e4e4e2' }}>
       <svg className="absolute inset-0 w-full h-full opacity-[0.18]" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <pattern id={`pp-${id}`} width="22" height="22" patternUnits="userSpaceOnUse">
@@ -46,8 +46,8 @@ function ThumbPlaceholder({ id }: { id: string }) {
         </defs>
         <rect width="100%" height="100%" fill={`url(#pp-${id})`} />
       </svg>
-      <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(96,165,250,0.25)' }}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /><path d="M9 21v-6h6v6" /></svg>
+      <div className="relative z-10 w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: '#e8f2fd', border: '1px solid #d3e6fa' }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-600)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /><path d="M9 21v-6h6v6" /></svg>
       </div>
     </div>
   )
@@ -109,7 +109,7 @@ export default function ProjectsPage() {
     return matchStatus && matchSearch
   })
 
-  const newBtn = { background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 8px 24px rgba(59,130,246,0.4), inset 0 1px 0 rgba(255,255,255,0.2)' }
+  const newBtn = { background: '#007fff', boxShadow: '0 8px 24px rgba(59,130,246,0.4), inset 0 1px 0 rgba(255,255,255,0.2)' }
 
   return (
     <div className="relative min-h-full" style={{ background: 'var(--color-surface-1)' }}>
@@ -171,8 +171,8 @@ export default function ProjectsPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] p-16 text-center">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(96,165,250,0.25)' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: '#e8f2fd', border: '1px solid #d3e6fa' }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-600)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
             </div>
             <div className="text-[#1a1a1a] font-semibold mb-1">{search || filter !== 'all' ? 'No matching projects' : 'No projects yet'}</div>
             <div className="text-[#6b7280] text-sm mb-5">{search || filter !== 'all' ? 'Try adjusting your filters' : 'Create your first project to get started'}</div>

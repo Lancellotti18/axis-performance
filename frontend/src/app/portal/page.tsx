@@ -51,8 +51,8 @@ export default function PortalAccessPage() {
             />
             <button
               onClick={open}
-              className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold text-[#1a1a1a] transition hover:scale-[1.02]"
-              style={{ background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
+              className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.02]"
+              style={{ background: '#007fff', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' }}
             >Open</button>
           </div>
           {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}

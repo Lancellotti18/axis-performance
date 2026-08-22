@@ -72,7 +72,7 @@ function RoofVision({ renders, company, apiBase, token, beforeUrl }: { renders: 
   }
   return (
     <section className="mb-6 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-[0_12px_44px_-16px_rgba(15,40,80,0.28)]">
-      <div className="px-5 py-3 text-[#1a1a1a]" style={{ background: 'linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 70%, black))' }}>
+      <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 70%, black))' }}>
         <div className="text-sm font-bold">✨ See your home with a new roof</div>
         <p className="mt-0.5 text-[11px] text-blue-50/90">Your actual house, rendered in the shingle colors {company} installs — tap a color to preview it.</p>
       </div>
@@ -356,7 +356,7 @@ export default function ReportPage() {
         {/* Book a free inspection — self-serve, lands on the contractor's calendar.
             id="book" lets the quote funnel's "Schedule an appointment" button deep-link here. */}
         <section id="book" className="mb-5 scroll-mt-4 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm print:hidden">
-          <div className="px-5 py-3 text-[#1a1a1a]" style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))' }}>
+          <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))' }}>
             <div className="text-sm font-semibold">📅 Book your free on-site inspection</div>
             <div className="text-[11px] text-blue-50/90">Pick a day and {r.company_name} will confirm — no charge, no obligation.</div>
           </div>

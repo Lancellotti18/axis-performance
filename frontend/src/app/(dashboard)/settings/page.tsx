@@ -83,7 +83,7 @@ export default function SettingsPage() {
   }
 
   const card = 'rounded-2xl border border-[#dededc] bg-[#f8f8f7] p-6'
-  const blueBtn = { background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 8px 24px rgba(59,130,246,0.35), inset 0 1px 0 rgba(255,255,255,0.2)' }
+  const blueBtn = { background: '#007fff', boxShadow: '0 8px 24px rgba(59,130,246,0.35), inset 0 1px 0 rgba(255,255,255,0.2)' }
   const inputCls = 'w-full bg-[#f8f8f7] border border-[#dededc] focus:border-blue-400/40 rounded-xl px-4 py-2.5 text-[#1a1a1a] text-sm placeholder-[#9ca3af] focus:outline-none disabled:opacity-40 transition-colors'
   const labelCls = 'text-[#6b7280] text-xs font-semibold uppercase tracking-wider block mb-1.5'
 

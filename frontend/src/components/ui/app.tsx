@@ -41,7 +41,7 @@ const VARIANTS: Record<AppVariant, string> = {
   danger: 'text-rose-300 bg-rose-500/10 border border-rose-400/25 hover:bg-rose-500/20',
 }
 const PRIMARY_STYLE: React.CSSProperties = {
-  background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)',
+  background: '#007fff',
   boxShadow: '0 6px 20px rgba(59,130,246,0.35), inset 0 1px 0 rgba(255,255,255,0.2)',
 }
 
