@@ -98,25 +98,18 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
             builds your <strong>verified accuracy</strong> stat.
           </p>
         </div>
-        {/* This is an ERROR figure, not a grade. Rendering it as a green
-            "✓ Verified within 41.7%" made a badly wrong average read like a
-            quality badge — the number says our measurements missed by that
-            much. Show it plainly, and only call it good when it is. */}
-        {calibration && calibration.jobs >= 3 && calibration.mean_abs_pct_error != null && (() => {
-          const err = calibration.mean_abs_pct_error
-          const good = err <= 10
-          const fair = err <= 20
-          const tone = good ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
-            : fair ? 'border-amber-400/30 bg-amber-500/10 text-amber-200'
-            : 'border-rose-400/40 bg-rose-500/10 text-rose-200'
-          return (
-            <span className={`rounded-md border px-2.5 py-1.5 text-xs ${tone}`}>
-              {good ? '✓ Measuring within ' : '⚠ Average miss '}
-              <strong>{err.toFixed(1)}%</strong> across {calibration.jobs} job{calibration.jobs === 1 ? '' : 's'}
-              {!good && <span className="ml-1 opacity-80">— too few, or too scattered, to calibrate from</span>}
-            </span>
-          )
-        })()}
+        {/* A badge is a trust signal, so it only appears once it is earned.
+            Showing "average miss 41.7%" told the contractor to distrust the
+            tool and gave them nothing to do about it. Under 10% across 5+ jobs
+            it is a real claim worth making; below that bar we say nothing here
+            and simply decline to calibrate from the data. */}
+        {calibration && calibration.jobs >= 5
+          && calibration.mean_abs_pct_error != null
+          && calibration.mean_abs_pct_error <= 10 && (
+          <span className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-200">
+            ✓ Measuring within <strong>{calibration.mean_abs_pct_error.toFixed(1)}%</strong> across {calibration.jobs} verified jobs
+          </span>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">

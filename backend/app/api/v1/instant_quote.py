@@ -63,6 +63,20 @@ def _calibration_for_user(db, user_id: str) -> Optional[dict]:
         return None
     if not stats or (stats.get("jobs") or 0) < 3:
         return None
+
+    # Count was the only gate, so three mutually contradictory jobs qualified.
+    # A real case: -46.9%, +78.1% and a self-confirming 0.0% averaged to a
+    # +10.4% "bias" that represented none of them, got capped to +10%, and took
+    # 10% off every quote — disclosed to the homeowner as though it were earned.
+    # A bias is only meaningful when the jobs agree; scatter that wide is
+    # variance, and variance is not something you can correct with a multiplier.
+    mean_abs = float(stats.get("mean_abs_pct_error") or 0.0)
+    if mean_abs > 15.0:
+        logger.info(
+            "calibration declined for %s: mean abs error %.1f%% across %s jobs is too "
+            "scattered to derive a bias from", user_id, mean_abs, stats.get("jobs"))
+        return None
+
     bias = max(-10.0, min(10.0, float(stats.get("bias_pct") or 0.0)))
     if abs(bias) < 0.5:
         return None
