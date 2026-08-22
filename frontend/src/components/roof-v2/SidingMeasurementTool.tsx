@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — Manual siding measurement tool.
+ * Axis Roofing Performance — Manual siding measurement tool.
  *
  * Honest workflow for what a top-down satellite cannot measure. Contractor:
  *   1. Uploads a ground-level elevation photo

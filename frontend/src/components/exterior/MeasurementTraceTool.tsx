@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — Exterior measurement trace tool.
+ * Axis Roofing Performance — Exterior measurement trace tool.
  *
  * Contractor selects a photo, picks what they are measuring (wall / window /
  * door / trim / corner), sets a scale anchor (door height in pixels), and

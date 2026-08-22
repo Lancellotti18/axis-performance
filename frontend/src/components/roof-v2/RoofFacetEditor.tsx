@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — Multi-facet roof editor.
+ * Axis Roofing Performance — Multi-facet roof editor.
  *
  * The contractor draws ONE polygon per roof plane (facet) over a satellite
  * tile, sets each facet's pitch, and labels each polygon edge as one of

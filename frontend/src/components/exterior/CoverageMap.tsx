@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — Photo coverage map.
+ * Axis Roofing Performance — Photo coverage map.
  *
  * Simple top-down house diagram showing the four cardinal elevations + their
  * corner combinations. Each face is colored by status (good / minimal / missing)

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 _IS_PROD = settings.ENVIRONMENT == "production"
 
 app = FastAPI(
-    title="Axis Performance API",
+    title="Axis Roofing Performance API",
     description="Instant satellite roof quotes, scored exclusive leads, and a roofing CRM.",
     version="0.2.0",
     # No public API map in production — Swagger/UI stays available in dev.

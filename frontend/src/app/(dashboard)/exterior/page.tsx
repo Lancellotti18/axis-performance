@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — Exterior Measurement Module (Phase 1 MVP).
+ * Axis Roofing Performance — Exterior Measurement Module (Phase 1 MVP).
  *
  * Flow:
  *   1. Pick project + create or open an exterior job

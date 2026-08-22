@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — EagleView-style annotated 2D roof view.
+ * Axis Roofing Performance — EagleView-style annotated 2D roof view.
  *
  * Renders the satellite tile + facet polygons + edge labels + pitch arrows
  * + area callouts in a clean, report-ready layout. This is the visualization

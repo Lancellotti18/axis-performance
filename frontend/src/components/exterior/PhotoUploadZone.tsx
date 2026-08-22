@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — Exterior photo upload zone.
+ * Axis Roofing Performance — Exterior photo upload zone.
  *
  * Drag-drop or browse-to-select multiple photos. Uploads each photo to
  * Supabase Storage under `exterior-photos/{user_id}/{job_id}/{filename}`,

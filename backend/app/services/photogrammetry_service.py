@@ -1,5 +1,5 @@
 """
-Axis Performance — Photogrammetry scaffold (RunPod COLMAP/OpenSfM).
+Axis Roofing Performance — Photogrammetry scaffold (RunPod COLMAP/OpenSfM).
 
 This is the PIPELINE scaffold for Phase 2 of the exterior module spec.
 The actual COLMAP/OpenSfM container running on RunPod is a separate

@@ -1,5 +1,5 @@
 """
-Axis Performance — Exterior Measurement Report PDF.
+Axis Roofing Performance — Exterior Measurement Report PDF.
 
 Hover-style multi-section PDF generated entirely from CONTRACTOR-TRACED
 measurements. Section 8 (Methodology) explicitly tells the contractor (and
@@ -123,7 +123,7 @@ def _table_style(header_color=BRAND, alt_row=True) -> TableStyle:
 
 def _section_1_cover(project: dict, job: dict, photos: list[dict], styles: dict) -> list:
     flow: list = []
-    flow.append(Paragraph("Axis Performance — Exterior Measurements", styles["title"]))
+    flow.append(Paragraph("Axis Roofing Performance — Exterior Measurements", styles["title"]))
     flow.append(Paragraph(_addr(project), styles["subtitle"]))
 
     # Pick cover: explicit cover_photo_id, then first photo classified as "front", then first photo
@@ -555,8 +555,8 @@ def generate_exterior_report(
         buf, pagesize=letter,
         topMargin=0.6 * inch, bottomMargin=0.6 * inch,
         leftMargin=0.6 * inch, rightMargin=0.6 * inch,
-        title="Axis Performance — Exterior Measurements",
-        author="Axis Performance",
+        title="Axis Roofing Performance — Exterior Measurements",
+        author="Axis Roofing Performance",
     )
     styles = _styles()
 

@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — AI edge label suggestions.
+ * Axis Roofing Performance — AI edge label suggestions.
  *
  * Calls /api/v1/roofing/v2/runs/{id}/edges/suggest-labels with the current
  * facets + unlabeled edges. The backend uses a hybrid approach:

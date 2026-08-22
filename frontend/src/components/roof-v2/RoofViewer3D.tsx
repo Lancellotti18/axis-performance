@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — 2.5D Roof Viewer (Three.js).
+ * Axis Roofing Performance — 2.5D Roof Viewer (Three.js).
  *
  * Takes contractor-traced facet polygons + per-facet pitches + edge labels
  * and extrudes them into a real 3D roof model. Honest about what it is:

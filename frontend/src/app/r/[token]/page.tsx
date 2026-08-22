@@ -421,7 +421,7 @@ export default function ReportPage() {
           </div>
         </section>
 
-        <p className="text-center text-[10px] text-slate-400">Powered by Axis Performance aerial + solar intelligence.</p>
+        <p className="text-center text-[10px] text-slate-400">Powered by Axis Roofing Performance aerial + solar intelligence.</p>
       </div>
     </main>
   )

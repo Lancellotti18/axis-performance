@@ -1,5 +1,5 @@
 """
-Axis Performance — Roof Report v2 PDF.
+Axis Roofing Performance — Roof Report v2 PDF.
 
 8-section contractor report:
 
@@ -301,7 +301,7 @@ def _section_1_executive(
     # "Powered by Axis" credited on the RIGHT — both marks visible, not a tiny
     # corner logo with Axis buried in a footnote.
     c = contractor or {}
-    company = c.get("company_name") or "Axis Performance"
+    company = c.get("company_name") or "Axis Roofing Performance"
     logo_bytes = c.get("logo_bytes")
     brand_hex = f"#{BRAND.hexval()[2:]}"
     muted_hex = f"#{MUTED.hexval()[2:]}"
@@ -941,7 +941,7 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
 
     flow.append(Spacer(1, 8))
     flow.append(Paragraph(
-        "Measured with Axis Performance — generated %s" % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "Measured with Axis Roofing Performance — generated %s" % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         styles["muted"],
     ))
     return flow
@@ -1091,7 +1091,7 @@ def generate_v2_report(
 ) -> bytes:
     """Render the full report PDF and return bytes."""
     buf = io.BytesIO()
-    company = (contractor or {}).get("company_name") or "Axis Performance"
+    company = (contractor or {}).get("company_name") or "Axis Roofing Performance"
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
         topMargin=0.6 * inch, bottomMargin=0.6 * inch,

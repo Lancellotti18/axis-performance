@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — Training Data Dashboard.
+ * Axis Roofing Performance — Training Data Dashboard.
  *
  * Phase-0 of Option 4. Shows the contractor (or you, the platform owner)
  * the moat being built: every confirmed facet/edge/penetration/wall/opening

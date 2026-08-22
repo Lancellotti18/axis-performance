@@ -1,5 +1,5 @@
 """
-Axis Performance — Roof Geometry (pure math, deterministic).
+Axis Roofing Performance — Roof Geometry (pure math, deterministic).
 
 Every contractor-facing measurement that downstream code uses to order
 materials goes through this module. No LLM calls, no network IO, no

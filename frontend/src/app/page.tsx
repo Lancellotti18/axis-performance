@@ -1,6 +1,6 @@
 'use client'
 /**
- * Axis Performance — cinematic landing page.
+ * Axis Roofing Performance — cinematic landing page.
  *
  * Scroll-driven frame sequence as the hero (house rotates + builds itself
  * piece by piece as the user scrolls). Glassmorphism content cards are
@@ -219,7 +219,7 @@ function Nav() {
               <path d="M12.5 15 H15.5 L14 11 Z" fill="#06090E" />
             </svg>
           </div>
-          <span className="text-white font-semibold text-[15px] tracking-tight">Axis Performance</span>
+          <span className="text-white font-semibold text-[15px] tracking-tight">Axis Roofing Performance</span>
         </div>
         <div className="flex items-center gap-2">
           <Link
@@ -615,7 +615,7 @@ export default function HomePage() {
 
       {/* ─── Footer ──────────────────────────────────────────────────────── */}
       <footer className="relative border-t border-slate-200 bg-white px-6 md:px-10 py-8 flex items-center justify-between text-slate-400 text-xs">
-        <span className="font-semibold text-slate-700">Axis Performance</span>
+        <span className="font-semibold text-slate-700">Axis Roofing Performance</span>
         <span className="font-mono tracking-wide">© 2026 · Built for contractors</span>
       </footer>
     </main>

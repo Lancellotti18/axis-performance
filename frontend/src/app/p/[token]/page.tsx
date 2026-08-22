@@ -225,7 +225,7 @@ export default function PublicProposalPage() {
           </>
         )}
 
-        <p className="mt-8 text-center text-[10px] text-slate-400">Proposal generated with Axis Performance.</p>
+        <p className="mt-8 text-center text-[10px] text-slate-400">Proposal generated with Axis Roofing Performance.</p>
       </div>
     </main>
   )

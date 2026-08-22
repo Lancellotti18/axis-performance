@@ -52,7 +52,7 @@ class ChatRequest(BaseModel):
 # construction terminology). Keep responses TIGHT — contractors hate walls
 # of text. Default to 1-3 short paragraphs unless they ask for detail.
 
-_BASE_PERSONA = """You are Axis, the AI assistant for Axis Performance — an AI blueprint and permit platform for contractors.
+_BASE_PERSONA = """You are Axis, the AI assistant for Axis Roofing Performance — an AI blueprint and permit platform for contractors.
 
 The user is a contractor or construction professional. Match their pace:
 - Be direct. Lead with the answer; explain only as much as they need.

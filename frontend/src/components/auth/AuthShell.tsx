@@ -32,7 +32,7 @@ export function AuthShell({
               <line x1="7" y1="16" x2="19" y2="16" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
               <line x1="7" y1="20" x2="14" y2="20" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
             </svg>
-            <span className="text-lg font-bold text-slate-800 tracking-tight">Axis Performance</span>
+            <span className="text-lg font-bold text-slate-800 tracking-tight">Axis Roofing Performance</span>
           </Link>
           <h1 className="text-2xl font-black text-slate-800">{title}</h1>
           {subtitle && <p className="text-slate-500 text-sm mt-1">{subtitle}</p>}

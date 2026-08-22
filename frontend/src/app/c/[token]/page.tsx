@@ -276,7 +276,7 @@ export default function ClientPortalPage() {
           </section>
         )}
 
-        <p className="mt-8 text-center text-[10px] text-slate-400">Powered by Axis Performance.</p>
+        <p className="mt-8 text-center text-[10px] text-slate-400">Powered by Axis Roofing Performance.</p>
       </div>
     </main>
   )

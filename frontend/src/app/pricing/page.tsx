@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Pricing — Axis Performance',
+  title: 'Pricing — Axis Roofing Performance',
   description:
     'Flat. Public. No per-seat tax. Month-to-month. Instant satellite roof quotes, scored exclusive leads, and a roofing CRM — starting free.',
 }

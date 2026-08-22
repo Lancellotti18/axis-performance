@@ -1,5 +1,5 @@
 """
-Axis Performance — Training-Data Collection API.
+Axis Roofing Performance — Training-Data Collection API.
 
 Phase-0 of Option 4 (custom segmentation model). Every facet, edge,
 penetration, wall, and opening a contractor confirms is captured to the
@@ -446,10 +446,10 @@ async def export_coco(
 
     coco: dict[str, Any] = {
         "info": {
-            "description": f"Axis Performance training set — {task_type}",
+            "description": f"Axis Roofing Performance training set — {task_type}",
             "version": "1.0",
             "year": datetime.now(timezone.utc).year,
-            "contributor": "Axis Performance contractor network",
+            "contributor": "Axis Roofing Performance contractor network",
             "date_created": datetime.now(timezone.utc).isoformat(),
             "task_type": task_type,
             "min_quality_tier": min_quality,
@@ -457,7 +457,7 @@ async def export_coco(
             "image_count": len(images),
             "hard_negative_count": len(hard_negatives),
         },
-        "licenses": [{"id": 1, "name": "Axis Performance Proprietary", "url": ""}],
+        "licenses": [{"id": 1, "name": "Axis Roofing Performance Proprietary", "url": ""}],
         "images": images,
         "categories": COCO_CATEGORIES.get(task_type, []),
         "annotations": annotations,

@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Roofing Performance — Roof v2 (per-facet measurement workflow).
+ * Axis Performance — Roof v2 (per-facet measurement workflow).
  *
  * End-to-end flow:
  *   1. Pick a project (or use the standalone mode)
@@ -75,18 +75,6 @@ interface ImageryPayload {
   display_mode?: 'original' | 'sharpened'
 }
 
-// Deferred while they are worked on. Both are fully built and their backends,
-// data and report sections are untouched — this only takes them off the screen
-// so the measure flow is not carrying half-finished tools. Flip to true to
-// bring either back; nothing else needs changing.
-const SHOW_FLASHING = false
-// Also hides the whole 'On-site extras' stop — ground photos and the siding
-// tool travel together, and neither is meant to be in the flow right now.
-const SHOW_SIDING = false
-// Xactimate line codes + RCV/ACV claim summary. Parked, not deleted — the
-// endpoint, the estimator service and the report all stay wired.
-const SHOW_ADJUSTER_MODE = false
-
 type Step = 'project' | 'location' | 'imagery' | 'editor' | 'details' | 'siding' | 'report'
 
 // Friendly stepper labels (the Step values stay the same for all the logic).
@@ -95,7 +83,7 @@ const STEP_LABELS: Record<Step, string> = {
   location: 'Address',
   imagery: 'Locate roof',
   editor: 'Measure roof',
-  details: 'Details',
+  details: 'Details & flashing',
   // Everything that needs somebody standing at the property, gathered in one
   // optional stop rather than sprinkled through the desk workflow.
   siding: 'On-site extras',
@@ -506,18 +494,6 @@ export default function RoofV2Page() {
     if (p) void persistGeometryRef.current?.(p.facets, p.edges)
   }, [debouncedRef])
 
-  /** Drop a queued canvas write.
-   *
-   *  Anything that persists geometry from OUTSIDE the canvas — accepting edge
-   *  labels, accepting AI facets, a manual save — has just written newer state
-   *  than whatever the debounce is holding. Letting that queued write land
-   *  afterwards overwrites the labels that were just accepted, which is why
-   *  edges appeared to need re-analyzing after they had already been done. */
-  const cancelPending = useCallback(() => {
-    if (debouncedRef.t) { clearTimeout(debouncedRef.t); debouncedRef.t = null }
-    debouncedRef.pending = null
-  }, [debouncedRef])
-
   const onEditorChange = useCallback((newFacets: Facet[], newEdges: LabeledEdge[]) => {
     setFacets(newFacets)
     setEdges(newEdges)
@@ -525,11 +501,8 @@ export default function RoofV2Page() {
     if (debouncedRef.t) clearTimeout(debouncedRef.t)
     debouncedRef.t = setTimeout(() => {
       debouncedRef.t = null
-      // Write whatever is CURRENT, not what this callback closed over 800ms ago.
-      // The closure could be several edits — or an accepted label set — behind.
-      const p = debouncedRef.pending ?? { facets: newFacets, edges: newEdges }
       debouncedRef.pending = null
-      void persistGeometry(p.facets, p.edges)
+      void persistGeometry(newFacets, newEdges)
     }, 800)
   }, [persistGeometry, debouncedRef])
 
@@ -580,9 +553,7 @@ export default function RoofV2Page() {
         // AFTER the report is reachable, because the whole promise of the product
         // is a finished report without going to the property — anything needing a
         // site visit is an add-on, never a step you have to pass through.
-        const order: Step[] = SHOW_SIDING
-          ? ['project', 'location', 'imagery', 'editor', 'details', 'report', 'siding']
-          : ['project', 'location', 'imagery', 'editor', 'details', 'report']
+        const order: Step[] = ['project', 'location', 'imagery', 'editor', 'details', 'report', 'siding']
         const currentIdx = order.indexOf(step)
         return (
           <nav className="sticky top-0 z-20 -mx-6 flex flex-wrap items-center gap-1.5 border-b border-white/10 bg-slate-950/85 px-6 py-2 text-xs backdrop-blur">
@@ -858,7 +829,7 @@ export default function RoofV2Page() {
           {/* Save state, always on screen while drawing. Tracing is the most
               expensive work in the app and it saves on a debounce — the
               contractor should never have to wonder whether it landed. */}
-          <SaveIndicator state={saveState} savedAt={savedAt} onRetry={() => { cancelPending(); void persistGeometry(facets, edges) }} />
+          <SaveIndicator state={saveState} savedAt={savedAt} onRetry={() => { void persistGeometry(facets, edges) }} />
           {/* Vision auto-detect retired: field testing showed it didn't reliably
               pick up houses. The workflow is now trace the roof by hand →
               ✨ Auto-label edges (kept, below the canvas). */}
@@ -892,7 +863,6 @@ export default function RoofV2Page() {
                 imageHeightPx={imagery?.height_px ?? 1366}
                 trigger={autoLabelTrigger}
                 onAcceptEdges={async (updatedEdges) => {
-                  cancelPending()   // a queued canvas write would clobber these labels
                   setEdges(updatedEdges)
                   setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
                   // Persist FIRST, then bump geometryStamp so MeasurementsSummary
@@ -915,7 +885,7 @@ export default function RoofV2Page() {
             runConfirmed={runConfirmed}
             zip={project?.zip}
             city={project?.city}
-            onForceSave={async () => { cancelPending(); await persistGeometry(facets, edges) }}
+            onForceSave={async () => { await persistGeometry(facets, edges) }}
           />
 
 
@@ -924,7 +894,7 @@ export default function RoofV2Page() {
               onClick={() => setStep('details')}
               disabled={facets.length === 0}
               className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
-            >Next: details →</button>
+            >Next: details &amp; flashing →</button>
             <button
               onClick={() => setStep('report')}
               disabled={facets.length === 0}
@@ -941,15 +911,14 @@ export default function RoofV2Page() {
       {step === 'details' && runId && (
         <section className="space-y-4">
           <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3 text-xs text-blue-200">
-            <strong>Details</strong> — fine-tune pitch from ground photos and add chimneys/skylights.
-            Optional but recommended; everything here lands in your report.
+            <strong>Details &amp; flashing</strong> — fine-tune pitch from ground photos, add chimneys/skylights,
+            and compute flashing. Optional but recommended; everything here lands in your report.
           </div>
 
           {/* Ground-photo intelligence used to sit here, in the middle of the
               desk workflow, which implied you needed to be at the house to
               finish — the opposite of the product's promise. It now lives in
               the optional on-site section with the siding tool. */}
-          {SHOW_SIDING && (
           <div className="rounded-lg border border-white/10 bg-slate-900/50 p-3 text-xs text-slate-300">
             <strong className="text-slate-100">Standing at the property?</strong>{' '}
             A few phone photos can read the real pitch, chimneys, skylights and materials — and you can
@@ -959,7 +928,6 @@ export default function RoofV2Page() {
               className="ml-2 underline hover:text-white"
             >Open on-site extras →</button>
           </div>
-          )}
 
           <CollapsibleSection
             title="Penetrations"
@@ -969,7 +937,6 @@ export default function RoofV2Page() {
           <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
           </CollapsibleSection>
 
-          {SHOW_FLASHING && (
           <CollapsibleSection
             title="Flashing"
             subtitle="Roof-to-wall transitions + chimney/skylight flashing, computed from your labeled edges."
@@ -984,7 +951,6 @@ export default function RoofV2Page() {
             imageWidthPx={imagery?.width_px ?? 2048}
             imageHeightPx={imagery?.height_px ?? 1366}
             onApplyEdges={(updated) => {
-              cancelPending()   // same clobber risk as accepting labels
               setEdges(updated)
               setEditorSyncRev(r => r + 1)
               void persistGeometry(facets, updated)
@@ -992,7 +958,6 @@ export default function RoofV2Page() {
           />
           <FlashingPanel runId={runId} />
           </CollapsibleSection>
-          )}
 
           <PreReportChecklist runId={runId} facets={facets} edges={edges} />
           <div className="flex flex-wrap gap-2">
@@ -1013,7 +978,7 @@ export default function RoofV2Page() {
           Kept deliberately separate from the measure → report path: the report
           is complete without any of it, and these two tools are the only things
           that need a site visit, so they belong together and nowhere else. */}
-      {SHOW_SIDING && step === 'siding' && (
+      {step === 'siding' && (
         <section className="space-y-4">
           <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/[0.06] p-3 text-xs text-emerald-100/90">
             <span className="mr-2 rounded-full bg-emerald-600/80 px-2 py-0.5 text-[10px] font-semibold text-white">Optional — needs a site visit</span>
@@ -1039,7 +1004,6 @@ export default function RoofV2Page() {
                 onApplyPitch={(pitch) => {
                   if (facets.length === 0) return false
                   const updated = facets.map(f => ({ ...f, pitch }))
-                  cancelPending()   // ditto — a queued write holds the old pitches
                   setFacets(updated)
                   setGeometryStamp(s => s + 1)
                   setEditorSyncRev(r => r + 1)
@@ -1084,7 +1048,7 @@ export default function RoofV2Page() {
           <ProposalPanel runId={runId} projectId={projectId} />
 
           {/* Adjuster Mode — Xactimate line codes + RCV/ACV claim summary */}
-          {SHOW_ADJUSTER_MODE && <AdjusterModePanel runId={runId} />}
+          <AdjusterModePanel runId={runId} />
 
           {/* Homeowner portal — one link with live status, proposal, report, photos */}
           {projectId && <ClientPortalPanel projectId={projectId} />}

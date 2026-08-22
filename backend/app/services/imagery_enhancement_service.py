@@ -1,5 +1,5 @@
 """
-Axis Performance — Satellite imagery enhancement (SUPIR super-resolution).
+Axis Roofing Performance — Satellite imagery enhancement (SUPIR super-resolution).
 
 Adds visual sharpness to satellite tiles via AI upscaling. Honest about what
 it is: the upscaled image has plausible-looking detail, NOT additional real

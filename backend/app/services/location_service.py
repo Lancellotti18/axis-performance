@@ -1,5 +1,5 @@
 """
-Axis Performance — Address validation, geocoding, and county lookup.
+Axis Roofing Performance — Address validation, geocoding, and county lookup.
 
 Replaces the static jurisdictions.ts dropdown with authoritative server-side
 lookups. Address in → (canonical address, lat, lng, state, county, FIPS) out.

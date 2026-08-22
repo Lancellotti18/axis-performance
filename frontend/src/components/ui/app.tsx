@@ -1,6 +1,6 @@
 'use client'
 /**
- * Axis Performance — dark "app" UI primitives.
+ * Axis Roofing Performance — dark "app" UI primitives.
  *
  * The light Button/Input/Card/Badge in this folder serve the auth pages (light
  * AuthShell). These are their dark-glass counterparts for the in-app screens

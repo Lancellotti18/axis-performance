@@ -1,6 +1,6 @@
 from __future__ import annotations
 """
-cost_engine.py — AXIS PERFORMANCE Module 7
+cost_engine.py — AXIS ROOFING PERFORMANCE Module 7
 ==========================================
 Applies unit costs to quantities → itemized cost estimate with 3 scenarios.
 Runs outside Blender as a standard Python module.

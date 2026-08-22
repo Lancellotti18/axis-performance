@@ -1,5 +1,5 @@
 """
-Professional one-tap roof report PDF — axis-performance answer to EagleView.
+Professional one-tap roof report PDF — Axis Roofing Performance answer to EagleView.
 Pulls confirmed roof measurements + shingle material list and lays them out
 as a clean, insurance-submittable document.
 
@@ -142,7 +142,7 @@ def generate_roof_report_pdf(
         topMargin=0.55 * inch, bottomMargin=0.6 * inch,
         leftMargin=0.6 * inch, rightMargin=0.6 * inch,
         title=f"Roof Report — {project.get('name', 'Property')}",
-        author="BuildAI / axis-performance",
+        author="BuildAI / Axis Roofing Performance",
     )
     s = _styles()
     els: list = []
@@ -156,7 +156,7 @@ def generate_roof_report_pdf(
 
     # ── Header ──────────────────────────────────────────────────────────────
     header_left = Paragraph(
-        '<font color="#1e40af"><b>axis performance</b></font> · '
+        '<font color="#1e40af"><b>axis roofing performance</b></font> · '
         '<font color="#64748b">ROOF MEASUREMENT REPORT</font>',
         s["body"],
     )
@@ -310,7 +310,7 @@ def generate_roof_report_pdf(
         els.append(Paragraph("Materials List", s["h2"]))
         els.append(Paragraph(
             "Quantities derived from confirmed measurements above. Prices shown are "
-            "regional estimates — use axis-performance live pricing for current retail quotes.",
+            "regional estimates — use Axis Roofing Performance live pricing for current retail quotes.",
             s["muted"],
         ))
         els.append(Spacer(1, 8))
@@ -353,14 +353,14 @@ def generate_roof_report_pdf(
         "review; (c) contractor-confirmed blueprint measurements. Confidence "
         "scoring is honest — low-confidence values are flagged as "
         "&ldquo;unverified&rdquo; and require contractor review before materials "
-        "are ordered. BuildAI / axis-performance does not guarantee measurement "
+        "are ordered. BuildAI / Axis Roofing Performance does not guarantee measurement "
         "accuracy suitable for litigation — for insurance disputes, pair this "
         "report with a physical inspection.",
         s["muted"],
     ))
     els.append(Spacer(1, 8))
     els.append(Paragraph(
-        f"Prepared by axis-performance · Generated {now} · Report {report_id}",
+        f"Prepared by Axis Roofing Performance · Generated {now} · Report {report_id}",
         s["muted"],
     ))
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 """
-construction_scheduler.py — AXIS PERFORMANCE Module 8
+construction_scheduler.py — AXIS ROOFING PERFORMANCE Module 8
 ======================================================
 Builds a construction schedule from quantities →
   • schedule.json     (full task list + dates + Blender frame data)

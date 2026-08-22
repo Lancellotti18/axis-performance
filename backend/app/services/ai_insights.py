@@ -1,6 +1,6 @@
 from __future__ import annotations
 """
-ai_insights.py — AXIS PERFORMANCE Module 9
+ai_insights.py — AXIS ROOFING PERFORMANCE Module 9
 ===========================================
 Generates 5 AI-powered insights via Claude API.
 Results are cached by content hash to avoid redundant API calls.

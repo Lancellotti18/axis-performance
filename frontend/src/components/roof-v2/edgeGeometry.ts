@@ -1,5 +1,5 @@
 /**
- * Axis Performance — distinct roof lines from per-facet edge records.
+ * Axis Roofing Performance — distinct roof lines from per-facet edge records.
  *
  * Edges are stored once per facet, so the line where two planes meet exists
  * TWICE: once as facet A's edge, once as facet B's. Anything that counts raw

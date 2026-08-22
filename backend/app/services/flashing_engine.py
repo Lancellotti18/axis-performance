@@ -1,5 +1,5 @@
 """
-Axis Performance — Flashing Intelligence Engine.
+Axis Roofing Performance — Flashing Intelligence Engine.
 
 Derives every flashing requirement for a roof DETERMINISTICALLY from the
 geometry the contractor has already confirmed (facets, classified edges,

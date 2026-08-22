@@ -709,7 +709,7 @@ export default function RoofIQPage() {
         </div>
 
         {!embedded && (
-          <p className="mt-4 text-center text-[10px] text-slate-400">Measurements powered by Axis Performance aerial + solar data.</p>
+          <p className="mt-4 text-center text-[10px] text-slate-400">Measurements powered by Axis Roofing Performance aerial + solar data.</p>
         )}
       </div>
     </main>

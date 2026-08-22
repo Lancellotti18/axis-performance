@@ -1,5 +1,5 @@
 """
-Axis Performance — Exterior Measurement Module API.
+Axis Roofing Performance — Exterior Measurement Module API.
 
 Endpoints support the Section 2 + Section 5 build plan:
     Photo upload, vision-based elevation classification + observations,

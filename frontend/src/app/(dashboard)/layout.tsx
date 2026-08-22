@@ -287,18 +287,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* ── SIDEBAR ──────────────────────────────────────────────────────── */}
       <aside
         className={`relative flex-shrink-0 flex flex-col transition-[width] duration-200 ${collapsed ? 'w-[76px]' : 'w-64'}`}
-        style={{ zIndex: 10, background: 'rgba(7,11,19,0.92)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
+        style={{ zIndex: 10, background: '#ffffff', borderRight: '1px solid var(--color-surface-border)' }}
       >
         {/* Soft blue glow line on the right edge */}
         <div className="absolute top-0 bottom-0 right-0 w-px pointer-events-none"
-          style={{ background: 'linear-gradient(180deg, rgba(96,165,250,0) 0%, rgba(96,165,250,0.5) 30%, rgba(96,165,250,0.5) 70%, rgba(96,165,250,0) 100%)' }} />
+          style={{ background: 'transparent' }} />
 
         {/* Collapse toggle — floating on the edge */}
         <button
           onClick={toggleCollapsed}
           title={collapsed ? 'Expand' : 'Collapse'}
-          className="absolute -right-3 top-7 z-20 w-6 h-6 rounded-full flex items-center justify-center text-slate-300 hover:text-white transition-colors"
-          style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(96,165,250,0.4)', boxShadow: '0 0 10px rgba(59,130,246,0.3)' }}
+          className="absolute -right-3 top-7 z-20 w-6 h-6 rounded-full flex items-center justify-center text-[#6b7280] hover:text-[#1a1a1a] transition-colors"
+          style={{ background: '#ffffff', border: '1px solid var(--color-surface-border)', boxShadow: 'var(--shadow-card)' }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: collapsed ? 'rotate(180deg)' : 'none' }}>
             <polyline points="15 18 9 12 15 6" />
@@ -306,9 +306,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </button>
 
         {/* Logo */}
-        <div className={`flex items-center gap-2.5 h-20 border-b ${collapsed ? 'justify-center' : 'px-5'}`} style={{ borderColor: 'rgba(96,165,250,0.14)' }}>
+        <div className={`flex items-center gap-2.5 h-20 border-b ${collapsed ? 'justify-center' : 'px-5'}`} style={{ borderColor: 'var(--color-surface-border)' }}>
           <div className="relative w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(180deg, #1B2433 0%, #06090E 100%)', border: '1px solid rgba(127,201,244,0.45)', boxShadow: '0 0 0 1px rgba(127,201,244,0.20), 0 4px 12px -4px rgba(127,201,244,0.45)' }}>
+            style={{ background: 'var(--color-brand-500)', color: '#ffffff' }}>
             <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
               <path d="M14 4 L24 24 H19 L17 19 H11 L9 24 H4 Z" fill="#BFE6FF" />
               <path d="M12.5 15 H15.5 L14 11 Z" fill="#06090E" />
@@ -327,7 +327,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {NAV_GROUPS.map(group => (
             <div key={group.title} className="mb-4">
               {!collapsed && (
-                <div className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">{group.title}</div>
+                <div className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{group.title}</div>
               )}
               <div className="space-y-1">
                 {group.items.map(({ href, label, icon: Icon }) => {
@@ -337,10 +337,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       key={href}
                       href={href}
                       title={collapsed ? label : undefined}
-                      className={`relative flex items-center gap-3 rounded-xl text-sm font-semibold transition-all duration-200 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}
+                      className={`relative flex items-center gap-3 rounded-xl text-sm font-semibold transition-all duration-200 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-[#007fff]' : 'text-[#6b7280] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'}`}
                       style={active ? {
-                        background: 'linear-gradient(90deg, rgba(59,130,246,0.22) 0%, rgba(59,130,246,0.08) 100%)',
-                        boxShadow: '0 0 0 1px rgba(96,165,250,0.35), 0 0 16px rgba(59,130,246,0.22)',
+                        background: '#e6f2ff',
                       } : {}}
                     >
                       <Icon active={active} />
@@ -357,17 +356,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               icon, nothing that reads as "settings", so nobody found it. It is
               where company name, logo and the public quote page are set, which
               makes it one of the most important destinations in the app. */}
-          <div className="mt-2 border-t pt-3" style={{ borderColor: 'rgba(96,165,250,0.14)' }}>
+          <div className="mt-2 border-t pt-3" style={{ borderColor: 'var(--color-surface-border)' }}>
             {(() => {
               const active = pathname === '/settings' || pathname.startsWith('/settings')
               return (
                 <Link
                   href="/settings"
                   title={collapsed ? 'Settings' : undefined}
-                  className={`relative flex items-center gap-3 rounded-xl text-sm font-semibold transition-all duration-200 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}
+                  className={`relative flex items-center gap-3 rounded-xl text-sm font-semibold transition-all duration-200 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-[#007fff]' : 'text-[#6b7280] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'}`}
                   style={active ? {
-                    background: 'linear-gradient(90deg, rgba(59,130,246,0.22) 0%, rgba(59,130,246,0.08) 100%)',
-                    boxShadow: '0 0 0 1px rgba(96,165,250,0.35), 0 0 16px rgba(59,130,246,0.22)',
+                    background: '#e6f2ff',
                   } : {}}
                 >
                   <IconSettings active={active} />
@@ -379,7 +377,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         {/* Footer — account + precision + sign out */}
-        <div className="border-t p-3" style={{ borderColor: 'rgba(96,165,250,0.14)' }}>
+        <div className="border-t p-3" style={{ borderColor: 'var(--color-surface-border)' }}>
           {!collapsed && (
             <div className="px-1 pb-3">
               <PrecisionToggle />
@@ -390,14 +388,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               href="/settings"
               title="Account settings"
               className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-              style={{ background: 'linear-gradient(180deg, #1B2433 0%, #06090E 100%)', border: '1px solid rgba(127,201,244,0.55)', boxShadow: '0 0 0 1px rgba(127,201,244,0.20), 0 0 10px rgba(127,201,244,0.30)', color: '#BFE6FF' }}
+              style={{ background: 'var(--color-brand-500)', color: '#ffffff' }}
             >
               {initials}
             </Link>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <div className="text-slate-200 text-xs font-semibold truncate">{user?.user_metadata?.full_name || 'Contractor'}</div>
-                <button onClick={handleSignOut} disabled={signingOut} className="text-slate-500 hover:text-slate-300 text-[11px] transition-colors">
+                <div className="text-[#1a1a1a] text-xs font-semibold truncate">{user?.user_metadata?.full_name || 'Contractor'}</div>
+                <button onClick={handleSignOut} disabled={signingOut} className="text-[#6b7280] hover:text-[#1a1a1a] text-[11px] transition-colors">
                   {signingOut ? 'Signing out…' : 'Sign out'}
                 </button>
               </div>
@@ -412,11 +410,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Top bar — 70px */}
         <header
           className="h-[70px] flex items-center justify-between gap-6 px-7 flex-shrink-0 relative"
-          style={{ background: 'rgba(7,11,19,0.85)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
+          style={{ background: '#ffffff', borderBottom: '1px solid var(--color-surface-border)' }}
         >
           {/* Bottom edge blue glow */}
           <div className="absolute left-0 right-0 bottom-0 h-px pointer-events-none"
-            style={{ background: 'linear-gradient(90deg, rgba(96,165,250,0) 0%, rgba(96,165,250,0.5) 50%, rgba(96,165,250,0) 100%)' }} />
+            style={{ background: 'transparent' }} />
 
           {/* Current page title */}
           <h1 className="text-lg font-semibold text-white flex-shrink-0">{titleFor(pathname)}</h1>
@@ -434,12 +432,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             href="/settings"
             title="Account settings"
             className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-transform hover:scale-105"
-            style={{
-              background: 'linear-gradient(180deg, #1B2433 0%, #06090E 100%)',
-              border: '1px solid rgba(127,201,244,0.55)',
-              boxShadow: '0 0 0 1px rgba(127,201,244,0.20), 0 0 10px rgba(127,201,244,0.30)',
-              color: '#BFE6FF',
-            }}
+            style={{ background: 'var(--color-brand-500)', color: '#ffffff' }}
           >
             {initials}
           </Link>

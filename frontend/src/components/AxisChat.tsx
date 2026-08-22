@@ -33,7 +33,7 @@ const SUGGESTED_PROMPTS: Record<ChatSection, string[]> = {
     'Which tool fits what I\'m trying to do?',
   ],
   'general': [
-    'How does Axis Performance work?',
+    'How does Axis Roofing Performance work?',
     'What can you help me with?',
   ],
 }

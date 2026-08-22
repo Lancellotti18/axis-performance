@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — AI facet detection suggestions.
+ * Axis Roofing Performance — AI facet detection suggestions.
  *
  * Calls /api/v1/roofing/v2/runs/{id}/facets/suggest, which uses Gemini Vision
  * to propose distinct roof planes (facets) on the satellite tile.

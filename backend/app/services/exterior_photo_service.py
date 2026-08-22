@@ -1,5 +1,5 @@
 """
-Axis Performance — Exterior photo classification + observation service.
+Axis Roofing Performance — Exterior photo classification + observation service.
 
 Uses Gemini Vision (via llm_vision) to:
   1. Classify each uploaded photo by elevation (front/right/rear/left/corner/etc.)

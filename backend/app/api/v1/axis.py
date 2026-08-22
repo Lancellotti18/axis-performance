@@ -1,5 +1,5 @@
 """
-axis.py — AXIS PERFORMANCE API Routes
+axis.py — AXIS ROOFING PERFORMANCE API Routes
 ======================================
 Endpoints:
   POST /{project_id}/run      — trigger full AXIS pipeline (3D + 5D)
@@ -347,7 +347,7 @@ async def run_axis_pipeline(
     user:             dict = Depends(require_user),
 ):
     """
-    Trigger the AXIS performance pipeline for a project.
+    Trigger the AXIS roofing performance pipeline for a project.
     If Blender is not available, runs only the 5D pipeline using existing scene_data.
     Returns a job_id to poll for status.
     """

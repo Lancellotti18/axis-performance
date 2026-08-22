@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Axis Performance — AI-suggested penetration spotter.
+ * Axis Roofing Performance — AI-suggested penetration spotter.
  *
  * Calls the existing /roofing/v2/runs/{id}/penetrations/suggest endpoint
  * (Gemini Vision spots likely chimneys, vents, skylights, etc. on the

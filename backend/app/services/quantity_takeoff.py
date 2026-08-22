@@ -1,5 +1,5 @@
 """
-quantity_takeoff.py — AXIS PERFORMANCE Module 6
+quantity_takeoff.py — AXIS ROOFING PERFORMANCE Module 6
 ================================================
 Auto-calculates all material quantities from scene_data.
 Runs outside Blender as a standard Python module.

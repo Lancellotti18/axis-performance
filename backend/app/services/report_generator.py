@@ -104,7 +104,7 @@ def generate_report(
     cost_sum = cost_report.get("summary", {})
     sched    = schedule or {}
 
-    elements.append(Paragraph(f"AXIS Performance Report", styles["Title"]))
+    elements.append(Paragraph(f"AXIS Roofing Performance Report", styles["Title"]))
     elements.append(Paragraph(f"Project: {project_name}", styles["Heading2"]))
     elements.append(Spacer(1, 12))
 

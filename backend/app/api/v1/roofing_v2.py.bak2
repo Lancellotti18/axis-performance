@@ -1,5 +1,5 @@
 """
-Axis Roofing Performance — Roofing v2 API.
+Axis Performance — Roofing v2 API.
 
 New endpoints for the per-facet measurement workflow that produces accurate,
 deterministic roof-line measurements and material orders. Coexists with the
@@ -715,52 +715,6 @@ class PutFacetsRequest(BaseModel):
     satellite_image_url: Optional[str] = None
 
 
-
-async def _solar_pitch_for_polygons(
-    run: dict, polygons: list[list], zoom: int,
-) -> list[Optional[str]]:
-    """Google Solar's MEASURED pitch for each traced polygon, or None.
-
-    Solar pitch used to reach facets only through Auto-detect, because that is
-    where `_layer_with_solar` runs. A contractor who traced the roof by hand —
-    the primary path — got 6/12 on every plane while Google's measured pitch for
-    that exact roof sat unused on the run. This closes that gap: same overlap
-    matching as the auto-detect path, applied to whatever was drawn.
-
-    Best-effort throughout: no coverage, no key, or any failure yields None and
-    the caller keeps the default.
-    """
-    out: list[Optional[str]] = [None] * len(polygons)
-    s_lat, s_lng = run.get("satellite_lat"), run.get("satellite_lng")
-    if s_lat is None or s_lng is None or not polygons:
-        return out
-    try:
-        from app.services import solar_service
-        solar = await solar_service.get_building_insights(float(s_lat), float(s_lng))
-        if not solar.get("available"):
-            return out
-        segs = _solar_segments_as_fractions(
-            solar, float(s_lat), float(s_lng), int(zoom or run.get("satellite_zoom") or 20))
-        if not segs:
-            return out
-        rects = [_oriented_positive(sg["rect"]) for sg in segs]
-        for i, poly in enumerate(polygons):
-            best_j, best_cov = None, 0.0
-            for j, rect in enumerate(rects):
-                cov = _coverage(poly, rect)
-                if cov > best_cov:
-                    best_cov, best_j = cov, j
-            # Same 50% threshold Auto-detect uses, so both paths agree on what
-            # counts as "this plane is that Solar plane".
-            if best_j is not None and best_cov >= 0.5:
-                pitch = (segs[best_j].get("pitch") or "").strip()
-                if pitch:
-                    out[i] = pitch
-    except Exception as e:
-        logger.info("solar pitch lookup failed for run %s: %s", run.get("id"), e)
-    return out
-
-
 @router.put("/runs/{run_id}/facets")
 async def put_facets(
     run_id: str, req: PutFacetsRequest, user: dict = Depends(require_user)
@@ -774,19 +728,11 @@ async def put_facets(
     db = get_supabase()
 
     # Make sure the run exists (RLS will reject otherwise)
-    # Pull the tile anchor too — the Solar pitch lookup below needs it. Selecting
-    # only "id" here silently starved that lookup of coordinates.
-    run = (db.table("roof_measurement_runs")
-           .select("id, satellite_lat, satellite_lng, satellite_zoom")
-           .eq("id", run_id).single().execute())
+    run = db.table("roof_measurement_runs").select("id").eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
 
     db.table("roof_facets").delete().eq("run_id", run_id).execute()
-
-    solar_pitches = await _solar_pitch_for_polygons(
-        run.data, [f.polygon for f in req.facets], req.zoom,
-    )
 
     rows: list[dict] = []
     for f in req.facets:
@@ -802,21 +748,11 @@ async def put_facets(
         pitch_source = f.pitch_source
         if not pitch_source:
             pitch_source = "default" if (f.pitch or "6/12") == "6/12" else "manual"
-        # A facet still sitting on the bare default gets Google's measured pitch
-        # when Solar covers that plane. Anything the contractor set by hand, or
-        # that already came from Solar/a ground photo, is left alone.
-        if pitch_source == "default" and solar_pitches[len(rows)]:
-            f_pitch = solar_pitches[len(rows)]
-            mult = geo.slope_multiplier(f_pitch)
-            deg = geo.pitch_string_to_degrees(f_pitch)
-            pitch_source = "solar_measured"
-        else:
-            f_pitch = f.pitch
         rows.append({
             "run_id": run_id,
             "facet_label": f.facet_label,
             "polygon": f.polygon,
-            "pitch": f_pitch,
+            "pitch": f.pitch,
             "pitch_degrees": round(deg, 2),
             "pitch_source": pitch_source,
             "orientation_deg": round(orient, 1) if orient is not None else None,
@@ -1569,7 +1505,7 @@ async def suggest_penetrations(
     require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
-        "satellite_image_url, satellite_lat, satellite_lng, satellite_zoom, subject_point"
+        "satellite_image_url, satellite_lat, satellite_lng, satellite_zoom"
     ).eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
@@ -1633,45 +1569,6 @@ before it enters the material order. Coordinates are image fractions 0..1 (top-l
     except Exception as e:
         vision_note = f"satellite scan error: {str(e)[:80]}"
 
-    # ── Keep only what is ON THIS ROOF ────────────────────────────────────
-    # Vision reads the whole tile, and a suburban tile is mostly other people's
-    # houses — which is how a scan came back with vents at 20%/94% and 72%/99%
-    # of the tile, i.e. hard against the bottom edge, nowhere near a subject
-    # house centred at roughly 50%/50%. Facet detection has had a
-    # centre-containment guard for exactly this reason; penetrations never did.
-    #
-    # The traced facets are the strongest possible filter: a roof penetration is
-    # by definition inside a roof plane. When the contractor has not traced yet
-    # we fall back to the saved house point, and failing that we leave the list
-    # alone rather than guess.
-    dropped_off_roof = 0
-    try:
-        f_rows = (db.table("roof_facets").select("polygon")
-                  .eq("run_id", run_id).execute().data or [])
-        polys = [f.get("polygon") or [] for f in f_rows]
-        polys = [p for p in polys if len(p) >= 3]
-
-        def _on_roof(sg: dict) -> bool:
-            x, y = sg.get("pos_x_frac"), sg.get("pos_y_frac")
-            if x is None or y is None:
-                return True          # ground-photo findings carry no position
-            pt = (float(x), float(y))
-            if polys:
-                return any(_point_in_poly(pt, poly) for poly in polys)
-            sp = (run.data or {}).get("subject_point") or {}
-            sx, sy = sp.get("x"), sp.get("y")
-            if sx is None or sy is None:
-                return True          # nothing to anchor on — do not filter blind
-            # Generous radius: the house point is one tap, not an outline.
-            return ((pt[0] - float(sx)) ** 2 + (pt[1] - float(sy)) ** 2) ** 0.5 <= 0.18
-
-        if polys or ((run.data or {}).get("subject_point")):
-            kept = [sg for sg in suggestions if _on_roof(sg)]
-            dropped_off_roof = len(suggestions) - len(kept)
-            suggestions = kept
-    except Exception as e:
-        logger.info("penetration on-roof filter skipped for %s: %s", run_id, e)
-
     # Merge the GROUND-PHOTO findings — a contractor's own eye-level photos are
     # a far more reliable source for chimneys/skylights than a top-down tile
     # where a vent is 2 pixels wide. Anything the photos saw that satellite
@@ -1707,8 +1604,6 @@ before it enters the material order. Coordinates are image fractions 0..1 (top-l
             f"({sum(1 for s in suggestions if s.get('source') == 'ground_photo')} from your ground photos, "
             f"{sum(1 for s in suggestions if s.get('source') != 'ground_photo')} from satellite). "
             "Confirm each one before it enters the material order."
-            + (f" Ignored {dropped_off_roof} that fell outside your traced roof "
-               "(neighbouring houses)." if dropped_off_roof else "")
         )
     else:
         message = (
@@ -1716,8 +1611,6 @@ before it enters the material order. Coordinates are image fractions 0..1 (top-l
             "resolution, so that's common. The reliable way: upload ground photos of any chimney/"
             "skylight (Ground-photo intelligence above) and suggestions will appear here; or add "
             "penetrations manually below."
-            + (f" Ignored {dropped_off_roof} detection(s) that landed off your traced roof."
-               if dropped_off_roof else "")
             + (f" ({vision_note}.)" if vision_note else "")
         )
     return {"suggestions": suggestions, "message": message}
@@ -3571,14 +3464,6 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
         state=proj.data.get("state"), county=proj.data.get("county"),
     )
 
-    # Flashing and siding are parked in the UI while they are being worked on
-    # (SHOW_FLASHING / SHOW_SIDING on the roof-v2 page). Their sections are
-    # derived server-side from labeled edges and stored measurements, so without
-    # this the report would keep publishing numbers the contractor no longer has
-    # any way to review. Flip both back on when the panels return.
-    REPORT_INCLUDES_FLASHING = False
-    REPORT_INCLUDES_SIDING = False
-
     siding_res = db.table("manual_siding_measurements").select("*").eq("project_id", run["project_id"]).execute()
 
     try:
@@ -3606,11 +3491,7 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
             prof = db.table("contractor_profiles").select("*").eq("user_id", owner).limit(1).execute()
             if prof.data:
                 contractor = dict(prof.data[0])
-                # Re-sign rather than trusting the stored URL: it was signed
-                # for a year at upload time and silently 404s after that,
-                # dropping the logo off the report with no error.
-                from app.api.v1.contractor_profile import fresh_logo_url
-                logo_url = fresh_logo_url(db, owner, contractor.get("logo_url"))
+                logo_url = contractor.get("logo_url")
                 if logo_url:
                     import httpx
                     async with httpx.AsyncClient(timeout=10) as client:
@@ -3683,19 +3564,13 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
     report_warnings = [{"code": i.code, "message": i.message}
                        for i in issues if i.severity == "warn"]
 
-    if not REPORT_INCLUDES_FLASHING:
-        flashing_summary = None
-    siding_for_report = (siding_res.data or []) if REPORT_INCLUDES_SIDING else []
-
     pdf_bytes = await asyncio.to_thread(
         generate_v2_report,
         proj.data, run, aggregates, facets_res.data or [], edges,
-        pens_res.data or [], material_lines, siding_for_report, flashing_summary,
+        pens_res.data or [], material_lines, siding_res.data or [], flashing_summary,
         contractor, calibration,
         project_photos=project_photos,
         report_warnings=report_warnings,
-        include_flashing=REPORT_INCLUDES_FLASHING,
-        include_siding=REPORT_INCLUDES_SIDING,
     )
 
     slug = (proj.data.get("name") or "project").strip().lower()

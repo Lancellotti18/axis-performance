@@ -283,7 +283,7 @@ export default function ProjectPage() {
     room_renders:   { name: string; url: string | null }[]
   } | null>(null)
 
-  // AXIS Performance 5D pipeline
+  // AXIS Roofing Performance 5D pipeline
   const [axisJobId, setAxisJobId]       = useState<string | null>(null)
   const [axisStatus, setAxisStatus]     = useState<'idle' | 'queued' | 'running_3d' | 'running_5d' | 'queued_cloud' | 'complete' | 'error'>('idle')
   const [axisResults, setAxisResults]   = useState<any>(null)
