@@ -80,6 +80,8 @@ interface ImageryPayload {
 // so the measure flow is not carrying half-finished tools. Flip to true to
 // bring either back; nothing else needs changing.
 const SHOW_FLASHING = false
+// Also hides the whole 'On-site extras' stop — ground photos and the siding
+// tool travel together, and neither is meant to be in the flow right now.
 const SHOW_SIDING = false
 // Xactimate line codes + RCV/ACV claim summary. Parked, not deleted — the
 // endpoint, the estimator service and the report all stay wired.
@@ -1011,7 +1013,7 @@ export default function RoofV2Page() {
           Kept deliberately separate from the measure → report path: the report
           is complete without any of it, and these two tools are the only things
           that need a site visit, so they belong together and nowhere else. */}
-      {step === 'siding' && (
+      {SHOW_SIDING && step === 'siding' && (
         <section className="space-y-4">
           <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/[0.06] p-3 text-xs text-emerald-100/90">
             <span className="mr-2 rounded-full bg-emerald-600/80 px-2 py-0.5 text-[10px] font-semibold text-white">Optional — needs a site visit</span>
