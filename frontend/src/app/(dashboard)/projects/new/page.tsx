@@ -86,7 +86,7 @@ export default function NewProjectPage() {
 
   return (
     <div className="relative min-h-full" style={{ background: 'var(--color-surface-1)' }}>
-      <div className="pointer-events-none absolute inset-0 opacity-[0.11]" style={{ backgroundImage: 'linear-gradient(rgba(96,165,250,1) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(96,165,250,1) 1.5px, transparent 1.5px)', backgroundSize: '34px 34px' }} />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.11]" style={{ backgroundImage: 'linear-gradient(rgba(0,127,255,1) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(0,127,255,1) 1.5px, transparent 1.5px)', backgroundSize: '34px 34px' }} />
       <div className="relative p-8 max-w-2xl mx-auto">
         <div className="flex items-center gap-3 mb-8">
           <Link href="/dashboard" className="text-[#6b7280] hover:text-[#1a1a1a] transition-colors text-sm">← Dashboard</Link>

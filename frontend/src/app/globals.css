@@ -100,8 +100,8 @@ h1 { letter-spacing: -0.021em; }
 /* Shared blueprint grid — pages that want it can add class="bp-grid" */
 .bp-grid {
   background-image:
-    linear-gradient(rgba(59, 130, 246, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(59, 130, 246, 0.07) 1px, transparent 1px);
+    linear-gradient(rgba(0, 127, 255, 0.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 127, 255, 0.10) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 

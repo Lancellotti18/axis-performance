@@ -257,7 +257,7 @@ export default function DashboardPage() {
         className="pointer-events-none absolute inset-0 opacity-[0.11]"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(96,165,250,1) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(96,165,250,1) 1.5px, transparent 1.5px)',
+            'linear-gradient(rgba(0,127,255,1) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(0,127,255,1) 1.5px, transparent 1.5px)',
           backgroundSize: '34px 34px',
         }}
       />
