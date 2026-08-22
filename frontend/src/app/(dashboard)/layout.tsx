@@ -287,7 +287,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* ── SIDEBAR ──────────────────────────────────────────────────────── */}
       <aside
         className={`relative flex-shrink-0 flex flex-col transition-[width] duration-200 ${collapsed ? 'w-[76px]' : 'w-64'}`}
-        style={{ zIndex: 10, background: '#0060c4' }}
+        style={{ zIndex: 10, background: '#f8f8f7', borderRight: '1px solid var(--color-surface-border)' }}
       >
         {/* Soft blue glow line on the right edge */}
         <div className="absolute top-0 bottom-0 right-0 w-px pointer-events-none"
@@ -298,7 +298,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           onClick={toggleCollapsed}
           title={collapsed ? 'Expand' : 'Collapse'}
           className="absolute -right-3 top-7 z-20 w-6 h-6 rounded-full flex items-center justify-center transition-colors"
-          style={{ background: '#ffffff', border: 'none', boxShadow: '0 1px 3px rgba(0,0,0,0.22)', color: '#0060c4' }}
+          style={{ background: '#f8f8f7', border: '1px solid var(--color-surface-border)', boxShadow: 'var(--shadow-card)', color: '#0060c4' }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: collapsed ? 'rotate(180deg)' : 'none' }}>
             <polyline points="15 18 9 12 15 6" />
@@ -306,9 +306,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </button>
 
         {/* Logo */}
-        <div className={`flex items-center gap-2.5 h-20 border-b ${collapsed ? 'justify-center' : 'px-5'}`} style={{ borderColor: 'rgba(255,255,255,0.18)' }}>
+        <div className={`flex items-center gap-2.5 h-20 border-b ${collapsed ? 'justify-center' : 'px-5'}`} style={{ borderColor: 'var(--color-surface-border)' }}>
           <div className="relative w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
-            style={{ background: '#ffffff', color: '#0060c4' }}>
+            style={{ background: 'var(--color-brand-500)', color: '#ffffff' }}>
             <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
               <path d="M14 4 L24 24 H19 L17 19 H11 L9 24 H4 Z" fill="#BFE6FF" />
               <path d="M12.5 15 H15.5 L14 11 Z" fill="#06090E" />
@@ -327,7 +327,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {NAV_GROUPS.map(group => (
             <div key={group.title} className="mb-4">
               {!collapsed && (
-                <div className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/70">{group.title}</div>
+                <div className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">{group.title}</div>
               )}
               <div className="space-y-1.5">
                 {group.items.map(({ href, label, icon: Icon }) => {
@@ -338,9 +338,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       href={href}
                       title={collapsed ? label : undefined}
                       className={`relative flex items-center gap-3 rounded-lg text-sm font-semibold transition-all duration-150 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-white' : 'text-white hover:brightness-[0.97]'}`}
-                      style={active ? { background: '#ffffff', boxShadow: '0 1px 2px rgba(0,0,0,0.18)' } : {}}
+                      style={active
+                        ? { background: '#01498f', border: '1px solid #01498f', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.25)' }
+                        : { background: '#0068d6', border: '1px solid #005cbb' }}
                     >
-                      <span style={{ color: active ? '#0060c4' : 'rgba(255,255,255,0.85)' }}><Icon active={active} /></span>
+                      <span style={{ color: '#ffffff' }}><Icon active={active} /></span>
                       {!collapsed && <span className="truncate">{label}</span>}
                     </Link>
                   )
@@ -354,7 +356,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               icon, nothing that reads as "settings", so nobody found it. It is
               where company name, logo and the public quote page are set, which
               makes it one of the most important destinations in the app. */}
-          <div className="mt-2 border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.18)' }}>
+          <div className="mt-2 border-t pt-3" style={{ borderColor: 'var(--color-surface-border)' }}>
             {(() => {
               const active = pathname === '/settings' || pathname.startsWith('/settings')
               return (
@@ -362,9 +364,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   href="/settings"
                   title={collapsed ? 'Settings' : undefined}
                   className={`relative flex items-center gap-3 rounded-lg text-sm font-semibold transition-all duration-150 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-white' : 'text-white hover:brightness-[0.97]'}`}
-                  style={active ? { background: '#ffffff', boxShadow: '0 1px 2px rgba(0,0,0,0.18)' } : {}}
+                  style={active
+                        ? { background: '#01498f', border: '1px solid #01498f', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.25)' }
+                        : { background: '#0068d6', border: '1px solid #005cbb' }}
                 >
-                  <span style={{ color: active ? '#0060c4' : 'rgba(255,255,255,0.85)' }}><IconSettings active={active} /></span>
+                  <span style={{ color: '#ffffff' }}><IconSettings active={active} /></span>
                   {!collapsed && <span className="truncate">Settings</span>}
                 </Link>
               )
@@ -373,7 +377,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         {/* Footer — account + precision + sign out */}
-        <div className="border-t p-3" style={{ borderColor: 'rgba(255,255,255,0.18)' }}>
+        <div className="border-t p-3" style={{ borderColor: 'var(--color-surface-border)' }}>
           {!collapsed && (
             <div className="px-1 pb-3">
               <PrecisionToggle />
@@ -384,14 +388,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               href="/settings"
               title="Account settings"
               className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-              style={{ background: '#ffffff', color: '#0060c4' }}
+              style={{ background: 'var(--color-brand-500)', color: '#ffffff' }}
             >
               {initials}
             </Link>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <div className="text-white text-xs font-semibold truncate">{user?.user_metadata?.full_name || 'Contractor'}</div>
-                <button onClick={handleSignOut} disabled={signingOut} className="text-white/60 hover:text-white text-[11px] transition-colors">
+                <div className="text-[#1a1a1a] text-xs font-semibold truncate">{user?.user_metadata?.full_name || 'Contractor'}</div>
+                <button onClick={handleSignOut} disabled={signingOut} className="text-[#6b7280] hover:text-[#1a1a1a] text-[11px] transition-colors">
                   {signingOut ? 'Signing out…' : 'Sign out'}
                 </button>
               </div>
@@ -406,7 +410,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Top bar — 70px */}
         <header
           className="h-[70px] flex items-center justify-between gap-6 px-7 flex-shrink-0 relative"
-          style={{ background: '#0060c4' }}
+          style={{ background: '#f8f8f7', borderBottom: '1px solid var(--color-surface-border)' }}
         >
           {/* Bottom edge blue glow */}
           <div className="absolute left-0 right-0 bottom-0 h-px pointer-events-none"
@@ -428,7 +432,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             href="/settings"
             title="Account settings"
             className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-transform hover:scale-105"
-            style={{ background: '#ffffff', color: '#0060c4' }}
+            style={{ background: 'var(--color-brand-500)', color: '#ffffff' }}
           >
             {initials}
           </Link>
