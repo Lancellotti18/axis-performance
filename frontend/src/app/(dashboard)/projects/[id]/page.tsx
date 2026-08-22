@@ -17,6 +17,7 @@ import RoofingSection from './RoofingSection'
 import PermitPortalSection from './PermitPortalSection'
 import AddToDispatchButton from './AddToDispatchButton'
 import ProjectPhotos from './ProjectPhotos'
+import SavedMeasurements from '@/components/roof-v2/SavedMeasurements'
 import { computeMaterialConfidence, loadReviewedIds, saveReviewedIds } from './materialConfidence'
 import { CitationInline, CitationBibliography, ComplianceLimitations } from '@/components/MaterialComplianceCitations'
 import { useRegisterChatContext } from '@/lib/chat-context'
@@ -823,7 +824,7 @@ Thank you for your time.`
   })
 
   if (loading) return (
-    <div className="flex items-center justify-center h-full" style={{ background: 'var(--color-surface-1)' }}>
+    <div className="flex items-center justify-center h-full">
       <div className="flex flex-col items-center gap-3">
         <svg className="animate-spin text-blue-500" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
         <span className="text-[#6b7280] text-sm">Loading project…</span>
@@ -845,7 +846,7 @@ Thank you for your time.`
   ]
 
   return (
-    <div className="flex flex-col h-full" style={{ background: 'var(--color-surface-1)' }}>
+    <div className="flex flex-col h-full">
 
       {/* Header */}
       <div className="bg-[#f8f8f7] border-b px-6 py-4 flex items-center gap-4 flex-shrink-0" style={{ borderColor: 'var(--color-surface-border)' }}>
@@ -885,6 +886,10 @@ Thank you for your time.`
               measured={!!roofRunId}
               cardStyle={cardStyle}
             />
+
+            {/* The measurements were always saved — they just had nowhere to be
+                seen, so coming back to a project looked like nothing had been. */}
+            {roofRunId && <SavedMeasurements runId={roofRunId} projectId={projectId} cardStyle={cardStyle} />}
 
             <div className="grid gap-5 md:grid-cols-2">
               {/* Project details */}

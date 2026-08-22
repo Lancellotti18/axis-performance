@@ -724,7 +724,7 @@ export default function CRMPage() {
   const convRate      = leads.length > 0 ? Math.round((wonCount / leads.length) * 100) : 0
 
   return (
-    <div className="h-full flex flex-col" style={{ background: 'var(--color-surface-1)' }}>
+    <div className="h-full flex flex-col">
 
       {/* Header */}
       <div className="bg-[#f8f8f7] border-b px-6 py-4 flex items-center gap-4 flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>

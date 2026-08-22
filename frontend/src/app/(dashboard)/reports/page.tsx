@@ -236,7 +236,7 @@ export default function ReportsPage() {
   const infoItems     = complianceItems.filter((i: any) => i.severity === 'info')
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--color-surface-1)' }}>
+    <div className="min-h-screen">
 
       {/* Top bar */}
       <div className="bg-[#f8f8f7] border-b px-6 py-4 flex items-center gap-4 sticky top-0 z-30"

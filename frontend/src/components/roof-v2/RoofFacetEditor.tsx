@@ -1269,27 +1269,31 @@ export function RoofFacetEditor({
           </div>
         </div>
 
-        {/* Side panel — collapsed by default.
+        {/* Manual labeling — collapsed by default.
             A first-timer does not need a per-facet list to trace a roof; the
-            canvas is the job. This is the by-hand escape hatch (rename, repitch,
-            delete), so it stays one click away instead of being the loudest
-            thing on screen the moment the editor opens. */}
-        <aside className={`shrink-0 overflow-y-auto rounded-lg border border-[#dededc] bg-[#f8f8f7] text-sm transition-all ${facetPanelOpen ? 'w-72 p-3' : 'w-11 p-2'}`}>
+            canvas is the job. But the collapsed rail was a bare hamburger and a
+            number, which nobody could be expected to decode — so it now says
+            what it is, vertically when narrow and as a full header when open. */}
+        <aside className={`shrink-0 overflow-y-auto rounded-lg border border-[#dededc] bg-[#f8f8f7] text-sm transition-all ${facetPanelOpen ? 'w-72 p-3' : 'w-12 p-2'}`}>
           <button
             onClick={() => setFacetPanelOpen(o => !o)}
-            title={facetPanelOpen ? 'Hide facet list' : 'Edit facets by hand'}
+            title={facetPanelOpen ? 'Hide manual labeling' : 'Open manual labeling — rename, set pitch, delete facets by hand'}
             aria-expanded={facetPanelOpen}
-            className={`flex w-full items-center gap-2 rounded text-xs font-semibold uppercase tracking-wide text-[#6b7280] hover:text-[#1a1a1a] ${facetPanelOpen ? 'mb-2 justify-between' : 'flex-col justify-center gap-1'}`}
+            className={`flex w-full items-center rounded font-semibold text-[#0068d6] hover:text-[#01498f] ${facetPanelOpen ? 'mb-2 justify-between gap-2 text-xs uppercase tracking-wide' : 'flex-col justify-center gap-2 py-1'}`}
           >
             {facetPanelOpen ? (
               <>
-                <span>Facets ({facets.length})</span>
-                <span aria-hidden>×</span>
+                <span>Manual labeling ({facets.length})</span>
+                <span aria-hidden className="text-sm">×</span>
               </>
             ) : (
               <>
-                <span aria-hidden>☰</span>
-                <span className="tabular-nums">{facets.length}</span>
+                <span aria-hidden className="text-base leading-none">✎</span>
+                <span
+                  className="whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.14em]"
+                  style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                >Manual labeling</span>
+                <span className="rounded-full bg-[#0068d6] px-1.5 text-[10px] font-bold tabular-nums text-white">{facets.length}</span>
               </>
             )}
           </button>

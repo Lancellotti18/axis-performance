@@ -310,7 +310,7 @@ export default function MaterialCheckPage() {
   }
 
   return (
-    <div className="min-h-screen p-6 md:p-8" style={{ background: 'var(--color-surface-1)' }}>
+    <div className="min-h-screen p-6 md:p-8">
       <div className="max-w-3xl mx-auto space-y-6">
 
         {/* Page header */}

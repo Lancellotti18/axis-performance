@@ -761,6 +761,46 @@ async def _solar_pitch_for_polygons(
     return out
 
 
+async def _cache_tile(db, run_id: str, url: str) -> str:
+    """Copy the satellite tile into storage once and hand back that URL.
+
+    Providers hand us a LIVE render endpoint — ArcGIS's is
+    `export?bbox=…`, which re-renders server-side on every request. Storing that
+    string means the project cover, the editor and the report each wait on a
+    fresh render, every time, forever. It is also the one thing in a saved run
+    that can silently change or disappear underneath us.
+
+    Fetch it once, keep the bytes, and pin the stored copy instead. Best-effort:
+    any failure returns the original URL, so the tile still shows.
+    """
+    if not url or "/storage/v1/" in url:
+        return url                      # already ours
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=25) as client:
+            r = await client.get(url, follow_redirects=True)
+            r.raise_for_status()
+            raw = r.content
+        if not raw or len(raw) < 1024:
+            return url
+        ext = "png" if raw[:8] == b"\x89PNG\r\n\x1a\n" else "jpg"
+        key = f"run-tiles/{run_id}.{ext}"
+        bucket = db.storage.from_("blueprints")
+        bucket.upload(key, raw, {"content-type": f"image/{ext}", "upsert": "true"})
+        signed = bucket.create_signed_url(key, 60 * 60 * 24 * 365)
+        out = None
+        if isinstance(signed, dict):
+            out = (signed.get("signedURL") or signed.get("signedUrl")
+                   or signed.get("signed_url") or signed.get("url"))
+        if out and out.startswith("/"):
+            from app.core.config import settings
+            out = settings.SUPABASE_URL.rstrip("/") + out
+        return out or url
+    except Exception as e:
+        logger.info("tile cache failed for run %s: %s", run_id, e)
+        return url
+
+
 @router.put("/runs/{run_id}/facets")
 async def put_facets(
     run_id: str, req: PutFacetsRequest, user: dict = Depends(require_user)
@@ -843,7 +883,8 @@ async def put_facets(
         "satellite_lng": req.lng,
     }
     if req.satellite_image_url:
-        run_update["satellite_image_url"] = req.satellite_image_url
+        # Pin a stored copy, not the provider's live render endpoint.
+        run_update["satellite_image_url"] = await _cache_tile(db, run_id, req.satellite_image_url)
     db.table("roof_measurement_runs").update(run_update).eq("id", run_id).execute()
 
     return {"facets": new_facets, "count": len(new_facets)}

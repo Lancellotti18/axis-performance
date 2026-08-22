@@ -104,7 +104,7 @@ export default function SchedulePage() {
     .slice(0, 6)
 
   return (
-    <div className="min-h-full p-6" style={{ background: 'var(--color-surface-1)' }}>
+    <div className="min-h-full p-6">
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black text-[#1a1a1a]">Schedule</h1>

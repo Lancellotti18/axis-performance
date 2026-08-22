@@ -56,8 +56,7 @@ export default function PermitsPage() {
   const selectCls = 'w-full bg-[#f8f8f7] border border-[#dededc] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-3 py-2.5 text-[#1a1a1a] text-sm focus:outline-none transition-all'
 
   return (
-    <div className="relative min-h-full" style={{ background: 'var(--color-surface-1)' }}>
-      <div className="pointer-events-none absolute inset-0 opacity-[0.11]" style={{ backgroundImage: 'linear-gradient(rgba(0,127,255,1) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(0,127,255,1) 1.5px, transparent 1.5px)', backgroundSize: '34px 34px' }} />
+    <div className="relative min-h-full">
       <div className="relative p-8 max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-black text-[#1a1a1a]">Permit Filing</h1>

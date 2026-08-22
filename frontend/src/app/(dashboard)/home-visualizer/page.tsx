@@ -131,7 +131,7 @@ export default function HomeVisualizerPage() {
   const fmt = (n: number) => `$${n?.toLocaleString() ?? '—'}`
 
   return (
-    <div className="min-h-screen p-6 md:p-8" style={{ background: 'var(--color-surface-1)' }}>
+    <div className="min-h-screen p-6 md:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Header */}

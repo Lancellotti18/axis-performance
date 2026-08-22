@@ -441,9 +441,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Onboarding: brand everything from one profile */}
         {user?.id && <BusinessProfileBanner userId={user.id} />}
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
-          {children}
+        {/* Page content.
+            The blueprint grid lives here rather than being pasted into each
+            page: one definition, and the surfaces that paint their own opaque
+            ground — Dispatch, CRM, Inspections — simply cover it. Pages that
+            already inlined a copy still work; theirs sits on top of an
+            identical pattern. */}
+        <main className="relative flex-1 overflow-y-auto" style={{ background: 'var(--color-surface-1)' }}>
+          <div
+            aria-hidden
+            className="pointer-events-none fixed inset-0 opacity-[0.11]"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(0,127,255,1) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(0,127,255,1) 1.5px, transparent 1.5px)',
+              backgroundSize: '34px 34px',
+            }}
+          />
+          <div className="relative">{children}</div>
         </main>
         </div>
       </div>

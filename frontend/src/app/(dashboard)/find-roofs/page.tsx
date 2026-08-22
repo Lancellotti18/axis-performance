@@ -147,7 +147,7 @@ export default function FindRoofsPage() {
   }, [router])
 
   return (
-    <div className="min-h-full" style={{ background: 'var(--color-surface-1)' }}>
+    <div className="min-h-full">
       <div className="mx-auto max-w-5xl p-8">
         <div className="mb-5">
           <h1 className="text-2xl font-bold text-[#1a1a1a]">Find Roofs</h1>

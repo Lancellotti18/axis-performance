@@ -112,8 +112,7 @@ export default function ProjectsPage() {
   const newBtn = { background: '#007fff', boxShadow: '0 8px 24px rgba(59,130,246,0.4), inset 0 1px 0 rgba(255,255,255,0.2)' }
 
   return (
-    <div className="relative min-h-full" style={{ background: 'var(--color-surface-1)' }}>
-      <div className="pointer-events-none absolute inset-0 opacity-[0.11]" style={{ backgroundImage: 'linear-gradient(rgba(0,127,255,1) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(0,127,255,1) 1.5px, transparent 1.5px)', backgroundSize: '34px 34px' }} />
+    <div className="relative min-h-full">
       <div className="pointer-events-none absolute -top-32 -right-24 h-[420px] w-[420px] rounded-full opacity-[0.10] blur-3xl" style={{ background: 'radial-gradient(circle, #3b82f6, transparent 60%)' }} />
 
       <div className="relative p-8 max-w-7xl mx-auto">
