@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
+import { notifyProfileUpdated, onProfileUpdated } from '@/lib/profile-events'
 
 export default function BusinessProfileBanner({ userId }: { userId: string }) {
   const [needed, setNeeded] = useState(false)
@@ -20,10 +21,16 @@ export default function BusinessProfileBanner({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (!userId) return
-    api.contractorProfile.get(userId)
-      .then(p => { if (!p || !('company_name' in p) || !p.company_name) setNeeded(true) })
-      .catch(() => setNeeded(true))
+    const check = () => {
+      api.contractorProfile.get(userId)
+        .then(p => setNeeded(!p || !('company_name' in p) || !p.company_name))
+        .catch(() => setNeeded(true))
+    }
+    check()
     try { if (sessionStorage.getItem('axis_profile_banner_dismissed')) setDismissed(true) } catch { /* ignore */ }
+    // Fill the name in on the Settings page and this banner must stop asking —
+    // previously it only ever set `needed`, never cleared it.
+    return onProfileUpdated(check)
   }, [userId])
 
   const save = useCallback(async () => {
@@ -36,6 +43,7 @@ export default function BusinessProfileBanner({ userId }: { userId: string }) {
         license_number: form.license_number.trim(),
         email: form.email.trim(),
       })
+      notifyProfileUpdated()
       toast.success('Profile saved — your quote page, reports, proposals and portal are now branded.')
       setNeeded(false)
     } catch (e) {

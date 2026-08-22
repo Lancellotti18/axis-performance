@@ -17,6 +17,7 @@ import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
 import type { ContractorProfile } from '@/types'
+import { notifyProfileUpdated, onProfileUpdated } from '@/lib/profile-events'
 
 interface Props {
   runId: string
@@ -44,6 +45,7 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
     setLogoUploading(true)
     try {
       const res = await api.contractorProfile.uploadLogo(userId, file)
+      notifyProfileUpdated()
       setProfile(p => ({ ...p, logo_url: res.logo_url }))
       toast.success('Logo cleaned up and saved — it appears on your next report.')
     } catch (e) {
@@ -54,8 +56,13 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
   }, [userId])
 
   useEffect(() => {
+    const load = () => {
+      void api.contractorProfile.get(userId).then(p => setProfile(p || {})).catch(() => {})
+    }
     void api.roofing.v2.getCalibration().then(c => setCalibration(c as Calibration)).catch(() => {})
-    void api.contractorProfile.get(userId).then(p => setProfile(p || {})).catch(() => {})
+    load()
+    // Branding is edited in Settings too; pick that up without a remount.
+    return onProfileUpdated(load)
   }, [userId])
 
   const submit = useCallback(async () => {
@@ -79,6 +86,7 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
     setBrandSaving(true)
     try {
       await api.contractorProfile.save(userId, profile)
+      notifyProfileUpdated()
       toast.success('Branding saved — it appears on your next generated report.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save branding')

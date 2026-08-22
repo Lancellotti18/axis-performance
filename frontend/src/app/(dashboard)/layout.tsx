@@ -351,6 +351,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             </div>
           ))}
+
+          {/* Settings, pinned to the bottom of the nav. It used to be reachable
+              only by clicking the initials circle in the footer — no label, no
+              icon, nothing that reads as "settings", so nobody found it. It is
+              where company name, logo and the public quote page are set, which
+              makes it one of the most important destinations in the app. */}
+          <div className="mt-2 border-t pt-3" style={{ borderColor: 'rgba(96,165,250,0.14)' }}>
+            {(() => {
+              const active = pathname === '/settings' || pathname.startsWith('/settings')
+              return (
+                <Link
+                  href="/settings"
+                  title={collapsed ? 'Settings' : undefined}
+                  className={`relative flex items-center gap-3 rounded-xl text-sm font-semibold transition-all duration-200 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}
+                  style={active ? {
+                    background: 'linear-gradient(90deg, rgba(59,130,246,0.22) 0%, rgba(59,130,246,0.08) 100%)',
+                    boxShadow: '0 0 0 1px rgba(96,165,250,0.35), 0 0 16px rgba(59,130,246,0.22)',
+                  } : {}}
+                >
+                  <IconSettings active={active} />
+                  {!collapsed && <span className="truncate">Settings</span>}
+                </Link>
+              )
+            })()}
+          </div>
         </nav>
 
         {/* Footer — account + precision + sign out */}

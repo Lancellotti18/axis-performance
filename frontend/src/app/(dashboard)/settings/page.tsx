@@ -6,6 +6,7 @@ import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
 import type { ContractorProfile } from '@/types'
 import QuoteWidgetSettings from '@/components/settings/QuoteWidgetSettings'
+import { notifyProfileUpdated } from '@/lib/profile-events'
 
 // The business profile drives the branded PDF report and customer proposal —
 // company name + logo in the header, license/phone/email in the footer, and the
@@ -54,6 +55,7 @@ export default function SettingsPage() {
     setSaving(true)
     try {
       const saved = await api.contractorProfile.save(userId, profile)
+      notifyProfileUpdated()   // banner, report branding + any other tab
       setProfile(p => ({ ...p, ...saved }))
       toast.success('Saved — this is what your reports and proposals will use')
     } catch (e) {
@@ -69,6 +71,7 @@ export default function SettingsPage() {
     setUploadingLogo(true)
     try {
       const { logo_url } = await api.contractorProfile.uploadLogo(userId, file)
+      notifyProfileUpdated()
       setProfile(p => ({ ...p, logo_url }))
       toast.success('Logo updated')
     } catch (err) {
