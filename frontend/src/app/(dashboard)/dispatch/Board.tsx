@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { shiftISODate } from './lib/today'
-import { addShift, removeShift } from './lib/board'
+
 import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable,
   useSensor, useSensors, type DragEndEvent, type DragOverEvent, type DragStartEvent,
@@ -18,8 +18,8 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
-import type { BoardData, Crew, DayLoad, Job, LoadState, PreviewResult, AffectedSlice, AffectedMulti, LiveWx, Shift } from './lib/board'
-import { num, patchAppointment, previewMove, createAppointment, fetchLiveWeather } from './lib/board'
+import type { BoardData, Crew, DayLoad, Job, LoadState, PreviewResult, AffectedSlice, AffectedMulti, LiveWx, Shift, TrayRow } from './lib/board'
+import { num, patchAppointment, previewMove, createAppointment, fetchLiveWeather, fetchTray } from './lib/board'
 import DetailPanel from './DetailPanel'
 import { useSelection } from './lib/selection'
 import BulkBar from './BulkBar'
@@ -104,52 +104,42 @@ export default function Board({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [hoverCell, setHoverCell] = useState<string | null>(null)
   const [previewMap, setPreviewMap] = useState<Record<string, PreviewResult | 'loading'>>({})
-  // Per-day shift toggle.
+  // Put a job ON a crew's day, or take one off it.
   //
-  // This used to await the request and then await a full board invalidation
-  // before anything moved, so one click cost a round trip to a sleepy free-tier
-  // backend PLUS a refetch of every crew, job, appointment and weather row on
-  // screen. The cell is patched in the cache first now, so the button responds
-  // on the next frame; the request settles behind it and the cache is rolled
-  // back if the server refuses.
-  const [shiftBusy, setShiftBusy] = useState<Set<string>>(new Set())
-  const toggleShift = useCallback(async (crewId: string, day: string, on: boolean) => {
-    const key = `${crewId}:${day}`
-    if (shiftBusy.has(key)) return          // ignore a second click on the same cell
-    setShiftBusy(prev => new Set(prev).add(key))
+  // The first pass at this toggled the crew's SHIFT — whether they work that
+  // day at all — which is a PTO control wearing a plus sign, not a way to load
+  // work. Adding a job means taking one from the unassigned tray and giving it
+  // to this crew on this date; removing means sending it back to the tray.
+  const { data: tray } = useQuery({ queryKey: ['tray'], queryFn: fetchTray })
+  const [picker, setPicker] = useState<{ crewId: string; date: string } | null>(null)
+  const [assigning, setAssigning] = useState(false)
 
-    await qc.cancelQueries({ queryKey })
-    const previous = qc.getQueryData<BoardData>(queryKey)
+  const refreshBoard = useCallback(() => {
+    qc.invalidateQueries({ queryKey })
+    qc.invalidateQueries({ queryKey: ['tray'] })
+  }, [qc, queryKey])
 
-    qc.setQueryData<BoardData>(queryKey, (old) => {
-      if (!old) return old
-      if (on) {
-        return { ...old, shifts: old.shifts.filter(sh => !(sh.crew_id === crewId && sh.date === day)) }
-      }
-      // Match the hours the backend will pick: this crew's usual shift.
-      const sibling = old.shifts.find(sh => sh.crew_id === crewId)
-      const added: Shift = {
-        crew_id: crewId, date: day,
-        start_time: sibling?.start_time ?? '07:00',
-        end_time: sibling?.end_time ?? '15:30',
-        type: 'REGULAR',
-      }
-      return { ...old, shifts: [...old.shifts, added] }
-    })
-
+  const addJob = useCallback(async (jobId: string, crewId: string, date: string) => {
+    setAssigning(true)
     try {
-      if (on) await removeShift(crewId, day)
-      else await addShift(crewId, day)
-      // Capacity numbers are server-derived, so reconcile — but in the
-      // background. Awaiting it here is what made the button feel stuck.
-      qc.invalidateQueries({ queryKey })
+      await createAppointment(jobId, crewId, date)
+      setPicker(null)
+      refreshBoard()
     } catch (e) {
-      if (previous) qc.setQueryData(queryKey, previous)
-      toast.error(e instanceof Error ? e.message : 'Could not change that day')
+      toast.error(e instanceof Error ? e.message : 'Could not add that job')
     } finally {
-      setShiftBusy(prev => { const n = new Set(prev); n.delete(key); return n })
+      setAssigning(false)
     }
-  }, [qc, queryKey, shiftBusy])
+  }, [refreshBoard])
+
+  const removeJob = useCallback(async (appointmentId: string) => {
+    try {
+      await patchAppointment(appointmentId, { status: 'UNASSIGNED' })
+      refreshBoard()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not remove that job')
+    }
+  }, [refreshBoard])
   const [detailId, setDetailId] = useState<string | null>(null)
   const [view, setView] = useState<'week' | 'day' | 'map'>('week')
   const [auditOpen, setAuditOpen] = useState(false)
@@ -378,9 +368,19 @@ export default function Board({
                 </div>
                 <div className="p-2">
                   {crewWx(crew.id, d) && <CrewWeatherChip wx={crewWx(crew.id, d)!} />}
-                  <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined}
-                    busy={shiftBusy.has(`${crew.id}:${d}`)}
-                    onToggleShift={(e) => { e.stopPropagation(); toggleShift(crew.id, d, !!shift) }} />
+                  <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined} />
+                  <div className="relative mt-1.5">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPicker(p => (p && p.crewId === crew.id && p.date === d) ? null : { crewId: crew.id, date: d }) }}
+                      className="w-full rounded-md border border-dashed py-1 text-[11px] font-semibold hover:bg-[#e4e4e2]"
+                      style={{ borderColor: 'var(--line)', color: 'var(--sky)' }}
+                    >＋ Add job</button>
+                    {picker?.crewId === crew.id && picker.date === d && (
+                      <JobPicker rows={tray?.unassigned || []} busy={assigning}
+                        onPick={(jobId) => addJob(jobId, crew.id, d)}
+                        onClose={() => setPicker(null)} />
+                    )}
+                  </div>
                 </div>
                 <Cell id={cellId(crew.id, d)} rainy={rainy(d)} dragging={!!activeId} preview={previewMap[cellId(crew.id, d)]}>
                   <div className="space-y-1.5">
@@ -395,7 +395,8 @@ export default function Board({
                           <JobCardBody start={ap.scheduled_start} end={ap.scheduled_end} status={ap.status}
                             seq={ap.sequence} total={ap.total_in_series} job={job} custLast={cust?.last_name}
                             street={prop?.line1} city={prop?.city} tags={tagIds.map(t => idx.tags.get(t)).filter(Boolean) as BoardData['tags']}
-                            buColor={buColor(bu.color_token)} storm={rainy(d)} />
+                            buColor={buColor(bu.color_token)} storm={rainy(d)}
+                            onRemove={() => removeJob(ap.id)} />
                         </DraggableCard>
                       )
                     })}
@@ -463,9 +464,7 @@ export default function Board({
                     return (
                       <Cell key={d} id={cid} rainy={rainy(d)} dragging={!!activeId} preview={previewMap[cid]}>
                         {crewWx(crew.id, d) && <CrewWeatherChip wx={crewWx(crew.id, d)!} />}
-                        <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined}
-                    busy={shiftBusy.has(`${crew.id}:${d}`)}
-                    onToggleShift={(e) => { e.stopPropagation(); toggleShift(crew.id, d, !!shift) }} />
+                        <CapacityHeader load={load} hasShift={!!shift} shift={shift ? `${shift.start_time}–${shift.end_time}` : undefined} />
                         <div className="mt-1.5 space-y-1.5">
                           {appts.map(ap => {
                             const job = idx.jobs.get(ap.job_id); if (!job) return null
@@ -477,10 +476,24 @@ export default function Board({
                                 <JobCardBody start={ap.scheduled_start} end={ap.scheduled_end} status={ap.status}
                                   seq={ap.sequence} total={ap.total_in_series} job={job} custLast={cust?.last_name}
                                   street={prop?.line1} city={prop?.city} tags={tagIds.map(t => idx.tags.get(t)).filter(Boolean) as BoardData['tags']}
-                                  buColor={buColor(bu.color_token)} storm={rainy(d)} />
+                                  buColor={buColor(bu.color_token)} storm={rainy(d)}
+                                  onRemove={() => removeJob(ap.id)} />
                               </DraggableCard>
                             )
                           })}
+                          <div className="relative">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setPicker(pk => (pk && pk.crewId === crew.id && pk.date === d) ? null : { crewId: crew.id, date: d }) }}
+                              className="w-full rounded border border-dashed py-0.5 text-[10px] font-semibold opacity-70 hover:opacity-100"
+                              style={{ borderColor: 'var(--line)', color: 'var(--sky)' }}
+                              title="Add a job to this crew's day"
+                            >＋</button>
+                            {picker?.crewId === crew.id && picker.date === d && (
+                              <JobPicker rows={tray?.unassigned || []} busy={assigning}
+                                onPick={(jobId) => addJob(jobId, crew.id, d)}
+                                onClose={() => setPicker(null)} />
+                            )}
+                          </div>
                         </div>
                       </Cell>
                     )
@@ -612,26 +625,47 @@ function CrewRail({ crew, lead, members, buColor }: { crew: Crew; lead?: { first
   )
 }
 
-function ShiftToggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick: (e: React.MouseEvent) => void }) {
+/** Pick an unassigned job to put on this crew's day.
+ *  The tray is already the dispatcher's list of what is waiting to be
+ *  scheduled, so this is that same list — reachable from the cell instead of
+ *  only by dragging across the board. */
+function JobPicker({
+  rows, busy, onPick, onClose,
+}: {
+  rows: TrayRow[]; busy: boolean
+  onPick: (jobId: string) => void; onClose: () => void
+}) {
   return (
-    <button
-      onClick={onClick}
-      // Glyph comes from the optimistically-patched cache, so it flips on the next
-      // frame. `busy` only dims while the request settles — a spinner here would
-      // throw away the instant feedback that buys us.
-      title={on ? 'Remove this working day' : 'Add a working day'}
-      aria-label={on ? 'Remove this working day' : 'Add a working day'}
-      className="grid h-5 w-5 shrink-0 place-items-center rounded border text-[13px] font-bold leading-none transition-opacity hover:bg-[#eeeeed]"
-      style={{ borderColor: 'var(--line)', color: on ? 'var(--muted)' : 'var(--ok, #4ade80)', opacity: busy ? 0.55 : 1 }}
-    >{on ? '\u2212' : '+'}</button>
+    <div className="absolute left-1 right-1 top-full z-40 mt-1 max-h-64 overflow-y-auto rounded-lg border p-1 shadow-lg"
+      style={{ borderColor: 'var(--line)', background: 'var(--panel)' }}
+      onClick={e => e.stopPropagation()}>
+      <div className="flex items-center justify-between px-2 py-1">
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
+          Unassigned ({rows.length})
+        </span>
+        <button onClick={onClose} className="px-1 text-sm leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
+      </div>
+      {rows.length === 0 && (
+        <div className="px-2 py-3 text-center text-[11px]" style={{ color: 'var(--muted)' }}>
+          Nothing waiting — the tray is empty.
+        </div>
+      )}
+      {rows.map(r => (
+        <button key={r.job_id} disabled={busy} onClick={() => onPick(r.job_id)}
+          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-[#e4e4e2] disabled:opacity-50">
+          <span className="font-bold tabular-nums">#{r.job_number}</span>
+          <span className="min-w-0 flex-1 truncate">{r.customer || 'Job'}{r.city ? ` · ${r.city}` : ''}</span>
+          {r.squares != null && <span className="tabular-nums" style={{ color: 'var(--muted)' }}>{num(r.squares)} sq</span>}
+        </button>
+      ))}
+    </div>
   )
 }
 
-function CapacityHeader({ load, hasShift, shift, onToggleShift, busy }: { load?: DayLoad; hasShift: boolean; shift?: string; onToggleShift?: (e: React.MouseEvent) => void; busy?: boolean }) {
+function CapacityHeader({ load, hasShift, shift }: { load?: DayLoad; hasShift: boolean; shift?: string }) {
   if (!hasShift) return (
     <div className="flex items-center justify-between gap-1 rounded-md px-2 py-1.5 text-[11px]" style={{ background: 'var(--panel2)', color: 'var(--muted)' }}>
       <span>No shift</span>
-      {onToggleShift && <ShiftToggle on={false} busy={!!busy} onClick={onToggleShift} />}
     </div>
   )
   if (load && load.available_hours === 0) return <div className="rounded-md px-2 py-1.5 text-[11px]" style={{ background: 'rgba(245,86,108,0.08)', color: 'var(--muted)' }}>Blocked · PTO</div>
@@ -651,7 +685,6 @@ function CapacityHeader({ load, hasShift, shift, onToggleShift, busy }: { load?:
         <span>{load?.appointment_count ?? 0} job{(load?.appointment_count ?? 0) === 1 ? '' : 's'}</span>
         <span className="flex items-center gap-1">
           {shift && <span>{shift}</span>}
-          {onToggleShift && <ShiftToggle on busy={!!busy} onClick={onToggleShift} />}
         </span>
       </div>
     </div>
@@ -685,10 +718,12 @@ function CrewWeatherChip({ wx }: { wx: LiveWx }) {
 }
 
 function JobCardBody({
-  start, end, status, seq, total, job, custLast, street, city, tags, buColor, storm,
+  start, end, status, seq, total, job, custLast, street, city, tags, buColor, storm, onRemove,
 }: {
   start: string; end: string; status: string; seq: number; total: number; job: Job
   custLast?: string; street?: string; city?: string; tags: BoardData['tags']; buColor: string; storm: boolean
+  /** Send this job back to the unassigned tray. */
+  onRemove?: () => void
 }) {
   const sc = STATUS_COLOR[status] || 'var(--muted)'
   const sq = job.squares != null ? num(job.squares) : null
@@ -697,13 +732,25 @@ function JobCardBody({
   if (job.priority === 'URGENT') badges.push({ label: 'Urgent', color: 'var(--over)' })
   const visTags = tags.slice(0, 2); const extra = tags.length - visTags.length
   return (
-    <div className="relative overflow-hidden rounded-md py-1.5 pl-2 pr-2" style={{ background: `color-mix(in srgb, ${sc} 12%, var(--panel))` }}>
+    <div className="group relative overflow-hidden rounded-md py-1.5 pl-2 pr-2" style={{ background: `color-mix(in srgb, ${sc} 12%, var(--panel))` }}>
       <span className="absolute left-0 top-0 h-full w-[3px]" style={{ background: buColor }} />
       <div className="flex items-center justify-between text-[10px]" style={{ color: 'var(--muted)' }}>
         <span>{start.slice(11, 16)}–{end.slice(11, 16)}</span>
         <span className="flex items-center gap-1">
           {total > 1 && <span className="rounded bg-[#eeeeed] px-1 font-semibold" style={{ color: 'var(--text)' }}>{seq}/{total}</span>}
           <span className="h-2 w-2 rounded-full" style={{ background: sc }} title={status.toLowerCase()} />
+          {onRemove && (
+            // Per job, not per cell: a single minus on the cell would have to
+            // guess which job you meant to pull off.
+            <button
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); onRemove() }}
+              onPointerDown={(e) => e.stopPropagation()}
+              title="Remove from this crew — back to the unassigned tray"
+              aria-label="Remove job from this crew"
+              className="ml-0.5 rounded px-1 text-[12px] leading-none opacity-0 transition-opacity hover:bg-[#e4e4e2] group-hover:opacity-100 focus:opacity-100"
+              style={{ color: 'var(--over)' }}
+            >−</button>
+          )}
         </span>
       </div>
       <div className="mt-0.5 text-[13px] font-semibold leading-tight">
