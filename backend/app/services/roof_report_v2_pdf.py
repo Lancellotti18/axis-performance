@@ -1082,6 +1082,12 @@ def generate_v2_report(
     calibration: dict | None = None,    # accuracy flywheel: {jobs, mean_abs_pct_error}
     project_photos: list[dict] | None = None,  # crew gallery: [{phase, caption, url}]
     report_warnings: list[dict] | None = None,  # §4.4 non-blocking notices: [{code, message}]
+    # Flashing and siding are parked in the product while they are reworked.
+    # Passing False omits the SECTION entirely — starving it of data instead
+    # would still print its heading (and, for siding, a placeholder explaining
+    # the workflow), which is a worse artifact than the numbers were.
+    include_flashing: bool = True,
+    include_siding: bool = True,
 ) -> bytes:
     """Render the full report PDF and return bytes."""
     buf = io.BytesIO()
@@ -1109,7 +1115,8 @@ def generate_v2_report(
     story.append(PageBreak())
     story.extend(_section_3_roof_lines(aggregates, edges, styles))
     story.append(Spacer(1, 10))
-    story.extend(_section_4_flashing(aggregates, material_lines, styles, flashing))
+    if include_flashing:
+        story.extend(_section_4_flashing(aggregates, material_lines, styles, flashing))
     story.append(PageBreak())
     story.extend(_section_5_penetrations(penetrations, styles))
     story.append(Spacer(1, 10))
@@ -1117,7 +1124,8 @@ def generate_v2_report(
     story.append(Spacer(1, 10))
     story.extend(_section_6_materials(material_lines, default_waste, styles))
     story.append(PageBreak())
-    story.extend(_section_7_exterior(siding_measurements, styles))
+    if include_siding:
+        story.extend(_section_7_exterior(siding_measurements, styles))
     story.append(Spacer(1, 10))
     story.extend(_section_8_methodology(run, aggregates, styles, calibration))
     story.append(PageBreak())

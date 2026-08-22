@@ -3528,6 +3528,14 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
         state=proj.data.get("state"), county=proj.data.get("county"),
     )
 
+    # Flashing and siding are parked in the UI while they are being worked on
+    # (SHOW_FLASHING / SHOW_SIDING on the roof-v2 page). Their sections are
+    # derived server-side from labeled edges and stored measurements, so without
+    # this the report would keep publishing numbers the contractor no longer has
+    # any way to review. Flip both back on when the panels return.
+    REPORT_INCLUDES_FLASHING = False
+    REPORT_INCLUDES_SIDING = False
+
     siding_res = db.table("manual_siding_measurements").select("*").eq("project_id", run["project_id"]).execute()
 
     try:
@@ -3628,13 +3636,19 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
     report_warnings = [{"code": i.code, "message": i.message}
                        for i in issues if i.severity == "warn"]
 
+    if not REPORT_INCLUDES_FLASHING:
+        flashing_summary = None
+    siding_for_report = (siding_res.data or []) if REPORT_INCLUDES_SIDING else []
+
     pdf_bytes = await asyncio.to_thread(
         generate_v2_report,
         proj.data, run, aggregates, facets_res.data or [], edges,
-        pens_res.data or [], material_lines, siding_res.data or [], flashing_summary,
+        pens_res.data or [], material_lines, siding_for_report, flashing_summary,
         contractor, calibration,
         project_photos=project_photos,
         report_warnings=report_warnings,
+        include_flashing=REPORT_INCLUDES_FLASHING,
+        include_siding=REPORT_INCLUDES_SIDING,
     )
 
     slug = (proj.data.get("name") or "project").strip().lower()
