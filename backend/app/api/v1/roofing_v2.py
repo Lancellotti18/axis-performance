@@ -1569,7 +1569,7 @@ async def suggest_penetrations(
     require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
     run = db.table("roof_measurement_runs").select(
-        "satellite_image_url, satellite_lat, satellite_lng, satellite_zoom"
+        "satellite_image_url, satellite_lat, satellite_lng, satellite_zoom, subject_point"
     ).eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
@@ -1633,6 +1633,45 @@ before it enters the material order. Coordinates are image fractions 0..1 (top-l
     except Exception as e:
         vision_note = f"satellite scan error: {str(e)[:80]}"
 
+    # ── Keep only what is ON THIS ROOF ────────────────────────────────────
+    # Vision reads the whole tile, and a suburban tile is mostly other people's
+    # houses — which is how a scan came back with vents at 20%/94% and 72%/99%
+    # of the tile, i.e. hard against the bottom edge, nowhere near a subject
+    # house centred at roughly 50%/50%. Facet detection has had a
+    # centre-containment guard for exactly this reason; penetrations never did.
+    #
+    # The traced facets are the strongest possible filter: a roof penetration is
+    # by definition inside a roof plane. When the contractor has not traced yet
+    # we fall back to the saved house point, and failing that we leave the list
+    # alone rather than guess.
+    dropped_off_roof = 0
+    try:
+        f_rows = (db.table("roof_facets").select("polygon")
+                  .eq("run_id", run_id).execute().data or [])
+        polys = [f.get("polygon") or [] for f in f_rows]
+        polys = [p for p in polys if len(p) >= 3]
+
+        def _on_roof(sg: dict) -> bool:
+            x, y = sg.get("pos_x_frac"), sg.get("pos_y_frac")
+            if x is None or y is None:
+                return True          # ground-photo findings carry no position
+            pt = (float(x), float(y))
+            if polys:
+                return any(_point_in_poly(pt, poly) for poly in polys)
+            sp = (run.data or {}).get("subject_point") or {}
+            sx, sy = sp.get("x"), sp.get("y")
+            if sx is None or sy is None:
+                return True          # nothing to anchor on — do not filter blind
+            # Generous radius: the house point is one tap, not an outline.
+            return ((pt[0] - float(sx)) ** 2 + (pt[1] - float(sy)) ** 2) ** 0.5 <= 0.18
+
+        if polys or ((run.data or {}).get("subject_point")):
+            kept = [sg for sg in suggestions if _on_roof(sg)]
+            dropped_off_roof = len(suggestions) - len(kept)
+            suggestions = kept
+    except Exception as e:
+        logger.info("penetration on-roof filter skipped for %s: %s", run_id, e)
+
     # Merge the GROUND-PHOTO findings — a contractor's own eye-level photos are
     # a far more reliable source for chimneys/skylights than a top-down tile
     # where a vent is 2 pixels wide. Anything the photos saw that satellite
@@ -1668,6 +1707,8 @@ before it enters the material order. Coordinates are image fractions 0..1 (top-l
             f"({sum(1 for s in suggestions if s.get('source') == 'ground_photo')} from your ground photos, "
             f"{sum(1 for s in suggestions if s.get('source') != 'ground_photo')} from satellite). "
             "Confirm each one before it enters the material order."
+            + (f" Ignored {dropped_off_roof} that fell outside your traced roof "
+               "(neighbouring houses)." if dropped_off_roof else "")
         )
     else:
         message = (
@@ -1675,6 +1716,8 @@ before it enters the material order. Coordinates are image fractions 0..1 (top-l
             "resolution, so that's common. The reliable way: upload ground photos of any chimney/"
             "skylight (Ground-photo intelligence above) and suggestions will appear here; or add "
             "penetrations manually below."
+            + (f" Ignored {dropped_off_roof} detection(s) that landed off your traced roof."
+               if dropped_off_roof else "")
             + (f" ({vision_note}.)" if vision_note else "")
         )
     return {"suggestions": suggestions, "message": message}
