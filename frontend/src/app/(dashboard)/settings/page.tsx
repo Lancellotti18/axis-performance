@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
 import type { ContractorProfile } from '@/types'
+import QuoteWidgetSettings from '@/components/settings/QuoteWidgetSettings'
 
 // The business profile drives the branded PDF report and customer proposal —
 // company name + logo in the header, license/phone/email in the footer, and the
@@ -148,6 +149,11 @@ export default function SettingsPage() {
               {saving ? 'Saving…' : 'Save changes'}
             </button>
           </div>
+
+          {/* Public quote page — lives here now rather than inside the CRM's
+              RoofIQ card. It decides what a homeowner sees and what they are
+              quoted, which makes it settings, not a tool. */}
+          <QuoteWidgetSettings />
 
           {/* Plan */}
           <div className={card}>
