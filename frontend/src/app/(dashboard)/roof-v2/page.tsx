@@ -75,6 +75,13 @@ interface ImageryPayload {
   display_mode?: 'original' | 'sharpened'
 }
 
+// Deferred while they are worked on. Both are fully built and their backends,
+// data and report sections are untouched — this only takes them off the screen
+// so the measure flow is not carrying half-finished tools. Flip to true to
+// bring either back; nothing else needs changing.
+const SHOW_FLASHING = false
+const SHOW_SIDING = false
+
 type Step = 'project' | 'location' | 'imagery' | 'editor' | 'details' | 'siding' | 'report'
 
 // Friendly stepper labels (the Step values stay the same for all the logic).
@@ -83,7 +90,7 @@ const STEP_LABELS: Record<Step, string> = {
   location: 'Address',
   imagery: 'Locate roof',
   editor: 'Measure roof',
-  details: 'Details & flashing',
+  details: 'Details',
   // Everything that needs somebody standing at the property, gathered in one
   // optional stop rather than sprinkled through the desk workflow.
   siding: 'On-site extras',
@@ -568,7 +575,9 @@ export default function RoofV2Page() {
         // AFTER the report is reachable, because the whole promise of the product
         // is a finished report without going to the property — anything needing a
         // site visit is an add-on, never a step you have to pass through.
-        const order: Step[] = ['project', 'location', 'imagery', 'editor', 'details', 'report', 'siding']
+        const order: Step[] = SHOW_SIDING
+          ? ['project', 'location', 'imagery', 'editor', 'details', 'report', 'siding']
+          : ['project', 'location', 'imagery', 'editor', 'details', 'report']
         const currentIdx = order.indexOf(step)
         return (
           <nav className="sticky top-0 z-20 -mx-6 flex flex-wrap items-center gap-1.5 border-b border-white/10 bg-slate-950/85 px-6 py-2 text-xs backdrop-blur">
@@ -910,7 +919,7 @@ export default function RoofV2Page() {
               onClick={() => setStep('details')}
               disabled={facets.length === 0}
               className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
-            >Next: details &amp; flashing →</button>
+            >Next: details →</button>
             <button
               onClick={() => setStep('report')}
               disabled={facets.length === 0}
@@ -927,14 +936,15 @@ export default function RoofV2Page() {
       {step === 'details' && runId && (
         <section className="space-y-4">
           <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3 text-xs text-blue-200">
-            <strong>Details &amp; flashing</strong> — fine-tune pitch from ground photos, add chimneys/skylights,
-            and compute flashing. Optional but recommended; everything here lands in your report.
+            <strong>Details</strong> — fine-tune pitch from ground photos and add chimneys/skylights.
+            Optional but recommended; everything here lands in your report.
           </div>
 
           {/* Ground-photo intelligence used to sit here, in the middle of the
               desk workflow, which implied you needed to be at the house to
               finish — the opposite of the product's promise. It now lives in
               the optional on-site section with the siding tool. */}
+          {SHOW_SIDING && (
           <div className="rounded-lg border border-white/10 bg-slate-900/50 p-3 text-xs text-slate-300">
             <strong className="text-slate-100">Standing at the property?</strong>{' '}
             A few phone photos can read the real pitch, chimneys, skylights and materials — and you can
@@ -944,6 +954,7 @@ export default function RoofV2Page() {
               className="ml-2 underline hover:text-white"
             >Open on-site extras →</button>
           </div>
+          )}
 
           <CollapsibleSection
             title="Penetrations"
@@ -953,6 +964,7 @@ export default function RoofV2Page() {
           <PenetrationSuggestions runId={runId} imageUrl={imagery?.url} />
           </CollapsibleSection>
 
+          {SHOW_FLASHING && (
           <CollapsibleSection
             title="Flashing"
             subtitle="Roof-to-wall transitions + chimney/skylight flashing, computed from your labeled edges."
@@ -975,6 +987,7 @@ export default function RoofV2Page() {
           />
           <FlashingPanel runId={runId} />
           </CollapsibleSection>
+          )}
 
           <PreReportChecklist runId={runId} facets={facets} edges={edges} />
           <div className="flex flex-wrap gap-2">
