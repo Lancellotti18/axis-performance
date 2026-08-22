@@ -65,7 +65,7 @@ function CapacityCard({
   return (
     <div className="border-b px-4 py-3" style={{ borderColor: 'var(--line)', background: 'color-mix(in srgb, var(--dawn) 5%, var(--ink))' }}>
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>✦</span>
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#ffffff' }}>✦</span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--dawn)' }}>Crew capacity</span>
@@ -108,7 +108,7 @@ function FlywheelRow({ row, onInvalidate }: { row: ThroughputRow; onInvalidate: 
     <div className="flex items-center gap-3 text-[12px]">
       <span className="min-w-0 flex-1">{row.rationale}</span>
       {done ? <span className="shrink-0 text-[11px] font-semibold" style={{ color: 'var(--balanced)' }}>✓ updated</span> : (
-        <button onClick={apply} disabled={applying} className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-bold disabled:opacity-50" style={{ background: 'var(--balanced)', color: '#04121f' }}>
+        <button onClick={apply} disabled={applying} className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-bold disabled:opacity-50" style={{ background: 'var(--balanced)', color: '#ffffff' }}>
           {row.configured_sqpd} → {row.suggested_sqpd}
         </button>
       )}
@@ -177,7 +177,7 @@ function CommandBar({
           <span className="text-[15px]" style={{ color: 'var(--dawn)' }}>✦</span>
           <input autoFocus value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submit() }}
             placeholder="Tell the Copilot what to do…" className="flex-1 bg-transparent text-[14px] outline-none" style={{ color: 'var(--text)' }} />
-          <button onClick={submit} disabled={busy || !text.trim()} className="rounded-md px-3 py-1 text-[12px] font-bold disabled:opacity-40" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>{busy ? '…' : 'Plan'}</button>
+          <button onClick={submit} disabled={busy || !text.trim()} className="rounded-md px-3 py-1 text-[12px] font-bold disabled:opacity-40" style={{ background: 'var(--dawn)', color: '#ffffff' }}>{busy ? '…' : 'Plan'}</button>
         </div>
 
         <div className="max-h-[50vh] overflow-y-auto p-4">
@@ -221,7 +221,7 @@ function CommandBar({
               </div>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setPlan(null)} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ color: 'var(--muted)' }}>Back</button>
-                <button onClick={apply} disabled={applying || hasBlocks} className="rounded-md px-4 py-1.5 text-[12px] font-bold disabled:opacity-40" style={{ background: hasBlocks ? 'var(--panel2)' : 'var(--dawn)', color: hasBlocks ? 'var(--muted)' : '#1a0e05' }}>
+                <button onClick={apply} disabled={applying || hasBlocks} className="rounded-md px-4 py-1.5 text-[12px] font-bold disabled:opacity-40" style={{ background: hasBlocks ? 'var(--panel2)' : 'var(--dawn)', color: hasBlocks ? 'var(--muted)' : '#ffffff' }}>
                   {hasBlocks ? 'Resolve conflicts' : 'Approve & apply'}
                 </button>
               </div>

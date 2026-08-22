@@ -76,7 +76,7 @@ export default function BulkBar({
       <div className="fixed inset-x-0 bottom-14 z-40 flex justify-center px-4">
         <div className="flex max-w-full items-center gap-2 overflow-x-auto rounded-full border px-3 py-2 shadow-2xl"
           style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}>
-          <span className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-bold" style={{ background: 'var(--sky)', color: '#04121f' }}>{n} selected</span>
+          <span className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-bold" style={{ background: 'var(--sky)', color: '#ffffff' }}>{n} selected</span>
 
           <select disabled={busy} defaultValue="" onChange={e => { if (e.target.value) { preview('REASSIGN', { crew_id: e.target.value }); e.target.value = '' } }}
             className="shrink-0 rounded-md border px-2 py-1 text-[12px]" style={{ background: 'var(--panel2)', borderColor: 'var(--line)', color: 'var(--text)' }}>
@@ -164,7 +164,7 @@ function SummaryModal({
           <button onClick={onCancel} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ color: 'var(--muted)' }}>Cancel</button>
           <button onClick={onApply} disabled={busy || hasBlocks}
             className="rounded-md px-4 py-1.5 text-[12px] font-bold disabled:opacity-40"
-            style={{ background: hasBlocks ? 'var(--panel2)' : 'var(--dawn)', color: hasBlocks ? 'var(--muted)' : '#1a0e05' }}>
+            style={{ background: hasBlocks ? 'var(--panel2)' : 'var(--dawn)', color: hasBlocks ? 'var(--muted)' : '#ffffff' }}>
             {hasBlocks ? 'Resolve conflicts' : `Apply to ${changes.length}`}
           </button>
         </div>

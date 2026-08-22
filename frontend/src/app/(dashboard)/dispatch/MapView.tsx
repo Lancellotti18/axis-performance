@@ -102,7 +102,7 @@ export default function MapView({ data, focusDate, onDetail }: { data: BoardData
         const color = crewColor[s.crewId] || '#888'
         const icon = L.divIcon({
           className: '',
-          html: `<div style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:${color};color:#04121f;font-weight:700;font-size:12px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45)">${s.order}</div>`,
+          html: `<div style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:${color};color:#ffffff;font-weight:700;font-size:12px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45)">${s.order}</div>`,
           iconSize: [26, 26], iconAnchor: [13, 13],
         })
         const m = L.marker([s.lat, s.lng], { icon }).addTo(group)
@@ -123,7 +123,7 @@ export default function MapView({ data, focusDate, onDetail }: { data: BoardData
         <div className="absolute right-2 top-2 z-[1000] flex overflow-hidden rounded-md border shadow" style={{ borderColor: 'var(--line)' }}>
           {(['streets', 'satellite'] as const).map(b => (
             <button key={b} onClick={() => setBase(b)} className="px-2.5 py-1 text-[11px] font-semibold capitalize"
-              style={{ background: base === b ? 'var(--sky)' : 'var(--panel)', color: base === b ? '#04121f' : 'var(--text)' }}>{b}</button>
+              style={{ background: base === b ? 'var(--sky)' : 'var(--panel)', color: base === b ? '#ffffff' : 'var(--text)' }}>{b}</button>
           ))}
         </div>
         {stops.length === 0 && (

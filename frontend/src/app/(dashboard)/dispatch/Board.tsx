@@ -341,7 +341,7 @@ export default function Board({
           {(['week', 'day', 'map'] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
               className="px-3 py-1 text-[12px] font-semibold capitalize transition-colors"
-              style={{ background: view === v ? 'var(--sky)' : 'transparent', color: view === v ? '#04121f' : 'var(--text)' }}>{v}</button>
+              style={{ background: view === v ? 'var(--sky)' : 'transparent', color: view === v ? '#ffffff' : 'var(--text)' }}>{v}</button>
           ))}
         </div>
         {view !== 'week' && (
@@ -350,7 +350,7 @@ export default function Board({
           <div className="flex items-center gap-1">
             <button onClick={() => onFocusDate(shiftISODate(focusDate, -1))}
               className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]" aria-label="Previous day" title="Previous day (←)">←</button>
-            <span className="min-w-[132px] text-center text-[13px] font-semibold">{format(parseISO(focusDate), 'EEE, MMM d')}{focusDate === today && <span className="ml-1.5 rounded px-1 text-[9px] font-bold uppercase" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>Today</span>}</span>
+            <span className="min-w-[132px] text-center text-[13px] font-semibold">{format(parseISO(focusDate), 'EEE, MMM d')}{focusDate === today && <span className="ml-1.5 rounded px-1 text-[9px] font-bold uppercase" style={{ background: 'var(--dawn)', color: '#ffffff' }}>Today</span>}</span>
             <button onClick={() => onFocusDate(shiftISODate(focusDate, 1))}
               className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]" aria-label="Next day" title="Next day (→)">→</button>
           </div>
@@ -430,7 +430,7 @@ export default function Board({
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-[11px] uppercase tracking-wide" style={{ color: isToday ? 'var(--dawn)' : 'var(--muted)' }}>{format(dt, 'EEE')}</span>
                     <span className="text-[15px] font-bold" style={{ color: isToday ? 'var(--dawn)' : 'var(--text)' }}>{format(dt, 'd')}</span>
-                    {isToday && <span className="rounded px-1 text-[9px] font-bold uppercase" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>Today</span>}
+                    {isToday && <span className="rounded px-1 text-[9px] font-bold uppercase" style={{ background: 'var(--dawn)', color: '#ffffff' }}>Today</span>}
                   </div>
                   {pp != null && <WeatherChip pp={pp} hi={hi} storm={storm} />}
                 </div>
@@ -499,7 +499,7 @@ export default function Board({
             <div className="rounded-md px-2 py-1.5 shadow-2xl ring-1 ring-[#dededc]" style={{ background: 'var(--panel)' }}>
               <div className="text-[13px] font-semibold">{dragLabel ?? 'New job'}</div>
             </div>
-            <div className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold shadow-lg" style={{ background: 'var(--sky)', color: '#04121f' }}>drop to schedule</div>
+            <div className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold shadow-lg" style={{ background: 'var(--sky)', color: '#ffffff' }}>drop to schedule</div>
           </div>
         ) : activeJob && activeAppt ? (
           <div className="w-[200px] rotate-1">
@@ -508,7 +508,7 @@ export default function Board({
             </div>
             {hoverPv && hoverPv !== 'loading' && (
               <div className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold shadow-lg"
-                style={{ background: hoverPv.blocked ? 'var(--over)' : hoverPv.conflicts.length ? 'var(--tight)' : 'var(--balanced)', color: '#04121f' }}>
+                style={{ background: hoverPv.blocked ? 'var(--over)' : hoverPv.conflicts.length ? 'var(--tight)' : 'var(--balanced)', color: '#ffffff' }}>
                 {hoverPv.blocked ? '⃠ blocked' : `→ ${hoverPv.resulting_planned_squares}/${hoverPv.capacity_squares} sq · ${STATE_META[hoverPv.resulting_state].label}`}
               </div>
             )}
@@ -589,7 +589,7 @@ function DraggableCard({
         onClick={e => { e.stopPropagation(); onToggle(e.shiftKey) }}
         title="Select"
         className={`absolute left-1 top-1 z-10 flex h-4 w-4 items-center justify-center rounded-[3px] border text-[9px] font-bold leading-none transition-opacity ${selected || selectionActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-        style={{ borderColor: selected ? 'var(--sky)' : 'var(--line)', background: selected ? 'var(--sky)' : 'var(--panel)', color: selected ? '#04121f' : 'transparent' }}>
+        style={{ borderColor: selected ? 'var(--sky)' : 'var(--line)', background: selected ? 'var(--sky)' : 'var(--panel)', color: selected ? '#ffffff' : 'transparent' }}>
         ✓
       </button>
     </div>

@@ -45,7 +45,7 @@ export default function JobsTray() {
       <button onClick={() => setOpen(o => !o)} className="flex h-[38px] shrink-0 items-center gap-3 px-4 text-left">
         <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Jobs tray</span>
         {attention > 0 && (
-          <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>
+          <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--dawn)', color: '#ffffff' }}>
             {attention} need{attention === 1 ? 's' : ''} scheduling
           </span>
         )}

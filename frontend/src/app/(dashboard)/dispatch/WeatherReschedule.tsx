@@ -79,7 +79,7 @@ export default function WeatherReschedule({
               : `— ${data.resolvable} movable, ${data.at_risk_count - data.resolvable} need a manual call`}
           </span>
         </span>
-        <span className="ml-auto rounded-full px-3 py-1 text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>Review & reschedule</span>
+        <span className="ml-auto rounded-full px-3 py-1 text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#ffffff' }}>Review & reschedule</span>
       </button>
 
       {open && (
@@ -107,7 +107,7 @@ export default function WeatherReschedule({
                 <button onClick={() => setOpen(false)} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ color: 'var(--muted)' }}>Cancel</button>
                 <button onClick={apply} disabled={busy || chosen.length === 0}
                   className="rounded-md px-4 py-1.5 text-[12px] font-bold disabled:opacity-40"
-                  style={{ background: 'var(--dawn)', color: '#1a0e05' }}>
+                  style={{ background: 'var(--dawn)', color: '#ffffff' }}>
                   Reschedule {chosen.length} job{chosen.length === 1 ? '' : 's'}
                 </button>
               </div>
@@ -126,7 +126,7 @@ function PlanRow({ s, crewName, skipped, onToggle }: { s: RescheduleSuggestion; 
       {s.ok ? (
         <button onClick={onToggle} title={skipped ? 'Include' : 'Skip'}
           className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] border text-[9px] font-bold leading-none"
-          style={{ borderColor: skipped ? 'var(--line)' : 'var(--dawn)', background: skipped ? 'transparent' : 'var(--dawn)', color: skipped ? 'transparent' : '#1a0e05' }}>✓</button>
+          style={{ borderColor: skipped ? 'var(--line)' : 'var(--dawn)', background: skipped ? 'transparent' : 'var(--dawn)', color: skipped ? 'transparent' : '#ffffff' }}>✓</button>
       ) : <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[11px]" style={{ color: 'var(--over)' }}>⃠</span>}
 
       <div className="min-w-0 flex-1">

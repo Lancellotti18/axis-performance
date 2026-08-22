@@ -156,7 +156,7 @@ export default function DetailPanel({
                   style={{
                     borderColor: 'var(--line)',
                     background: appt.status === s ? 'var(--sky)' : 'transparent',
-                    color: appt.status === s ? '#04121f' : 'var(--text)',
+                    color: appt.status === s ? '#ffffff' : 'var(--text)',
                   }}>{s.toLowerCase()}</button>
               ))}
             </div>
@@ -293,7 +293,7 @@ function JobProjectSection({ jobId }: { jobId: string }) {
 
         <div className="flex flex-wrap gap-1.5 pt-0.5">
           <a href={`/projects/${p.id}`} target="_blank" rel="noreferrer"
-            className="rounded-md px-2.5 py-1 text-[11px] font-bold" style={{ background: 'var(--sky)', color: '#04121f' }}>Open project ↗</a>
+            className="rounded-md px-2.5 py-1 text-[11px] font-bold" style={{ background: 'var(--sky)', color: '#ffffff' }}>Open project ↗</a>
           {data.share_token && (
             <a href={`/crew/${data.share_token}`} target="_blank" rel="noreferrer"
               className="rounded-md border px-2.5 py-1 text-[11px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>Crew photos ↗</a>

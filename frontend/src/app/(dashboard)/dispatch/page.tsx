@@ -88,19 +88,24 @@ function BoardScreen() {
     enabled: !!weekStart && !!weekEnd,
   })
 
+  // The board keeps its own token set — it is a dense, numbers-first surface
+  // and wants tighter control than the app shell. These are the light-theme
+  // values; the capacity ramp still has to read at a glance across a whole
+  // week, so idle → overbooked stays a real progression rather than five
+  // tints of the same blue.
   const rootStyle = useMemo(() => ({
-    ['--ink' as string]: '#0b0f14',
-    ['--panel' as string]: '#141b24',
-    ['--panel2' as string]: '#0f151d',
-    ['--line' as string]: 'rgba(255,255,255,0.07)',
-    ['--text' as string]: '#e7edf5',
-    ['--muted' as string]: '#8b98a9',
-    ['--dawn' as string]: '#ff8a3d',
-    ['--sky' as string]: '#5aa9ff',
-    ['--idle' as string]: '#6b7687',
-    ['--balanced' as string]: '#37c98b',
-    ['--tight' as string]: '#f2b32e',
-    ['--over' as string]: '#f5566c',
+    ['--ink' as string]: '#eeeeed',      // board ground
+    ['--panel' as string]: '#f8f8f7',    // crew rows, cards
+    ['--panel2' as string]: '#e8e8e6',   // headers, wells
+    ['--line' as string]: '#dededc',
+    ['--text' as string]: '#1a1a1a',
+    ['--muted' as string]: '#6b7280',
+    ['--dawn' as string]: '#c2560c',     // the board's own accent, darkened to hold on light
+    ['--sky' as string]: '#0068d6',      // Azure, darkened so white labels clear AA
+    ['--idle' as string]: '#9ca3af',
+    ['--balanced' as string]: '#0b7a4f',
+    ['--tight' as string]: '#b45309',
+    ['--over' as string]: '#dc2626',
   }) as React.CSSProperties, [])
 
   const onToday = !!today && focusDate === today

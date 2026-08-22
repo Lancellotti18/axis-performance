@@ -40,7 +40,7 @@ export default function CrewManager({ data, onClose }: { data: BoardData; onClos
             <div className="text-[12px]" style={{ color: 'var(--muted)' }}>{data.crews.length} crew{data.crews.length === 1 ? '' : 's'} · capacity, limits, and time off</div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => { setAddOpen(o => !o); setEditingId(null) }} className="rounded-md px-3 py-1.5 text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>{addOpen ? 'Cancel' : '＋ Add crew'}</button>
+            <button onClick={() => { setAddOpen(o => !o); setEditingId(null) }} className="rounded-md px-3 py-1.5 text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#ffffff' }}>{addOpen ? 'Cancel' : '＋ Add crew'}</button>
             <button onClick={onClose} className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]">✕</button>
           </div>
         </div>
@@ -143,7 +143,7 @@ function CrewForm({ data, initial, isNew, onSubmit, onCancel }: {
           <div className="mb-1.5 text-[11px] font-semibold" style={{ color: 'var(--muted)' }}>Working days (shifts generated for {f.shift_weeks} weeks)</div>
           <div className="flex flex-wrap gap-1">
             {WEEKDAYS.map(([lbl, d]) => (
-              <button key={d} onClick={() => toggleDay(d)} className="rounded-md border px-2 py-1 text-[11px] font-semibold" style={{ borderColor: (f.shift_weekdays || []).includes(d) ? 'var(--sky)' : 'var(--line)', background: (f.shift_weekdays || []).includes(d) ? 'var(--sky)' : 'transparent', color: (f.shift_weekdays || []).includes(d) ? '#04121f' : 'var(--text)' }}>{lbl}</button>
+              <button key={d} onClick={() => toggleDay(d)} className="rounded-md border px-2 py-1 text-[11px] font-semibold" style={{ borderColor: (f.shift_weekdays || []).includes(d) ? 'var(--sky)' : 'var(--line)', background: (f.shift_weekdays || []).includes(d) ? 'var(--sky)' : 'transparent', color: (f.shift_weekdays || []).includes(d) ? '#ffffff' : 'var(--text)' }}>{lbl}</button>
             ))}
             <div className="ml-auto flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
               <input type="time" className="rounded border px-1 py-0.5" style={inputStyle} value={f.shift_start} onChange={e => set('shift_start', e.target.value)} />
@@ -156,7 +156,7 @@ function CrewForm({ data, initial, isNew, onSubmit, onCancel }: {
 
       <div className="mt-3 flex justify-end gap-2">
         <button onClick={onCancel} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ color: 'var(--muted)' }}>Cancel</button>
-        <button onClick={submit} disabled={busy} className="rounded-md px-4 py-1.5 text-[12px] font-bold disabled:opacity-50" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>{isNew ? 'Add crew' : 'Save'}</button>
+        <button onClick={submit} disabled={busy} className="rounded-md px-4 py-1.5 text-[12px] font-bold disabled:opacity-50" style={{ background: 'var(--dawn)', color: '#ffffff' }}>{isNew ? 'Add crew' : 'Save'}</button>
       </div>
     </div>
   )
@@ -202,7 +202,7 @@ function TimeOffPanel({ crew, onChanged }: { crew: Crew; onChanged: () => void }
         <input type="date" value={start} onChange={e => setStart(e.target.value)} className="rounded border px-1.5 py-1 text-[11px]" style={inputStyle} />
         <span style={{ color: 'var(--muted)' }}>→</span>
         <input type="date" value={end} onChange={e => setEnd(e.target.value)} className="rounded border px-1.5 py-1 text-[11px]" style={inputStyle} />
-        <button onClick={add} disabled={busy} className="rounded-md px-2.5 py-1 text-[11px] font-bold disabled:opacity-50" style={{ background: 'var(--sky)', color: '#04121f' }}>Add</button>
+        <button onClick={add} disabled={busy} className="rounded-md px-2.5 py-1 text-[11px] font-bold disabled:opacity-50" style={{ background: 'var(--sky)', color: '#ffffff' }}>Add</button>
       </div>
     </div>
   )
