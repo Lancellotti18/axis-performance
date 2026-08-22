@@ -73,11 +73,11 @@ export default function AdjusterModePanel({ runId }: { runId: string }) {
   }, [lines, runId])
 
   return (
-    <section className="rounded-xl border border-white/10 bg-slate-900/50 p-4">
+    <section className="rounded-xl border border-[#dededc] bg-[#f8f8f7] p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-slate-100">Adjuster Mode</h3>
-          <p className="text-xs text-slate-400">
+          <h3 className="text-lg font-semibold text-[#1a1a1a]">Adjuster Mode</h3>
+          <p className="text-xs text-[#6b7280]">
             Xactimate line codes + quantities from the confirmed geometry, with an RCV/ACV claim summary.
           </p>
         </div>
@@ -86,22 +86,22 @@ export default function AdjusterModePanel({ runId }: { runId: string }) {
       {/* Inputs */}
       <div className="mb-3 grid grid-cols-3 gap-3 text-xs">
         <label className="flex flex-col gap-1">
-          <span className="text-slate-400">Waste %</span>
+          <span className="text-[#6b7280]">Waste %</span>
           <input type="number" min={0} max={50} value={wastePct}
             onChange={e => setWastePct(Number(e.target.value))}
-            className="rounded bg-slate-800 px-2 py-1 text-slate-100" />
+            className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]" />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-slate-400">Depreciation % <span className="text-slate-600">(adjuster)</span></span>
+          <span className="text-[#6b7280]">Depreciation % <span className="text-[#9ca3af]">(adjuster)</span></span>
           <input type="number" min={0} max={100} value={depreciationPct} placeholder="e.g. 20"
             onChange={e => setDepreciationPct(e.target.value)}
-            className="rounded bg-slate-800 px-2 py-1 text-slate-100" />
+            className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]" />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-slate-400">Deductible $</span>
+          <span className="text-[#6b7280]">Deductible $</span>
           <input type="number" min={0} value={deductible} placeholder="e.g. 1000"
             onChange={e => setDeductible(e.target.value)}
-            className="rounded bg-slate-800 px-2 py-1 text-slate-100" />
+            className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]" />
         </label>
       </div>
 
@@ -112,7 +112,7 @@ export default function AdjusterModePanel({ runId }: { runId: string }) {
         </button>
         {open && lines.length > 0 && (
           <button onClick={exportCsv}
-            className="rounded border border-white/15 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">
+            className="rounded border border-[#dededc] px-3 py-1.5 text-sm text-[#1a1a1a] hover:bg-[#eeeeed]">
             Export CSV
           </button>
         )}
@@ -130,9 +130,9 @@ export default function AdjusterModePanel({ runId }: { runId: string }) {
               ['ACV', money(summary.acv)],
               ['Net claim', money(summary.net_claim)],
             ].map(([label, val]) => (
-              <div key={label} className="rounded-lg border border-white/10 bg-slate-950/40 p-3">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
-                <div className="text-lg font-semibold text-slate-100 tabular-nums">{val}</div>
+              <div key={label} className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-3">
+                <div className="text-[11px] uppercase tracking-wide text-[#6b7280]">{label}</div>
+                <div className="text-lg font-semibold text-[#1a1a1a] tabular-nums">{val}</div>
               </div>
             ))}
           </div>
@@ -144,9 +144,9 @@ export default function AdjusterModePanel({ runId }: { runId: string }) {
           )}
 
           {/* Line items */}
-          <div className="overflow-x-auto rounded-lg border border-white/10">
+          <div className="overflow-x-auto rounded-lg border border-[#dededc]">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-800/60 text-slate-400">
+              <thead className="bg-[#eeeeed] text-[#6b7280]">
                 <tr>
                   <th className="px-3 py-2">Code</th>
                   <th className="px-3 py-2">Description</th>
@@ -156,14 +156,14 @@ export default function AdjusterModePanel({ runId }: { runId: string }) {
                   <th className="px-3 py-2 text-right">RCV</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5 text-slate-200">
+              <tbody className="divide-y divide-white/5 text-[#1a1a1a]">
                 {lines.map((l, i) => (
                   <tr key={i} title={l.trace}>
                     <td className="px-3 py-2 font-mono text-sky-300">{l.code}</td>
                     <td className="px-3 py-2">{l.description}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{l.quantity.toFixed(2)}</td>
-                    <td className="px-3 py-2 text-slate-400">{l.unit}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-400">
+                    <td className="px-3 py-2 text-[#6b7280]">{l.unit}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-[#6b7280]">
                       {l.unit_price == null ? '—' : money(l.unit_price)}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{l.rcv == null ? '—' : money(l.rcv)}</td>
@@ -173,7 +173,7 @@ export default function AdjusterModePanel({ runId }: { runId: string }) {
             </table>
           </div>
 
-          <p className="text-[11px] leading-relaxed text-slate-500">
+          <p className="text-[11px] leading-relaxed text-[#6b7280]">
             Quantities are measured from the confirmed roof geometry. Line codes follow the standard
             RFG category — verify against your active Xactimate price list. Unit pricing, depreciation,
             and deductible are provided by the adjuster.

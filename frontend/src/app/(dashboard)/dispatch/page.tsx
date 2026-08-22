@@ -114,18 +114,18 @@ function BoardScreen() {
           <p className="text-[11px]" style={{ color: 'var(--muted)' }}>Production scheduling — squares, not slots.</p>
         </div>
         <div className="ml-2 flex items-center gap-0.5">
-          <button onClick={() => nudge(-7)} disabled={!focusDate} className="rounded-md px-1.5 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Back one week" title="Back a week (⇧←)">«</button>
-          <button onClick={() => nudge(-1)} disabled={!focusDate} className="rounded-md px-2 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Back one day" title="Back a day (←)">‹</button>
+          <button onClick={() => nudge(-7)} disabled={!focusDate} className="rounded-md px-1.5 py-1 text-sm hover:bg-[#eeeeed] disabled:opacity-30" aria-label="Back one week" title="Back a week (⇧←)">«</button>
+          <button onClick={() => nudge(-1)} disabled={!focusDate} className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed] disabled:opacity-30" aria-label="Back one day" title="Back a day (←)">‹</button>
           <button onClick={goToday} disabled={!today || onToday}
-            className="rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors hover:bg-white/5 disabled:opacity-40"
+            className="rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors hover:bg-[#eeeeed] disabled:opacity-40"
             style={{ borderColor: 'var(--line)' }} title="Jump to today (T)">Today</button>
-          <button onClick={() => nudge(1)} disabled={!focusDate} className="rounded-md px-2 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Forward one day" title="Forward a day (→)">›</button>
-          <button onClick={() => nudge(7)} disabled={!focusDate} className="rounded-md px-1.5 py-1 text-sm hover:bg-white/5 disabled:opacity-30" aria-label="Forward one week" title="Forward a week (⇧→)">»</button>
+          <button onClick={() => nudge(1)} disabled={!focusDate} className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed] disabled:opacity-30" aria-label="Forward one day" title="Forward a day (→)">›</button>
+          <button onClick={() => nudge(7)} disabled={!focusDate} className="rounded-md px-1.5 py-1 text-sm hover:bg-[#eeeeed] disabled:opacity-30" aria-label="Forward one week" title="Forward a week (⇧→)">»</button>
         </div>
         <DateJump value={focusDate} onChange={setFocusDate} weekStart={weekStart} weekEnd={weekEnd} />
         <div className="ml-auto flex items-center gap-2 text-[11px]" style={{ color: 'var(--muted)' }}>
           {isFetching && <span>updating…</span>}
-          <button onClick={() => refetch()} className="rounded-md border px-2.5 py-1 font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Refresh</button>
+          <button onClick={() => refetch()} className="rounded-md border px-2.5 py-1 font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>Refresh</button>
         </div>
       </div>
 
@@ -160,10 +160,10 @@ function DateJump({
 }: {
   value: string | null; onChange: (d: string) => void; weekStart: string | null; weekEnd: string | null
 }) {
-  if (!value || !weekStart || !weekEnd) return <div className="h-[26px] w-44 animate-pulse rounded-md bg-white/5" />
+  if (!value || !weekStart || !weekEnd) return <div className="h-[26px] w-44 animate-pulse rounded-md bg-[#eeeeed]" />
   const label = `${format(fromISODate(weekStart), 'MMM d')} – ${format(fromISODate(weekEnd), 'MMM d, yyyy')}`
   return (
-    <label className="relative cursor-pointer rounded-md px-2 py-1 text-sm font-semibold transition-colors hover:bg-white/5"
+    <label className="relative cursor-pointer rounded-md px-2 py-1 text-sm font-semibold transition-colors hover:bg-[#eeeeed]"
       title="Jump to a date">
       {label}
       <span className="ml-1.5 text-[10px]" style={{ color: 'var(--muted)' }}>▾</span>
@@ -183,9 +183,9 @@ function BoardSkeleton() {
     <div className="space-y-3 p-4">
       {[0, 1, 2].map(i => (
         <div key={i} className="rounded-xl border p-3" style={{ borderColor: 'var(--line)', background: 'var(--panel)' }}>
-          <div className="mb-2 h-4 w-40 animate-pulse rounded bg-white/10" />
+          <div className="mb-2 h-4 w-40 animate-pulse rounded bg-[#eeeeed]" />
           <div className="grid grid-cols-7 gap-2">
-            {Array.from({ length: 7 }).map((_, j) => <div key={j} className="h-24 animate-pulse rounded-lg bg-white/5" />)}
+            {Array.from({ length: 7 }).map((_, j) => <div key={j} className="h-24 animate-pulse rounded-lg bg-[#eeeeed]" />)}
           </div>
         </div>
       ))}

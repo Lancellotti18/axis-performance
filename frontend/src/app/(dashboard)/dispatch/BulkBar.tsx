@@ -84,8 +84,8 @@ export default function BulkBar({
             {crews.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
-          <button disabled={busy} onClick={() => preview('SHIFT_DAYS', { days: 1 })} className="shrink-0 rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>+1 day</button>
-          <button disabled={busy} onClick={() => preview('SHIFT_DAYS', { days: -1 })} className="shrink-0 rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>−1 day</button>
+          <button disabled={busy} onClick={() => preview('SHIFT_DAYS', { days: 1 })} className="shrink-0 rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>+1 day</button>
+          <button disabled={busy} onClick={() => preview('SHIFT_DAYS', { days: -1 })} className="shrink-0 rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>−1 day</button>
 
           <input type="date" disabled={busy} onChange={e => { if (e.target.value) preview('MOVE_TO_DATE', { date: e.target.value }) }}
             className="shrink-0 rounded-md border px-2 py-1 text-[12px]" style={{ background: 'var(--panel2)', borderColor: 'var(--line)', color: 'var(--text)' }} title="Move all to a date" />
@@ -104,7 +104,7 @@ export default function BulkBar({
             </select>
           )}
 
-          <button disabled={busy} onClick={() => preview('UNASSIGN', {})} className="shrink-0 rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Send to tray</button>
+          <button disabled={busy} onClick={() => preview('UNASSIGN', {})} className="shrink-0 rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>Send to tray</button>
           <button onClick={onClear} className="shrink-0 rounded-md px-2 py-1 text-[12px]" style={{ color: 'var(--muted)' }}>Clear</button>
         </div>
       </div>
@@ -161,7 +161,7 @@ function SummaryModal({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t px-5 py-3" style={{ borderColor: 'var(--line)' }}>
-          <button onClick={onCancel} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-white/5" style={{ color: 'var(--muted)' }}>Cancel</button>
+          <button onClick={onCancel} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ color: 'var(--muted)' }}>Cancel</button>
           <button onClick={onApply} disabled={busy || hasBlocks}
             className="rounded-md px-4 py-1.5 text-[12px] font-bold disabled:opacity-40"
             style={{ background: hasBlocks ? 'var(--panel2)' : 'var(--dawn)', color: hasBlocks ? 'var(--muted)' : '#1a0e05' }}>

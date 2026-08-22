@@ -178,11 +178,11 @@ export default function ExteriorPage() {
   // ----- Render -----
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-5 p-6 text-slate-100">
+    <div className="mx-auto max-w-[1400px] space-y-5 p-6 text-[#1a1a1a]">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Exterior Measurement Module</h1>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-[#6b7280]">
             Phase 1 — manual measurement workflow. Upload photos, classify by elevation,
             trace walls/openings/corners with scale anchors. Every number is contractor-entered
             (no AI hallucination ends up in your material orders).
@@ -218,21 +218,21 @@ export default function ExteriorPage() {
 
       {/* Project picker */}
       {!projectId && (
-        <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
+        <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
           <h2 className="mb-3 text-sm font-semibold">Pick a project</h2>
           {projects.length === 0 ? (
-            <p className="text-xs text-slate-400">No projects yet — create one from the Projects page first.</p>
+            <p className="text-xs text-[#6b7280]">No projects yet — create one from the Projects page first.</p>
           ) : (
             <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
               {projects.map(p => (
                 <li
                   key={p.id}
                   onClick={() => void pickProject(p.id)}
-                  className="cursor-pointer rounded-md border border-white/10 bg-slate-800/40 p-3 text-sm transition hover:border-blue-400/40 hover:bg-blue-500/10"
+                  className="cursor-pointer rounded-md border border-[#dededc] bg-[#eeeeed] p-3 text-sm transition hover:border-blue-400/40 hover:bg-blue-500/10"
                 >
                   <div className="font-medium">{p.name}</div>
                   {p.address && (
-                    <div className="text-xs text-slate-400">
+                    <div className="text-xs text-[#6b7280]">
                       {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}
                     </div>
                   )}
@@ -245,20 +245,20 @@ export default function ExteriorPage() {
 
       {projectId && job && userId && (
         <>
-          <div className="flex items-center justify-between rounded border border-white/10 bg-slate-900/40 px-3 py-2 text-xs">
+          <div className="flex items-center justify-between rounded border border-[#dededc] bg-[#f8f8f7] px-3 py-2 text-xs">
             <div>
               <strong>Project:</strong> {projects.find(p => p.id === projectId)?.name ?? projectId}
-              <span className="ml-3 text-slate-400">Job status: <strong className="text-slate-200">{job.status}</strong></span>
+              <span className="ml-3 text-[#6b7280]">Job status: <strong className="text-[#1a1a1a]">{job.status}</strong></span>
             </div>
             <button
               onClick={() => { setProjectId(null); setJob(null) }}
-              className="rounded bg-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-600"
+              className="rounded bg-[#e4e4e2] px-2 py-1 text-[#1a1a1a] hover:bg-[#d4d4d2]"
             >Change project</button>
           </div>
 
           <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
-              <h2 className="mb-2 text-sm font-semibold text-slate-200">1. Upload photos</h2>
+              <h2 className="mb-2 text-sm font-semibold text-[#1a1a1a]">1. Upload photos</h2>
               <PhotoUploadZone
                 jobId={job.id}
                 userId={userId}
@@ -266,19 +266,19 @@ export default function ExteriorPage() {
               />
             </div>
             <div>
-              <h2 className="mb-2 text-sm font-semibold text-slate-200">Coverage</h2>
+              <h2 className="mb-2 text-sm font-semibold text-[#1a1a1a]">Coverage</h2>
               <CoverageMap coverage={coverage} />
             </div>
           </section>
 
           {photos.length > 0 && (
             <section>
-              <h2 className="mb-2 text-sm font-semibold text-slate-200">Photos ({photos.length})</h2>
+              <h2 className="mb-2 text-sm font-semibold text-[#1a1a1a]">Photos ({photos.length})</h2>
               <ul className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
                 {photos.map(p => {
                   const obs = (p.vision_observations || {}) as Record<string, unknown>
                   return (
-                    <li key={p.id} className="overflow-hidden rounded border border-white/10 bg-slate-900/40">
+                    <li key={p.id} className="overflow-hidden rounded border border-[#dededc] bg-[#f8f8f7]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={p.photo_url} alt="" className="block h-28 w-full object-cover" />
                       <div className="p-2 text-[10px]">
@@ -288,13 +288,13 @@ export default function ExteriorPage() {
                             await api.exterior.patchPhoto(p.id, { classified_elevation: e.target.value })
                             refresh()
                           }}
-                          className="w-full rounded bg-slate-800 px-1 py-0.5 text-slate-100"
+                          className="w-full rounded bg-[#eeeeed] px-1 py-0.5 text-[#1a1a1a]"
                         >
                           {['front', 'right', 'rear', 'left', 'front_right', 'right_rear', 'rear_left', 'left_front', 'aerial', 'detail', 'unknown'].map(e => (
                             <option key={e} value={e}>{e}</option>
                           ))}
                         </select>
-                        <div className="mt-1 text-slate-400">
+                        <div className="mt-1 text-[#6b7280]">
                           {String(obs.siding_material_guess || '—')} · {String(obs.openings_visible || 0)} openings
                         </div>
                       </div>
@@ -306,7 +306,7 @@ export default function ExteriorPage() {
           )}
 
           <section>
-            <h2 className="mb-2 text-sm font-semibold text-slate-200">2. Trace measurements</h2>
+            <h2 className="mb-2 text-sm font-semibold text-[#1a1a1a]">2. Trace measurements</h2>
             <MeasurementTraceTool
               jobId={job.id}
               photos={photos}
@@ -315,8 +315,8 @@ export default function ExteriorPage() {
           </section>
 
           {measurements.length > 0 && summary && (
-            <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
-              <h2 className="mb-3 text-sm font-semibold text-slate-200">3. Summary</h2>
+            <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
+              <h2 className="mb-3 text-sm font-semibold text-[#1a1a1a]">3. Summary</h2>
               <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
                 <SummaryCard label="Walls (total ft²)" value={(summary.walls as { total_sqft?: number })?.total_sqft ?? 0} />
                 <SummaryCard label="Windows" value={(summary.openings as { windows_count?: number })?.windows_count ?? 0} />
@@ -325,14 +325,14 @@ export default function ExteriorPage() {
               </div>
 
               <details className="mt-4 text-xs">
-                <summary className="cursor-pointer text-slate-400 hover:text-slate-200">All measurements ({measurements.length})</summary>
+                <summary className="cursor-pointer text-[#6b7280] hover:text-[#1a1a1a]">All measurements ({measurements.length})</summary>
                 <ul className="mt-2 space-y-1">
                   {Object.entries(measurementsByType).map(([type, items]) => (
                     <li key={type}>
-                      <div className="mt-2 text-slate-400">{type} ({items.length})</div>
+                      <div className="mt-2 text-[#6b7280]">{type} ({items.length})</div>
                       <ul className="ml-3 space-y-1">
                         {items.map(m => (
-                          <li key={m.id} className="flex items-center justify-between rounded bg-slate-800/40 px-2 py-1">
+                          <li key={m.id} className="flex items-center justify-between rounded bg-[#eeeeed] px-2 py-1">
                             <span>
                               {m.facade_id || '—'} · {m.elevation || '?'} · {m.material_type || ''}
                               {m.area_sqft ? ` · ${m.area_sqft} ft²` : ''}
@@ -376,9 +376,9 @@ export default function ExteriorPage() {
 
 function SummaryCard({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded border border-white/10 bg-slate-900/60 p-2">
-      <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="text-lg font-semibold text-slate-100">{value}</div>
+    <div className="rounded border border-[#dededc] bg-[#f8f8f7] p-2">
+      <div className="text-[10px] uppercase tracking-wide text-[#6b7280]">{label}</div>
+      <div className="text-lg font-semibold text-[#1a1a1a]">{value}</div>
     </div>
   )
 }
@@ -401,7 +401,7 @@ function PhotogrammetryStatusPanel({ jobId }: { jobId: string }) {
   if (!status) return null
   const s = String(status.status || 'unknown')
   return (
-    <div className="rounded border border-white/10 bg-slate-900/40 p-3 text-xs">
+    <div className="rounded border border-[#dededc] bg-[#f8f8f7] p-3 text-xs">
       <strong>Photogrammetry:</strong> {s}
       {status.progress_pct != null && Number(status.progress_pct) > 0 && (
         <span className="ml-2">{Number(status.progress_pct).toFixed(0)}%</span>

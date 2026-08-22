@@ -38,12 +38,12 @@ export default function AuditPanel({ onClose }: { onClose: () => void }) {
             <div className="text-[15px] font-bold">History</div>
             <div className="text-[12px]" style={{ color: 'var(--muted)' }}>Every schedule change, most recent first</div>
           </div>
-          <button onClick={onClose} className="rounded-md px-2 py-1 text-sm hover:bg-white/5">✕</button>
+          <button onClick={onClose} className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]">✕</button>
         </div>
 
         <div className="p-4">
           {isLoading ? (
-            <div className="space-y-2">{[0, 1, 2, 3, 4].map(i => <div key={i} className="h-10 animate-pulse rounded-md bg-white/5" />)}</div>
+            <div className="space-y-2">{[0, 1, 2, 3, 4].map(i => <div key={i} className="h-10 animate-pulse rounded-md bg-[#eeeeed]" />)}</div>
           ) : error ? (
             <div className="text-[12px]" style={{ color: 'var(--tight)' }}>Couldn’t load history.</div>
           ) : events.length === 0 ? (

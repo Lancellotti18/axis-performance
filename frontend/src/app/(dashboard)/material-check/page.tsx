@@ -49,7 +49,7 @@ function ChecklistItem({ item }: { item: any }) {
   const isWarn = item.status === 'warning'
   const isPass = item.status === 'pass'
   return (
-    <div className="bg-white/[0.04] rounded-xl overflow-hidden" style={{
+    <div className="bg-[#f8f8f7] rounded-xl overflow-hidden" style={{
       boxShadow: isFail ? '0 2px 12px rgba(239,68,68,0.08)' : isWarn ? '0 2px 12px rgba(245,158,11,0.08)' : '0 2px 8px rgba(59,130,246,0.06)',
       border: isFail ? '1px solid rgba(254,202,202,0.9)' : isWarn ? '1px solid rgba(253,230,138,0.9)' : '1px solid rgba(167,243,208,0.7)',
     }}>
@@ -57,26 +57,26 @@ function ChecklistItem({ item }: { item: any }) {
         <StatusIcon status={item.status} />
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <span className="text-white text-sm font-semibold">{item.item_name}</span>
+            <span className="text-[#1a1a1a] text-sm font-semibold">{item.item_name}</span>
             {item.category && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-500 font-medium flex-shrink-0 capitalize">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f8f8f7] text-[#6b7280] font-medium flex-shrink-0 capitalize">
                 {item.category}
               </span>
             )}
           </div>
-          {isPass && item.note && <p className="text-slate-500 text-xs mt-0.5">{item.note}</p>}
+          {isPass && item.note && <p className="text-[#6b7280] text-xs mt-0.5">{item.note}</p>}
           {(isFail || isWarn) && (item.rule_quote || item.rule_text) && (
-            <blockquote className={`mt-2 pl-3 border-l-2 text-slate-500 text-xs italic leading-relaxed ${isFail ? 'border-red-300' : 'border-amber-300'}`}>
+            <blockquote className={`mt-2 pl-3 border-l-2 text-[#6b7280] text-xs italic leading-relaxed ${isFail ? 'border-red-300' : 'border-amber-300'}`}>
               {item.rule_quote || item.rule_text}
             </blockquote>
           )}
           {(isFail || isWarn) && item.violation_reason && (
-            <p className="mt-1.5 text-slate-600 text-xs">{item.violation_reason}</p>
+            <p className="mt-1.5 text-[#9ca3af] text-xs">{item.violation_reason}</p>
           )}
           {(isFail || isWarn) && item.fix_suggestion && (
             <div className="mt-2 bg-blue-500/10 border border-blue-100 rounded-lg px-3 py-2">
               <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Fix: </span>
-              <span className="text-slate-200 text-xs">{item.fix_suggestion}</span>
+              <span className="text-[#1a1a1a] text-xs">{item.fix_suggestion}</span>
             </div>
           )}
           <CitationInline item={item} />
@@ -88,7 +88,7 @@ function ChecklistItem({ item }: { item: any }) {
 
 function MissingItem({ item }: { item: any }) {
   return (
-    <div className="bg-white/[0.04] rounded-xl px-4 py-3 flex items-start gap-3"
+    <div className="bg-[#f8f8f7] rounded-xl px-4 py-3 flex items-start gap-3"
       style={{ boxShadow: '0 2px 12px rgba(245,158,11,0.08)', border: '1px solid rgba(253,230,138,0.9)' }}>
       <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round">
@@ -96,13 +96,13 @@ function MissingItem({ item }: { item: any }) {
         </svg>
       </div>
       <div className="flex-1">
-        <span className="text-white text-sm font-semibold">{item.item_name}</span>
+        <span className="text-[#1a1a1a] text-sm font-semibold">{item.item_name}</span>
         {(item.rule_quote || item.rule_text) && (
-          <blockquote className="mt-1.5 pl-3 border-l-2 border-amber-300 text-slate-500 text-xs italic leading-relaxed">
+          <blockquote className="mt-1.5 pl-3 border-l-2 border-amber-300 text-[#6b7280] text-xs italic leading-relaxed">
             {item.rule_quote || item.rule_text}
           </blockquote>
         )}
-        {item.reason_required && <p className="mt-1 text-slate-500 text-xs">{item.reason_required}</p>}
+        {item.reason_required && <p className="mt-1 text-[#6b7280] text-xs">{item.reason_required}</p>}
         <CitationInline item={item} />
       </div>
     </div>
@@ -126,48 +126,48 @@ function ComplianceResults({ result }: { result: any }) {
   return (
     <div className="space-y-4">
       {/* Summary header */}
-      <div className="bg-white/[0.04] rounded-2xl px-5 py-4" style={cardStyle}>
+      <div className="bg-[#f8f8f7] rounded-2xl px-5 py-4" style={cardStyle}>
         <div className="flex items-start justify-between gap-4 mb-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-white font-bold text-sm">Materials Code Compliance</span>
+              <span className="text-[#1a1a1a] font-bold text-sm">Materials Code Compliance</span>
               <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border capitalize ${statusColor}`}>
                 {result.overall_status}
               </span>
             </div>
             {locationStr && (
-              <div className="text-slate-400 text-xs">{locationStr} · {result.project_type}</div>
+              <div className="text-[#6b7280] text-xs">{locationStr} · {result.project_type}</div>
             )}
           </div>
           <div className="flex gap-3 text-center flex-shrink-0">
             <div>
               <div className="text-emerald-600 font-bold text-lg leading-none">{passCount}</div>
-              <div className="text-slate-400 text-[10px] mt-0.5">Pass</div>
+              <div className="text-[#6b7280] text-[10px] mt-0.5">Pass</div>
             </div>
             {warnCount > 0 && (
               <div>
                 <div className="text-amber-500 font-bold text-lg leading-none">{warnCount}</div>
-                <div className="text-slate-400 text-[10px] mt-0.5">Warn</div>
+                <div className="text-[#6b7280] text-[10px] mt-0.5">Warn</div>
               </div>
             )}
             <div>
               <div className="text-red-500 font-bold text-lg leading-none">{failCount + missing.length}</div>
-              <div className="text-slate-400 text-[10px] mt-0.5">Fail</div>
+              <div className="text-[#6b7280] text-[10px] mt-0.5">Fail</div>
             </div>
           </div>
         </div>
         {result.summary && (
-          <p className="text-slate-500 text-sm leading-relaxed border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+          <p className="text-[#6b7280] text-sm leading-relaxed border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
             {result.summary}
           </p>
         )}
         {/* Code sources */}
         {result.code_sources && result.code_sources.length > 0 && (
           <div className="mt-3 border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Code Sources</div>
+            <div className="text-[10px] font-bold text-[#6b7280] uppercase tracking-wider mb-1.5">Code Sources</div>
             <div className="flex flex-wrap gap-2">
               {result.code_sources.map((src: string, i: number) => (
-                <span key={i} className="text-[10px] px-2 py-1 bg-white/[0.06] border border-white/12 rounded-lg text-slate-500">{src}</span>
+                <span key={i} className="text-[10px] px-2 py-1 bg-[#f8f8f7] border border-[#dededc] rounded-lg text-[#6b7280]">{src}</span>
               ))}
             </div>
           </div>
@@ -177,27 +177,27 @@ function ComplianceResults({ result }: { result: any }) {
       {/* Parsed materials list */}
       {result.parsed_materials && result.parsed_materials.length > 0 && (
         <details className="group">
-          <summary className="text-xs font-bold text-slate-400 uppercase tracking-wider cursor-pointer select-none list-none flex items-center gap-2 mb-2">
+          <summary className="text-xs font-bold text-[#6b7280] uppercase tracking-wider cursor-pointer select-none list-none flex items-center gap-2 mb-2">
             <svg className="group-open:rotate-90 transition-transform" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
             Parsed Materials ({result.parsed_materials.length} items) — expand to verify
           </summary>
-          <div className="bg-white/[0.04] rounded-xl overflow-hidden mt-2" style={cardStyle}>
+          <div className="bg-[#f8f8f7] rounded-xl overflow-hidden mt-2" style={cardStyle}>
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
-                  <th className="text-left px-4 py-2 text-slate-400 font-semibold">Item</th>
-                  <th className="text-left px-4 py-2 text-slate-400 font-semibold">Category</th>
-                  <th className="text-right px-4 py-2 text-slate-400 font-semibold">Qty</th>
-                  <th className="text-left px-4 py-2 text-slate-400 font-semibold">Unit</th>
+                  <th className="text-left px-4 py-2 text-[#6b7280] font-semibold">Item</th>
+                  <th className="text-left px-4 py-2 text-[#6b7280] font-semibold">Category</th>
+                  <th className="text-right px-4 py-2 text-[#6b7280] font-semibold">Qty</th>
+                  <th className="text-left px-4 py-2 text-[#6b7280] font-semibold">Unit</th>
                 </tr>
               </thead>
               <tbody>
                 {result.parsed_materials.map((m: any, i: number) => (
-                  <tr key={i} className="border-b last:border-0 hover:bg-white/[0.05]/50 transition-colors" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                    <td className="px-4 py-2 text-slate-200 font-medium">{m.item_name}</td>
-                    <td className="px-4 py-2 text-slate-500 capitalize">{m.category}</td>
-                    <td className="px-4 py-2 text-slate-600 text-right">{m.quantity || '—'}</td>
-                    <td className="px-4 py-2 text-slate-500">{m.unit}</td>
+                  <tr key={i} className="border-b last:border-0 hover:bg-[#f8f8f7]/50 transition-colors" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                    <td className="px-4 py-2 text-[#1a1a1a] font-medium">{m.item_name}</td>
+                    <td className="px-4 py-2 text-[#6b7280] capitalize">{m.category}</td>
+                    <td className="px-4 py-2 text-[#9ca3af] text-right">{m.quantity || '—'}</td>
+                    <td className="px-4 py-2 text-[#6b7280]">{m.unit}</td>
                   </tr>
                 ))}
               </tbody>
@@ -209,7 +209,7 @@ function ComplianceResults({ result }: { result: any }) {
       {/* Per-material checklist */}
       {checklist.length > 0 && (
         <div className="space-y-2">
-          <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+          <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-2">
             Materials Checklist ({checklist.length} items)
           </div>
           {checklist.map((item: any, i: number) => (
@@ -310,30 +310,26 @@ export default function MaterialCheckPage() {
   }
 
   return (
-    <div className="min-h-screen p-6 md:p-8" style={{ background: '#040810' }}>
+    <div className="min-h-screen p-6 md:p-8" style={{ background: 'var(--color-surface-1)' }}>
       <div className="max-w-3xl mx-auto space-y-6">
 
         {/* Page header */}
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Material Compliance</h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-[#1a1a1a] tracking-tight">Material Compliance</h1>
+          <p className="text-[#6b7280] text-sm mt-1">
             Upload or paste your material list and verify it meets the building codes for your jurisdiction.
             Every result is sourced from official .gov building codes — nothing is fabricated.
           </p>
         </div>
 
         {/* Input card */}
-        <div className="bg-white/[0.04] rounded-2xl p-6 space-y-5" style={cardStyle}>
+        <div className="bg-[#f8f8f7] rounded-2xl p-6 space-y-5" style={cardStyle}>
 
           {/* Mode toggle */}
           <div className="flex gap-2">
             {(['file', 'text'] as const).map(m => (
               <button key={m} onClick={() => setMode(m)}
-                className={`px-4 py-1.5 rounded-xl text-sm font-semibold transition-all border ${
-                  mode === m
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white/[0.04] text-slate-500 border-white/10 hover:border-blue-300'
-                }`}>
+                className={`px-4 py-1.5 rounded-xl text-sm font-semibold transition-all border ${ mode === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-[#f8f8f7] text-[#6b7280] border-[#dededc] hover:border-blue-300' }`}>
                 {m === 'file' ? 'Upload File' : 'Paste / Type List'}
               </button>
             ))}
@@ -346,27 +342,21 @@ export default function MaterialCheckPage() {
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
-                dragOver
-                  ? 'border-blue-400 bg-blue-500/10'
-                  : file
-                  ? 'border-emerald-300 bg-emerald-500/40'
-                  : 'border-white/10 hover:border-blue-300 hover:bg-blue-500/30'
-              }`}
+              className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${ dragOver ? 'border-blue-400 bg-blue-500/10' : file ? 'border-emerald-300 bg-emerald-500/40' : 'border-[#dededc] hover:border-blue-300 hover:bg-blue-500/30' }`}
             >
               <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,.txt" className="hidden" onChange={handleFileChange} />
               {file ? (
                 <div className="space-y-1">
                   <div className="text-2xl"></div>
-                  <div className="text-white font-semibold text-sm">{file.name}</div>
-                  <div className="text-slate-400 text-xs">{(file.size / 1024).toFixed(1)} KB · click to change</div>
+                  <div className="text-[#1a1a1a] font-semibold text-sm">{file.name}</div>
+                  <div className="text-[#6b7280] text-xs">{(file.size / 1024).toFixed(1)} KB · click to change</div>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <div className="text-3xl"></div>
-                  <div className="text-slate-600 font-semibold text-sm">Drop your material list here</div>
-                  <div className="text-slate-400 text-xs">CSV, Excel (.xlsx), or plain text (.txt) · max 10 MB</div>
-                  <div className="text-slate-400 text-xs">CSV columns: <span className="font-mono bg-white/[0.06] px-1 rounded">item_name</span>, <span className="font-mono bg-white/[0.06] px-1 rounded">category</span>, <span className="font-mono bg-white/[0.06] px-1 rounded">quantity</span>, <span className="font-mono bg-white/[0.06] px-1 rounded">unit</span></div>
+                  <div className="text-[#9ca3af] font-semibold text-sm">Drop your material list here</div>
+                  <div className="text-[#6b7280] text-xs">CSV, Excel (.xlsx), or plain text (.txt) · max 10 MB</div>
+                  <div className="text-[#6b7280] text-xs">CSV columns: <span className="font-mono bg-[#f8f8f7] px-1 rounded">item_name</span>, <span className="font-mono bg-[#f8f8f7] px-1 rounded">category</span>, <span className="font-mono bg-[#f8f8f7] px-1 rounded">quantity</span>, <span className="font-mono bg-[#f8f8f7] px-1 rounded">unit</span></div>
                 </div>
               )}
             </div>
@@ -375,15 +365,15 @@ export default function MaterialCheckPage() {
           {/* Text input */}
           {mode === 'text' && (
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Material List</label>
+              <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">Material List</label>
               <textarea
                 rows={10}
                 value={rawText}
                 onChange={e => setRawText(e.target.value)}
                 placeholder={"One item per line. Examples:\n2x4 lumber, 200, pieces\n3-tab shingles, 25, squares\nPVC pipe 4\", 50, lf\nR-19 batt insulation, 800, sqft"}
-                className="w-full border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparent resize-none font-mono leading-relaxed"
+                className="w-full border border-[#dededc] rounded-xl px-4 py-3 text-sm text-[#1a1a1a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparent resize-none font-mono leading-relaxed"
               />
-              <div className="text-slate-400 text-xs">
+              <div className="text-[#6b7280] text-xs">
                 Format: <span className="font-mono">item name, quantity, unit</span> — quantity and unit are optional
               </div>
             </div>
@@ -392,11 +382,11 @@ export default function MaterialCheckPage() {
           {/* Location selectors */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">State *</label>
+              <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">State *</label>
               <select
                 value={selectedState}
                 onChange={e => { setSelectedState(e.target.value); setSelectedCounty(''); setSelectedCity('') }}
-                className="w-full border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
+                className="w-full border border-[#dededc] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-blue-300 bg-[#f8f8f7]"
               >
                 <option value="">Select state</option>
                 {STATES.map(s => (
@@ -406,12 +396,12 @@ export default function MaterialCheckPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">County</label>
+              <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">County</label>
               <select
                 value={selectedCounty}
                 onChange={e => { setSelectedCounty(e.target.value); setSelectedCity('') }}
                 disabled={!selectedState}
-                className="w-full border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04] disabled:opacity-50"
+                className="w-full border border-[#dededc] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-blue-300 bg-[#f8f8f7] disabled:opacity-50"
               >
                 <option value="">Select county</option>
                 {counties.map(c => (
@@ -421,12 +411,12 @@ export default function MaterialCheckPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">City *</label>
+              <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">City *</label>
               {cities.length > 0 ? (
                 <select
                   value={selectedCity}
                   onChange={e => setSelectedCity(e.target.value)}
-                  className="w-full border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
+                  className="w-full border border-[#dededc] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-blue-300 bg-[#f8f8f7]"
                 >
                   <option value="">Select city</option>
                   {cities.map(c => (
@@ -439,17 +429,17 @@ export default function MaterialCheckPage() {
                   value={selectedCity}
                   onChange={e => setSelectedCity(e.target.value)}
                   placeholder="Enter city"
-                  className="w-full border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  className="w-full border border-[#dededc] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
               )}
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Project Type</label>
+              <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">Project Type</label>
               <select
                 value={projectType}
                 onChange={e => setProjectType(e.target.value)}
-                className="w-full border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
+                className="w-full border border-[#dededc] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-blue-300 bg-[#f8f8f7]"
               >
                 {PROJECT_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
@@ -462,7 +452,7 @@ export default function MaterialCheckPage() {
           <button
             onClick={handleSubmit}
             disabled={!canSubmit || loading}
-            className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 rounded-xl text-[#1a1a1a] font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               background: loading || !canSubmit
                 ? '#94a3b8'
@@ -482,7 +472,7 @@ export default function MaterialCheckPage() {
           </button>
 
           {!canSubmit && !loading && (
-            <p className="text-slate-400 text-xs text-center -mt-2">
+            <p className="text-[#6b7280] text-xs text-center -mt-2">
               {mode === 'file' && !file ? 'Upload a material list file, ' : ''}
               {mode === 'text' && !rawText.trim() ? 'Enter your material list, ' : ''}
               {!selectedState ? 'select a state' : !selectedCity ? 'enter or select a city' : ''}
@@ -493,13 +483,13 @@ export default function MaterialCheckPage() {
 
         {/* Loading state */}
         {loading && (
-          <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
+          <div className="bg-[#f8f8f7] rounded-2xl p-10 text-center" style={cardStyle}>
             <svg className="animate-spin text-purple-500 mx-auto mb-4" width="28" height="28" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
             </svg>
-            <div className="text-slate-200 font-semibold text-sm mb-1">Checking materials against local codes…</div>
-            <div className="text-slate-400 text-xs">
+            <div className="text-[#1a1a1a] font-semibold text-sm mb-1">Checking materials against local codes…</div>
+            <div className="text-[#6b7280] text-xs">
               Searching {selectedCity}, {selectedState} building codes and IRC 2021 / IBC base standard
             </div>
           </div>

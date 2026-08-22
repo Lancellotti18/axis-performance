@@ -68,11 +68,7 @@ function CompleteToggle({ projectId, status, onChanged }: {
       onClick={toggle}
       disabled={busy}
       title={done ? 'Reopen this job' : 'Mark this job complete'}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
-        done
-          ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-          : 'border-white/12 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]'
-      }`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${ done ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' : 'border-[#dededc] bg-[#f8f8f7] text-[#1a1a1a] hover:bg-[#f8f8f7]' }`}
     >
       {done ? '✓ Complete' : 'Mark complete'}
     </button>
@@ -104,13 +100,13 @@ function ProjectHero({
   return (
     <div className={`grid gap-5 ${satelliteUrl && hasPair ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
       {satelliteUrl && (
-        <figure className="overflow-hidden rounded-2xl bg-white/[0.04]" style={cardStyle}>
+        <figure className="overflow-hidden rounded-2xl bg-[#f8f8f7]" style={cardStyle}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={satelliteUrl} alt="Top-down satellite view of the property"
             className="h-[280px] w-full object-cover" />
           <figcaption className="flex items-center justify-between gap-2 px-4 py-2.5 text-xs">
-            <span className="font-semibold text-slate-200">Satellite view</span>
-            <span className={measured ? 'text-emerald-300' : 'text-slate-400'}>
+            <span className="font-semibold text-[#1a1a1a]">Satellite view</span>
+            <span className={measured ? 'text-emerald-300' : 'text-[#6b7280]'}>
               {measured ? 'Measured from this tile ✓' : 'Not measured yet'}
             </span>
           </figcaption>
@@ -118,22 +114,22 @@ function ProjectHero({
       )}
 
       {hasPair && (
-        <figure className="overflow-hidden rounded-2xl bg-white/[0.04]" style={cardStyle}>
-          <div className={`grid ${beforeUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-px bg-white/10`}>
+        <figure className="overflow-hidden rounded-2xl bg-[#f8f8f7]" style={cardStyle}>
+          <div className={`grid ${beforeUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-px bg-[#eeeeed]`}>
             {beforeUrl && (
-              <div className="relative bg-slate-900">
+              <div className="relative bg-[#f8f8f7]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={beforeUrl} alt="The home before" className="h-[280px] w-full object-cover" />
-                <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Before</span>
+                <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1a1a1a]">Before</span>
               </div>
             )}
-            <div className="relative bg-slate-900">
+            <div className="relative bg-[#f8f8f7]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={afterUrl!} alt="Roof visualization" className="h-[280px] w-full object-cover" />
               <span className="absolute left-2 top-2 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">After</span>
             </div>
           </div>
-          <figcaption className="px-4 py-2.5 text-xs text-slate-400">
+          <figcaption className="px-4 py-2.5 text-xs text-[#6b7280]">
             {beforeUrl
               ? 'Roof Visualizer — saved to this project’s report'
               : 'Roof Visualizer render — re-run the Visualizer to save a “before” alongside it'}
@@ -174,7 +170,7 @@ const CATEGORY_META: Record<string, { label: string; icon: string; color: string
   drywall:       { label: 'Drywall',               icon: '', color: 'bg-gray-50 text-gray-700 border-gray-200' },
   insulation:    { label: 'Insulation',            icon: '', color: 'bg-orange-50 text-orange-700 border-orange-200' },
   roofing:       { label: 'Roofing',               icon: '', color: 'bg-rose-500/10 text-red-700 border-red-200' },
-  concrete:      { label: 'Concrete & Foundation', icon: '', color: 'bg-white/[0.05] text-slate-200 border-white/10' },
+  concrete:      { label: 'Concrete & Foundation', icon: '', color: 'bg-[#f8f8f7] text-[#1a1a1a] border-[#dededc]' },
   flooring:      { label: 'Flooring',              icon: '', color: 'bg-teal-50 text-teal-700 border-teal-200' },
   doors_windows: { label: 'Doors & Windows',       icon: '', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
   electrical:    { label: 'Electrical',            icon: '', color: 'bg-amber-500/10 text-yellow-800 border-yellow-300' },
@@ -196,7 +192,7 @@ const TIER_BADGE: Record<string, { badge: string; label: string }> = {
   municipal: { badge: 'bg-violet-50 text-violet-700 border border-violet-200', label: 'Municipal' },
   county:    { badge: 'bg-indigo-50 text-indigo-700 border border-indigo-200', label: 'County' },
   state:     { badge: 'bg-sky-50 text-sky-700 border border-sky-200',          label: 'State' },
-  base_code: { badge: 'bg-white/[0.05] text-slate-300 border border-white/10',    label: 'Base Code' },
+  base_code: { badge: 'bg-[#f8f8f7] text-[#2d2d2d] border border-[#dededc]',    label: 'Base Code' },
 }
 const RISK_BANNER: Record<string, string> = {
   low:    'bg-emerald-500/10 border-emerald-200 text-emerald-700',
@@ -827,10 +823,10 @@ Thank you for your time.`
   })
 
   if (loading) return (
-    <div className="flex items-center justify-center h-full" style={{ background: '#040810' }}>
+    <div className="flex items-center justify-center h-full" style={{ background: 'var(--color-surface-1)' }}>
       <div className="flex flex-col items-center gap-3">
         <svg className="animate-spin text-blue-500" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-        <span className="text-slate-500 text-sm">Loading project…</span>
+        <span className="text-[#6b7280] text-sm">Loading project…</span>
       </div>
     </div>
   )
@@ -849,24 +845,20 @@ Thank you for your time.`
   ]
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#040810' }}>
+    <div className="flex flex-col h-full" style={{ background: 'var(--color-surface-1)' }}>
 
       {/* Header */}
       <div className="bg-[#070b13] border-b px-6 py-4 flex items-center gap-4 flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
-        <Link href="/projects" className="text-slate-400 hover:text-slate-200 transition-colors">
+        <Link href="/projects" className="text-[#6b7280] hover:text-[#1a1a1a] transition-colors">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </Link>
-        <div className="w-px h-5 bg-white/10" />
+        <div className="w-px h-5 bg-[#eeeeed]" />
         <div className="flex-1 min-w-0">
-          <h1 className="text-white font-bold text-base truncate">{project?.name || 'Project'}</h1>
-          {project?.region && <p className="text-slate-400 text-xs mt-0.5">{project.region} · {project.blueprint_type}</p>}
+          <h1 className="text-[#1a1a1a] font-bold text-base truncate">{project?.name || 'Project'}</h1>
+          {project?.region && <p className="text-[#6b7280] text-xs mt-0.5">{project.region} · {project.blueprint_type}</p>}
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border ${
-            blueprintStatus === 'complete' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-200' :
-            blueprintStatus === 'failed'   ? 'bg-rose-500/10 text-red-600 border-red-200' :
-            'bg-amber-500/10 text-amber-700 border-amber-200'
-          }`}>
+          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border ${ blueprintStatus === 'complete' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-200' : blueprintStatus === 'failed' ? 'bg-rose-500/10 text-red-600 border-red-200' : 'bg-amber-500/10 text-amber-700 border-amber-200' }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${blueprintStatus === 'complete' ? 'bg-emerald-500' : blueprintStatus === 'failed' ? 'bg-rose-500' : 'bg-amber-400 animate-pulse'}`} />
             {blueprintStatus === 'complete' ? 'Analysis Complete' : blueprintStatus === 'failed' ? 'Failed' : 'Processing…'}
           </span>
@@ -896,8 +888,8 @@ Thank you for your time.`
 
             <div className="grid gap-5 md:grid-cols-2">
               {/* Project details */}
-              <div className="rounded-2xl bg-white/[0.04] p-5" style={cardStyle}>
-                <h3 className="mb-3 text-sm font-bold text-white">Project details</h3>
+              <div className="rounded-2xl bg-[#f8f8f7] p-5" style={cardStyle}>
+                <h3 className="mb-3 text-sm font-bold text-[#1a1a1a]">Project details</h3>
                 <div className="space-y-0.5">
                   {[
                     ['Name', project?.name],
@@ -908,26 +900,26 @@ Thank you for your time.`
                     ['Created', project?.created_at ? new Date(project.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'],
                   ].map(([label, value]) => (
                     <div key={label} className="flex justify-between gap-3 border-b border-white/[0.07] py-2 last:border-0">
-                      <span className="text-sm text-slate-400">{label}</span>
-                      <span className="max-w-[60%] truncate text-right text-sm font-semibold text-white">{value || '—'}</span>
+                      <span className="text-sm text-[#6b7280]">{label}</span>
+                      <span className="max-w-[60%] truncate text-right text-sm font-semibold text-[#1a1a1a]">{value || '—'}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* Roof status + actions */}
-              <div className="flex flex-col rounded-2xl bg-white/[0.04] p-5" style={cardStyle}>
-                <h3 className="mb-3 text-sm font-bold text-white">Roof</h3>
+              <div className="flex flex-col rounded-2xl bg-[#f8f8f7] p-5" style={cardStyle}>
+                <h3 className="mb-3 text-sm font-bold text-[#1a1a1a]">Roof</h3>
                 {roofRunId ? (
                   <div className="mb-4 rounded-xl border border-emerald-400/25 bg-emerald-500/[0.06] px-4 py-3">
                     <div className="text-sm font-semibold text-emerald-300">Roof measured ✓</div>
-                    <div className="mt-0.5 text-xs text-slate-400">
+                    <div className="mt-0.5 text-xs text-[#6b7280]">
                       {roofFacetCount != null ? `${roofFacetCount} roof ${roofFacetCount === 1 ? 'facet' : 'facets'} captured. ` : ''}
                       Open the measurement tool to review or edit, or view the report.
                     </div>
                   </div>
                 ) : (
-                  <div className="mb-4 text-sm text-slate-400">
+                  <div className="mb-4 text-sm text-[#6b7280]">
                     This roof hasn&apos;t been measured yet. Axis measures it from satellite — no blueprint needed.
                   </div>
                 )}
@@ -938,12 +930,12 @@ Thank you for your time.`
                   </Link>
                   {roofRunId && (
                     <button onClick={openRoofReport} disabled={openingReport}
-                      className="rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-slate-200 transition-colors hover:bg-white/[0.08] disabled:opacity-50">
+                      className="rounded-xl border border-[#dededc] bg-[#f8f8f7] px-4 py-2.5 text-sm font-semibold text-[#1a1a1a] transition-colors hover:bg-[#f8f8f7] disabled:opacity-50">
                       {openingReport ? 'Preparing report…' : 'View report (PDF)'}
                     </button>
                   )}
                   <Link href="/home-visualizer"
-                    className="rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-center text-sm font-semibold text-slate-200 transition-colors hover:bg-white/[0.08]">
+                    className="rounded-xl border border-[#dededc] bg-[#f8f8f7] px-4 py-2.5 text-center text-sm font-semibold text-[#1a1a1a] transition-colors hover:bg-[#f8f8f7]">
                     Roof Visualizer
                   </Link>
                 </div>
@@ -955,24 +947,24 @@ Thank you for your time.`
         </div>
       ) : isProcessing ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="max-w-md text-center bg-white/[0.04] rounded-2xl p-10" style={cardStyle}>
+          <div className="max-w-md text-center bg-[#f8f8f7] rounded-2xl p-10" style={cardStyle}>
             <div className="w-20 h-20 bg-blue-500/10 border border-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <svg className="animate-spin text-blue-500" width="36" height="36" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
             </div>
-            <h2 className="text-xl font-bold text-white mb-2">Analyzing Blueprint</h2>
-            <p className="text-slate-500 text-sm leading-relaxed">Detecting rooms, walls, electrical, plumbing — then fetching real-time pricing for every material. This takes 60–120 seconds.</p>
-            <div className="mt-6 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+            <h2 className="text-xl font-bold text-[#1a1a1a] mb-2">Analyzing Blueprint</h2>
+            <p className="text-[#6b7280] text-sm leading-relaxed">Detecting rooms, walls, electrical, plumbing — then fetching real-time pricing for every material. This takes 60–120 seconds.</p>
+            <div className="mt-6 h-1.5 bg-[#f8f8f7] rounded-full overflow-hidden">
               <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: '65%' }} />
             </div>
-            <p className="text-slate-400 text-xs mt-3">Auto-refreshing…</p>
+            <p className="text-[#6b7280] text-xs mt-3">Auto-refreshing…</p>
           </div>
         </div>
       ) : blueprintStatus === 'failed' ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center bg-white/[0.04] rounded-2xl p-10 max-w-md" style={cardStyle}>
+          <div className="text-center bg-[#f8f8f7] rounded-2xl p-10 max-w-md" style={cardStyle}>
             <div className="text-5xl mb-4"></div>
-            <div className="text-white font-semibold mb-2">Analysis Failed</div>
-            <div className="text-slate-500 text-sm mb-4">The AI could not process this blueprint.</div>
+            <div className="text-[#1a1a1a] font-semibold mb-2">Analysis Failed</div>
+            <div className="text-[#6b7280] text-sm mb-4">The AI could not process this blueprint.</div>
             {blueprintError && (
               <div className="text-left bg-rose-500/10 border border-red-200 rounded-xl p-3 mb-4 text-xs text-red-700 font-mono break-all">
                 {blueprintError}
@@ -1001,9 +993,7 @@ Thank you for your time.`
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`flex items-center gap-1.5 px-4 py-3.5 text-sm font-semibold border-b-2 transition-all -mb-px ${
-                  tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-white'
-                }`}
+                className={`flex items-center gap-1.5 px-4 py-3.5 text-sm font-semibold border-b-2 transition-all -mb-px ${ tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-[#6b7280] hover:text-[#1a1a1a]' }`}
               >
                 {t.label}
                 {t.badge ? <span className="w-5 h-5 bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{t.badge > 99 ? '99+' : t.badge}</span> : null}
@@ -1049,12 +1039,12 @@ Thank you for your time.`
                 )}
                 <div className="col-span-7 space-y-4">
                   {/* Blueprint preview */}
-                  <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+                  <div className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={cardStyle}>
                     <div className="flex items-center justify-between px-5 py-3.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                      <span className="text-white font-semibold text-sm">Blueprint</span>
+                      <span className="text-[#1a1a1a] font-semibold text-sm">Blueprint</span>
                       <div className="flex items-center gap-3">
                         {analysis?.confidence && (
-                          <span className="text-xs text-slate-400">Quality: <span className="text-emerald-600 font-semibold">{Math.round(analysis.confidence * 100)}%</span></span>
+                          <span className="text-xs text-[#6b7280]">Quality: <span className="text-emerald-600 font-semibold">{Math.round(analysis.confidence * 100)}%</span></span>
                         )}
                         {blueprintViewUrl && (
                           <a
@@ -1134,13 +1124,13 @@ Thank you for your time.`
                       ? { text: 'Measured', cls: 'bg-emerald-100 text-emerald-700' }
                       : sqftSource === 'llm_validated'
                         ? { text: 'Verified', cls: 'bg-blue-100 text-blue-700' }
-                        : { text: 'AI estimate', cls: 'bg-white/[0.06] text-slate-300' }
+                        : { text: 'AI estimate', cls: 'bg-[#f8f8f7] text-[#2d2d2d]' }
                     return (
                       <div className="grid grid-cols-4 gap-3">
-                        <div className="bg-white/[0.04] rounded-xl p-4" style={cardStyle}>
-                          <div className="text-xl font-black text-white">{(analysis.total_sqft || 0).toLocaleString()}</div>
+                        <div className="bg-[#f8f8f7] rounded-xl p-4" style={cardStyle}>
+                          <div className="text-xl font-black text-[#1a1a1a]">{(analysis.total_sqft || 0).toLocaleString()}</div>
                           <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-slate-400 text-xs">Total Sqft</span>
+                            <span className="text-[#6b7280] text-xs">Total Sqft</span>
                             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${sqftBadge.cls}`}>
                               {sqftBadge.text}
                             </span>
@@ -1151,9 +1141,9 @@ Thank you for your time.`
                           { label: 'Materials', value: materials.length },
                           { label: 'Est. Cost', value: estimate?.grand_total ? formatMoney(estimate.grand_total) : '—' },
                         ].map(c => (
-                          <div key={c.label} className="bg-white/[0.04] rounded-xl p-4" style={cardStyle}>
-                            <div className="text-xl font-black text-white">{c.value}</div>
-                            <div className="text-slate-400 text-xs mt-0.5">{c.label}</div>
+                          <div key={c.label} className="bg-[#f8f8f7] rounded-xl p-4" style={cardStyle}>
+                            <div className="text-xl font-black text-[#1a1a1a]">{c.value}</div>
+                            <div className="text-[#6b7280] text-xs mt-0.5">{c.label}</div>
                           </div>
                         ))}
                       </div>
@@ -1178,8 +1168,8 @@ Thank you for your time.`
 
                 {/* Right col */}
                 <div className="col-span-5 space-y-4">
-                  <div className="bg-white/[0.04] rounded-2xl p-5" style={cardStyle}>
-                    <h3 className="text-white font-bold text-sm mb-4">Project Summary</h3>
+                  <div className="bg-[#f8f8f7] rounded-2xl p-5" style={cardStyle}>
+                    <h3 className="text-[#1a1a1a] font-bold text-sm mb-4">Project Summary</h3>
                     <div className="space-y-1">
                       {[
                         { label: 'Type',          value: project?.blueprint_type || 'Residential' },
@@ -1193,8 +1183,8 @@ Thank you for your time.`
                         { label: 'Uploaded',      value: new Date(project?.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) },
                       ].map(row => (
                         <div key={row.label} className="flex justify-between items-center py-2 border-b last:border-0" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-                          <span className="text-slate-400 text-sm">{row.label}</span>
-                          <span className="text-white text-sm font-semibold">{row.value}</span>
+                          <span className="text-[#6b7280] text-sm">{row.label}</span>
+                          <span className="text-[#1a1a1a] text-sm font-semibold">{row.value}</span>
                         </div>
                       ))}
                     </div>
@@ -1202,12 +1192,12 @@ Thank you for your time.`
 
 
                   {Array.isArray(analysis?.rooms) && analysis.rooms.length > 0 && (
-                    <div className="bg-white/[0.04] rounded-2xl p-5" style={cardStyle}>
-                      <h3 className="text-white font-bold text-sm mb-3">Rooms Detected</h3>
+                    <div className="bg-[#f8f8f7] rounded-2xl p-5" style={cardStyle}>
+                      <h3 className="text-[#1a1a1a] font-bold text-sm mb-3">Rooms Detected</h3>
                       <div className="space-y-1">
                         {analysis.rooms.slice(0, 6).map((room: any, i: number) => (
                           <div key={i} className="flex justify-between items-center py-2 border-b last:border-0" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-                            <span className="text-slate-200 text-sm">{room.name}</span>
+                            <span className="text-[#1a1a1a] text-sm">{room.name}</span>
                             <span className="text-blue-600 text-sm font-semibold">{room.sqft?.toLocaleString()} sqft</span>
                           </div>
                         ))}
@@ -1229,8 +1219,8 @@ Thank you for your time.`
                 {/* Header + controls */}
                 <div className="flex items-center justify-between mb-5">
                   <div>
-                    <h2 className="text-white font-bold text-lg">Materials List</h2>
-                    <p className="text-slate-400 text-xs mt-0.5">{materials.length} items across {categoriesInData.length} categories</p>
+                    <h2 className="text-[#1a1a1a] font-bold text-lg">Materials List</h2>
+                    <p className="text-[#6b7280] text-xs mt-0.5">{materials.length} items across {categoriesInData.length} categories</p>
                   </div>
                   <div className="flex items-center gap-2">
                     {/* Refresh All Prices button */}
@@ -1238,7 +1228,7 @@ Thank you for your time.`
                       onClick={handleRefreshAllPrices}
                       disabled={refreshingPrices || materials.length === 0}
                       title="Re-fetch live prices for all materials from Home Depot, Lowe's, and more"
-                      className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
+                      className="flex items-center gap-2 text-[#1a1a1a] font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
                       style={{ background: refreshingPrices ? '#94a3b8' : 'linear-gradient(135deg, #0ea5e9, #0369a1)', boxShadow: '0 4px 14px rgba(14,165,233,0.25)' }}
                     >
                       {refreshingPrices ? (
@@ -1258,7 +1248,7 @@ Thank you for your time.`
                       onClick={handleLoadTakeoff}
                       disabled={!blueprintId || takeoffLoading}
                       title={!blueprintId ? 'Upload a blueprint first' : 'Extract per-room quantities from the blueprint (Togal-style)'}
-                      className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
+                      className="flex items-center gap-2 text-[#1a1a1a] font-bold px-4 py-2 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02]"
                       style={{ background: takeoffLoading ? '#94a3b8' : 'linear-gradient(135deg, #f59e0b, #b45309)', boxShadow: '0 4px 14px rgba(245,158,11,0.25)' }}
                     >
                       {takeoffLoading ? (
@@ -1273,7 +1263,7 @@ Thank you for your time.`
                     </button>
                     <button
                       onClick={() => api.reports.downloadPdf(projectId).then(blob => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `report-${projectId}.pdf`; a.click(); URL.revokeObjectURL(url); }).catch(() => {})}
-                      className="flex items-center gap-2 bg-white/[0.04] border text-slate-300 text-sm font-medium px-4 py-2 rounded-xl transition-all hover:border-blue-300 hover:text-blue-600"
+                      className="flex items-center gap-2 bg-[#f8f8f7] border text-[#2d2d2d] text-sm font-medium px-4 py-2 rounded-xl transition-all hover:border-blue-300 hover:text-blue-600"
                       style={{ borderColor: 'rgba(255,255,255,0.10)' }}
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1286,7 +1276,7 @@ Thank you for your time.`
                 <div className="flex gap-2 flex-wrap mb-5">
                   <button
                     onClick={() => { setCategoryFilter('all'); setReviewFilterOnly(false) }}
-                    className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${categoryFilter === 'all' && !reviewFilterOnly ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/[0.04] text-slate-500 border-white/10 hover:border-blue-300'}`}
+                    className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${categoryFilter === 'all' && !reviewFilterOnly ? 'bg-blue-600 text-white border-blue-600' : 'bg-[#f8f8f7] text-[#6b7280] border-[#dededc] hover:border-blue-300'}`}
                   >
                     All ({materials.length})
                   </button>
@@ -1306,7 +1296,7 @@ Thank you for your time.`
                       <button
                         key={cat}
                         onClick={() => setCategoryFilter(cat)}
-                        className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${categoryFilter === cat ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/[0.04] text-slate-500 border-white/10 hover:border-blue-300'}`}
+                        className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${categoryFilter === cat ? 'bg-blue-600 text-white border-blue-600' : 'bg-[#f8f8f7] text-[#6b7280] border-[#dededc] hover:border-blue-300'}`}
                       >
                         {meta.icon} {meta.label} ({count})
                       </button>
@@ -1315,44 +1305,44 @@ Thank you for your time.`
                 </div>
 
                 {addingMaterial && (
-                  <div className="bg-white/[0.04] rounded-2xl p-5 mb-4 border-2 border-dashed border-blue-200" style={cardStyle}>
-                    <div className="text-sm font-bold text-slate-200 mb-3">Add New Material</div>
+                  <div className="bg-[#f8f8f7] rounded-2xl p-5 mb-4 border-2 border-dashed border-blue-200" style={cardStyle}>
+                    <div className="text-sm font-bold text-[#1a1a1a] mb-3">Add New Material</div>
                     <div className="grid grid-cols-5 gap-3">
                       <input placeholder="Item name" value={newMaterial.item_name} onChange={e => setNewMaterial(p => ({...p, item_name: e.target.value}))}
-                        className="col-span-2 bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                        className="col-span-2 bg-[#f8f8f7] border border-[#dededc] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
                       <select value={newMaterial.category} onChange={e => setNewMaterial(p => ({...p, category: e.target.value}))}
-                        className="bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+                        className="bg-[#f8f8f7] border border-[#dededc] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
                         {Object.entries(CATEGORY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                       </select>
                       <input type="number" placeholder="Qty" value={newMaterial.quantity || ''} onChange={e => setNewMaterial(p => ({...p, quantity: Number(e.target.value)}))}
-                        className="bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                        className="bg-[#f8f8f7] border border-[#dededc] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
                       <input type="number" placeholder="Unit cost $" value={newMaterial.unit_cost || ''} onChange={e => setNewMaterial(p => ({...p, unit_cost: Number(e.target.value)}))}
-                        className="bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                        className="bg-[#f8f8f7] border border-[#dededc] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
                     </div>
                     <div className="flex gap-2 mt-3">
                       <button onClick={handleAddMaterial} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all">Add</button>
-                      <button onClick={() => setAddingMaterial(false)} className="bg-white/[0.06] hover:bg-white/10 text-slate-300 text-sm font-semibold px-4 py-2 rounded-xl transition-all">Cancel</button>
+                      <button onClick={() => setAddingMaterial(false)} className="bg-[#f8f8f7] hover:bg-[#eeeeed] text-[#2d2d2d] text-sm font-semibold px-4 py-2 rounded-xl transition-all">Cancel</button>
                     </div>
                   </div>
                 )}
 
                 {!materials.length ? (
-                  <div className="bg-white/[0.04] rounded-2xl p-12 text-center text-slate-400" style={cardStyle}>No materials estimated yet.</div>
+                  <div className="bg-[#f8f8f7] rounded-2xl p-12 text-center text-[#6b7280]" style={cardStyle}>No materials estimated yet.</div>
                 ) : (
                   <div className="space-y-6">
                     {Object.entries(byCategory).map(([cat, items]) => {
-                      const meta = CATEGORY_META[cat] || { label: cat, icon: '', color: 'bg-white/[0.05] text-slate-200 border-white/10' }
+                      const meta = CATEGORY_META[cat] || { label: cat, icon: '', color: 'bg-[#f8f8f7] text-[#1a1a1a] border-[#dededc]' }
                       const catTotal = items.reduce((s, m) => s + (m.total_cost || 0), 0)
                       return (
-                        <div key={cat} className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+                        <div key={cat} className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={cardStyle}>
                           {/* Category header */}
                           <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                             <div className="flex items-center gap-3">
                               <span className="text-xl">{meta.icon}</span>
-                              <span className="text-white font-bold text-sm">{meta.label}</span>
+                              <span className="text-[#1a1a1a] font-bold text-sm">{meta.label}</span>
                               <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${meta.color}`}>{items.length} items</span>
                             </div>
-                            <span className="text-white font-black text-sm">{formatMoney(catTotal)}</span>
+                            <span className="text-[#1a1a1a] font-black text-sm">{formatMoney(catTotal)}</span>
                           </div>
 
                           {/* Items */}
@@ -1385,18 +1375,18 @@ Thank you for your time.`
                                           <input
                                             value={editDraft.item_name ?? m.item_name}
                                             onChange={e => setEditDraft((p: any) => ({...p, item_name: e.target.value}))}
-                                            className="bg-white/[0.04] border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500 w-40"
+                                            className="bg-[#f8f8f7] border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500 w-40"
                                           />
                                           <input type="number"
                                             value={editDraft.quantity ?? m.quantity}
                                             onChange={e => setEditDraft((p: any) => ({...p, quantity: Number(e.target.value)}))}
-                                            className="bg-white/[0.04] border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500 w-20"
+                                            className="bg-[#f8f8f7] border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500 w-20"
                                             placeholder="Qty"
                                           />
                                           <input type="number"
                                             value={editDraft.unit_cost ?? m.unit_cost}
                                             onChange={e => setEditDraft((p: any) => ({...p, unit_cost: Number(e.target.value)}))}
-                                            className="bg-white/[0.04] border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500 w-24"
+                                            className="bg-[#f8f8f7] border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500 w-24"
                                             placeholder="Unit cost"
                                           />
                                           <button
@@ -1405,13 +1395,13 @@ Thank you for your time.`
                                           >Save</button>
                                           <button
                                             onClick={e => { e.stopPropagation(); setEditingMaterial(null) }}
-                                            className="text-xs bg-white/[0.06] text-slate-300 px-2 py-1 rounded-lg hover:bg-white/10"
+                                            className="text-xs bg-[#f8f8f7] text-[#2d2d2d] px-2 py-1 rounded-lg hover:bg-[#eeeeed]"
                                           >Cancel</button>
                                         </div>
                                       ) : (
                                         <>
-                                          <div className="text-white text-sm font-semibold">{(materialChanges[m.id]?.item_name) ?? m.item_name}</div>
-                                          <div className="text-slate-400 text-xs mt-0.5">{(materialChanges[m.id]?.quantity ?? m.quantity)?.toLocaleString()} {m.unit}</div>
+                                          <div className="text-[#1a1a1a] text-sm font-semibold">{(materialChanges[m.id]?.item_name) ?? m.item_name}</div>
+                                          <div className="text-[#6b7280] text-xs mt-0.5">{(materialChanges[m.id]?.quantity ?? m.quantity)?.toLocaleString()} {m.unit}</div>
                                         </>
                                       )}
                                     </div>
@@ -1449,7 +1439,7 @@ Thank you for your time.`
                                             </button>
                                           )}
                                           <div className="text-right">
-                                            <div className="text-white font-bold text-sm">{formatMoneyExact(materialChanges[m.id]?.unit_cost ?? m.unit_cost)} / {m.unit}</div>
+                                            <div className="text-[#1a1a1a] font-bold text-sm">{formatMoneyExact(materialChanges[m.id]?.unit_cost ?? m.unit_cost)} / {m.unit}</div>
                                             <div className="text-blue-600 font-black text-sm">{formatMoney(m.total_cost)}</div>
                                           </div>
                                         </div>
@@ -1464,14 +1454,14 @@ Thank you for your time.`
                                     <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                       <button
                                         onClick={e => { e.stopPropagation(); setEditingMaterial(matKey); setEditDraft({ item_name: m.item_name, quantity: m.quantity, unit_cost: m.unit_cost }) }}
-                                        className="p-1.5 rounded-lg hover:bg-blue-500/10 text-slate-400 hover:text-blue-600 transition-all"
+                                        className="p-1.5 rounded-lg hover:bg-blue-500/10 text-[#6b7280] hover:text-blue-600 transition-all"
                                         title="Edit"
                                       >
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                       </button>
                                       <button
                                         onClick={e => { e.stopPropagation(); handleDeleteMaterial(m.id) }}
-                                        className="p-1.5 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-red-500 transition-all"
+                                        className="p-1.5 rounded-lg hover:bg-rose-500/10 text-[#6b7280] hover:text-red-500 transition-all"
                                         title="Delete"
                                       >
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
@@ -1481,17 +1471,17 @@ Thank you for your time.`
 
                                   {/* Vendor options expanded */}
                                   {isExpanded && vendors.length === 0 && (
-                                    <div className="px-5 pb-4 bg-white/[0.05]">
-                                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 pt-3">Where to Buy</div>
-                                      <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.04] px-4 py-5 text-center">
-                                        <div className="text-slate-500 text-sm font-semibold mb-1">No live listings yet</div>
-                                        <div className="text-slate-400 text-xs">Click "Search for Live Prices" below to pull real product pages from Home Depot, Lowe's, Ferguson, Grainger, and more.</div>
+                                    <div className="px-5 pb-4 bg-[#f8f8f7]">
+                                      <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-2 pt-3">Where to Buy</div>
+                                      <div className="rounded-xl border border-dashed border-[#dededc] bg-[#f8f8f7] px-4 py-5 text-center">
+                                        <div className="text-[#6b7280] text-sm font-semibold mb-1">No live listings yet</div>
+                                        <div className="text-[#6b7280] text-xs">Click "Search for Live Prices" below to pull real product pages from Home Depot, Lowe's, Ferguson, Grainger, and more.</div>
                                       </div>
                                     </div>
                                   )}
                                   {isExpanded && vendors.length > 0 && (
-                                    <div className="px-5 pb-4 bg-white/[0.05]">
-                                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 pt-3">Where to Buy</div>
+                                    <div className="px-5 pb-4 bg-[#f8f8f7]">
+                                      <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-3 pt-3">Where to Buy</div>
                                       <div className="grid gap-2">
                                         {sortedVendors.map((v: any, vi: number) => {
                                           const isQuoteOnly = v.quote_only === true || v.price === null || v.price === undefined
@@ -1504,7 +1494,7 @@ Thank you for your time.`
                                           return (
                                             <div
                                               key={vi}
-                                              className={`flex items-center justify-between rounded-xl px-4 py-3 border ${isQuoteOnly ? 'bg-white/[0.05]' : 'bg-white/[0.04]'}`}
+                                              className={`flex items-center justify-between rounded-xl px-4 py-3 border ${isQuoteOnly ? 'bg-[#f8f8f7]' : 'bg-[#f8f8f7]'}`}
                                               style={{ borderColor: isQuoteOnly ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.10)' }}
                                             >
                                               <div className="flex items-center gap-2 min-w-0">
@@ -1519,15 +1509,15 @@ Thank you for your time.`
                                                   </span>
                                                 )}
                                                 <div className="min-w-0">
-                                                  <div className="text-slate-200 text-sm font-semibold truncate">{v.vendor}</div>
-                                                  {v.note && <div className="text-slate-400 text-xs">{v.note}</div>}
+                                                  <div className="text-[#1a1a1a] text-sm font-semibold truncate">{v.vendor}</div>
+                                                  {v.note && <div className="text-[#6b7280] text-xs">{v.note}</div>}
                                                 </div>
                                               </div>
                                               <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                                                 {isQuoteOnly ? (
-                                                  <span className="text-slate-400 text-xs font-semibold italic">Call for pricing</span>
+                                                  <span className="text-[#6b7280] text-xs font-semibold italic">Call for pricing</span>
                                                 ) : (
-                                                  <span className="text-white font-black text-sm">{formatMoneyExact(v.price)}</span>
+                                                  <span className="text-[#1a1a1a] font-black text-sm">{formatMoneyExact(v.price)}</span>
                                                 )}
                                                 <a
                                                   href={buyUrl}
@@ -1549,7 +1539,7 @@ Thank you for your time.`
 
                                   {/* Search for Live Prices */}
                                   {isExpanded && (
-                                    <div className="px-5 pb-3 bg-white/[0.05]">
+                                    <div className="px-5 pb-3 bg-[#f8f8f7]">
                                       <button
                                         onClick={e => {
                                           e.stopPropagation()
@@ -1592,7 +1582,7 @@ Thank you for your time.`
             {tab === 'cost' && (
               <div className="max-w-3xl">
                 {!estimate ? (
-                  <div className="bg-white/[0.04] rounded-2xl p-12 text-center text-slate-400" style={cardStyle}>No cost estimate available.</div>
+                  <div className="bg-[#f8f8f7] rounded-2xl p-12 text-center text-[#6b7280]" style={cardStyle}>No cost estimate available.</div>
                 ) : (() => {
                   const matTotal   = estimate.materials_total || 0
                   const laborTotal = estimate.labor_total || 0
@@ -1644,9 +1634,9 @@ Thank you for your time.`
                       </div>
 
                       {/* ── Materials by category ── */}
-                      <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+                      <div className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={cardStyle}>
                         <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                          <span className="text-white font-bold">Materials Cost by Category</span>
+                          <span className="text-[#1a1a1a] font-bold">Materials Cost by Category</span>
                           <span className="text-blue-600 font-black">{formatMoney(matTotal)}</span>
                         </div>
                         {Object.entries(categoryTotals)
@@ -1657,32 +1647,32 @@ Thank you for your time.`
                             return (
                               <div key={cat} className="px-5 py-3.5 border-b last:border-0" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                                 <div className="flex justify-between items-center mb-1.5">
-                                  <span className="text-slate-300 text-sm flex items-center gap-2">
+                                  <span className="text-[#2d2d2d] text-sm flex items-center gap-2">
                                     <span>{meta.icon}</span>{meta.label}
                                   </span>
                                   <div className="flex items-center gap-3">
-                                    <span className="text-slate-400 text-xs">{pct.toFixed(1)}%</span>
-                                    <span className="text-white font-bold text-sm w-20 text-right">{formatMoney(total as number)}</span>
+                                    <span className="text-[#6b7280] text-xs">{pct.toFixed(1)}%</span>
+                                    <span className="text-[#1a1a1a] font-bold text-sm w-20 text-right">{formatMoney(total as number)}</span>
                                   </div>
                                 </div>
-                                <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                                <div className="h-1.5 bg-[#f8f8f7] rounded-full overflow-hidden">
                                   <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
                                 </div>
                               </div>
                             )
                           })}
                         <div className="px-5 py-3 flex justify-between items-center bg-blue-500/10 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                          <span className="text-slate-300 text-sm font-bold">Materials Subtotal</span>
-                          <span className="text-white font-black">{formatMoney(matTotal)}</span>
+                          <span className="text-[#2d2d2d] text-sm font-bold">Materials Subtotal</span>
+                          <span className="text-[#1a1a1a] font-black">{formatMoney(matTotal)}</span>
                         </div>
                       </div>
 
                       {/* ── Labor by trade ── */}
-                      <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+                      <div className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={cardStyle}>
                         <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                           <div>
-                            <span className="text-white font-bold">Labor by Trade</span>
-                            <span className="text-slate-400 text-xs ml-2">({estimate.labor_hours?.toFixed(0) || '—'} hrs estimated)</span>
+                            <span className="text-[#1a1a1a] font-bold">Labor by Trade</span>
+                            <span className="text-[#6b7280] text-xs ml-2">({estimate.labor_hours?.toFixed(0) || '—'} hrs estimated)</span>
                           </div>
                           <span className="text-purple-600 font-black">{formatMoney(laborTotal)}</span>
                         </div>
@@ -1691,30 +1681,30 @@ Thank you for your time.`
                           return (
                             <div key={trade} className="px-5 py-3.5 border-b last:border-0" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                               <div className="flex justify-between items-center mb-1.5">
-                                <span className="text-slate-300 text-sm">{trade}</span>
+                                <span className="text-[#2d2d2d] text-sm">{trade}</span>
                                 <div className="flex items-center gap-3">
-                                  <span className="text-slate-400 text-xs">{pct.toFixed(1)}%</span>
-                                  <span className="text-white font-bold text-sm w-20 text-right">{formatMoney(cost)}</span>
+                                  <span className="text-[#6b7280] text-xs">{pct.toFixed(1)}%</span>
+                                  <span className="text-[#1a1a1a] font-bold text-sm w-20 text-right">{formatMoney(cost)}</span>
                                 </div>
                               </div>
-                              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                              <div className="h-1.5 bg-[#f8f8f7] rounded-full overflow-hidden">
                                 <div className="h-full bg-purple-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
                               </div>
                             </div>
                           )
                         })}
                         <div className="px-5 py-3 flex justify-between items-center bg-purple-500/10 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                          <span className="text-slate-300 text-sm font-bold">Labor Subtotal</span>
-                          <span className="text-white font-black">{formatMoney(laborTotal)}</span>
+                          <span className="text-[#2d2d2d] text-sm font-bold">Labor Subtotal</span>
+                          <span className="text-[#1a1a1a] font-black">{formatMoney(laborTotal)}</span>
                         </div>
                       </div>
 
                       {/* ── Job Costing: Actual vs Estimated ── */}
-                      <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+                      <div className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={cardStyle}>
                         <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                           <div>
-                            <span className="text-white font-bold">Job Costing — Actual vs Estimated</span>
-                            <span className="text-slate-400 text-xs ml-2">Track your real spend per category</span>
+                            <span className="text-[#1a1a1a] font-bold">Job Costing — Actual vs Estimated</span>
+                            <span className="text-[#6b7280] text-xs ml-2">Track your real spend per category</span>
                           </div>
                           {(() => {
                             const totalActual = Object.values(actualCosts).reduce((s, v) => s + v, 0)
@@ -1735,17 +1725,17 @@ Thank you for your time.`
                             const diff = actual - (est as number)
                             return (
                               <div key={cat} className="px-5 py-3 grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center">
-                                <span className="text-slate-300 text-sm flex items-center gap-2"><span>{meta.icon}</span>{meta.label}</span>
-                                <span className="text-slate-400 text-xs text-right">{formatMoney(est as number)} est.</span>
+                                <span className="text-[#2d2d2d] text-sm flex items-center gap-2"><span>{meta.icon}</span>{meta.label}</span>
+                                <span className="text-[#6b7280] text-xs text-right">{formatMoney(est as number)} est.</span>
                                 <div className="flex items-center gap-1">
-                                  <span className="text-slate-400 text-xs">$</span>
+                                  <span className="text-[#6b7280] text-xs">$</span>
                                   <input
                                     type="number"
                                     min="0"
                                     placeholder="0"
                                     value={actual || ''}
                                     onChange={e => updateActualCost(cat, parseFloat(e.target.value) || 0)}
-                                    className="w-24 bg-white/[0.06] border border-white/12 rounded-lg px-2 py-1 text-sm text-slate-200 focus:outline-none focus:border-blue-400 text-right"
+                                    className="w-24 bg-[#f8f8f7] border border-[#dededc] rounded-lg px-2 py-1 text-sm text-[#1a1a1a] focus:outline-none focus:border-blue-400 text-right"
                                   />
                                 </div>
                                 {actual > 0 && (
@@ -1761,18 +1751,18 @@ Thank you for your time.`
                         {Object.values(actualCosts).some(v => v > 0) && (() => {
                           const totalActual = Object.values(actualCosts).reduce((s, v) => s + v, 0)
                           return (
-                            <div className="px-5 py-3 flex justify-between items-center bg-white/[0.05] border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                              <span className="text-slate-300 text-sm font-bold">Total Actual Materials</span>
-                              <span className="text-white font-black">{formatMoney(totalActual)}</span>
+                            <div className="px-5 py-3 flex justify-between items-center bg-[#f8f8f7] border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                              <span className="text-[#2d2d2d] text-sm font-bold">Total Actual Materials</span>
+                              <span className="text-[#1a1a1a] font-black">{formatMoney(totalActual)}</span>
                             </div>
                           )
                         })()}
                       </div>
 
                       {/* ── Final summary ── */}
-                      <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+                      <div className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={cardStyle}>
                         <div className="px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                          <span className="text-white font-bold">Project Cost Summary</span>
+                          <span className="text-[#1a1a1a] font-bold">Project Cost Summary</span>
                         </div>
                         {[
                           { label: 'Materials',      value: matTotal,   color: 'bg-blue-500',   icon: '' },
@@ -1781,35 +1771,35 @@ Thank you for your time.`
                           { label: `Markup (${estimate.markup_pct || 15}%)`, value: markupAmt, color: 'bg-amber-500', icon: '' },
                         ].map(row => (
                           <div key={row.label} className="px-5 py-3.5 border-b last:border-0 flex justify-between items-center" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                            <span className="text-slate-300 text-sm flex items-center gap-2"><span>{row.icon}</span>{row.label}</span>
-                            <span className="text-white font-bold">{formatMoney(row.value)}</span>
+                            <span className="text-[#2d2d2d] text-sm flex items-center gap-2"><span>{row.icon}</span>{row.label}</span>
+                            <span className="text-[#1a1a1a] font-bold">{formatMoney(row.value)}</span>
                           </div>
                         ))}
 
                         {/* Markup control */}
-                        <div className="px-5 py-4 bg-white/[0.05] border-t flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                          <span className="text-slate-500 text-sm">Adjust Markup %</span>
+                        <div className="px-5 py-4 bg-[#f8f8f7] border-t flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                          <span className="text-[#6b7280] text-sm">Adjust Markup %</span>
                           <div className="flex items-center gap-2">
                             <input
                               type="number" min={0} max={100} value={markup}
                               onChange={e => setMarkup(Number(e.target.value))}
-                              className="w-16 bg-white/[0.04] border rounded-lg px-2 py-1 text-sm text-slate-200 text-right focus:outline-none focus:border-blue-400"
+                              className="w-16 bg-[#f8f8f7] border rounded-lg px-2 py-1 text-sm text-[#1a1a1a] text-right focus:outline-none focus:border-blue-400"
                               style={{ borderColor: 'rgba(255,255,255,0.10)' }}
                             />
-                            <span className="text-slate-400 text-sm">%</span>
+                            <span className="text-[#6b7280] text-sm">%</span>
                             <button onClick={handleMarkupUpdate} className="text-xs text-white bg-blue-600 hover:bg-blue-700 font-semibold px-3 py-1.5 rounded-lg transition-all">Apply</button>
                           </div>
                         </div>
 
                         <div className="px-5 py-5 flex justify-between items-center bg-blue-500/10 border-t" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
-                          <span className="text-white font-black text-base">Grand Total</span>
+                          <span className="text-[#1a1a1a] font-black text-base">Grand Total</span>
                           <span className="text-blue-600 font-black text-2xl">{formatMoney(grand)}</span>
                         </div>
                         <div className="px-5 py-4 flex justify-between items-center border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                          <span className="text-slate-500 text-sm">Customer Proposal</span>
+                          <span className="text-[#6b7280] text-sm">Customer Proposal</span>
                           <button
                             onClick={() => setShowProposal(true)}
-                            className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all hover:scale-[1.02]"
+                            className="flex items-center gap-2 text-[#1a1a1a] font-bold px-4 py-2 rounded-xl text-sm transition-all hover:scale-[1.02]"
                             style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.2)' }}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -1827,24 +1817,24 @@ Thank you for your time.`
             {tab === 'view3d' && (
               <div className="max-w-5xl space-y-4">
                 <div>
-                  <h2 className="text-white font-bold text-lg">AI Renders</h2>
-                  <p className="text-slate-400 text-xs mt-0.5">Generate 4 exterior angles and per-room interior renders from your blueprint — zoom, pan, and measure directly on any image.</p>
+                  <h2 className="text-[#1a1a1a] font-bold text-lg">AI Renders</h2>
+                  <p className="text-[#6b7280] text-xs mt-0.5">Generate 4 exterior angles and per-room interior renders from your blueprint — zoom, pan, and measure directly on any image.</p>
                 </div>
 
                 {/* ── Rooms from blueprint analysis ──────────────────── */}
                 {Array.isArray(analysis?.rooms) && analysis.rooms.length > 0 && (
-                  <div className="bg-white/[0.04] rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(255,255,255,0.10)' }}>
-                    <h3 className="text-white font-bold text-sm mb-3">
+                  <div className="bg-[#f8f8f7] rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(255,255,255,0.10)' }}>
+                    <h3 className="text-[#1a1a1a] font-bold text-sm mb-3">
                       Rooms on Blueprint
-                      <span className="ml-2 text-[11px] font-normal text-slate-400">({analysis.rooms.length} room{analysis.rooms.length !== 1 ? 's' : ''} detected)</span>
+                      <span className="ml-2 text-[11px] font-normal text-[#6b7280]">({analysis.rooms.length} room{analysis.rooms.length !== 1 ? 's' : ''} detected)</span>
                     </h3>
                     <div className="grid grid-cols-3 gap-3">
                       {analysis.rooms.map((room: any, i: number) => {
                         const colors = ['bg-blue-500/10 border-blue-200','bg-emerald-500/10 border-green-200','bg-amber-500/10 border-yellow-200','bg-rose-50 border-rose-200','bg-purple-500/10 border-purple-200','bg-cyan-50 border-cyan-200','bg-orange-50 border-orange-200','bg-emerald-500/10 border-emerald-200']
                         return (
                           <div key={i} className={`rounded-xl border p-3 ${colors[i % colors.length]}`}>
-                            <div className="text-white font-semibold text-sm">{room.name}</div>
-                            <div className="text-slate-500 text-xs mt-0.5">{room.sqft ? `${Math.round(room.sqft)} sqft` : '—'}</div>
+                            <div className="text-[#1a1a1a] font-semibold text-sm">{room.name}</div>
+                            <div className="text-[#6b7280] text-xs mt-0.5">{room.sqft ? `${Math.round(room.sqft)} sqft` : '—'}</div>
                           </div>
                         )
                       })}
@@ -1853,21 +1843,21 @@ Thank you for your time.`
                 )}
 
                 {/* ── AI PHOTOREALISTIC RENDERS ──────────────────────── */}
-                <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(255,255,255,0.10)' }}>
+                <div className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(59,130,246,0.08)', border: '1px solid rgba(255,255,255,0.10)' }}>
                   <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
                     <div className="space-y-4">
                       <div className="flex items-start justify-between flex-wrap gap-4">
                         <div>
-                          <h3 className="text-white font-bold text-base">AI Photorealistic Renders</h3>
-                          <p className="text-slate-400 text-xs mt-0.5">AI reads your blueprint for accurate context · 360° exterior + every room interior</p>
+                          <h3 className="text-[#1a1a1a] font-bold text-base">AI Photorealistic Renders</h3>
+                          <p className="text-[#6b7280] text-xs mt-0.5">AI reads your blueprint for accurate context · 360° exterior + every room interior</p>
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-500 text-xs font-semibold">Style</span>
+                            <span className="text-[#6b7280] text-xs font-semibold">Style</span>
                             <select
                               value={renderStyle}
                               onChange={e => setRenderStyle(e.target.value)}
-                              className="text-xs rounded-lg px-2.5 py-1.5 border text-slate-200 focus:outline-none focus:border-blue-400"
+                              className="text-xs rounded-lg px-2.5 py-1.5 border text-[#1a1a1a] focus:outline-none focus:border-blue-400"
                               style={{ borderColor: 'rgba(255,255,255,0.10)', background: '#f8faff' }}
                             >
                               {[['modern','Modern'],['traditional','Traditional'],['farmhouse','Farmhouse'],['contemporary','Contemporary'],['craftsman','Craftsman']].map(([v,l]) => (
@@ -1876,11 +1866,11 @@ Thank you for your time.`
                             </select>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-500 text-xs font-semibold">Time</span>
+                            <span className="text-[#6b7280] text-xs font-semibold">Time</span>
                             <select
                               value={renderTimeOfDay}
                               onChange={e => setRenderTimeOfDay(e.target.value)}
-                              className="text-xs rounded-lg px-2.5 py-1.5 border text-slate-200 focus:outline-none focus:border-blue-400"
+                              className="text-xs rounded-lg px-2.5 py-1.5 border text-[#1a1a1a] focus:outline-none focus:border-blue-400"
                               style={{ borderColor: 'rgba(255,255,255,0.10)', background: '#f8faff' }}
                             >
                               {[['day','Midday'],['golden_hour','Golden Hour'],['dusk','Dusk']].map(([v,l]) => (
@@ -1894,8 +1884,8 @@ Thank you for your time.`
                       {/* Context input + Generate button */}
                       <div className="flex gap-3 items-end">
                         <div className="flex-1">
-                          <label className="text-slate-500 text-xs font-semibold block mb-1.5">
-                            Tell the AI what this should look like <span className="font-normal text-slate-400">(this drives every render — materials, colors, setting, landscaping)</span>
+                          <label className="text-[#6b7280] text-xs font-semibold block mb-1.5">
+                            Tell the AI what this should look like <span className="font-normal text-[#6b7280]">(this drives every render — materials, colors, setting, landscaping)</span>
                           </label>
                           <input
                             type="text"
@@ -1903,11 +1893,11 @@ Thank you for your time.`
                             onChange={e => setRenderUserContext(e.target.value)}
                             placeholder='e.g. "red brick exterior, black windows, cedar shake roof, mature oaks, coastal New England"'
                             disabled={renderLoading}
-                            className="w-full text-xs rounded-xl px-3.5 py-2.5 border text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-400 disabled:opacity-50"
+                            className="w-full text-xs rounded-xl px-3.5 py-2.5 border text-[#1a1a1a] placeholder-[#9ca3af] focus:outline-none focus:border-indigo-400 disabled:opacity-50"
                             style={{ borderColor: 'rgba(255,255,255,0.10)', background: '#f8faff' }}
                             onKeyDown={e => { if (e.key === 'Enter' && !renderLoading && hasBlueprint) (e.target as HTMLInputElement).blur() }}
                           />
-                          <p className="text-[10px] text-slate-400 mt-1">
+                          <p className="text-[10px] text-[#6b7280] mt-1">
                             The more specific you are, the more accurate every exterior and room render will be.
                           </p>
                         </div>
@@ -1925,7 +1915,7 @@ Thank you for your time.`
                           }}
                           disabled={renderLoading || !hasBlueprint}
                           title={!hasBlueprint ? 'Upload a blueprint first' : 'Generate AI renders'}
-                          className="flex items-center gap-2 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02] flex-shrink-0"
+                          className="flex items-center gap-2 text-[#1a1a1a] font-bold px-4 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40 hover:scale-[1.02] flex-shrink-0"
                           style={{ background: renderLoading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
                         >
                           {renderLoading
@@ -1946,9 +1936,9 @@ Thank you for your time.`
                   {renderLoading && (
                     <div className="px-6 py-16 flex flex-col items-center gap-4">
                       <svg className="animate-spin text-indigo-400" width="32" height="32" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-                      <div className="text-slate-500 text-sm text-center">
+                      <div className="text-[#6b7280] text-sm text-center">
                         <div className="font-semibold">Generating photorealistic renders…</div>
-                        <div className="text-slate-400 text-xs mt-1">
+                        <div className="text-[#6b7280] text-xs mt-1">
                           Reading blueprint · building 4 exterior angles + {analysis?.rooms?.length ? `${Math.min(analysis.rooms.length, 5)} room interior${Math.min(analysis.rooms.length, 5) !== 1 ? 's' : ''}` : 'room interiors'}. Takes ~2 minutes.
                         </div>
                       </div>
@@ -1965,7 +1955,7 @@ Thank you for your time.`
                       {/* Per-room interior renders */}
                       {renders.room_renders.length > 0 && (
                         <div>
-                          <h4 className="text-slate-200 font-bold text-sm mb-3">Room Interiors</h4>
+                          <h4 className="text-[#1a1a1a] font-bold text-sm mb-3">Room Interiors</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {renders.room_renders.map((room, i) =>
                               room.url ? (
@@ -1978,7 +1968,7 @@ Thank you for your time.`
                               ) : (
                                 <div
                                   key={i}
-                                  className="rounded-xl flex items-center justify-center bg-white/[0.05] text-slate-400 text-sm"
+                                  className="rounded-xl flex items-center justify-center bg-[#f8f8f7] text-[#6b7280] text-sm"
                                   style={{ border: '1px solid rgba(255,255,255,0.10)', aspectRatio: '16/9' }}
                                 >
                                   {room.name} — render unavailable
@@ -1992,8 +1982,8 @@ Thank you for your time.`
                   )}
 
                   {!renderLoading && !renders && !renderError && (
-                    <div className="px-6 py-12 text-center text-slate-400 text-sm">
-                      <div className="font-semibold text-slate-500">No renders yet</div>
+                    <div className="px-6 py-12 text-center text-[#6b7280] text-sm">
+                      <div className="font-semibold text-[#6b7280]">No renders yet</div>
                       <div className="text-xs mt-1">Choose a style and click Generate Renders to create 4 exterior angles and per-room interior views.</div>
                     </div>
                   )}
@@ -2010,7 +2000,7 @@ Thank you for your time.`
                   <button
                     onClick={handleMaterialsComplianceCheck}
                     disabled={matCheckLoading || !project?.city}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#1a1a1a] text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ background: matCheckLoading ? '#94a3b8' : 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.25)' }}
                     title={!project?.city ? 'Add a city to the project first' : ''}
                   >
@@ -2020,32 +2010,32 @@ Thank you for your time.`
                   </button>
                 </div>
                 {!compliance || compliance.status === 'not_run' ? (
-                  <div className="bg-white/[0.04] rounded-2xl p-12 text-center" style={cardStyle}>
-                    <div className="text-white font-semibold mb-2">No compliance check run</div>
-                    <div className="text-slate-400 text-sm">Runs automatically when your blueprint is analyzed.</div>
+                  <div className="bg-[#f8f8f7] rounded-2xl p-12 text-center" style={cardStyle}>
+                    <div className="text-[#1a1a1a] font-semibold mb-2">No compliance check run</div>
+                    <div className="text-[#6b7280] text-sm">Runs automatically when your blueprint is analyzed.</div>
                   </div>
                 ) : compliance.status === 'processing' || compliance.status === 'pending' ? (
-                  <div className="bg-white/[0.04] rounded-2xl p-12 text-center" style={cardStyle}>
+                  <div className="bg-[#f8f8f7] rounded-2xl p-12 text-center" style={cardStyle}>
                     <svg className="animate-spin text-blue-500 mx-auto mb-4" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-                    <div className="text-slate-400 text-sm">Analyzing building codes and requirements…</div>
+                    <div className="text-[#6b7280] text-sm">Analyzing building codes and requirements…</div>
                   </div>
                 ) : compliance.status === 'complete' ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <span className="text-white font-bold">{compliance.city ? `${compliance.city}, ` : ''}{compliance.region}</span>
+                        <span className="text-[#1a1a1a] font-bold">{compliance.city ? `${compliance.city}, ` : ''}{compliance.region}</span>
                         {compliance.risk_level && (
                           <span className={`text-xs px-2.5 py-1 rounded-full font-semibold capitalize border ${RISK_BANNER[compliance.risk_level]}`}>
                             {compliance.risk_level} risk
                           </span>
                         )}
                       </div>
-                      <span className="text-slate-400 text-xs">{compliance.items.length} items</span>
+                      <span className="text-[#6b7280] text-xs">{compliance.items.length} items</span>
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       {(['all', 'required', 'recommended', 'info'] as const).map(f => (
                         <button key={f} onClick={() => setComplianceFilter(f)}
-                          className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all capitalize border ${complianceFilter === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-white/[0.04] text-slate-500 border-white/10 hover:border-blue-300'}`}>
+                          className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all capitalize border ${complianceFilter === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-[#f8f8f7] text-[#6b7280] border-[#dededc] hover:border-blue-300'}`}>
                           {f === 'all' ? `All (${compliance.items.length})` :
                            f === 'required' ? `Required (${requiredCount})` :
                            f === 'recommended' ? `Recommended (${recommendedCount})` :
@@ -2056,8 +2046,8 @@ Thank you for your time.`
                     {Object.entries(complianceByCategory).map(([category, items]) => (
                       <div key={category}>
                         <div className="flex items-center gap-2 mb-2 mt-4">
-                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{category}</span>
-                          <span className="text-xs text-slate-300">({items.length})</span>
+                          <span className="text-xs font-bold text-[#6b7280] uppercase tracking-wider">{category}</span>
+                          <span className="text-xs text-[#2d2d2d]">({items.length})</span>
                         </div>
                         <div className="space-y-2">
                           {items.map(item => {
@@ -2072,13 +2062,13 @@ Thank you for your time.`
                               ? { ...cardStyle, border: '2px solid rgba(234,179,8,0.65)', boxShadow: '0 2px 12px rgba(234,179,8,0.10)' }
                               : cardStyle
                             return (
-                            <div key={item.id} className="bg-white/[0.04] rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-sm" style={itemCardStyle}
+                            <div key={item.id} className="bg-[#f8f8f7] rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-sm" style={itemCardStyle}
                               onClick={() => setExpandedItem(expandedItem === item.id ? null : item.id)}>
                               <div className="px-4 py-3.5 flex items-start gap-3">
                                 <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${isFail ? 'bg-rose-500' : SEVERITY[item.severity].dot}`} />
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-start justify-between gap-3 flex-wrap">
-                                    <span className={`text-sm font-medium leading-snug ${isFail ? 'text-red-700' : 'text-white'}`}>{item.title}</span>
+                                    <span className={`text-sm font-medium leading-snug ${isFail ? 'text-red-700' : 'text-[#1a1a1a]'}`}>{item.title}</span>
                                     <div className="flex items-center gap-1.5 flex-shrink-0">
                                       {item.status && STATUS_BADGE[item.status] && (
                                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize ${STATUS_BADGE[item.status].badge}`}>{STATUS_BADGE[item.status].label}</span>
@@ -2090,18 +2080,18 @@ Thank you for your time.`
                                     </div>
                                   </div>
                                 </div>
-                                <svg className={`flex-shrink-0 text-slate-400 transition-transform mt-0.5 ${expandedItem === item.id ? 'rotate-180' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                <svg className={`flex-shrink-0 text-[#6b7280] transition-transform mt-0.5 ${expandedItem === item.id ? 'rotate-180' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
                               </div>
                               {expandedItem === item.id && (
                                 <div className="px-4 pb-4 border-t pt-3 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                                  <p className="text-slate-500 text-sm leading-relaxed">{item.description}</p>
+                                  <p className="text-[#6b7280] text-sm leading-relaxed">{item.description}</p>
                                   {item.action && (
                                     <div className="bg-blue-500/10 border border-blue-100 rounded-xl px-4 py-3">
                                       <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Action Required</div>
-                                      <p className="text-slate-200 text-xs">{item.action}</p>
+                                      <p className="text-[#1a1a1a] text-xs">{item.action}</p>
                                     </div>
                                   )}
-                                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-400">
+                                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#6b7280]">
                                     {item.deadline && <span>{item.deadline}</span>}
                                     {item.penalty && <span>{item.penalty}</span>}
                                     {item.source && <span>{item.source}</span>}
@@ -2115,21 +2105,21 @@ Thank you for your time.`
                       </div>
                     ))}
                     {Object.keys(complianceByCategory).length === 0 && (
-                      <div className="text-center py-8 text-slate-400 text-sm">No items match this filter.</div>
+                      <div className="text-center py-8 text-[#6b7280] text-sm">No items match this filter.</div>
                     )}
                   </div>
                 ) : (
-                  <div className="bg-white/[0.04] rounded-2xl p-12 text-center text-red-500" style={cardStyle}>Compliance check failed.</div>
+                  <div className="bg-[#f8f8f7] rounded-2xl p-12 text-center text-red-500" style={cardStyle}>Compliance check failed.</div>
                 )}
 
                 {/* ── MATERIALS CODE CHECK RESULTS ──────────────────────── */}
                 {(matCheckResult || matCheckLoading || matCheckError) && (
                   <div className="mt-6">
                     {matCheckLoading && (
-                      <div className="bg-white/[0.04] rounded-2xl p-8 text-center" style={cardStyle}>
+                      <div className="bg-[#f8f8f7] rounded-2xl p-8 text-center" style={cardStyle}>
                         <svg className="animate-spin text-purple-500 mx-auto mb-3" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-                        <div className="text-slate-300 text-sm font-medium mb-1">Checking materials against local codes…</div>
-                        <div className="text-slate-400 text-xs">Pulling {project?.city} building codes and cross-referencing your materials list</div>
+                        <div className="text-[#2d2d2d] text-sm font-medium mb-1">Checking materials against local codes…</div>
+                        <div className="text-[#6b7280] text-xs">Pulling {project?.city} building codes and cross-referencing your materials list</div>
                       </div>
                     )}
 
@@ -2149,38 +2139,34 @@ Thank you for your time.`
                       return (
                         <div className="space-y-4">
                           {/* Header */}
-                          <div className="bg-white/[0.04] rounded-2xl px-5 py-4" style={cardStyle}>
+                          <div className="bg-[#f8f8f7] rounded-2xl px-5 py-4" style={cardStyle}>
                             <div className="flex items-start justify-between gap-4 mb-3">
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-white font-bold text-sm">Materials Code Compliance</span>
-                                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border capitalize ${
-                                    matCheckResult.overall_status === 'pass' ? 'bg-emerald-500/10 border-emerald-200 text-emerald-700' :
-                                    matCheckResult.overall_status === 'warning' ? 'bg-amber-500/10 border-amber-200 text-amber-700' :
-                                    'bg-rose-500/10 border-red-200 text-red-700'
-                                  }`}>{matCheckResult.overall_status}</span>
+                                  <span className="text-[#1a1a1a] font-bold text-sm">Materials Code Compliance</span>
+                                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border capitalize ${ matCheckResult.overall_status === 'pass' ? 'bg-emerald-500/10 border-emerald-200 text-emerald-700' : matCheckResult.overall_status === 'warning' ? 'bg-amber-500/10 border-amber-200 text-amber-700' : 'bg-rose-500/10 border-red-200 text-red-700' }`}>{matCheckResult.overall_status}</span>
                                 </div>
-                                {locationStr && <div className="text-slate-400 text-xs">{locationStr} · {matCheckResult.project_type}</div>}
+                                {locationStr && <div className="text-[#6b7280] text-xs">{locationStr} · {matCheckResult.project_type}</div>}
                               </div>
                               <div className="flex gap-3 text-center flex-shrink-0">
-                                <div><div className="text-emerald-600 font-bold text-lg leading-none">{passCount}</div><div className="text-slate-400 text-[10px] mt-0.5">Pass</div></div>
-                                {warnCount > 0 && <div><div className="text-amber-500 font-bold text-lg leading-none">{warnCount}</div><div className="text-slate-400 text-[10px] mt-0.5">Warn</div></div>}
-                                <div><div className="text-red-500 font-bold text-lg leading-none">{failCount + missing.length}</div><div className="text-slate-400 text-[10px] mt-0.5">Fail</div></div>
+                                <div><div className="text-emerald-600 font-bold text-lg leading-none">{passCount}</div><div className="text-[#6b7280] text-[10px] mt-0.5">Pass</div></div>
+                                {warnCount > 0 && <div><div className="text-amber-500 font-bold text-lg leading-none">{warnCount}</div><div className="text-[#6b7280] text-[10px] mt-0.5">Warn</div></div>}
+                                <div><div className="text-red-500 font-bold text-lg leading-none">{failCount + missing.length}</div><div className="text-[#6b7280] text-[10px] mt-0.5">Fail</div></div>
                               </div>
                             </div>
-                            {matCheckResult.summary && <p className="text-slate-500 text-sm leading-relaxed border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>{matCheckResult.summary}</p>}
+                            {matCheckResult.summary && <p className="text-[#6b7280] text-sm leading-relaxed border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>{matCheckResult.summary}</p>}
                           </div>
 
                           {/* Per-material checklist */}
                           {checklist.length > 0 && (
                             <div className="space-y-2">
-                              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Materials Checklist ({checklist.length} items)</div>
+                              <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-2">Materials Checklist ({checklist.length} items)</div>
                               {checklist.map((item: any, i: number) => {
                                 const isFail = item.status === 'fail'
                                 const isWarn = item.status === 'warning'
                                 const isPass = item.status === 'pass'
                                 return (
-                                  <div key={i} className={`rounded-xl overflow-hidden ${isPass ? '' : 'bg-white/[0.04]'}`} style={{
+                                  <div key={i} className={`rounded-xl overflow-hidden ${isPass ? '' : 'bg-[#f8f8f7]'}`} style={{
                                     boxShadow: isFail ? '0 2px 12px rgba(239,68,68,0.15)' : isWarn ? '0 2px 12px rgba(234,179,8,0.10)' : 'none',
                                     border: isFail ? '2px solid rgba(239,68,68,0.65)' : isWarn ? '2px solid rgba(234,179,8,0.65)' : '2px solid rgba(16,185,129,0.6)',
                                     background: isPass ? 'transparent' : undefined,
@@ -2206,20 +2192,20 @@ Thank you for your time.`
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-start justify-between gap-2">
-                                          <span className="text-white text-sm font-semibold">{item.item_name}</span>
-                                          {item.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-500 font-medium flex-shrink-0 capitalize">{item.category}</span>}
+                                          <span className="text-[#1a1a1a] text-sm font-semibold">{item.item_name}</span>
+                                          {item.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f8f8f7] text-[#6b7280] font-medium flex-shrink-0 capitalize">{item.category}</span>}
                                         </div>
-                                        {isPass && item.note && <p className="text-slate-500 text-xs mt-0.5">{item.note}</p>}
+                                        {isPass && item.note && <p className="text-[#6b7280] text-xs mt-0.5">{item.note}</p>}
                                         {(isFail || isWarn) && (item.rule_quote || item.rule_text) && (
-                                          <blockquote className={`mt-2 pl-3 border-l-2 text-slate-500 text-xs italic leading-relaxed ${isFail ? 'border-red-300' : 'border-amber-300'}`}>{item.rule_quote || item.rule_text}</blockquote>
+                                          <blockquote className={`mt-2 pl-3 border-l-2 text-[#6b7280] text-xs italic leading-relaxed ${isFail ? 'border-red-300' : 'border-amber-300'}`}>{item.rule_quote || item.rule_text}</blockquote>
                                         )}
                                         {(isFail || isWarn) && item.violation_reason && (
-                                          <p className="mt-1.5 text-slate-300 text-xs">{item.violation_reason}</p>
+                                          <p className="mt-1.5 text-[#2d2d2d] text-xs">{item.violation_reason}</p>
                                         )}
                                         {(isFail || isWarn) && item.fix_suggestion && (
                                           <div className="mt-2 bg-blue-500/10 border border-blue-100 rounded-lg px-3 py-2">
                                             <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Fix: </span>
-                                            <span className="text-slate-200 text-xs">{item.fix_suggestion}</span>
+                                            <span className="text-[#1a1a1a] text-xs">{item.fix_suggestion}</span>
                                           </div>
                                         )}
                                         <CitationInline item={item} />
@@ -2243,14 +2229,14 @@ Thank you for your time.`
                               <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">Missing Required Items ({missing.length})</div>
                               <div className="space-y-2">
                                 {missing.map((m: any, i: number) => (
-                                  <div key={i} className="bg-white/[0.04] rounded-xl px-4 py-3 flex items-start gap-3" style={{ boxShadow: '0 2px 12px rgba(245,158,11,0.08)', border: '1px solid rgba(253,230,138,0.9)' }}>
+                                  <div key={i} className="bg-[#f8f8f7] rounded-xl px-4 py-3 flex items-start gap-3" style={{ boxShadow: '0 2px 12px rgba(245,158,11,0.08)', border: '1px solid rgba(253,230,138,0.9)' }}>
                                     <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
                                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                                     </div>
                                     <div className="flex-1">
-                                      <span className="text-white text-sm font-semibold">{m.item_name}</span>
-                                      {(m.rule_quote || m.rule_text) && <blockquote className="mt-1.5 pl-3 border-l-2 border-amber-300 text-slate-500 text-xs italic leading-relaxed">{m.rule_quote || m.rule_text}</blockquote>}
-                                      {m.reason_required && <p className="mt-1 text-slate-500 text-xs">{m.reason_required}</p>}
+                                      <span className="text-[#1a1a1a] text-sm font-semibold">{m.item_name}</span>
+                                      {(m.rule_quote || m.rule_text) && <blockquote className="mt-1.5 pl-3 border-l-2 border-amber-300 text-[#6b7280] text-xs italic leading-relaxed">{m.rule_quote || m.rule_text}</blockquote>}
+                                      {m.reason_required && <p className="mt-1 text-[#6b7280] text-xs">{m.reason_required}</p>}
                                       <CitationInline item={m} />
                                     </div>
                                   </div>
@@ -2273,8 +2259,8 @@ Thank you for your time.`
             {tab === 'permits' && (
               <div className="max-w-2xl space-y-5">
                 <div>
-                  <h2 className="text-white font-bold text-lg">Permit Applications</h2>
-                  <p className="text-slate-400 text-xs mt-0.5">Find and submit your building permit for {project?.city ? `${project.city}, ` : ''}{project?.region}</p>
+                  <h2 className="text-[#1a1a1a] font-bold text-lg">Permit Applications</h2>
+                  <p className="text-[#6b7280] text-xs mt-0.5">Find and submit your building permit for {project?.city ? `${project.city}, ` : ''}{project?.region}</p>
                 </div>
                 {project && (!project.city || !project.region) && (
                   <div className="bg-amber-500/10 border border-amber-200 rounded-2xl p-4">
@@ -2297,22 +2283,22 @@ Thank you for your time.`
       {/* ── PROPOSAL MODAL ── */}
       {showProposal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(6px)' }}>
-          <div className="bg-white/[0.04] rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+          <div className="bg-[#f8f8f7] rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
             <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
               <div>
-                <h2 className="text-lg font-bold text-white">Customer Proposal</h2>
-                <p className="text-slate-400 text-xs mt-0.5">Print or save as PDF to share with your client</p>
+                <h2 className="text-lg font-bold text-[#1a1a1a]">Customer Proposal</h2>
+                <p className="text-[#6b7280] text-xs mt-0.5">Print or save as PDF to share with your client</p>
               </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-2 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all"
+                  className="flex items-center gap-2 text-[#1a1a1a] font-bold px-4 py-2 rounded-xl text-sm transition-all"
                   style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                   Print / Save PDF
                 </button>
-                <button onClick={() => setShowProposal(false)} className="text-slate-400 hover:text-slate-200 text-xl leading-none"></button>
+                <button onClick={() => setShowProposal(false)} className="text-[#6b7280] hover:text-[#1a1a1a] text-xl leading-none"></button>
               </div>
             </div>
 
@@ -2321,15 +2307,15 @@ Thank you for your time.`
               {/* Header */}
               <div className="text-center border-b pb-6" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
                 <div className="text-3xl font-black text-blue-600 mb-1">Project Proposal</div>
-                <div className="text-xl font-bold text-white">{project?.name}</div>
-                <div className="text-slate-400 text-sm mt-1">
+                <div className="text-xl font-bold text-[#1a1a1a]">{project?.name}</div>
+                <div className="text-[#6b7280] text-sm mt-1">
                   {project?.city && `${project.city}, `}{project?.region?.replace('US-', '')} · {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </div>
               </div>
 
               {/* Project Overview */}
               <div>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Project Overview</div>
+                <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-3">Project Overview</div>
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { label: 'Project Type', value: project?.blueprint_type || 'Residential' },
@@ -2337,9 +2323,9 @@ Thank you for your time.`
                     { label: 'Total Area', value: analysis?.total_sqft ? `${analysis.total_sqft.toLocaleString()} sq ft` : '—' },
                     { label: 'Rooms', value: analysis?.rooms?.length || '—' },
                   ].map(row => (
-                    <div key={row.label} className="bg-white/[0.05] rounded-xl p-3">
-                      <div className="text-slate-400 text-xs">{row.label}</div>
-                      <div className="text-white font-bold text-sm mt-0.5">{row.value}</div>
+                    <div key={row.label} className="bg-[#f8f8f7] rounded-xl p-3">
+                      <div className="text-[#6b7280] text-xs">{row.label}</div>
+                      <div className="text-[#1a1a1a] font-bold text-sm mt-0.5">{row.value}</div>
                     </div>
                   ))}
                 </div>
@@ -2348,11 +2334,11 @@ Thank you for your time.`
               {/* Scope of Work */}
               {Array.isArray(analysis?.rooms) && analysis.rooms.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Scope of Work</div>
-                  <div className="bg-white/[0.05] rounded-xl p-4">
+                  <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-3">Scope of Work</div>
+                  <div className="bg-[#f8f8f7] rounded-xl p-4">
                     <div className="grid grid-cols-3 gap-2">
                       {analysis.rooms.slice(0, 9).map((room: any, i: number) => (
-                        <div key={i} className="text-slate-300 text-sm">{room.name}{room.sqft ? ` (${Math.round(room.sqft)} sqft)` : ''}</div>
+                        <div key={i} className="text-[#2d2d2d] text-sm">{room.name}{room.sqft ? ` (${Math.round(room.sqft)} sqft)` : ''}</div>
                       ))}
                     </div>
                   </div>
@@ -2362,14 +2348,14 @@ Thank you for your time.`
               {/* Materials Summary */}
               {materials.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Materials Summary</div>
+                  <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-3">Materials Summary</div>
                   <div className="space-y-1">
                     {Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]).map(([cat, total]) => {
                       const meta = CATEGORY_META[cat] || { label: cat, icon: '' }
                       return (
                         <div key={cat} className="flex justify-between items-center py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-                          <span className="text-slate-300 text-sm flex items-center gap-2"><span>{meta.icon}</span>{meta.label}</span>
-                          <span className="text-white font-semibold text-sm">{formatMoney(total as number)}</span>
+                          <span className="text-[#2d2d2d] text-sm flex items-center gap-2"><span>{meta.icon}</span>{meta.label}</span>
+                          <span className="text-[#1a1a1a] font-semibold text-sm">{formatMoney(total as number)}</span>
                         </div>
                       )
                     })}
@@ -2386,7 +2372,7 @@ Thank you for your time.`
                 const grand = matTotal + laborTotal + overhead + markupAmt
                 return (
                   <div>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Investment Summary</div>
+                    <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-3">Investment Summary</div>
                     <div className="bg-blue-600 rounded-2xl p-6 text-white text-center">
                       <div className="text-blue-100 text-sm mb-1">Total Project Investment</div>
                       <div className="text-4xl font-black">{formatMoney(grand)}</div>
@@ -2401,7 +2387,7 @@ Thank you for your time.`
               })()}
 
               {/* Footer */}
-              <div className="text-center text-slate-400 text-xs pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
+              <div className="text-center text-[#6b7280] text-xs pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
                 This proposal is an estimate based on AI-powered blueprint analysis. Final pricing may vary based on site conditions, material availability, and local market rates.
               </div>
             </div>
@@ -2412,13 +2398,13 @@ Thank you for your time.`
       {/* Quote Request Modal */}
       {quoteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)' }} onClick={() => setQuoteModal(null)}>
-          <div className="bg-white/[0.04] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-[#f8f8f7] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
               <div>
-                <h2 className="text-white font-bold text-base">Quote Request — {quoteModal.vendor}</h2>
-                <p className="text-slate-400 text-xs mt-0.5">Fill in your info, then copy the generated text to send to the distributor.</p>
+                <h2 className="text-[#1a1a1a] font-bold text-base">Quote Request — {quoteModal.vendor}</h2>
+                <p className="text-[#6b7280] text-xs mt-0.5">Fill in your info, then copy the generated text to send to the distributor.</p>
               </div>
-              <button onClick={() => setQuoteModal(null)} className="text-slate-400 hover:text-slate-200 text-lg font-light leading-none"></button>
+              <button onClick={() => setQuoteModal(null)} className="text-[#6b7280] hover:text-[#1a1a1a] text-lg font-light leading-none"></button>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -2430,35 +2416,35 @@ Thank you for your time.`
                   { key: 'branch', label: 'Preferred Branch / Location', placeholder: 'Chicago, IL branch' },
                 ].map(f => (
                   <div key={f.key} className={f.key === 'branch' ? 'col-span-2' : ''}>
-                    <label className="text-xs font-semibold text-slate-300 mb-1 block">{f.label}</label>
+                    <label className="text-xs font-semibold text-[#2d2d2d] mb-1 block">{f.label}</label>
                     <input
                       value={(quoteForm as any)[f.key]}
                       onChange={e => setQuoteForm(prev => ({ ...prev, [f.key]: e.target.value }))}
                       placeholder={f.placeholder}
-                      className="w-full border rounded-xl px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-300"
+                      className="w-full border rounded-xl px-3 py-2 text-sm text-[#1a1a1a] outline-none focus:ring-2 focus:ring-blue-300"
                       style={{ borderColor: 'rgba(255,255,255,0.10)' }}
                     />
                   </div>
                 ))}
                 <div className="col-span-2">
-                  <label className="text-xs font-semibold text-slate-300 mb-1 block">Additional Notes</label>
+                  <label className="text-xs font-semibold text-[#2d2d2d] mb-1 block">Additional Notes</label>
                   <textarea
                     value={quoteForm.notes}
                     onChange={e => setQuoteForm(prev => ({ ...prev, notes: e.target.value }))}
                     placeholder="Delivery requirements, timeline, special requests…"
                     rows={2}
-                    className="w-full border rounded-xl px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                    className="w-full border rounded-xl px-3 py-2 text-sm text-[#1a1a1a] outline-none focus:ring-2 focus:ring-blue-300 resize-none"
                     style={{ borderColor: 'rgba(255,255,255,0.10)' }}
                   />
                 </div>
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Items ({quoteModal.items.length})</div>
-                <div className="bg-white/[0.05] rounded-xl px-4 py-3 max-h-36 overflow-y-auto space-y-1">
+                <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-2">Items ({quoteModal.items.length})</div>
+                <div className="bg-[#f8f8f7] rounded-xl px-4 py-3 max-h-36 overflow-y-auto space-y-1">
                   {quoteModal.items.map((m: any, i: number) => (
-                    <div key={i} className="flex justify-between text-xs text-slate-300">
+                    <div key={i} className="flex justify-between text-xs text-[#2d2d2d]">
                       <span className="truncate max-w-[60%]">{m.item_name}</span>
-                      <span className="text-slate-400 ml-2">{m.quantity} {m.unit}</span>
+                      <span className="text-[#6b7280] ml-2">{m.quantity} {m.unit}</span>
                     </div>
                   ))}
                 </div>
@@ -2466,19 +2452,19 @@ Thank you for your time.`
               {!quoteGenerated ? (
                 <button
                   onClick={() => setQuoteGenerated(true)}
-                  className="w-full flex items-center justify-center gap-2 text-white font-bold py-3 rounded-xl text-sm transition-all"
+                  className="w-full flex items-center justify-center gap-2 text-[#1a1a1a] font-bold py-3 rounded-xl text-sm transition-all"
                   style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', boxShadow: '0 4px 14px rgba(245,158,11,0.3)' }}
                 >
                   Generate Quote Request
                 </button>
               ) : (
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Quote Request Text</div>
-                  <pre className="bg-slate-900 text-green-400 text-xs rounded-xl p-4 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed">{generateQuoteText()}</pre>
+                  <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-2">Quote Request Text</div>
+                  <pre className="bg-[#f8f8f7] text-green-400 text-xs rounded-xl p-4 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed">{generateQuoteText()}</pre>
                   <div className="flex gap-2 mt-3">
                     <button
                       onClick={() => { navigator.clipboard.writeText(generateQuoteText()); setQuoteCopied(true); setTimeout(() => setQuoteCopied(false), 2000) }}
-                      className={`flex-1 flex items-center justify-center gap-2 font-bold py-2.5 rounded-xl text-sm transition-all ${quoteCopied ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-900 text-white'}`}
+                      className={`flex-1 flex items-center justify-center gap-2 font-bold py-2.5 rounded-xl text-sm transition-all ${quoteCopied ? 'bg-emerald-600 text-white' : 'bg-[#eeeeed] hover:bg-[#f8f8f7] text-white'}`}
                     >
                       {quoteCopied ? 'Copied!' : 'Copy to Clipboard'}
                     </button>
@@ -2492,7 +2478,7 @@ Thank you for your time.`
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                     </a>
                   </div>
-                  <p className="text-slate-400 text-[10px] mt-2 text-center">Copy this text and paste it into an email or the distributor's quote request form.</p>
+                  <p className="text-[#6b7280] text-[10px] mt-2 text-center">Copy this text and paste it into an email or the distributor's quote request form.</p>
                 </div>
               )}
             </div>
@@ -2508,24 +2494,24 @@ Thank you for your time.`
           onClick={() => !takeoffApplying && setTakeoffOpen(false)}
         >
           <div
-            className="bg-white/[0.04] rounded-2xl shadow-2xl max-w-5xl w-full max-h-[88vh] overflow-hidden flex flex-col"
+            className="bg-[#f8f8f7] rounded-2xl shadow-2xl max-w-5xl w-full max-h-[88vh] overflow-hidden flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(226,232,240,0.8)' }}>
               <div>
-                <h2 className="text-lg font-bold text-white">Blueprint Takeoff</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Per-room quantities extracted from the blueprint — review before applying to materials.</p>
+                <h2 className="text-lg font-bold text-[#1a1a1a]">Blueprint Takeoff</h2>
+                <p className="text-xs text-[#6b7280] mt-0.5">Per-room quantities extracted from the blueprint — review before applying to materials.</p>
               </div>
               <button
                 onClick={() => !takeoffApplying && setTakeoffOpen(false)}
-                className="text-slate-400 hover:text-slate-200 text-2xl leading-none"
+                className="text-[#6b7280] hover:text-[#1a1a1a] text-2xl leading-none"
                 aria-label="Close"
               >×</button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-5">
               {takeoffLoading && (
-                <div className="flex items-center justify-center py-16 text-slate-500 text-sm">
+                <div className="flex items-center justify-center py-16 text-[#6b7280] text-sm">
                   <svg className="animate-spin w-5 h-5 mr-3 text-amber-500" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
                   Reading blueprint and computing quantities…
                 </div>
@@ -2548,9 +2534,9 @@ Thank you for your time.`
                       { label: 'Wall LF (total)', value: takeoffData.takeoff.walls.total_lf.toLocaleString() },
                       { label: 'Openings', value: `${takeoffData.takeoff.openings.doors}D / ${takeoffData.takeoff.openings.windows}W` },
                     ].map(s => (
-                      <div key={s.label} className="rounded-xl border bg-white/[0.05] px-4 py-3" style={{ borderColor: 'rgba(226,232,240,0.9)' }}>
-                        <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{s.label}</div>
-                        <div className="text-lg font-bold text-white mt-1">{s.value}</div>
+                      <div key={s.label} className="rounded-xl border bg-[#f8f8f7] px-4 py-3" style={{ borderColor: 'rgba(226,232,240,0.9)' }}>
+                        <div className="text-[10px] uppercase font-bold text-[#6b7280] tracking-wider">{s.label}</div>
+                        <div className="text-lg font-bold text-[#1a1a1a] mt-1">{s.value}</div>
                       </div>
                     ))}
                   </div>
@@ -2558,10 +2544,10 @@ Thank you for your time.`
                   {/* Rooms */}
                   {takeoffData.takeoff.rooms.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-bold text-white mb-2">Rooms ({takeoffData.takeoff.rooms.length})</h3>
+                      <h3 className="text-sm font-bold text-[#1a1a1a] mb-2">Rooms ({takeoffData.takeoff.rooms.length})</h3>
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
-                          <thead className="text-left text-slate-500">
+                          <thead className="text-left text-[#6b7280]">
                             <tr className="border-b" style={{ borderColor: 'rgba(226,232,240,0.8)' }}>
                               <th className="py-2 pr-3 font-semibold">Room</th>
                               <th className="py-2 pr-3 font-semibold text-right">Sqft</th>
@@ -2574,12 +2560,12 @@ Thank you for your time.`
                           <tbody>
                             {takeoffData.takeoff.rooms.map((r, i) => (
                               <tr key={i} className="border-b" style={{ borderColor: 'rgba(241,245,249,0.9)' }}>
-                                <td className="py-1.5 pr-3 text-slate-200 font-medium">{r.name}</td>
+                                <td className="py-1.5 pr-3 text-[#1a1a1a] font-medium">{r.name}</td>
                                 <td className="py-1.5 pr-3 text-right tabular-nums">{r.sqft.toLocaleString()}</td>
-                                <td className="py-1.5 pr-3 text-right tabular-nums text-slate-500">{r.width_ft && r.depth_ft ? `${r.width_ft}×${r.depth_ft} ft` : '—'}</td>
-                                <td className="py-1.5 pr-3 text-right tabular-nums text-slate-500">{r.perimeter_ft ?? '—'}</td>
-                                <td className="py-1.5 pr-3 text-right tabular-nums text-slate-500">{r.drywall_sqft ?? '—'}</td>
-                                <td className="py-1.5 pr-3 text-slate-500 capitalize">{r.flooring_type.replace(/_/g, ' ')}</td>
+                                <td className="py-1.5 pr-3 text-right tabular-nums text-[#6b7280]">{r.width_ft && r.depth_ft ? `${r.width_ft}×${r.depth_ft} ft` : '—'}</td>
+                                <td className="py-1.5 pr-3 text-right tabular-nums text-[#6b7280]">{r.perimeter_ft ?? '—'}</td>
+                                <td className="py-1.5 pr-3 text-right tabular-nums text-[#6b7280]">{r.drywall_sqft ?? '—'}</td>
+                                <td className="py-1.5 pr-3 text-[#6b7280] capitalize">{r.flooring_type.replace(/_/g, ' ')}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -2590,24 +2576,24 @@ Thank you for your time.`
 
                   {/* Material rows preview */}
                   <div>
-                    <h3 className="text-sm font-bold text-white mb-2">Materials to be added ({takeoffData.material_rows.length})</h3>
+                    <h3 className="text-sm font-bold text-[#1a1a1a] mb-2">Materials to be added ({takeoffData.material_rows.length})</h3>
                     <div className="rounded-xl border divide-y" style={{ borderColor: 'rgba(226,232,240,0.9)' }}>
                       {takeoffData.material_rows.map((row, i) => (
                         <div key={i} className="flex items-center justify-between px-4 py-2.5 text-xs">
                           <div>
-                            <div className="font-semibold text-slate-200">{row.item_name}</div>
-                            <div className="text-slate-400 capitalize">{row.category}</div>
+                            <div className="font-semibold text-[#1a1a1a]">{row.item_name}</div>
+                            <div className="text-[#6b7280] capitalize">{row.category}</div>
                           </div>
-                          <div className="tabular-nums text-slate-300 font-medium">
+                          <div className="tabular-nums text-[#2d2d2d] font-medium">
                             {row.quantity.toLocaleString()} {row.unit}
                           </div>
                         </div>
                       ))}
                       {takeoffData.material_rows.length === 0 && (
-                        <div className="px-4 py-6 text-center text-xs text-slate-400">No quantities extracted. Try re-running blueprint analysis.</div>
+                        <div className="px-4 py-6 text-center text-xs text-[#6b7280]">No quantities extracted. Try re-running blueprint analysis.</div>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-2">Unit costs start at $0 — use “Refresh All Prices” after applying to pull live vendor pricing.</p>
+                    <p className="text-[11px] text-[#6b7280] mt-2">Unit costs start at $0 — use “Refresh All Prices” after applying to pull live vendor pricing.</p>
                   </div>
                 </div>
               )}
@@ -2617,12 +2603,12 @@ Thank you for your time.`
               <button
                 onClick={() => setTakeoffOpen(false)}
                 disabled={takeoffApplying}
-                className="px-4 py-2 rounded-xl text-sm font-medium text-slate-300 hover:bg-white/[0.06] disabled:opacity-40"
+                className="px-4 py-2 rounded-xl text-sm font-medium text-[#2d2d2d] hover:bg-[#f8f8f7] disabled:opacity-40"
               >Cancel</button>
               <button
                 onClick={handleApplyTakeoff}
                 disabled={takeoffApplying || takeoffLoading || !takeoffData || takeoffData.material_rows.length === 0}
-                className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+                className="px-4 py-2 rounded-xl text-sm font-bold text-[#1a1a1a] disabled:opacity-40"
                 style={{ background: 'linear-gradient(135deg, #f59e0b, #b45309)', boxShadow: '0 4px 14px rgba(245,158,11,0.25)' }}
               >
                 {takeoffApplying ? 'Applying…' : 'Apply to materials list'}

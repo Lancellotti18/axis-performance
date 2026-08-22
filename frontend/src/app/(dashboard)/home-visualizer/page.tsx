@@ -131,24 +131,24 @@ export default function HomeVisualizerPage() {
   const fmt = (n: number) => `$${n?.toLocaleString() ?? '—'}`
 
   return (
-    <div className="min-h-screen p-6 md:p-8" style={{ background: '#040810' }}>
+    <div className="min-h-screen p-6 md:p-8" style={{ background: 'var(--color-surface-1)' }}>
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Roof Visualizer</h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-[#1a1a1a] tracking-tight">Roof Visualizer</h1>
+          <p className="text-[#6b7280] text-sm mt-1">
             Upload a photo of the home, pick the new roof, and show the homeowner a photoreal
             preview of their finished roof — the easiest way to close the sale.
           </p>
         </div>
 
         {/* Input card */}
-        <div className="bg-white/[0.04] rounded-2xl p-6 space-y-5" style={cardStyle}>
+        <div className="bg-[#f8f8f7] rounded-2xl p-6 space-y-5" style={cardStyle}>
 
           {/* Photo upload */}
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-2">
+            <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider block mb-2">
               Property Photo
             </label>
             <div
@@ -156,11 +156,7 @@ export default function HomeVisualizerPage() {
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`relative border-2 border-dashed rounded-2xl cursor-pointer transition-all overflow-hidden ${
-                dragOver ? 'border-blue-400 bg-blue-500/10' :
-                preview   ? 'border-emerald-300' :
-                'border-white/10 hover:border-blue-300 hover:bg-blue-500/30'
-              }`}
+              className={`relative border-2 border-dashed rounded-2xl cursor-pointer transition-all overflow-hidden ${ dragOver ? 'border-blue-400 bg-blue-500/10' : preview ? 'border-emerald-300' : 'border-[#dededc] hover:border-blue-300 hover:bg-blue-500/30' }`}
               style={{ minHeight: 180 }}
             >
               <input
@@ -174,14 +170,14 @@ export default function HomeVisualizerPage() {
                 <div className="relative">
                   <img src={preview} alt="Property" className="w-full object-cover rounded-2xl" style={{ maxHeight: 320 }} />
                   <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-all rounded-2xl flex items-center justify-center opacity-0 hover:opacity-100">
-                    <span className="text-white font-semibold text-sm bg-black/50 px-3 py-1.5 rounded-full">Click to change photo</span>
+                    <span className="text-[#1a1a1a] font-semibold text-sm bg-black/50 px-3 py-1.5 rounded-full">Click to change photo</span>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center p-10 space-y-2">
                   <div className="text-4xl"></div>
-                  <div className="text-slate-600 font-semibold text-sm">Drop a photo or click to upload</div>
-                  <div className="text-slate-400 text-xs">JPG, PNG, or WebP · max 10 MB</div>
+                  <div className="text-[#9ca3af] font-semibold text-sm">Drop a photo or click to upload</div>
+                  <div className="text-[#6b7280] text-xs">JPG, PNG, or WebP · max 10 MB</div>
                 </div>
               )}
             </div>
@@ -189,7 +185,7 @@ export default function HomeVisualizerPage() {
 
           {/* Description */}
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-2">
+            <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider block mb-2">
               What changes do you want? *
             </label>
             <textarea
@@ -197,9 +193,9 @@ export default function HomeVisualizerPage() {
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Describe ONLY what to change — the original house, roofline, windows and angle will be preserved. e.g. 'repaint siding charcoal gray, add black shutters'"
-              className="w-full border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none leading-relaxed"
+              className="w-full border border-[#dededc] rounded-xl px-4 py-3 text-sm text-[#1a1a1a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none leading-relaxed"
             />
-            <p className="text-[11px] text-slate-400 mt-1.5">
+            <p className="text-[11px] text-[#6b7280] mt-1.5">
               Tip: the AI edits your photo — don't redescribe the whole house, just the change.
             </p>
             {/* Example prompts */}
@@ -217,24 +213,24 @@ export default function HomeVisualizerPage() {
           {SHOW_COST_ESTIMATE && (
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">State <span className="text-slate-600 normal-case font-normal">(optional — improves cost accuracy)</span></label>
+              <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">State <span className="text-[#9ca3af] normal-case font-normal">(optional — improves cost accuracy)</span></label>
               <select
                 value={state}
                 onChange={e => setState(e.target.value)}
-                className="w-full border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
+                className="w-full border border-[#dededc] rounded-xl px-3 py-2.5 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-blue-300 bg-[#f8f8f7]"
               >
                 <option value="">Select state</option>
                 {STATES.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">City <span className="text-slate-600 normal-case font-normal">(optional)</span></label>
+              <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">City <span className="text-[#9ca3af] normal-case font-normal">(optional)</span></label>
               <input
                 type="text"
                 value={city}
                 onChange={e => setCity(e.target.value)}
                 placeholder="e.g. Austin"
-                className="w-full border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full border border-[#dededc] rounded-xl px-3 py-2.5 text-sm text-[#1a1a1a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
             </div>
           </div>
@@ -244,7 +240,7 @@ export default function HomeVisualizerPage() {
           <button
             onClick={handleSubmit}
             disabled={!canSubmit || loading}
-            className="w-full py-3.5 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3.5 rounded-xl text-[#1a1a1a] font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               background: !canSubmit || loading
                 ? '#94a3b8'
@@ -264,7 +260,7 @@ export default function HomeVisualizerPage() {
           </button>
 
           {!canSubmit && !loading && (
-            <p className="text-slate-400 text-xs text-center -mt-2">
+            <p className="text-[#6b7280] text-xs text-center -mt-2">
               {!file ? 'Upload a photo' : ''}{!file && !description.trim() ? ' and ' : ''}{!description.trim() ? 'describe the changes' : ''} to continue.
             </p>
           )}
@@ -272,7 +268,7 @@ export default function HomeVisualizerPage() {
 
         {/* Loading state */}
         {loading && (
-          <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
+          <div className="bg-[#f8f8f7] rounded-2xl p-10 text-center" style={cardStyle}>
             <div className="relative w-16 h-16 mx-auto mb-5">
               <svg className="animate-spin text-purple-200" width="64" height="64" viewBox="0 0 64 64" fill="none">
                 <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6"/>
@@ -282,9 +278,9 @@ export default function HomeVisualizerPage() {
               </svg>
               <div className="absolute inset-0 flex items-center justify-center text-2xl"></div>
             </div>
-            <div className="text-white font-bold text-base mb-1">Generating your visualization…</div>
-            <div className="text-slate-400 text-sm mb-4">This takes 30–90 seconds on first run</div>
-            <div className="flex justify-center gap-6 text-xs text-slate-400">
+            <div className="text-[#1a1a1a] font-bold text-base mb-1">Generating your visualization…</div>
+            <div className="text-[#6b7280] text-sm mb-4">This takes 30–90 seconds on first run</div>
+            <div className="flex justify-center gap-6 text-xs text-[#6b7280]">
               <span>Processing photo</span>
               <span>Applying changes</span>
               <span>Estimating costs</span>
@@ -306,14 +302,14 @@ export default function HomeVisualizerPage() {
 
             {/* Before / After */}
             <div>
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Before / After</div>
+              <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-3">Before / After</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Before */}
                 <div className="rounded-2xl overflow-hidden" style={cardStyle}>
                   {preview && <img src={preview} alt="Before" className="w-full object-cover" style={{ maxHeight: 320 }} />}
                   <div className="px-4 py-2.5 flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Before</span>
-                    <span className="text-slate-600 text-xs">Original photo</span>
+                    <span className="text-xs font-bold text-[#6b7280] uppercase tracking-wider">Before</span>
+                    <span className="text-[#9ca3af] text-xs">Original photo</span>
                   </div>
                 </div>
                 {/* After */}
@@ -326,7 +322,7 @@ export default function HomeVisualizerPage() {
                   />
                   <div className="px-4 py-2.5 flex items-center gap-2">
                     <span className="text-xs font-bold text-purple-600 uppercase tracking-wider">After</span>
-                    <span className="text-slate-400 text-xs">AI concept render</span>
+                    <span className="text-[#6b7280] text-xs">AI concept render</span>
                   </div>
                 </div>
               </div>
@@ -339,26 +335,26 @@ export default function HomeVisualizerPage() {
                   </div>
                 ) : (
                   <button onClick={openPicker}
-                    className="w-full rounded-xl py-2.5 text-sm font-bold text-white transition-all hover:scale-[1.01]"
+                    className="w-full rounded-xl py-2.5 text-sm font-bold text-[#1a1a1a] transition-all hover:scale-[1.01]"
                     style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.3)' }}>
                     🖼️ Use in a report
                   </button>
                 )}
                 {pickerOpen && (
-                  <div className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border border-white/12 bg-[#0b111b] p-1.5 shadow-2xl">
+                  <div className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border border-[#dededc] bg-[#0b111b] p-1.5 shadow-2xl">
                     <div className="flex items-center justify-between px-2.5 py-1.5">
-                      <span className="text-xs font-semibold text-slate-300">Add to which project?</span>
-                      <button onClick={() => setPickerOpen(false)} className="text-xs text-slate-500 hover:text-slate-300">✕</button>
+                      <span className="text-xs font-semibold text-[#2d2d2d]">Add to which project?</span>
+                      <button onClick={() => setPickerOpen(false)} className="text-xs text-[#6b7280] hover:text-[#2d2d2d]">✕</button>
                     </div>
                     {projects === null ? (
-                      <div className="px-3 py-4 text-center text-xs text-slate-500">Loading…</div>
+                      <div className="px-3 py-4 text-center text-xs text-[#6b7280]">Loading…</div>
                     ) : projects.length === 0 ? (
-                      <div className="px-3 py-4 text-center text-xs text-slate-500">No projects yet — create one first.</div>
+                      <div className="px-3 py-4 text-center text-xs text-[#6b7280]">No projects yet — create one first.</div>
                     ) : projects.map(p => (
                       <button key={p.id} onClick={() => useInReport(p.id, p.name)} disabled={savingTo === p.id}
-                        className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/[0.06] disabled:opacity-50">
+                        className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-[#1a1a1a] hover:bg-[#f8f8f7] disabled:opacity-50">
                         <span className="truncate">{p.name}</span>
-                        <span className="text-[11px] text-slate-500">{savingTo === p.id ? 'Saving…' : 'Use →'}</span>
+                        <span className="text-[11px] text-[#6b7280]">{savingTo === p.id ? 'Saving…' : 'Use →'}</span>
                       </button>
                     ))}
                   </div>
@@ -366,7 +362,7 @@ export default function HomeVisualizerPage() {
               </div>
 
               {/* Concept render disclaimer */}
-              <div className="mt-2 flex items-center gap-2 text-slate-400 text-xs">
+              <div className="mt-2 flex items-center gap-2 text-[#6b7280] text-xs">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 AI concept render — results are for visualization purposes. Final appearance depends on materials, contractor, and site conditions.
               </div>
@@ -374,25 +370,25 @@ export default function HomeVisualizerPage() {
 
             {/* Cost estimate — hidden: pricing lives in the proposal, not here. */}
             {SHOW_COST_ESTIMATE && estimate && (
-              <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+              <div className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={cardStyle}>
                 <div className="px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-white font-bold text-sm">Cost Estimate</div>
-                      {estimate.location && <div className="text-slate-400 text-xs mt-0.5">{estimate.location}</div>}
+                      <div className="text-[#1a1a1a] font-bold text-sm">Cost Estimate</div>
+                      {estimate.location && <div className="text-[#6b7280] text-xs mt-0.5">{estimate.location}</div>}
                     </div>
                     <div className="flex gap-4 text-center">
                       <div>
                         <div className="text-emerald-600 font-bold text-base leading-none">{fmt(estimate.total_low)}</div>
-                        <div className="text-slate-400 text-[10px] mt-0.5">Low</div>
+                        <div className="text-[#6b7280] text-[10px] mt-0.5">Low</div>
                       </div>
                       <div>
                         <div className="text-blue-600 font-bold text-base leading-none">{fmt(estimate.total_mid)}</div>
-                        <div className="text-slate-400 text-[10px] mt-0.5">Mid</div>
+                        <div className="text-[#6b7280] text-[10px] mt-0.5">Mid</div>
                       </div>
                       <div>
-                        <div className="text-slate-200 font-bold text-base leading-none">{fmt(estimate.total_high)}</div>
-                        <div className="text-slate-400 text-[10px] mt-0.5">High</div>
+                        <div className="text-[#1a1a1a] font-bold text-base leading-none">{fmt(estimate.total_high)}</div>
+                        <div className="text-[#6b7280] text-[10px] mt-0.5">High</div>
                       </div>
                     </div>
                   </div>
@@ -404,33 +400,33 @@ export default function HomeVisualizerPage() {
                     <table className="w-full text-xs">
                       <thead>
                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
-                          <th className="text-left px-5 py-2.5 text-slate-400 font-semibold">Item</th>
-                          <th className="text-right px-3 py-2.5 text-slate-400 font-semibold">Qty</th>
-                          <th className="text-right px-3 py-2.5 text-slate-400 font-semibold">Low</th>
-                          <th className="text-right px-3 py-2.5 text-slate-400 font-semibold">Mid</th>
-                          <th className="text-right px-3 py-2.5 text-slate-400 font-semibold">High</th>
-                          <th className="text-left px-5 py-2.5 text-slate-400 font-semibold hidden md:table-cell">Source</th>
+                          <th className="text-left px-5 py-2.5 text-[#6b7280] font-semibold">Item</th>
+                          <th className="text-right px-3 py-2.5 text-[#6b7280] font-semibold">Qty</th>
+                          <th className="text-right px-3 py-2.5 text-[#6b7280] font-semibold">Low</th>
+                          <th className="text-right px-3 py-2.5 text-[#6b7280] font-semibold">Mid</th>
+                          <th className="text-right px-3 py-2.5 text-[#6b7280] font-semibold">High</th>
+                          <th className="text-left px-5 py-2.5 text-[#6b7280] font-semibold hidden md:table-cell">Source</th>
                         </tr>
                       </thead>
                       <tbody>
                         {estimate.line_items.map((item: any, i: number) => (
-                          <tr key={i} className="hover:bg-white/[0.05]/50 transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                            <td className="px-5 py-3 text-slate-200 font-medium">{item.item}</td>
-                            <td className="px-3 py-3 text-slate-500 text-right whitespace-nowrap">{item.quantity} {item.unit}</td>
+                          <tr key={i} className="hover:bg-[#f8f8f7]/50 transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            <td className="px-5 py-3 text-[#1a1a1a] font-medium">{item.item}</td>
+                            <td className="px-3 py-3 text-[#6b7280] text-right whitespace-nowrap">{item.quantity} {item.unit}</td>
                             <td className="px-3 py-3 text-emerald-600 font-semibold text-right">{fmt(item.total_low)}</td>
                             <td className="px-3 py-3 text-blue-600 font-semibold text-right">{fmt(item.total_mid)}</td>
-                            <td className="px-3 py-3 text-slate-600 font-semibold text-right">{fmt(item.total_high)}</td>
-                            <td className="px-5 py-3 text-slate-400 hidden md:table-cell">{item.source}</td>
+                            <td className="px-3 py-3 text-[#9ca3af] font-semibold text-right">{fmt(item.total_high)}</td>
+                            <td className="px-5 py-3 text-[#6b7280] hidden md:table-cell">{item.source}</td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot>
                         <tr className="font-bold" style={{ borderTop: '2px solid rgba(255,255,255,0.10)' }}>
-                          <td className="px-5 py-3 text-white">Total</td>
+                          <td className="px-5 py-3 text-[#1a1a1a]">Total</td>
                           <td />
                           <td className="px-3 py-3 text-emerald-600 text-right">{fmt(estimate.total_low)}</td>
                           <td className="px-3 py-3 text-blue-600 text-right">{fmt(estimate.total_mid)}</td>
-                          <td className="px-3 py-3 text-slate-200 text-right">{fmt(estimate.total_high)}</td>
+                          <td className="px-3 py-3 text-[#1a1a1a] text-right">{fmt(estimate.total_high)}</td>
                           <td className="hidden md:table-cell" />
                         </tr>
                       </tfoot>
@@ -441,9 +437,9 @@ export default function HomeVisualizerPage() {
                 {/* Notes */}
                 {estimate.notes && estimate.notes.length > 0 && (
                   <div className="px-5 py-4 border-t space-y-2" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Notes</div>
+                    <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-2">Notes</div>
                     {estimate.notes.map((note: string, i: number) => (
-                      <div key={i} className="flex items-start gap-2 text-slate-500 text-xs">
+                      <div key={i} className="flex items-start gap-2 text-[#6b7280] text-xs">
                         <span className="text-blue-400 mt-0.5 flex-shrink-0">•</span>
                         {note}
                       </div>
@@ -465,7 +461,7 @@ export default function HomeVisualizerPage() {
             {/* New visualization button */}
             <button
               onClick={() => { setResult(null); setFile(null); setPreview(null); setDescription(''); setState(''); setCity('') }}
-              className="w-full py-3 rounded-xl text-slate-600 font-semibold text-sm border border-white/10 hover:border-blue-300 hover:text-blue-600 transition-all bg-white/[0.04]"
+              className="w-full py-3 rounded-xl text-[#9ca3af] font-semibold text-sm border border-[#dededc] hover:border-blue-300 hover:text-blue-600 transition-all bg-[#f8f8f7]"
               style={cardStyle}
             >
               + New Visualization

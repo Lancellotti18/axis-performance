@@ -18,11 +18,11 @@
   --axis-baby-blue-soft:   #e6f2ff;
   --axis-baby-blue-deep:   #0072e6;
   --axis-baby-blue-edge:   #005fbf;
-  --axis-white:            #ffffff;
-  --axis-ivory:            #f5f5f5;
-  --axis-steel-50:         #fafafa;
-  --axis-steel-100:        #f0f0f0;
-  --axis-steel-200:        #e4e4e7;
+  --axis-white:            #f8f8f7;
+  --axis-ivory:            #eeeeed;
+  --axis-steel-50:         #f8f8f7;
+  --axis-steel-100:        #eeeeed;
+  --axis-steel-200:        #dededc;
   --axis-steel-700:        #6b7280;
   --axis-steel-800:        #2d2d2d;
   --axis-steel-900:        #1a1a1a;
@@ -36,9 +36,9 @@
 
   /* Glass retired — opaque white cards on White Smoke. Translucency over a
      busy ground is most of what made this feel unresolved. */
-  --axis-glass-bg:            #ffffff;
-  --axis-glass-bg-strong:     #ffffff;
-  --axis-glass-border:        #e4e4e7;
+  --axis-glass-bg:            #f8f8f7;
+  --axis-glass-bg-strong:     #f8f8f7;
+  --axis-glass-border:        #dededc;
   --axis-glass-border-strong: #d4d4d8;
   --axis-glass-blur:          none;
   --axis-glass-blur-lg:       none;

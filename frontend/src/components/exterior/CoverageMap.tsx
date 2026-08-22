@@ -42,11 +42,11 @@ export function CoverageMap({ coverage }: Props) {
   const totalGood = ['front', 'right', 'rear', 'left'].filter(k => c[k]?.status === 'good').length
 
   return (
-    <div className="rounded-lg border border-white/10 bg-slate-900/60 p-4">
+    <div className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">Photo coverage</h3>
-          <p className="text-xs text-slate-400">{totalGood} of 4 elevations covered</p>
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">Photo coverage</h3>
+          <p className="text-xs text-[#6b7280]">{totalGood} of 4 elevations covered</p>
         </div>
         <Legend />
       </div>
@@ -80,12 +80,12 @@ export function CoverageMap({ coverage }: Props) {
         {['front', 'right', 'rear', 'left'].map(face => {
           const entry = c[face] || { count: 0, status: 'missing', effective_count: 0 }
           return (
-            <li key={face} className="flex items-center justify-between rounded bg-slate-800/50 px-2 py-1">
-              <span className="capitalize text-slate-300">{face}</span>
+            <li key={face} className="flex items-center justify-between rounded bg-[#eeeeed] px-2 py-1">
+              <span className="capitalize text-[#2d2d2d]">{face}</span>
               <span className="flex items-center gap-2">
-                <span className="text-slate-400">{entry.count}</span>
+                <span className="text-[#6b7280]">{entry.count}</span>
                 {entry.effective_count != null && entry.effective_count !== entry.count && (
-                  <span className="text-slate-500">({entry.effective_count} eff.)</span>
+                  <span className="text-[#6b7280]">({entry.effective_count} eff.)</span>
                 )}
                 <span className="inline-block h-2 w-2 rounded-full" style={{ background: fill(entry.status) }} />
               </span>
@@ -124,7 +124,7 @@ function FaceBar({ x1, y1, x2, y2, side, status, label }: {
 
 function Legend() {
   return (
-    <div className="flex gap-2 text-[10px] text-slate-400">
+    <div className="flex gap-2 text-[10px] text-[#6b7280]">
       {(['good', 'minimal', 'missing'] as const).map(s => (
         <span key={s} className="flex items-center gap-1">
           <span className="inline-block h-2 w-3 rounded" style={{ background: STATUS_COLORS[s] }} />

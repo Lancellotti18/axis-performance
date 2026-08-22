@@ -39,7 +39,7 @@ export default function RoofScanSpinner({
         <circle className="rs-node rs-node-2" cx="6" cy="23" r="2" fill="#60a5fa" />
         <circle className="rs-node rs-node-3" cx="42" cy="23" r="2" fill="#60a5fa" />
       </svg>
-      {label && <span className="text-xs font-medium text-slate-300">{label}</span>}
+      {label && <span className="text-xs font-medium text-[#2d2d2d]">{label}</span>}
 
       <style jsx>{`
         .rs-outline {

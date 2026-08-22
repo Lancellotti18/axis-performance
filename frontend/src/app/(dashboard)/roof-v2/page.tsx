@@ -563,10 +563,10 @@ export default function RoofV2Page() {
   }, [runId])
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 p-6 text-slate-100">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 text-[#1a1a1a]">
       <header>
         <h1 className="text-2xl font-bold">Axis Roof Report (v2)</h1>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-[#6b7280]">
           Multi-facet measurement with edge labeling. All numbers downstream — area, squares,
           ridge cap, drip edge, materials — are computed from your polygons and pitches. Nothing
           is fabricated.
@@ -585,7 +585,7 @@ export default function RoofV2Page() {
           : ['project', 'location', 'imagery', 'editor', 'details', 'report']
         const currentIdx = order.indexOf(step)
         return (
-          <nav className="sticky top-0 z-20 -mx-6 flex flex-wrap items-center gap-1.5 border-b border-white/10 bg-slate-950/85 px-6 py-2 text-xs backdrop-blur">
+          <nav className="sticky top-0 z-20 -mx-6 flex flex-wrap items-center gap-1.5 border-b border-[#dededc] bg-[#f8f8f7] px-6 py-2 text-xs">
             {order.map((s, i) => {
               const reached =
                 (s === 'project') ||
@@ -598,16 +598,11 @@ export default function RoofV2Page() {
               const completed = reached && i < currentIdx
               return (
                 <span key={s} className="flex items-center gap-1.5">
-                  {i > 0 && <span className={`h-px w-4 ${completed || i <= currentIdx ? 'bg-blue-500/50' : 'bg-slate-700'}`} />}
+                  {i > 0 && <span className={`h-px w-4 ${completed || i <= currentIdx ? 'bg-blue-500/50' : 'bg-[#e4e4e2]'}`} />}
                   <button
                     onClick={() => reached && setStep(s)}
                     disabled={!reached}
-                    className={`flex items-center gap-1 rounded-full px-3 py-1.5 transition ${
-                      step === s ? 'bg-blue-600 text-white'
-                        : completed ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-900/60'
-                        : reached ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-                        : 'cursor-not-allowed bg-slate-900 text-slate-600'
-                    }`}
+                    className={`flex items-center gap-1 rounded-full px-3 py-1.5 transition ${ step === s ? 'bg-blue-600 text-white' : completed ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-900/60' : reached ? 'bg-[#eeeeed] text-[#1a1a1a] hover:bg-[#e4e4e2]' : 'cursor-not-allowed bg-[#f8f8f7] text-[#9ca3af]' }`}
                   >
                     <span>{completed ? '✓' : i + 1}.</span>
                     <span>{STEP_LABELS[s]}</span>
@@ -631,7 +626,7 @@ export default function RoofV2Page() {
           {/* Quick start: create a new roofing project right here */}
           <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-4">
             <h2 className="mb-2 text-sm font-semibold text-emerald-200">Quick start — new project</h2>
-            <p className="mb-3 text-xs text-slate-400">
+            <p className="mb-3 text-xs text-[#6b7280]">
               Skip the Projects page. Just name your job (the property address or anything memorable)
               and start measuring. We'll create the project record automatically.
             </p>
@@ -647,10 +642,10 @@ export default function RoofV2Page() {
           </div>
 
           {/* Existing projects */}
-          <div className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
+          <div className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
             <h2 className="mb-3 text-sm font-semibold">Or pick an existing project</h2>
             {projects.length === 0 ? (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#6b7280]">
                 No existing projects. Use the quick-start form above to create your first one.
               </p>
             ) : (
@@ -658,17 +653,17 @@ export default function RoofV2Page() {
                 {projects.map(p => (
                   <li
                     key={p.id}
-                    className="group relative rounded-md border border-white/10 bg-slate-800/40 p-3 text-sm transition hover:border-blue-400/40 hover:bg-blue-500/10"
+                    className="group relative rounded-md border border-[#dededc] bg-[#eeeeed] p-3 text-sm transition hover:border-blue-400/40 hover:bg-blue-500/10"
                   >
                     <button
                       onClick={() => void deleteProject(p.id, p.name)}
                       title="Delete project"
-                      className="absolute right-2 top-2 rounded px-1.5 py-0.5 text-xs text-slate-500 opacity-0 transition hover:bg-rose-600/30 hover:text-rose-300 group-hover:opacity-100"
+                      className="absolute right-2 top-2 rounded px-1.5 py-0.5 text-xs text-[#6b7280] opacity-0 transition hover:bg-rose-600/30 hover:text-rose-300 group-hover:opacity-100"
                     >✕</button>
                     <div onClick={() => void pickProject(p.id)} className="cursor-pointer pr-5">
                       <div className="font-medium">{p.name}</div>
                       {p.address && (
-                        <div className="text-xs text-slate-400">
+                        <div className="text-xs text-[#6b7280]">
                           {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}
                         </div>
                       )}
@@ -684,7 +679,7 @@ export default function RoofV2Page() {
 
       {/* LOCATION step */}
       {step === 'location' && (
-        <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
+        <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
           <h2 className="mb-3 text-sm font-semibold">Validate property address</h2>
           <LocationPicker
             initialQuery={project ? [project.address, project.city, project.state, project.zip].filter(Boolean).join(', ') : ''}
@@ -695,12 +690,12 @@ export default function RoofV2Page() {
 
       {/* IMAGERY step */}
       {step === 'imagery' && (
-        <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
+        <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
           <h2 className="mb-3 text-sm font-semibold">
             {busy ? 'Loading satellite tile…' : 'Satellite imagery'}
           </h2>
           {busy && !imagery && (
-            <div className="flex items-center gap-3 rounded bg-slate-900/60 p-3 text-sm text-slate-300">
+            <div className="flex items-center gap-3 rounded bg-[#f8f8f7] p-3 text-sm text-[#2d2d2d]">
               <RoofScanSpinner size={30} className="flex-shrink-0" />
               <span>Fetching the highest-resolution satellite tile (zoom 22 @2x retina)…</span>
             </div>
@@ -773,9 +768,9 @@ export default function RoofV2Page() {
       {/* EDITOR step */}
       {step === 'editor' && imagery?.url && runId && (
         <section className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2 text-xs">
-            <span className="text-slate-400">Tile:</span>
-            <span className="font-mono text-slate-200">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2 text-xs">
+            <span className="text-[#6b7280]">Tile:</span>
+            <span className="font-mono text-[#1a1a1a]">
               {imagery.provider} · z{imagery.zoom} · {imagery.feet_per_pixel?.toFixed(3)} ft/px
             </span>
             {(imagery.warnings || []).some(w => w.includes('sharpened')) && (
@@ -797,9 +792,9 @@ export default function RoofV2Page() {
               const reached = k === 'confirm' || (k === 'scale' && subjectPoint != null) || k === 'draw'
               return (
                 <span key={k} className="flex items-center gap-1.5">
-                  {i > 0 && <span className="h-px w-4 bg-slate-700" />}
+                  {i > 0 && <span className="h-px w-4 bg-[#e4e4e2]" />}
                   <button onClick={() => reached && setEditorSub(k)} disabled={!reached}
-                    className={`rounded-full px-3 py-1 transition ${editorSub === k ? 'bg-blue-600 text-white' : reached ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'cursor-not-allowed bg-slate-900 text-slate-600'}`}>
+                    className={`rounded-full px-3 py-1 transition ${editorSub === k ? 'bg-blue-600 text-white' : reached ? 'bg-[#eeeeed] text-[#2d2d2d] hover:bg-[#e4e4e2]' : 'cursor-not-allowed bg-[#f8f8f7] text-[#9ca3af]'}`}>
                     {label}
                   </button>
                 </span>
@@ -827,7 +822,7 @@ export default function RoofV2Page() {
                   "Check scale" stays one tap away for when a number looks off. */}
               <div className="flex items-center justify-end gap-2">
                 <button onClick={() => setEditorSub('scale')}
-                  className="rounded-md bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600">Check scale (optional)</button>
+                  className="rounded-md bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2]">Check scale (optional)</button>
                 <button onClick={() => setEditorSub('draw')}
                   className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Next: draw roof &rarr;</button>
               </div>
@@ -847,7 +842,7 @@ export default function RoofV2Page() {
               />
               <div className="flex justify-between">
                 <button onClick={() => setEditorSub('confirm')}
-                  className="rounded-md bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600">&larr; Back</button>
+                  className="rounded-md bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2]">&larr; Back</button>
                 <button onClick={() => setEditorSub('draw')}
                   className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Next: draw roof &rarr;</button>
               </div>
@@ -928,7 +923,7 @@ export default function RoofV2Page() {
             <button
               onClick={() => setStep('report')}
               disabled={facets.length === 0}
-              className="rounded bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600 disabled:opacity-50"
+              className="rounded bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-50"
             >Skip to report →</button>
           </div>
           </>)}
@@ -950,13 +945,13 @@ export default function RoofV2Page() {
               finish — the opposite of the product's promise. It now lives in
               the optional on-site section with the siding tool. */}
           {SHOW_SIDING && (
-          <div className="rounded-lg border border-white/10 bg-slate-900/50 p-3 text-xs text-slate-300">
-            <strong className="text-slate-100">Standing at the property?</strong>{' '}
+          <div className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-3 text-xs text-[#2d2d2d]">
+            <strong className="text-[#1a1a1a]">Standing at the property?</strong>{' '}
             A few phone photos can read the real pitch, chimneys, skylights and materials — and you can
             measure siding while you&apos;re there. Everything on this page works without it.
             <button
               onClick={() => setStep('siding')}
-              className="ml-2 underline hover:text-white"
+              className="ml-2 underline hover:text-[#1a1a1a]"
             >Open on-site extras →</button>
           </div>
           )}
@@ -998,7 +993,7 @@ export default function RoofV2Page() {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setStep('editor')}
-              className="rounded bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600"
+              className="rounded bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2]"
             >← Back to measure</button>
             <button
               onClick={() => setStep('report')}
@@ -1023,7 +1018,7 @@ export default function RoofV2Page() {
             siding, house-wrap, or paint scopes.
             <button
               onClick={() => setStep('report')}
-              className="ml-2 underline hover:text-white"
+              className="ml-2 underline hover:text-[#1a1a1a]"
             >Back to report →</button>
           </div>
 
@@ -1103,7 +1098,7 @@ export default function RoofV2Page() {
             imageHeightPx={imagery.height_px ?? 1366}
           /> */}
 
-          <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
+          <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
             <h2 className="mb-3 text-sm font-semibold">Confirm + download</h2>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Stat label="Facets" value={facets.length.toString()} />
@@ -1111,7 +1106,7 @@ export default function RoofV2Page() {
               <Stat label="Confidence" value={edges.some(e => e.edgeType === 'unlabeled') ? '…' : `${Math.round(confidence * 100)}%`} />
               <Stat label="Imagery" value={`${Math.round((imagery?.health_score ?? 0) * 100)}%`} />
             </div>
-            <p className="mt-3 text-xs text-slate-400">
+            <p className="mt-3 text-xs text-[#6b7280]">
               Generates the contractor-grade PDF — cover, <strong>to-scale roof diagram</strong>, roof
               summary &amp; per-facet table, roof-line lengths, flashing &amp; penetrations, materials
               takeoff, waste calculator, siding (if measured), and methodology. Every number is pulled
@@ -1133,9 +1128,9 @@ export default function RoofV2Page() {
 
 function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div className="rounded-md border border-white/10 bg-slate-900/60 p-2 text-xs">
-      <div className="text-slate-500">{label}</div>
-      <div className={`text-sm font-semibold ${color ?? 'text-slate-100'}`}>{value}</div>
+    <div className="rounded-md border border-[#dededc] bg-[#f8f8f7] p-2 text-xs">
+      <div className="text-[#6b7280]">{label}</div>
+      <div className={`text-sm font-semibold ${color ?? 'text-[#1a1a1a]'}`}>{value}</div>
     </div>
   )
 }
@@ -1185,7 +1180,7 @@ function QuickCreateProject({
         onChange={e => setName(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') void submit() }}
         disabled={creating || busy}
-        className="min-w-[260px] flex-1 rounded bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400/60 focus:outline-none disabled:opacity-50"
+        className="min-w-[260px] flex-1 rounded bg-[#f8f8f7] px-3 py-2 text-sm text-[#1a1a1a] placeholder:text-[#6b7280] focus:border-emerald-400/60 focus:outline-none disabled:opacity-50"
       />
       <button
         onClick={() => void submit()}
@@ -1223,7 +1218,7 @@ function SaveIndicator({
     )
   }
   return (
-    <div className="flex items-center gap-2 px-1 text-[11px] text-slate-400">
+    <div className="flex items-center gap-2 px-1 text-[11px] text-[#6b7280]">
       {state === 'saving' ? (
         <>
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />

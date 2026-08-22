@@ -16,7 +16,7 @@ export default function DashboardError({
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 px-6">
       <div className="bg-white rounded-2xl p-8 max-w-2xl w-full shadow-lg border border-red-100">
         <h2 className="text-lg font-bold text-red-600 mb-2">Page Error</h2>
-        <p className="text-slate-500 text-sm mb-4">Copy the error below and send it to support.</p>
+        <p className="text-[#6b7280] text-sm mb-4">Copy the error below and send it to support.</p>
         <pre className="bg-slate-50 rounded-xl p-4 text-xs text-red-700 overflow-auto max-h-64 mb-5 border border-red-100 whitespace-pre-wrap break-all">
           {error?.message || 'Unknown error'}
           {'\n\n'}

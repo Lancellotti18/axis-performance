@@ -118,7 +118,7 @@ export default function SolarAssistPanel({
 
   if (loading) {
     return (
-      <section className="rounded-lg border border-white/10 bg-slate-900/40 p-3 text-xs text-slate-400">
+      <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-3 text-xs text-[#6b7280]">
         Checking auto-draw coverage…
       </section>
     )
@@ -133,7 +133,7 @@ export default function SolarAssistPanel({
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="text-sm font-semibold text-blue-200">Auto-draw: building outline</h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#6b7280]">
                 No Google Solar data here, but we found this building&apos;s outline (OpenStreetMap).
                 Drop it on the tile, then split it into roof planes and set pitch.
               </p>
@@ -149,7 +149,7 @@ export default function SolarAssistPanel({
     // No Solar key AND no footprint → stay invisible so the editor isn't cluttered.
     if ((data.reason || '').toLowerCase().includes('key not configured')) return null
     return (
-      <section className="rounded-lg border border-white/10 bg-slate-900/40 p-3 text-xs text-slate-500">
+      <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-3 text-xs text-[#6b7280]">
         No auto-draw data for this address — trace facets manually (snap-to-edge helps) or try auto-detect below.
       </section>
     )
@@ -160,7 +160,7 @@ export default function SolarAssistPanel({
     <section className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-4 text-sm">
       <div>
         <h3 className="text-sm font-semibold text-emerald-200">Google Solar roof data ✓</h3>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-[#6b7280]">
           Google pre-segmented this roof into <strong>{data.segment_count}</strong> plane{data.segment_count === 1 ? '' : 's'}
           {data.whole_roof_area_sqft ? <> · ~{Math.round(data.whole_roof_area_sqft).toLocaleString()} ft² total</> : null}
           {data.imagery_quality ? <> · {data.imagery_quality.toLowerCase()} quality</> : null}.
@@ -171,8 +171,8 @@ export default function SolarAssistPanel({
       {segs.length > 0 && (
         <ul className="mt-2 grid grid-cols-2 gap-1 text-[11px] md:grid-cols-3">
           {segs.map((s, i) => (
-            <li key={i} className="rounded bg-slate-900/60 px-2 py-1 text-slate-300">
-              <span className="font-medium text-slate-100">Plane {i + 1}</span> · {s.pitch} · {s.slope_direction} · {Math.round(s.area_sqft)} ft²
+            <li key={i} className="rounded bg-[#f8f8f7] px-2 py-1 text-[#2d2d2d]">
+              <span className="font-medium text-[#1a1a1a]">Plane {i + 1}</span> · {s.pitch} · {s.slope_direction} · {Math.round(s.area_sqft)} ft²
             </li>
           ))}
         </ul>

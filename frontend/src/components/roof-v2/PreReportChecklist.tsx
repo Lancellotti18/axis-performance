@@ -73,12 +73,10 @@ export default function PreReportChecklist({ runId, facets, edges }: Props) {
   const outstanding = checks.filter(c => !c.ok).length
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-3 text-sm">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-3 text-sm">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-100">Before you generate the report</h3>
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-          outstanding === 0 ? 'bg-emerald-900/40 text-emerald-300' : 'bg-amber-900/40 text-amber-300'
-        }`}>
+        <h3 className="text-sm font-semibold text-[#1a1a1a]">Before you generate the report</h3>
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${ outstanding === 0 ? 'bg-emerald-900/40 text-emerald-300' : 'bg-amber-900/40 text-amber-300' }`}>
           {outstanding === 0 ? 'All clear' : `${outstanding} to review`}
         </span>
       </div>
@@ -87,8 +85,8 @@ export default function PreReportChecklist({ runId, facets, edges }: Props) {
           <li key={i} className="flex items-start gap-2 text-xs">
             <span className={c.ok ? 'text-emerald-400' : 'text-amber-400'}>{c.ok ? '✓' : '⚠'}</span>
             <div>
-              <span className={c.ok ? 'text-slate-200' : 'text-amber-200'}>{c.label}</span>
-              <span className="text-slate-500"> — {c.detail}</span>
+              <span className={c.ok ? 'text-[#1a1a1a]' : 'text-amber-200'}>{c.label}</span>
+              <span className="text-[#6b7280]"> — {c.detail}</span>
             </div>
           </li>
         ))}

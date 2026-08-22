@@ -42,11 +42,11 @@ function ForgotForm() {
           </div>
           <div>
             <div className="text-slate-800 font-bold mb-1">Email sent!</div>
-            <p className="text-slate-500 text-sm leading-relaxed">
+            <p className="text-[#6b7280] text-sm leading-relaxed">
               We sent a password reset link to <span className="text-slate-800 font-medium">{email}</span>. Click the link to set a new password.
             </p>
           </div>
-          <p className="text-slate-400 text-xs pt-2">
+          <p className="text-[#6b7280] text-xs pt-2">
             Didn&apos;t get it? Check your spam folder or{' '}
             <button onClick={() => setSent(false)} className="text-brand-700 hover:text-brand-800 underline underline-offset-2 transition-colors">
               try again
@@ -67,8 +67,8 @@ function ForgotForm() {
         </form>
       )}
 
-      <p className="text-center text-slate-500 text-sm mt-6">
-        <Link href="/login" className="text-slate-500 hover:text-brand-700 transition-colors">
+      <p className="text-center text-[#6b7280] text-sm mt-6">
+        <Link href="/login" className="text-[#6b7280] hover:text-brand-700 transition-colors">
           ← Back to Sign In
         </Link>
       </p>

@@ -83,9 +83,9 @@ function monthly(principal: number): number {
   return principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
 }
 
-const inputCls = 'rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20'
+const inputCls = 'rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 placeholder:text-[#6b7280] shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20'
 const chipCls = (on: boolean) => `rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
-  on ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+  on ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-[#9ca3af] hover:border-slate-300'
 }`
 
 export default function RoofIQPage() {
@@ -283,7 +283,7 @@ export default function RoofIQPage() {
   const stepIndex = ['address', 'confirm', 'qualify', 'capture', 'result'].indexOf(step)
 
   if (notFound) {
-    return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-slate-600">This quote tool isn&apos;t available. Please contact the contractor directly.</main>
+    return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-[#9ca3af]">This quote tool isn&apos;t available. Please contact the contractor directly.</main>
   }
 
   return (
@@ -305,10 +305,10 @@ export default function RoofIQPage() {
             style={{ background: 'linear-gradient(150deg, #eff6ff 0%, #dbeafe 100%)' }}>🏠</div>
           <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.28em] text-blue-600/80">Instant Roof Intelligence</div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{company || '…'}</h1>
-          <p className="mt-1.5 text-sm text-slate-500">Hi there 👋 Let&apos;s get you a free roof estimate — it takes about a minute.</p>
+          <p className="mt-1.5 text-sm text-[#6b7280]">Hi there 👋 Let&apos;s get you a free roof estimate — it takes about a minute.</p>
           <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
             {['🆓 100% free', '⏱️ ~60 seconds', '🔒 No spam, ever'].map(t => (
-              <span key={t} className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70 backdrop-blur">{t}</span>
+              <span key={t} className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-medium text-[#9ca3af] ring-1 ring-slate-200/70">{t}</span>
             ))}
           </div>
         </div>
@@ -327,7 +327,7 @@ export default function RoofIQPage() {
             <>
               <div className="mb-3 text-center">
                 <div className="text-base font-semibold text-slate-800">Where&apos;s your home? 🛰️</div>
-                <p className="mt-0.5 text-xs text-slate-500">Pop in your address and we&apos;ll pull up your roof from above.</p>
+                <p className="mt-0.5 text-xs text-[#6b7280]">Pop in your address and we&apos;ll pull up your roof from above.</p>
               </div>
               <div className="mt-2 flex gap-2">
                 <input
@@ -337,7 +337,7 @@ export default function RoofIQPage() {
                   className={`min-w-0 flex-1 ${inputCls}`}
                 />
                 <button onClick={() => void locate()} disabled={busy}
-                  className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.02] disabled:opacity-50"
+                  className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold text-[#1a1a1a] transition hover:scale-[1.02] disabled:opacity-50"
                   style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                 >{busy ? 'Finding…' : 'Continue →'}</button>
               </div>
@@ -345,7 +345,7 @@ export default function RoofIQPage() {
                 className="mt-2.5 flex w-full items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 py-2 text-xs font-semibold text-blue-600 transition hover:bg-slate-100 disabled:opacity-50">
                 📍 Use my current location
               </button>
-              <p className="mt-3 text-center text-[11px] text-slate-400">No calls unless you want one · your info stays with {company || 'your local roofer'}</p>
+              <p className="mt-3 text-center text-[11px] text-[#6b7280]">No calls unless you want one · your info stays with {company || 'your local roofer'}</p>
             </>
           )}
 
@@ -355,7 +355,7 @@ export default function RoofIQPage() {
               <div className="text-sm font-semibold">
                 {showOutline ? (footprintApprox ? 'Is this your roof?' : 'We found your home') : 'Is this your roof?'}
               </div>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-[#6b7280]">
                 {showOutline
                   ? <>{located?.address} — confirm the highlighted roof is yours, or <strong>tap</strong> to adjust.</>
                   : <>{located?.address} — <strong>tap your roof</strong> so the measurement locks onto the right building.</>}
@@ -385,7 +385,7 @@ export default function RoofIQPage() {
                       <polygon points={footprint!.map(p => `${p.x * 100},${p.y * 100}`).join(' ')}
                         style={{ fill: 'var(--brand)', fillOpacity: 0.22, stroke: 'var(--brand)', strokeWidth: 0.9, strokeLinejoin: 'round', filter: 'drop-shadow(0 0 2.5px rgba(0,0,0,0.55))' }} />
                     </svg>
-                    <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
+                    <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-[#1a1a1a]">
                       {footprintApprox ? 'Tap to adjust' : '✓ Your home'}
                     </div>
                   </>
@@ -405,7 +405,7 @@ export default function RoofIQPage() {
                   className="flex-1 rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(5,150,105,0.3)] hover:bg-emerald-500"
                 >✓ Yes, that&apos;s my roof</button>
                 <button onClick={() => setStep('address')}
-                  className="rounded-lg bg-slate-100 px-4 text-sm text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200">Wrong address</button>
+                  className="rounded-lg bg-slate-100 px-4 text-sm text-[#9ca3af] ring-1 ring-slate-200 hover:bg-slate-200">Wrong address</button>
               </div>
             </>
           )}
@@ -415,9 +415,9 @@ export default function RoofIQPage() {
             <>
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold">Tell us about your roof 🏡</div>
-                <div className="font-mono text-[10px] uppercase tracking-wide text-slate-400">Step {qualifyPage} of 2</div>
+                <div className="font-mono text-[10px] uppercase tracking-wide text-[#6b7280]">Step {qualifyPage} of 2</div>
               </div>
-              <p className="mt-0.5 text-xs text-slate-500">A few quick taps sharpen your estimate — no wrong answers.</p>
+              <p className="mt-0.5 text-xs text-[#6b7280]">A few quick taps sharpen your estimate — no wrong answers.</p>
 
               {/* sub-progress */}
               <div className="mt-2 flex gap-1.5">
@@ -430,7 +430,7 @@ export default function RoofIQPage() {
               {qualifyPage === 1 && (
                 <>
                   <div className="mt-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What work do you need?</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">What work do you need?</div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {WORK_TYPES.map(w => (
                         <button key={w.key} onClick={() => setWorkType(w.key)} className={chipCls(workType === w.key)}>{w.label}</button>
@@ -439,7 +439,7 @@ export default function RoofIQPage() {
                   </div>
 
                   <div className="mt-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What condition is the roof in?</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">What condition is the roof in?</div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {CONDITIONS.map(c => (
                         <button key={c.key} onClick={() => setCondition(c.key)} className={chipCls(condition === c.key)}>{c.label}</button>
@@ -450,7 +450,7 @@ export default function RoofIQPage() {
                   </div>
 
                   <div className="mt-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">How old is the roof?</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">How old is the roof?</div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {AGES.map(a => (
                         <button key={a.key} onClick={() => setAge(a.key)} className={chipCls(age === a.key)}>{a.label}</button>
@@ -460,7 +460,7 @@ export default function RoofIQPage() {
                   </div>
 
                   <div className="mt-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">How many stories?</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">How many stories?</div>
                     <div className="mt-1.5 flex gap-1.5">
                       {[1, 2, 3].map(n => (
                         <button key={n} onClick={() => setStories(n)} className={chipCls(stories === n)}>{n === 3 ? '3+' : n}</button>
@@ -469,7 +469,7 @@ export default function RoofIQPage() {
                   </div>
 
                   <button onClick={() => setQualifyPage(2)}
-                    className="mt-5 w-full rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
+                    className="mt-5 w-full rounded-lg py-3 text-sm font-semibold text-[#1a1a1a] transition hover:scale-[1.01]"
                     style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                   >Continue →</button>
                 </>
@@ -479,7 +479,7 @@ export default function RoofIQPage() {
               {qualifyPage === 2 && (
                 <>
                   <div className="mt-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Anything going on with it?</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">Anything going on with it?</div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {ISSUES.map(i => (
                         <button key={i.key}
@@ -490,7 +490,7 @@ export default function RoofIQPage() {
                   </div>
 
                   <div className="mt-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Anything on the roof? <span className="font-normal normal-case text-slate-400">(select any)</span></div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">Anything on the roof? <span className="font-normal normal-case text-[#6b7280]">(select any)</span></div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {ROOFTOP_ITEMS.map(r => (
                         <button key={r.key} onClick={() => toggleRooftop(r.key)} className={chipCls(rooftopItems.includes(r.key))}>{r.label}</button>
@@ -502,14 +502,14 @@ export default function RoofIQPage() {
 
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Chimneys or skylights?</div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">Chimneys or skylights?</div>
                       <div className="mt-1.5 flex gap-1.5">
                         <button onClick={() => setChimneySky(true)} className={chipCls(chimneySky === true)}>Yes</button>
                         <button onClick={() => setChimneySky(false)} className={chipCls(chimneySky === false)}>No</button>
                       </div>
                     </div>
                     <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Does it have an attic?</div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">Does it have an attic?</div>
                       <div className="mt-1.5 flex gap-1.5">
                         <button onClick={() => setAttic(true)} className={chipCls(attic === true)}>Yes</button>
                         <button onClick={() => setAttic(false)} className={chipCls(attic === false)}>No</button>
@@ -518,7 +518,7 @@ export default function RoofIQPage() {
                   </div>
 
                   <div className="mt-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What drainage does it have?</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">What drainage does it have?</div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {DRAINAGE.map(d => (
                         <button key={d.key} onClick={() => setDrainage(d.key)} className={chipCls(drainage === d.key)}>{d.label}</button>
@@ -528,9 +528,9 @@ export default function RoofIQPage() {
 
                   <div className="mt-5 flex gap-2">
                     <button onClick={() => setQualifyPage(1)}
-                      className="rounded-lg bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200">← Back</button>
+                      className="rounded-lg bg-slate-100 px-4 py-3 text-sm font-semibold text-[#9ca3af] ring-1 ring-slate-200 hover:bg-slate-200">← Back</button>
                     <button onClick={() => void finishQualify()}
-                      className="flex-1 rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
+                      className="flex-1 rounded-lg py-3 text-sm font-semibold text-[#1a1a1a] transition hover:scale-[1.01]"
                       style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                     >Measure my roof →</button>
                   </div>
@@ -545,7 +545,7 @@ export default function RoofIQPage() {
               <div className="text-center">
                 <div className="text-2xl">🛰</div>
                 <div className="mt-1 text-sm font-semibold">You&apos;re almost there, {located ? 'your report is being generated' : 'one last step'}.</div>
-                <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500">
+                <p className="mx-auto mt-1 max-w-sm text-xs text-[#6b7280]">
                   We&apos;re analyzing satellite and solar data for <strong className="text-slate-700">{located?.address}</strong> right now.
                   Just a few details so we can personalize your report and send your copy.
                 </p>
@@ -568,7 +568,7 @@ export default function RoofIQPage() {
                   <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className={inputCls} />
                 </div>
                 {phone.trim() && (
-                  <label className="flex items-start gap-2 px-1 text-left text-[11px] leading-snug text-slate-500">
+                  <label className="flex items-start gap-2 px-1 text-left text-[11px] leading-snug text-[#6b7280]">
                     <input type="checkbox" checked={smsConsent} onChange={e => setSmsConsent(e.target.checked)}
                       className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
                     <span>
@@ -581,7 +581,7 @@ export default function RoofIQPage() {
                 <button onClick={() => void unlock()} disabled={busy}
                   className="rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(5,150,105,0.3)] hover:bg-emerald-500 disabled:opacity-50"
                 >{busy ? 'Finalizing your report…' : '📄 Generate my report'}</button>
-                <p className="text-center text-[10px] text-slate-400">
+                <p className="text-center text-[10px] text-[#6b7280]">
                   Free · no obligation · {company || 'the contractor'} will follow up with a precise proposal
                 </p>
               </div>
@@ -594,13 +594,13 @@ export default function RoofIQPage() {
               <div className="text-center">
                 <div className="text-2xl">🎉</div>
                 <div className="mt-1 text-sm font-semibold">{showPrice ? `Here's your estimate, ${name.split(' ')[0]}` : `You're all set, ${name.split(' ')[0]}`}</div>
-                <div className="text-xs text-slate-500">{located?.address}</div>
+                <div className="text-xs text-[#6b7280]">{located?.address}</div>
               </div>
 
               {!quote?.measured && (
                 <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-center">
                   <div className="text-sm font-semibold text-slate-800">Your roof needs a professional touch 🛠</div>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                  <p className="mt-1 text-xs leading-relaxed text-[#9ca3af]">
                     Satellite data couldn&apos;t fully resolve this roof automatically (tree cover and
                     coverage gaps do this). The good news: <strong>{company || 'the contractor'} will complete
                     your measurement personally — free</strong> — and your report will be updated with exact numbers.
@@ -615,15 +615,13 @@ export default function RoofIQPage() {
                 return (
                   <>
                     <div className="mt-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Roof material</div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-[#6b7280]">Roof material</div>
                       <div className="mt-1.5 grid grid-cols-3 gap-1.5">
                         {MATERIALS.map(m => (
                           <button key={m.key} onClick={() => setMaterial(m.key)}
-                            className={`rounded-lg border px-2 py-2 text-center transition ${
-                              material === m.key ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
-                            }`}>
+                            className={`rounded-lg border px-2 py-2 text-center transition ${ material === m.key ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-[#6b7280] hover:border-slate-300' }`}>
                             <div className="text-[11px] font-semibold leading-tight">{m.label}</div>
-                            <div className="mt-0.5 text-[9px] text-slate-400">{m.note}</div>
+                            <div className="mt-0.5 text-[9px] text-[#6b7280]">{m.note}</div>
                           </button>
                         ))}
                       </div>
@@ -631,13 +629,13 @@ export default function RoofIQPage() {
                     <div className="mt-3 grid grid-cols-2 gap-3">
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
                         <div className="text-xl font-bold">{quote.roof_sqft?.toLocaleString()} ft²</div>
-                        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Measured roof area</div>
+                        <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[#6b7280]">Measured roof area</div>
                       </div>
                       {showPrice ? (
                         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
                           <div className="text-xl font-bold text-emerald-700">{money(lo)}–{money(hi)}</div>
                           <div className="mt-0.5 text-[10px] uppercase tracking-wide text-emerald-600/80">Estimated range</div>
-                          <div className="mt-1 text-[10px] text-slate-500">or from <strong className="text-emerald-700">{money(monthly(lo))}/mo</strong>*</div>
+                          <div className="mt-1 text-[10px] text-[#6b7280]">or from <strong className="text-emerald-700">{money(monthly(lo))}/mo</strong>*</div>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
@@ -674,8 +672,8 @@ export default function RoofIQPage() {
 
               {/* What happens next — explicit, professional */}
               <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What happens next</div>
-                <ul className="mt-1.5 space-y-1 text-xs text-slate-600">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">What happens next</div>
+                <ul className="mt-1.5 space-y-1 text-xs text-[#9ca3af]">
                   <li>✓ Your details are with <strong>{company || 'the contractor'}</strong> — they&apos;ll reach out to schedule your <strong>free, precise on-site quote</strong>.</li>
                   <li>✓ Serious about moving forward? Calling now gets you on the schedule fastest.</li>
                   <li>✓ Your report link below is yours to keep and share.</li>
@@ -692,7 +690,7 @@ export default function RoofIQPage() {
                 )}
                 {reportUrl && (
                   <a href={reportUrl} target="_blank" rel="noreferrer"
-                    className="rounded-lg py-3 text-center text-sm font-semibold text-white transition hover:scale-[1.01]"
+                    className="rounded-lg py-3 text-center text-sm font-semibold text-[#1a1a1a] transition hover:scale-[1.01]"
                     style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                   >📄 View my full Roof Intelligence Report</a>
                 )}
@@ -709,7 +707,7 @@ export default function RoofIQPage() {
         </div>
 
         {!embedded && (
-          <p className="mt-4 text-center text-[10px] text-slate-400">Measurements powered by Axis Roofing Performance aerial + solar data.</p>
+          <p className="mt-4 text-center text-[10px] text-[#6b7280]">Measurements powered by Axis Roofing Performance aerial + solar data.</p>
         )}
       </div>
     </main>

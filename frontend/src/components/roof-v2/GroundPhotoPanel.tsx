@@ -208,10 +208,10 @@ export default function GroundPhotoPanel({ runId, onApplyPitch, onChimneyAdded }
   }, [runId, onChimneyAdded])
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
       <div>
-        <h3 className="text-sm font-semibold text-slate-100">Ground-photo intelligence</h3>
-        <p className="text-xs text-slate-400">
+        <h3 className="text-sm font-semibold text-[#1a1a1a]">Ground-photo intelligence</h3>
+        <p className="text-xs text-[#6b7280]">
           Upload ground-level photos <strong>or a PDF</strong>. AI reads what the satellite can&apos;t — roof
           <strong> pitch</strong>, <strong>chimneys</strong>, dormers, gable walls, materials — and you apply the findings.
         </p>
@@ -250,15 +250,15 @@ function PhotoSlot({
   const camRef = useRef<HTMLInputElement>(null)
   const done = photos.some(p => p.status === 'done')
   return (
-    <div className={`rounded-lg border p-2.5 transition-colors ${done ? 'border-emerald-400/25 bg-emerald-500/[0.05]' : slot.star ? 'border-amber-400/30 bg-amber-500/[0.04]' : 'border-white/10 bg-slate-900/40'}`}>
+    <div className={`rounded-lg border p-2.5 transition-colors ${done ? 'border-emerald-400/25 bg-emerald-500/[0.05]' : slot.star ? 'border-amber-400/30 bg-amber-500/[0.04]' : 'border-[#dededc] bg-[#f8f8f7]'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-100">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#1a1a1a]">
             <span>{slot.emoji}</span><span>{slot.label}</span>
             {slot.star && <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">Best for pitch</span>}
             {done && <span className="text-emerald-400">✓</span>}
           </div>
-          <div className="mt-0.5 text-[11px] leading-snug text-slate-400">{slot.hint}</div>
+          <div className="mt-0.5 text-[11px] leading-snug text-[#6b7280]">{slot.hint}</div>
         </div>
         <div className="flex flex-shrink-0 gap-1">
           <button onClick={() => camRef.current?.click()} title="Take photo"
@@ -275,14 +275,14 @@ function PhotoSlot({
       {photos.length > 0 && (
         <ul className="mt-2 space-y-1.5">
           {photos.map(p => (
-            <li key={p.id} className="flex gap-2 rounded-md border border-white/10 bg-slate-900/50 p-1.5">
+            <li key={p.id} className="flex gap-2 rounded-md border border-[#dededc] bg-[#f8f8f7] p-1.5">
               {p.isPdf ? (
                 <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded bg-rose-500/15 text-rose-300"><span className="text-sm leading-none">📄</span></div>
               ) : p.previewUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={p.previewUrl} alt={p.name} className="h-12 w-12 shrink-0 rounded object-cover" />
               ) : (
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] text-slate-500">…</div>
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-[#eeeeed] text-[10px] text-[#6b7280]">…</div>
               )}
               <div className="min-w-0 flex-1">
                 {p.status === 'analyzing' && <div className="flex items-center gap-1.5 text-[11px] text-blue-300"><span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Analyzing…</div>}
@@ -298,7 +298,7 @@ function PhotoSlot({
                 )}
               </div>
               <button onClick={() => onRemove(p.id)} title="Remove"
-                className="h-5 w-5 flex-shrink-0 rounded text-slate-500 hover:bg-rose-500/15 hover:text-rose-300">✕</button>
+                className="h-5 w-5 flex-shrink-0 rounded text-[#6b7280] hover:bg-rose-500/15 hover:text-rose-300">✕</button>
             </li>
           ))}
         </ul>
@@ -314,35 +314,35 @@ function PhotoGuide() {
     <div className="mt-2 rounded-md border border-blue-400/20 bg-blue-500/5">
       <button onClick={() => setOpen(o => !o)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs">
         <span className="font-semibold text-blue-200">📸 Photo playbook — exactly what to shoot for an accurate estimate</span>
-        <span className="text-slate-400">{open ? 'Hide' : 'Show'}</span>
+        <span className="text-[#6b7280]">{open ? 'Hide' : 'Show'}</span>
       </button>
       {open && (
-        <div className="space-y-3 border-t border-blue-400/10 px-3 py-2.5 text-[11px] text-slate-300">
-          <div className="rounded bg-slate-900/50 p-2">
+        <div className="space-y-3 border-t border-blue-400/10 px-3 py-2.5 text-[11px] text-[#2d2d2d]">
+          <div className="rounded bg-[#f8f8f7] p-2">
             <div className="font-semibold text-blue-200">The 30-second walk-around (6–8 photos)</div>
-            <p className="mt-0.5 text-slate-400">Walk the perimeter once. Shoot in daylight, hold the phone level (landscape), and stand back far enough that the <em>whole</em> feature is in frame. More clear photos = more accurate — but a few good ones beat a dozen blurry ones.</p>
+            <p className="mt-0.5 text-[#6b7280]">Walk the perimeter once. Shoot in daylight, hold the phone level (landscape), and stand back far enough that the <em>whole</em> feature is in frame. More clear photos = more accurate — but a few good ones beat a dozen blurry ones.</p>
           </div>
 
           <ol className="space-y-2">
             <li>
-              <div className="font-semibold text-white">1 · Gable end — square-on <span className="text-emerald-300">(most important — 1–2 shots)</span></div>
-              <div className="text-slate-400">Face the <strong>triangular end wall</strong> dead-on, not at an angle. This is the single best shot for <strong>pitch</strong>, which drives roof area, squares, and flashing. If the house has gable ends at both ends, shoot both.</div>
+              <div className="font-semibold text-[#1a1a1a]">1 · Gable end — square-on <span className="text-emerald-300">(most important — 1–2 shots)</span></div>
+              <div className="text-[#6b7280]">Face the <strong>triangular end wall</strong> dead-on, not at an angle. This is the single best shot for <strong>pitch</strong>, which drives roof area, squares, and flashing. If the house has gable ends at both ends, shoot both.</div>
             </li>
             <li>
-              <div className="font-semibold text-white">2 · The four corners <span className="text-slate-400">(4 shots)</span></div>
-              <div className="text-slate-400">Stand at each corner of the house so <strong>two roof sides show at once</strong>. Confirms how many planes there are and which way they face — the count sanity-check in auto-detect uses this.</div>
+              <div className="font-semibold text-[#1a1a1a]">2 · The four corners <span className="text-[#6b7280]">(4 shots)</span></div>
+              <div className="text-[#6b7280]">Stand at each corner of the house so <strong>two roof sides show at once</strong>. Confirms how many planes there are and which way they face — the count sanity-check in auto-detect uses this.</div>
             </li>
             <li>
-              <div className="font-semibold text-white">3 · Every chimney — straight-on <span className="text-purple-300">(1 per chimney)</span></div>
-              <div className="text-slate-400">Get the <strong>full height</strong> and the line <strong>where it meets the roof</strong>. → one-tap chimney + cricket flashing.</div>
+              <div className="font-semibold text-[#1a1a1a]">3 · Every chimney — straight-on <span className="text-purple-300">(1 per chimney)</span></div>
+              <div className="text-[#6b7280]">Get the <strong>full height</strong> and the line <strong>where it meets the roof</strong>. → one-tap chimney + cricket flashing.</div>
             </li>
             <li>
-              <div className="font-semibold text-white">4 · Skylights, dormers, and roof-to-wall spots <span className="text-amber-300">(as needed)</span></div>
-              <div className="text-slate-400">Any <strong>dormer</strong>, <strong>skylight</strong>, or place a <strong>lower roof runs into a taller wall</strong> (porch/garage meeting a 2-story wall). → these become your step-flashing edges to confirm.</div>
+              <div className="font-semibold text-[#1a1a1a]">4 · Skylights, dormers, and roof-to-wall spots <span className="text-amber-300">(as needed)</span></div>
+              <div className="text-[#6b7280]">Any <strong>dormer</strong>, <strong>skylight</strong>, or place a <strong>lower roof runs into a taller wall</strong> (porch/garage meeting a 2-story wall). → these become your step-flashing edges to confirm.</div>
             </li>
             <li>
-              <div className="font-semibold text-white">5 · A shingle close-up <span className="text-slate-400">(1 shot)</span></div>
-              <div className="text-slate-400">Stand ~3 ft from a roof edge or a ground-level sample. → identifies material + color for the report.</div>
+              <div className="font-semibold text-[#1a1a1a]">5 · A shingle close-up <span className="text-[#6b7280]">(1 shot)</span></div>
+              <div className="text-[#6b7280]">Stand ~3 ft from a roof edge or a ground-level sample. → identifies material + color for the report.</div>
             </li>
           </ol>
 
@@ -355,7 +355,7 @@ function PhotoGuide() {
             </ul>
           </div>
 
-          <p className="text-slate-500">Formats: JPG/PNG/HEIC, or a <strong>PDF</strong> (each page is read as its own photo, up to 12). You can also tap <strong>📷 Take photo</strong> on your phone to shoot right now.</p>
+          <p className="text-[#6b7280]">Formats: JPG/PNG/HEIC, or a <strong>PDF</strong> (each page is read as its own photo, up to 12). You can also tap <strong>📷 Take photo</strong> on your phone to shoot right now.</p>
         </div>
       )}
     </div>
@@ -369,11 +369,11 @@ function FindingsView({
   const [applied, setApplied] = useState(false)
   return (
     <div className="mt-1 space-y-1">
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#2d2d2d]">
         {f.roof_pitch ? (
           <>
             <span>
-              Pitch <strong className="text-white">{f.roof_pitch}</strong>{' '}
+              Pitch <strong className="text-[#1a1a1a]">{f.roof_pitch}</strong>{' '}
               <span
                 className={confColor}
                 title="How sure the AI is about the pitch read — not measured accuracy. A square-on shot of a gable END (the triangular wall) reads 'high'. 'Medium' is usable; verify it or re-shoot the gable straight-on for 'high'."
@@ -386,21 +386,21 @@ function FindingsView({
                 className="rounded bg-emerald-700 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-600">Apply to facets</button>
             )}
             {f.pitch_confidence !== 'high' && (
-              <span className="text-[10px] text-slate-500">↳ for &quot;high&quot;, shoot the gable end square-on</span>
+              <span className="text-[10px] text-[#6b7280]">↳ for &quot;high&quot;, shoot the gable end square-on</span>
             )}
           </>
         ) : <span className="text-amber-300/80">No clear roof slope here — for pitch, shoot a <strong>gable end</strong> (the triangular end wall) square-on.</span>}
       </div>
       {f.chimney.present && (
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
-          <span>🧱 Chimney ×{f.chimney.count || 1} · {f.chimney.height} · {f.chimney.material} <span className="text-slate-500">→ chimney + cricket flashing</span></span>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#2d2d2d]">
+          <span>🧱 Chimney ×{f.chimney.count || 1} · {f.chimney.height} · {f.chimney.material} <span className="text-[#6b7280]">→ chimney + cricket flashing</span></span>
           <button onClick={() => onAddChimney(f.chimney.count || 1)}
             className="rounded bg-purple-700 px-2 py-0.5 text-[10px] text-white hover:bg-purple-600">Add chimney</button>
         </div>
       )}
       {f.skylights > 0 && (
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
-          <span>🔲 Skylight ×{f.skylights} <span className="text-slate-500">→ skylight flashing kit</span></span>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#2d2d2d]">
+          <span>🔲 Skylight ×{f.skylights} <span className="text-[#6b7280]">→ skylight flashing kit</span></span>
           <button onClick={() => onAddSkylight(f.skylights)}
             className="rounded bg-purple-700 px-2 py-0.5 text-[10px] text-white hover:bg-purple-600">Add skylight</button>
         </div>
@@ -418,12 +418,12 @@ function FindingsView({
           {f.wall_abutment.note ? <span className="text-amber-200/60"> ({f.wall_abutment.note})</span> : null}
         </div>
       )}
-      <div className="text-[10px] text-slate-500">
+      <div className="text-[10px] text-[#6b7280]">
         {f.gable_walls_visible > 0 && `${f.gable_walls_visible} gable wall(s) · `}
         {f.roof_material !== 'unknown' && `${f.roof_material.replace('_', ' ')}${f.roof_color ? ` (${f.roof_color})` : ''} · `}
         {f.stories} stor{f.stories === 1 ? 'y' : 'ies'}
       </div>
-      {f.notes && <div className="text-[10px] italic text-slate-500">{f.notes}</div>}
+      {f.notes && <div className="text-[10px] italic text-[#6b7280]">{f.notes}</div>}
     </div>
   )
 }

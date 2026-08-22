@@ -7,7 +7,7 @@ const variants: Record<Variant, string> = {
   default:
     'bg-white border border-slate-200 shadow-card',
   glass:
-    'border backdrop-blur-md',
+    'border ',
   outline:
     'bg-transparent border border-slate-300',
   brand:

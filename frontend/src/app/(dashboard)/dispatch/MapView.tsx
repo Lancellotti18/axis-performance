@@ -154,7 +154,7 @@ export default function MapView({ data, focusDate, onDetail }: { data: BoardData
                     </div>
                     <div className="mt-1 space-y-0.5 pl-[18px]">
                       {cs.map(s => (
-                        <button key={s.apptId} onClick={() => onDetail(s.apptId)} className="flex w-full items-center gap-2 rounded px-1.5 py-0.5 text-left text-[11px] hover:bg-white/5">
+                        <button key={s.apptId} onClick={() => onDetail(s.apptId)} className="flex w-full items-center gap-2 rounded px-1.5 py-0.5 text-left text-[11px] hover:bg-[#eeeeed]">
                           <span className="w-4 shrink-0 tabular-nums" style={{ color: 'var(--muted)' }}>{s.order}.</span>
                           <span className="truncate">{s.time} #{s.jobNumber} {s.label}</span>
                         </button>

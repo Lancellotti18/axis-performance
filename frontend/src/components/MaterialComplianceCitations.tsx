@@ -56,7 +56,7 @@ export function CitationInline({ item }: { item: CitedItem }) {
         <div className="flex items-center justify-between gap-2 mb-1">
           <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Checked against</span>
           {item.code_reference_jurisdiction && (
-            <span className="text-[10px] text-slate-500 font-medium">{item.code_reference_jurisdiction}</span>
+            <span className="text-[10px] text-[#6b7280] font-medium">{item.code_reference_jurisdiction}</span>
           )}
         </div>
         <a
@@ -69,10 +69,10 @@ export function CitationInline({ item }: { item: CitedItem }) {
           <ExternalIcon />
         </a>
         {item.code_reference && item.code_reference_title && (
-          <div className="text-slate-500 text-[10px] mt-0.5 font-medium">{item.code_reference}</div>
+          <div className="text-[#6b7280] text-[10px] mt-0.5 font-medium">{item.code_reference}</div>
         )}
         {item.code_reference_snippet && (
-          <p className="text-slate-600 text-xs mt-1.5 leading-relaxed">{item.code_reference_snippet}</p>
+          <p className="text-[#9ca3af] text-xs mt-1.5 leading-relaxed">{item.code_reference_snippet}</p>
         )}
       </div>
     )
@@ -82,7 +82,7 @@ export function CitationInline({ item }: { item: CitedItem }) {
     return (
       <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Checked against (base code)</span>
+          <span className="text-[10px] font-bold text-[#6b7280] uppercase tracking-wider">Checked against (base code)</span>
         </div>
         <a
           href={fallback.url}
@@ -93,7 +93,7 @@ export function CitationInline({ item }: { item: CitedItem }) {
           {fallback.title}
           <ExternalIcon />
         </a>
-        <p className="text-slate-500 text-xs mt-1.5 leading-relaxed italic">{fallback.note}</p>
+        <p className="text-[#6b7280] text-xs mt-1.5 leading-relaxed italic">{fallback.note}</p>
       </div>
     )
   }
@@ -125,7 +125,7 @@ export function ComplianceLimitations({ className = '' }: { className?: string }
         </div>
         <div className="flex-1">
           <div className="text-slate-800 font-bold text-sm">Scope of this compliance check</div>
-          <p className="text-slate-500 text-xs mt-1 leading-relaxed">
+          <p className="text-[#6b7280] text-xs mt-1 leading-relaxed">
             This tool cross-references your materials against publicly published
             building codes for the jurisdiction you selected. It is a
             <strong className="text-slate-700"> pre-submittal review aid</strong>,
@@ -135,7 +135,7 @@ export function ComplianceLimitations({ className = '' }: { className?: string }
       </div>
 
       <div className="border-t pt-3" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
-        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+        <div className="text-[10px] font-bold text-[#6b7280] uppercase tracking-wider mb-2">
           What this check will <span className="text-amber-600">not</span> do
         </div>
         <ul className="space-y-2">
@@ -157,7 +157,7 @@ export function ComplianceLimitations({ className = '' }: { className?: string }
               <div className="flex-shrink-0 mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-300" />
               <div className="flex-1">
                 <div className="text-slate-700 text-xs font-semibold">{row.title}</div>
-                <div className="text-slate-500 text-xs leading-relaxed mt-0.5">{row.body}</div>
+                <div className="text-[#6b7280] text-xs leading-relaxed mt-0.5">{row.body}</div>
               </div>
             </li>
           ))}
@@ -165,7 +165,7 @@ export function ComplianceLimitations({ className = '' }: { className?: string }
       </div>
 
       <div className="border-t mt-3 pt-3" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
-        <p className="text-slate-400 text-[11px] leading-relaxed">
+        <p className="text-[#6b7280] text-[11px] leading-relaxed">
           Always confirm flagged items with your local building department before
           construction. The "Sources used" panel above shows every document this
           check pulled from — click through to verify any citation yourself.
@@ -212,7 +212,7 @@ export function CitationBibliography({
       <summary className="cursor-pointer select-none list-none px-5 py-4 flex items-center justify-between hover:bg-blue-50/40 transition-colors">
         <div className="flex items-center gap-2">
           <svg
-            className="group-open:rotate-90 transition-transform text-slate-400"
+            className="group-open:rotate-90 transition-transform text-[#6b7280]"
             width="12"
             height="12"
             viewBox="0 0 24 24"
@@ -228,18 +228,18 @@ export function CitationBibliography({
             {list.length}
           </span>
         </div>
-        <span className="text-slate-400 text-xs">expand</span>
+        <span className="text-[#6b7280] text-xs">expand</span>
       </summary>
 
       <div className="px-5 pb-5 pt-1 space-y-4">
-        <p className="text-slate-500 text-xs leading-relaxed">
+        <p className="text-[#6b7280] text-xs leading-relaxed">
           Every checklist item above was cross-referenced against these documents — pulled
           live from official .gov, municipal code, and ICC sources. Nothing is fabricated.
         </p>
 
         {categories.map((cat) => (
           <div key={cat}>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 capitalize">
+            <div className="text-[10px] font-bold text-[#6b7280] uppercase tracking-wider mb-2 capitalize">
               {cat}
             </div>
             <div className="space-y-2">
@@ -259,13 +259,13 @@ export function CitationBibliography({
                       <ExternalIcon />
                     </a>
                     {s.jurisdiction && (
-                      <span className="text-[10px] text-slate-500 font-medium flex-shrink-0 mt-0.5">
+                      <span className="text-[10px] text-[#6b7280] font-medium flex-shrink-0 mt-0.5">
                         {s.jurisdiction}
                       </span>
                     )}
                   </div>
                   {s.snippet && (
-                    <p className="text-slate-600 text-xs leading-relaxed">{s.snippet}</p>
+                    <p className="text-[#9ca3af] text-xs leading-relaxed">{s.snippet}</p>
                   )}
                 </div>
               ))}
@@ -275,7 +275,7 @@ export function CitationBibliography({
 
         {baseCode && (
           <div className="border-t pt-3" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            <div className="text-[10px] font-bold text-[#6b7280] uppercase tracking-wider mb-2">
               Base code reference
             </div>
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -288,7 +288,7 @@ export function CitationBibliography({
                 {baseCode.title}
                 <ExternalIcon />
               </a>
-              <p className="text-slate-500 text-xs mt-1 leading-relaxed italic">{baseCode.note}</p>
+              <p className="text-[#6b7280] text-xs mt-1 leading-relaxed italic">{baseCode.note}</p>
             </div>
           </div>
         )}

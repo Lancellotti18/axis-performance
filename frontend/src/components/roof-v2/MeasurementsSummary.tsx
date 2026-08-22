@@ -266,7 +266,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
   }, [runId])
 
   const conf = pendingCount > 0
-    ? { label: 'Labeling…', cls: 'bg-slate-600/30 text-slate-300 border-slate-500/40' }
+    ? { label: 'Labeling…', cls: 'bg-[#d4d4d2] text-[#2d2d2d] border-slate-500/40' }
     : confidenceTag(aggregates?.confidence)
   const hasNoData = aggregates && (aggregates.facet_count ?? 0) === 0 && !loading
 
@@ -286,14 +286,14 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
           const pct = ((item.value || 0) / max) * 100
           return (
             <li key={item.key}>
-              <div className="flex justify-between text-xs text-slate-300">
+              <div className="flex justify-between text-xs text-[#2d2d2d]">
                 <span className="flex items-center gap-2">
                   <span className="inline-block h-2 w-3 rounded" style={{ background: COLORS[item.key] }} />
                   {item.label}
                 </span>
                 <span className="font-mono">{fmtFt(item.value)}</span>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+              <div className="h-1.5 overflow-hidden rounded-full bg-[#eeeeed]">
                 <div className="h-full rounded-full" style={{ width: `${pct}%`, background: COLORS[item.key] }} />
               </div>
             </li>
@@ -347,7 +347,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
           <button
             onClick={async () => { await onForceSave(); await fetchAll(wastePct) }}
             disabled={loading}
-            className="rounded bg-slate-700 px-2 py-1 text-[10px] text-slate-200 hover:bg-slate-600 disabled:opacity-50"
+            className="rounded bg-[#e4e4e2] px-2 py-1 text-[10px] text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-50"
             title="Bypass the debounce and force an immediate save + recompute"
           >↻ Save & recompute now</button>
         </div>
@@ -391,41 +391,37 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* Roof lines */}
-        <section className="rounded-lg border border-white/10 bg-slate-900/60 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-slate-200">Roof line measurements</h3>
-          {lineBars || <p className="text-xs text-slate-500">Draw and label facet edges to see roof lines.</p>}
+        <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
+          <h3 className="mb-3 text-sm font-semibold text-[#1a1a1a]">Roof line measurements</h3>
+          {lineBars || <p className="text-xs text-[#6b7280]">Draw and label facet edges to see roof lines.</p>}
           {aggregates && (
-            <div className="mt-3 border-t border-white/10 pt-3 text-xs text-slate-400">
-              Perimeter: <span className="font-mono text-slate-200">{fmtFt(aggregates.perimeter_ft)}</span> &nbsp;·&nbsp;
-              Ridge total: <span className="font-mono text-slate-200">{fmtFt(aggregates.ridge_total_ft)}</span>
+            <div className="mt-3 border-t border-[#dededc] pt-3 text-xs text-[#6b7280]">
+              Perimeter: <span className="font-mono text-[#1a1a1a]">{fmtFt(aggregates.perimeter_ft)}</span> &nbsp;·&nbsp;
+              Ridge total: <span className="font-mono text-[#1a1a1a]">{fmtFt(aggregates.ridge_total_ft)}</span>
               {aggregates.wall_intersection_ft ? (
-                <> &nbsp;·&nbsp; Wall: <span className="font-mono text-slate-200">{fmtFt(aggregates.wall_intersection_ft)}</span></>
+                <> &nbsp;·&nbsp; Wall: <span className="font-mono text-[#1a1a1a]">{fmtFt(aggregates.wall_intersection_ft)}</span></>
               ) : null}
             </div>
           )}
         </section>
 
         {/* Waste & complexity */}
-        <section className="rounded-lg border border-white/10 bg-slate-900/60 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-slate-200">Waste calculation</h3>
-          <div className="mb-3 text-xs text-slate-400">
-            Complexity score: <span className="font-mono text-slate-200">{aggregates?.complexity_score?.toFixed(2) ?? '—'}</span>
-            &nbsp;·&nbsp; Recommended: <span className="font-mono text-slate-200">{aggregates?.waste_pct_default ?? '—'}%</span>
+        <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
+          <h3 className="mb-3 text-sm font-semibold text-[#1a1a1a]">Waste calculation</h3>
+          <div className="mb-3 text-xs text-[#6b7280]">
+            Complexity score: <span className="font-mono text-[#1a1a1a]">{aggregates?.complexity_score?.toFixed(2) ?? '—'}</span>
+            &nbsp;·&nbsp; Recommended: <span className="font-mono text-[#1a1a1a]">{aggregates?.waste_pct_default ?? '—'}%</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {(materials?.waste_table ?? [5, 10, 12, 15, 18, 20, 25]).map(pct => (
               <button
                 key={pct}
                 onClick={() => onWasteChange(pct)}
-                className={`rounded-md border px-3 py-1.5 text-xs font-medium transition ${
-                  wastePct === pct
-                    ? 'border-blue-400 bg-blue-500/30 text-white'
-                    : 'border-white/10 bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
+                className={`rounded-md border px-3 py-1.5 text-xs font-medium transition ${ wastePct === pct ? 'border-blue-400 bg-blue-500/30 text-white' : 'border-[#dededc] bg-[#eeeeed] text-[#2d2d2d] hover:bg-[#e4e4e2]' }`}
               >
                 {pct}%
                 {materials?.summary.per_waste_totals?.[pct] !== undefined && (
-                  <span className="ml-1 text-slate-400">→ {fmt$(materials.summary.per_waste_totals[pct])}</span>
+                  <span className="ml-1 text-[#6b7280]">→ {fmt$(materials.summary.per_waste_totals[pct])}</span>
                 )}
               </button>
             ))}
@@ -434,9 +430,9 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
       </div>
 
       {/* Materials */}
-      <section className="rounded-lg border border-white/10 bg-slate-900/60 p-4">
+      <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-200">Material ordering list ({wastePct}% waste)</h3>
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">Material ordering list ({wastePct}% waste)</h3>
           <div className="flex items-center gap-2">
             {materials && materials.lines.length > 0 && (
               <button
@@ -449,12 +445,12 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
           </div>
         </div>
         {materials && materials.lines.length > 0 && (
-          <p className="mb-2 text-[10px] text-slate-500">
+          <p className="mb-2 text-[10px] text-[#6b7280]">
             Click a price to set your dealer rate (<span className="mx-0.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 align-middle" /> = yours) · hover a row for buy links &amp; live price
           </p>
         )}
         {!materials && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-[#6b7280]">
             Once facet edges are labeled and totals are non-zero, materials appear here.
           </p>
         )}
@@ -462,7 +458,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-white/10 text-slate-400">
+                <tr className="border-b border-[#dededc] text-[#6b7280]">
                   <th className="px-2 py-2 text-left">SKU</th>
                   <th className="px-2 py-2 text-left">Item</th>
                   <th className="px-2 py-2 text-right">Base qty</th>
@@ -475,8 +471,8 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
               <tbody>
                 {materials.lines.map(line => (
                   <Fragment key={line.sku}>
-                  <tr className="group border-b border-white/5 text-slate-200">
-                    <td className="px-2 py-2 font-mono text-[10px] text-slate-400">{line.sku}</td>
+                  <tr className="group border-b border-[#dededc] text-[#1a1a1a]">
+                    <td className="px-2 py-2 font-mono text-[10px] text-[#6b7280]">{line.sku}</td>
                     <td className="px-2 py-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span>{line.item_name}</span>
@@ -486,7 +482,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                           🛒 Buy / compare {vendors[line.sku]?.open ? '▴' : '▾'}
                         </button>
                       </div>
-                      <div className="text-[10px] text-slate-500">{line.computation_trace}</div>
+                      <div className="text-[10px] text-[#6b7280]">{line.computation_trace}</div>
                     </td>
                     <td className="px-2 py-2 text-right font-mono">{line.base_quantity.toFixed(2)}</td>
                     <td className="px-2 py-2 text-right font-mono">{line.waste_quantities[wastePct] ?? '—'}</td>
@@ -503,7 +499,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                             if (e.key === 'Escape') setPriceEdit(null)
                           }}
                           onBlur={() => void saveMyPrice(line.sku, priceEdit.value)}
-                          className="w-20 rounded border border-blue-500 bg-slate-800 px-1 py-0.5 text-right text-white"
+                          className="w-20 rounded border border-blue-500 bg-[#eeeeed] px-1 py-0.5 text-right text-[#1a1a1a]"
                         />
                       ) : (
                         <button
@@ -524,33 +520,33 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                     <td className="px-2 py-2 text-right font-mono">{fmt$((line.waste_quantities[wastePct] ?? 0) * line.unit_cost)}</td>
                   </tr>
                   {vendors[line.sku]?.open && (
-                    <tr key={line.sku + '-vendors'} className="border-b border-white/5 bg-slate-900/40">
+                    <tr key={line.sku + '-vendors'} className="border-b border-[#dededc] bg-[#f8f8f7]">
                       <td colSpan={7} className="px-3 py-2.5">
                         {vendors[line.sku]?.loading ? (
-                          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                          <div className="flex items-center gap-2 text-[11px] text-[#6b7280]">
                             <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
                             Finding where to buy {line.item_name}{city ? ` near ${city}` : ''}…
                           </div>
                         ) : (vendors[line.sku]?.options?.length ?? 0) === 0 ? (
-                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#6b7280]">
                             <span>No product pages found. Try the big-box search:</span>
                             <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer" className="font-semibold text-orange-300 hover:underline">Home Depot ↗</a>
                             <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer" className="font-semibold text-blue-300 hover:underline">Lowe&apos;s ↗</a>
                           </div>
                         ) : (
                           <div>
-                            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6b7280]">
                               Where to buy · compare prices{city ? ` near ${city}` : ''}
                             </div>
                             <div className="grid gap-1.5 sm:grid-cols-2">
                               {vendors[line.sku]!.options!.map((o, i) => (
                                 <a key={i} href={o.url} target="_blank" rel="noreferrer"
-                                  className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-slate-800/60 px-2.5 py-1.5 hover:border-blue-400/40 hover:bg-slate-800">
+                                  className="flex items-center justify-between gap-2 rounded-lg border border-[#dededc] bg-[#eeeeed] px-2.5 py-1.5 hover:border-blue-400/40 hover:bg-[#eeeeed]">
                                   <span className="flex min-w-0 items-center gap-1.5">
                                     {o.is_local && <span className="rounded bg-emerald-500/20 px-1 py-0.5 text-[9px] font-semibold text-emerald-300">LOCAL</span>}
-                                    <span className="truncate text-[11px] text-slate-200">{o.vendor}</span>
+                                    <span className="truncate text-[11px] text-[#1a1a1a]">{o.vendor}</span>
                                   </span>
-                                  <span className="shrink-0 text-[11px] font-semibold text-slate-100">
+                                  <span className="shrink-0 text-[11px] font-semibold text-[#1a1a1a]">
                                     {o.quote_only || o.price == null ? <span className="text-blue-300">Get quote ↗</span> : <>{fmt$(o.price)} ↗</>}
                                   </span>
                                 </a>
@@ -560,7 +556,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                         )}
                         {/* Always offer direct big-box search — Home Depot AND Lowe's —
                             even when a live product page wasn't matched. */}
-                        <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-white/5 pt-2 text-[11px] text-slate-400">
+                        <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-[#dededc] pt-2 text-[11px] text-[#6b7280]">
                           <span>Search directly:</span>
                           <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer" className="font-semibold text-orange-300 hover:underline">Home Depot ↗</a>
                           <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer" className="font-semibold text-blue-300 hover:underline">Lowe&apos;s ↗</a>
@@ -576,7 +572,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
         )}
       </section>
 
-      {loading && <p className="text-xs text-slate-500">Recomputing…</p>}
+      {loading && <p className="text-xs text-[#6b7280]">Recomputing…</p>}
       {error && <p className="text-xs text-rose-400">{error}</p>}
     </div>
   )
@@ -584,10 +580,10 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
 
 function Card({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-slate-900/60 p-3">
-      <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-slate-100">{value}</div>
-      {sub && <div className="text-[10px] text-slate-500">{sub}</div>}
+    <div className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-3">
+      <div className="text-[10px] uppercase tracking-wide text-[#6b7280]">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-[#1a1a1a]">{value}</div>
+      {sub && <div className="text-[10px] text-[#6b7280]">{sub}</div>}
     </div>
   )
 }

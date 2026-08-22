@@ -41,7 +41,7 @@ export default function CrewManager({ data, onClose }: { data: BoardData; onClos
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => { setAddOpen(o => !o); setEditingId(null) }} className="rounded-md px-3 py-1.5 text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>{addOpen ? 'Cancel' : '＋ Add crew'}</button>
-            <button onClick={onClose} className="rounded-md px-2 py-1 text-sm hover:bg-white/5">✕</button>
+            <button onClick={onClose} className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]">✕</button>
           </div>
         </div>
 
@@ -64,8 +64,8 @@ export default function CrewManager({ data, onClose }: { data: BoardData; onClos
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <button onClick={() => { setTimeoffId(timeoffId === crew.id ? null : crew.id) }} className="rounded-md border px-2 py-1 text-[11px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Time off</button>
-                  <button onClick={() => { setEditingId(crew.id); setAddOpen(false) }} className="rounded-md border px-2 py-1 text-[11px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Edit</button>
+                  <button onClick={() => { setTimeoffId(timeoffId === crew.id ? null : crew.id) }} className="rounded-md border px-2 py-1 text-[11px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>Time off</button>
+                  <button onClick={() => { setEditingId(crew.id); setAddOpen(false) }} className="rounded-md border px-2 py-1 text-[11px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>Edit</button>
                   <button onClick={async () => {
                     if (!confirm(`Remove ${crew.name}? This clears its shifts and time off. Finished jobs keep their history.`)) return
                     try {
@@ -139,7 +139,7 @@ function CrewForm({ data, initial, isNew, onSubmit, onCancel }: {
       </div>
 
       {isNew && (
-        <div className="mt-3 rounded-lg border border-white/10 p-2.5">
+        <div className="mt-3 rounded-lg border border-[#dededc] p-2.5">
           <div className="mb-1.5 text-[11px] font-semibold" style={{ color: 'var(--muted)' }}>Working days (shifts generated for {f.shift_weeks} weeks)</div>
           <div className="flex flex-wrap gap-1">
             {WEEKDAYS.map(([lbl, d]) => (
@@ -155,7 +155,7 @@ function CrewForm({ data, initial, isNew, onSubmit, onCancel }: {
       )}
 
       <div className="mt-3 flex justify-end gap-2">
-        <button onClick={onCancel} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-white/5" style={{ color: 'var(--muted)' }}>Cancel</button>
+        <button onClick={onCancel} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ color: 'var(--muted)' }}>Cancel</button>
         <button onClick={submit} disabled={busy} className="rounded-md px-4 py-1.5 text-[12px] font-bold disabled:opacity-50" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>{isNew ? 'Add crew' : 'Save'}</button>
       </div>
     </div>

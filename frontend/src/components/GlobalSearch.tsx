@@ -70,7 +70,7 @@ export default function GlobalSearch() {
 
   return (
     <div ref={boxRef} className="relative w-full max-w-[440px]">
-      <svg className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6b7280]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
       <input
@@ -79,14 +79,14 @@ export default function GlobalSearch() {
         onFocus={() => { if (q) setOpen(true) }}
         onKeyDown={onKey}
         placeholder="Search projects & pages…"
-        className="w-full rounded-xl pl-9 pr-4 py-2 text-sm text-slate-100 placeholder-slate-500 bg-white/[0.05] border border-white/10 focus:border-blue-400/40 focus:bg-white/[0.08] outline-none transition-colors"
+        className="w-full rounded-xl pl-9 pr-4 py-2 text-sm text-[#1a1a1a] placeholder-[#9ca3af] bg-[#f8f8f7] border border-[#dededc] focus:border-blue-400/40 focus:bg-[#f8f8f7] outline-none transition-colors"
       />
 
       {open && q.trim() && (
-        <div className="absolute left-0 right-0 top-full mt-2 rounded-xl border border-white/10 shadow-2xl overflow-hidden z-50"
+        <div className="absolute left-0 right-0 top-full mt-2 rounded-xl border border-[#dededc] shadow-2xl overflow-hidden z-50"
           style={{ background: 'rgba(10,16,28,0.96)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}>
           {results.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-slate-500">No matches for “{q.trim()}”</div>
+            <div className="px-4 py-3 text-sm text-[#6b7280]">No matches for “{q.trim()}”</div>
           ) : (
             <ul className="max-h-[360px] overflow-y-auto py-1">
               {results.map((r, i) => (
@@ -94,7 +94,7 @@ export default function GlobalSearch() {
                   <button
                     onMouseEnter={() => setIdx(i)}
                     onClick={() => go(r.href)}
-                    className={`w-full text-left px-3.5 py-2 flex items-center gap-3 transition-colors ${i === idx ? 'bg-blue-500/15' : 'hover:bg-white/[0.04]'}`}
+                    className={`w-full text-left px-3.5 py-2 flex items-center gap-3 transition-colors ${i === idx ? 'bg-blue-500/15' : 'hover:bg-[#f8f8f7]'}`}
                   >
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(96,165,250,0.22)' }}>
                       {r.type === 'project' ? (
@@ -104,10 +104,10 @@ export default function GlobalSearch() {
                       )}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm text-slate-100 truncate">{r.label}</span>
-                      {r.sub && <span className="block text-[11px] text-slate-500 truncate">{r.sub}</span>}
+                      <span className="block text-sm text-[#1a1a1a] truncate">{r.label}</span>
+                      {r.sub && <span className="block text-[11px] text-[#6b7280] truncate">{r.sub}</span>}
                     </span>
-                    <span className="ml-2 text-[9px] uppercase tracking-[0.15em] text-slate-500">{r.type}</span>
+                    <span className="ml-2 text-[9px] uppercase tracking-[0.15em] text-[#6b7280]">{r.type}</span>
                   </button>
                 </li>
               ))}

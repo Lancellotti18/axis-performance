@@ -83,7 +83,7 @@ function pitchSourceMeta(src?: string): { label: string; color: string } {
     case 'lidar_measured': return { label: '📐 measured (LiDAR)', color: 'text-emerald-400' }
     case 'ground_photo': return { label: '📷 ground photo', color: 'text-sky-400' }
     case 'ai_satellite': return { label: '🛰 AI estimate', color: 'text-amber-400' }
-    case 'manual': return { label: '✎ you set this', color: 'text-slate-300' }
+    case 'manual': return { label: '✎ you set this', color: 'text-[#2d2d2d]' }
     default: return { label: '⚠ default — verify', color: 'text-amber-400' }
   }
 }
@@ -887,17 +887,13 @@ export function RoofFacetEditor({
   return (
     <div className="flex h-full w-full flex-col gap-3">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2 text-sm text-slate-200">
-        <span className="font-semibold text-slate-300">Mode:</span>
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2 text-sm text-[#1a1a1a]">
+        <span className="font-semibold text-[#2d2d2d]">Mode:</span>
         {(['draw', 'select', 'label'] as Mode[]).map(m => (
           <button
             key={m}
             onClick={() => { setMode(m); setSelectedEdge(null) }}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-              mode === m
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${ mode === m ? 'bg-blue-600 text-white' : 'bg-[#eeeeed] text-[#2d2d2d] hover:bg-[#e4e4e2]' }`}
             title={m === 'label' ? 'Manual fallback — click an edge on the canvas, then pick its type. Fastest path is ✨ Auto-label.' : undefined}
           >
             {m === 'draw' ? '+ Draw facet' : m === 'select' ? 'Edit vertices' : 'Label by hand'}
@@ -906,46 +902,44 @@ export function RoofFacetEditor({
         <button
           onClick={() => setShowCoach(true)}
           title="How to trace the roof for the best auto-label results"
-          className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-slate-700"
+          className="rounded-md bg-[#eeeeed] px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-[#e4e4e2]"
         >? How to trace</button>
         {onAutoLabelEdges && (
           <button
             onClick={onAutoLabelEdges}
             disabled={facets.length === 0}
             title="Recommended: AI names every edge (eave/rake/ridge/hip/valley) at once — you review and accept"
-            className={`rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40 ${
-              facets.length > 0 && unlabeledCount > 0 ? 'ring-2 ring-emerald-300/60 shadow-[0_0_14px_rgba(52,211,153,0.45)]' : ''
-            }`}
+            className={`rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40 ${ facets.length > 0 && unlabeledCount > 0 ? 'ring-2 ring-emerald-300/60 shadow-[0_0_14px_rgba(52,211,153,0.45)]' : '' }`}
           >✨ Auto-label edges{unlabeledCount > 0 && facets.length > 0 ? ` (${unlabeledCount})` : ''}</button>
         )}
-        <div className="mx-2 h-5 w-px bg-white/10" />
+        <div className="mx-2 h-5 w-px bg-[#eeeeed]" />
         {/* Undo / redo */}
         <button
           onClick={undo}
           disabled={!canUndo}
           title="Undo (⌘Z / Ctrl+Z)"
-          className="rounded-md bg-slate-800 px-2 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-30"
+          className="rounded-md bg-[#eeeeed] px-2 py-1.5 text-xs font-medium text-[#1a1a1a] hover:bg-[#e4e4e2] disabled:opacity-30"
         >↶ Undo</button>
         <button
           onClick={redo}
           disabled={!canRedo}
           title="Redo (⌘⇧Z / Ctrl+Y)"
-          className="rounded-md bg-slate-800 px-2 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-30"
+          className="rounded-md bg-[#eeeeed] px-2 py-1.5 text-xs font-medium text-[#1a1a1a] hover:bg-[#e4e4e2] disabled:opacity-30"
         >↷ Redo</button>
-        <div className="mx-2 h-5 w-px bg-white/10" />
-        <span className="text-xs text-slate-400">
+        <div className="mx-2 h-5 w-px bg-[#eeeeed]" />
+        <span className="text-xs text-[#6b7280]">
           {facets.length} facet{facets.length === 1 ? '' : 's'}
         </span>
         {/* Snap-to-edge + orthogonality controls (only matter in draw mode) */}
         {mode === 'draw' && (
           <>
-            <div className="mx-2 h-5 w-px bg-white/10" />
-            <label className="flex items-center gap-1.5 text-xs text-slate-300">
+            <div className="mx-2 h-5 w-px bg-[#eeeeed]" />
+            <label className="flex items-center gap-1.5 text-xs text-[#2d2d2d]">
               <input
                 type="checkbox"
                 checked={snapEnabled}
                 onChange={e => setSnapEnabled(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800"
+                className="h-3.5 w-3.5 rounded border-[#dededc] bg-[#eeeeed]"
               />
               Snap to edge
               {snapEnabled && (
@@ -955,17 +949,13 @@ export function RoofFacetEditor({
               )}
             </label>
             <span
-              className={`rounded px-2 py-0.5 text-[10px] ${
-                shiftHeld ? 'bg-blue-500/30 text-blue-200' : 'bg-slate-800 text-slate-500'
-              }`}
+              className={`rounded px-2 py-0.5 text-[10px] ${ shiftHeld ? 'bg-blue-500/30 text-blue-200' : 'bg-[#eeeeed] text-[#6b7280]' }`}
               title="Hold Shift while clicking to constrain new vertex to 45° angles from the previous one"
             >
               ⇧ {shiftHeld ? 'ortho ON' : 'ortho (hold ⇧)'}
             </span>
             <span
-              className={`rounded px-2 py-0.5 text-[10px] ${
-                altHeld ? 'bg-emerald-500/30 text-emerald-200' : 'bg-slate-800 text-slate-500'
-              }`}
+              className={`rounded px-2 py-0.5 text-[10px] ${ altHeld ? 'bg-emerald-500/30 text-emerald-200' : 'bg-[#eeeeed] text-[#6b7280]' }`}
               title="Hold Alt/Option while clicking to place the vertex exactly under the cursor, bypassing snap"
             >
               ⌥ {altHeld ? 'exact ON' : 'exact (hold ⌥)'}
@@ -987,7 +977,7 @@ export function RoofFacetEditor({
           {mode === 'draw' && drawingPoly.length > 0 && (
             <button
               onClick={() => setDrawingPoly([])}
-              className="rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-600"
+              className="rounded-md bg-[#e4e4e2] px-3 py-1.5 text-xs font-medium text-[#1a1a1a] hover:bg-[#d4d4d2]"
             >Cancel</button>
           )}
         </div>
@@ -1010,12 +1000,12 @@ export function RoofFacetEditor({
             >✨ Auto-label {unlabeledCount}</button>
             <button
               onClick={() => { setLabelNudgeDismissed(true); setMode('label') }}
-              className="rounded bg-slate-800 px-2 py-1 text-slate-300 hover:bg-slate-700"
+              className="rounded bg-[#eeeeed] px-2 py-1 text-[#2d2d2d] hover:bg-[#e4e4e2]"
               title="Click edges on the canvas and pick each type yourself"
             >I&apos;ll label by hand</button>
             <button
               onClick={() => setLabelNudgeDismissed(true)}
-              className="rounded p-1 text-emerald-200/60 hover:text-white"
+              className="rounded p-1 text-emerald-200/60 hover:text-[#1a1a1a]"
               aria-label="Dismiss"
             >✕</button>
           </div>
@@ -1026,7 +1016,7 @@ export function RoofFacetEditor({
         {/* Canvas */}
         <div
           ref={containerRef}
-          className="relative min-h-0 flex-1 touch-none overflow-hidden rounded-lg border border-white/10 bg-slate-950"
+          className="relative min-h-0 flex-1 touch-none overflow-hidden rounded-lg border border-[#dededc] bg-[#f8f8f7]"
           onKeyDown={(ev) => {
             if (ev.key === 'Enter' && mode === 'draw' && drawingPoly.length >= 3) {
               finalizeDrawingPoly()
@@ -1181,23 +1171,23 @@ export function RoofFacetEditor({
 
           {/* First-use coachmark — dismissible tips, shown once. */}
           {showCoach && (
-            <div className="pointer-events-auto absolute left-1/2 top-4 z-30 w-[min(420px,90%)] -translate-x-1/2 rounded-lg border border-blue-400/40 bg-slate-900/95 p-4 shadow-2xl backdrop-blur">
+            <div className="pointer-events-auto absolute left-1/2 top-4 z-30 w-[min(420px,90%)] -translate-x-1/2 rounded-lg border border-blue-400/40 bg-[#f8f8f7] p-4 shadow-2xl">
               <div className="mb-2 flex items-center justify-between">
-                <div className="text-sm font-semibold text-white">How to trace a roof for the best results</div>
-                <button onClick={dismissCoach} className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white">✕</button>
+                <div className="text-sm font-semibold text-[#1a1a1a]">How to trace a roof for the best results</div>
+                <button onClick={dismissCoach} className="rounded p-1 text-[#6b7280] hover:bg-[#eeeeed] hover:text-[#1a1a1a]">✕</button>
               </div>
               <p className="mb-2 rounded bg-blue-500/10 px-2 py-1.5 text-[11px] text-blue-200">
                 The AI auto-labels your edges (ridge, eave, hip, valley) by reading how the planes fit
                 together — so a <strong>clean, complete trace = far better labels + accuracy</strong>.
               </p>
-              <ol className="space-y-2 text-xs text-slate-200">
+              <ol className="space-y-2 text-xs text-[#1a1a1a]">
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">1</span>
                   <span><strong>Zoom in first.</strong> Scroll to fill the screen with the roof. Use the loupe (top-right) to place each corner exactly on the roof edge.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">2</span>
-                  <span>Trace <strong>one flat plane at a time.</strong> Click each corner, then click the <strong>first dot</strong> (or <kbd className="rounded bg-slate-800 px-1">Enter</kbd>) to close it. One polygon = one slope of the roof.</span>
+                  <span>Trace <strong>one flat plane at a time.</strong> Click each corner, then click the <strong>first dot</strong> (or <kbd className="rounded bg-[#eeeeed] px-1">Enter</kbd>) to close it. One polygon = one slope of the roof.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">3</span>
@@ -1212,9 +1202,9 @@ export function RoofFacetEditor({
                   <span>Hit <strong className="text-emerald-300">✨ Auto-label edges</strong>, then review — accept the good ones, fix any single edge by hand. The measurements lock in once you confirm.</span>
                 </li>
               </ol>
-              <div className="mt-2 rounded bg-slate-800/60 px-2 py-1.5 text-[10px] text-slate-400">
-                <kbd className="rounded bg-slate-700 px-1 text-slate-200">Shift</kbd> square corners ·
-                drag = pan · scroll = zoom · <kbd className="rounded bg-slate-700 px-1 text-slate-200">⌘Z</kbd> undo
+              <div className="mt-2 rounded bg-[#eeeeed] px-2 py-1.5 text-[10px] text-[#6b7280]">
+                <kbd className="rounded bg-[#e4e4e2] px-1 text-[#1a1a1a]">Shift</kbd> square corners ·
+                drag = pan · scroll = zoom · <kbd className="rounded bg-[#e4e4e2] px-1 text-[#1a1a1a]">⌘Z</kbd> undo
               </div>
               <button onClick={dismissCoach} className="mt-3 w-full rounded bg-blue-600 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">Got it — let me trace</button>
             </div>
@@ -1223,40 +1213,40 @@ export function RoofFacetEditor({
           {/* Floating pan keypad — top-right. INSTANT CSS pan (no refetch, no
               facet misalignment). Drag the canvas, scroll to zoom, or use
               arrow keys / WASD (held = continuous) for the same effect. */}
-          <div className="pointer-events-auto absolute right-2 top-2 grid grid-cols-3 gap-0.5 rounded-md border border-white/20 bg-slate-900/85 p-1 shadow-lg backdrop-blur">
+          <div className="pointer-events-auto absolute right-2 top-2 grid grid-cols-3 gap-0.5 rounded-md border border-[#dededc] bg-[#f8f8f7] p-1 shadow-lg">
             <div></div>
             <button
               onClick={() => panView(0, 70)}
               title="Pan up (↑ / W)"
-              className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600"
+              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-white hover:bg-blue-600"
             >↑</button>
             <div></div>
             <button
               onClick={() => panView(70, 0)}
               title="Pan left (← / A)"
-              className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600"
+              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-white hover:bg-blue-600"
             >←</button>
-            <div className="flex h-8 w-8 items-center justify-center text-[9px] text-slate-500">pan</div>
+            <div className="flex h-8 w-8 items-center justify-center text-[9px] text-[#6b7280]">pan</div>
             <button
               onClick={() => panView(-70, 0)}
               title="Pan right (→ / D)"
-              className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600"
+              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-white hover:bg-blue-600"
             >→</button>
             <div></div>
             <button
               onClick={() => panView(0, -70)}
               title="Pan down (↓ / S)"
-              className="flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-base text-white hover:bg-blue-600"
+              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-white hover:bg-blue-600"
             >↓</button>
             <div></div>
           </div>
 
           {/* Floating zoom controls */}
           <div className="pointer-events-none absolute bottom-2 right-2 flex flex-col items-end gap-1">
-            <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-white/10 bg-slate-900/85 p-1 text-xs text-slate-200 backdrop-blur">
+            <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-[#dededc] bg-[#f8f8f7] p-1 text-xs text-[#1a1a1a]">
               <button
                 onClick={zoomOut}
-                className="rounded px-2 py-1 hover:bg-slate-800"
+                className="rounded px-2 py-1 hover:bg-[#eeeeed]"
                 title="Zoom out (-)"
               >−</button>
               <span className="min-w-[3.2rem] px-1 text-center font-mono">
@@ -1264,16 +1254,16 @@ export function RoofFacetEditor({
               </span>
               <button
                 onClick={zoomIn}
-                className="rounded px-2 py-1 hover:bg-slate-800"
+                className="rounded px-2 py-1 hover:bg-[#eeeeed]"
                 title="Zoom in (+)"
               >+</button>
               <button
                 onClick={resetView}
-                className="ml-1 rounded bg-slate-800 px-2 py-1 hover:bg-slate-700"
+                className="ml-1 rounded bg-[#eeeeed] px-2 py-1 hover:bg-[#e4e4e2]"
                 title="Reset view (0)"
               >Fit</button>
             </div>
-            <div className="pointer-events-none rounded bg-slate-900/70 px-2 py-1 text-[10px] text-slate-400 backdrop-blur">
+            <div className="pointer-events-none rounded bg-[#f8f8f7] px-2 py-1 text-[10px] text-[#6b7280]">
               Wheel = zoom · Space + drag (or middle-mouse) = pan
             </div>
           </div>
@@ -1284,12 +1274,12 @@ export function RoofFacetEditor({
             canvas is the job. This is the by-hand escape hatch (rename, repitch,
             delete), so it stays one click away instead of being the loudest
             thing on screen the moment the editor opens. */}
-        <aside className={`shrink-0 overflow-y-auto rounded-lg border border-white/10 bg-slate-900/60 text-sm transition-all ${facetPanelOpen ? 'w-72 p-3' : 'w-11 p-2'}`}>
+        <aside className={`shrink-0 overflow-y-auto rounded-lg border border-[#dededc] bg-[#f8f8f7] text-sm transition-all ${facetPanelOpen ? 'w-72 p-3' : 'w-11 p-2'}`}>
           <button
             onClick={() => setFacetPanelOpen(o => !o)}
             title={facetPanelOpen ? 'Hide facet list' : 'Edit facets by hand'}
             aria-expanded={facetPanelOpen}
-            className={`flex w-full items-center gap-2 rounded text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-white ${facetPanelOpen ? 'mb-2 justify-between' : 'flex-col justify-center gap-1'}`}
+            className={`flex w-full items-center gap-2 rounded text-xs font-semibold uppercase tracking-wide text-[#6b7280] hover:text-[#1a1a1a] ${facetPanelOpen ? 'mb-2 justify-between' : 'flex-col justify-center gap-1'}`}
           >
             {facetPanelOpen ? (
               <>
@@ -1307,8 +1297,8 @@ export function RoofFacetEditor({
           <>
 
           {facets.length === 0 && (
-            <p className="text-xs text-slate-500">
-              No facets yet. Switch to <strong>+ Draw facet</strong> and click points around a roof plane to trace it. Press <kbd className="rounded bg-slate-800 px-1">Enter</kbd> to close.
+            <p className="text-xs text-[#6b7280]">
+              No facets yet. Switch to <strong>+ Draw facet</strong> and click points around a roof plane to trace it. Press <kbd className="rounded bg-[#eeeeed] px-1">Enter</kbd> to close.
             </p>
           )}
 
@@ -1320,25 +1310,23 @@ export function RoofFacetEditor({
               return (
                 <li
                   key={f.label}
-                  className={`rounded-md border p-2 transition ${
-                    isActive ? 'border-blue-400/60 bg-blue-500/10' : 'border-white/10 bg-slate-800/40'
-                  }`}
+                  className={`rounded-md border p-2 transition ${ isActive ? 'border-blue-400/60 bg-blue-500/10' : 'border-[#dededc] bg-[#eeeeed]' }`}
                   onClick={() => setActiveFacetIdx(i)}
                 >
                   <div className="mb-1 flex items-center justify-between">
-                    <strong className="text-slate-100">Facet {f.label}</strong>
+                    <strong className="text-[#1a1a1a]">Facet {f.label}</strong>
                     <button
                       onClick={(ev) => { ev.stopPropagation(); deleteFacet(i) }}
                       className="text-xs text-rose-400 hover:text-rose-300"
                     >Remove</button>
                   </div>
-                  <div className="mb-1 flex items-center gap-2 text-xs text-slate-300">
-                    <label className="text-slate-400">Pitch:</label>
+                  <div className="mb-1 flex items-center gap-2 text-xs text-[#2d2d2d]">
+                    <label className="text-[#6b7280]">Pitch:</label>
                     <select
                       value={f.pitch}
                       onChange={(ev) => setFacetPitch(i, ev.target.value)}
                       onClick={(ev) => ev.stopPropagation()}
-                      className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-100"
+                      className="rounded bg-[#eeeeed] px-2 py-1 text-xs text-[#1a1a1a]"
                     >
                       {PITCH_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
@@ -1347,15 +1335,15 @@ export function RoofFacetEditor({
                       return <span className={`text-[11px] ${m.color}`} title="Where this pitch came from">{m.label}</span>
                     })()}
                   </div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-[#6b7280]">
                     {f.polygon.length} vertices · {labeled}/{facetEdges.length} edges labeled
                   </div>
 
                   {/* Inline edge label list when this facet is active.
                       Hover a row to highlight that exact edge on the canvas. */}
                   {isActive && facetEdges.length > 0 && (
-                    <div className="mt-2 border-t border-white/10 pt-2">
-                      <div className="mb-1 text-xs text-slate-400">Edges — hover to find it on the roof:</div>
+                    <div className="mt-2 border-t border-[#dededc] pt-2">
+                      <div className="mb-1 text-xs text-[#6b7280]">Edges — hover to find it on the roof:</div>
                       <ul className="space-y-1">
                         {facetEdges.map((e, eIdx) => {
                           const color = EDGE_COLORS[e.edgeType]
@@ -1365,23 +1353,21 @@ export function RoofFacetEditor({
                             <li
                               key={`${e.vertexIndexStart}-${e.vertexIndexEnd}`}
                               onMouseEnter={() => setSelectedEdge({ facetIdx: i, edgeIdx: e.vertexIndexStart })}
-                              className={`flex items-center justify-between gap-2 rounded px-2 py-1 text-xs transition ${
-                                rowSelected ? 'bg-slate-700 ring-1 ring-white/40' : 'bg-slate-800/60'
-                              }`}
+                              className={`flex items-center justify-between gap-2 rounded px-2 py-1 text-xs transition ${ rowSelected ? 'bg-[#e4e4e2] ring-1 ring-white/40' : 'bg-[#eeeeed]' }`}
                             >
                               <span className="flex items-center gap-2">
                                 <span className="inline-block h-3 w-3 rounded-sm" style={{ background: color }} />
-                                <span className="font-medium text-slate-200">Edge {eIdx + 1}</span>
+                                <span className="font-medium text-[#1a1a1a]">Edge {eIdx + 1}</span>
                                 {unlabeled && <span className="text-[10px] text-amber-400">needs label</span>}
                                 {e.sharedWithFacetLabel && (
-                                  <span className="rounded bg-slate-700 px-1 text-[10px] text-slate-300">shared ↔ {e.sharedWithFacetLabel}</span>
+                                  <span className="rounded bg-[#e4e4e2] px-1 text-[10px] text-[#2d2d2d]">shared ↔ {e.sharedWithFacetLabel}</span>
                                 )}
                               </span>
                               <select
                                 value={e.edgeType}
                                 onChange={(ev) => setEdgeLabel(i, e.vertexIndexStart, ev.target.value as EdgeType)}
                                 onClick={(ev) => ev.stopPropagation()}
-                                className="rounded bg-slate-700 px-1 py-0.5 text-xs text-slate-100"
+                                className="rounded bg-[#e4e4e2] px-1 py-0.5 text-xs text-[#1a1a1a]"
                               >
                                 <option value="unlabeled">unlabeled</option>
                                 <option value="eave">eave</option>
@@ -1403,8 +1389,8 @@ export function RoofFacetEditor({
           </ul>
 
           {/* Edge type legend */}
-          <h3 className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Edge legend</h3>
-          <ul className="space-y-1 text-xs text-slate-300">
+          <h3 className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-[#6b7280]">Edge legend</h3>
+          <ul className="space-y-1 text-xs text-[#2d2d2d]">
             {(Object.keys(EDGE_COLORS) as EdgeType[]).filter(k => k !== 'unlabeled' && k !== 'gable_end').map(t => (
               <li key={t} className="flex items-center gap-2">
                 <span className="inline-block h-2 w-4 rounded" style={{ background: EDGE_COLORS[t] }} />

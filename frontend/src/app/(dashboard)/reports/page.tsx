@@ -59,9 +59,9 @@ function EditableText({ value, onSave, multiline = false, placeholder = 'Click t
     <div onClick={() => setEditing(true)}
       className={`group cursor-text rounded-lg px-3 py-1.5 hover:bg-blue-500/10 hover:ring-1 hover:ring-blue-200 transition-all relative ${className}`}>
       {value ? (
-        <span className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{value}</span>
+        <span className="text-[#1a1a1a] text-sm leading-relaxed whitespace-pre-wrap">{value}</span>
       ) : (
-        <span className="text-slate-600 text-sm italic">{placeholder}</span>
+        <span className="text-[#9ca3af] text-sm italic">{placeholder}</span>
       )}
       <span className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round">
@@ -79,13 +79,13 @@ function Section({ title, icon, children, defaultOpen = true }: {
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+    <div className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={cardStyle}>
       <button onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-6 py-4 text-left hover:bg-white/[0.05]/50 transition-colors"
+        className="w-full flex items-center gap-3 px-6 py-4 text-left hover:bg-[#f8f8f7]/50 transition-colors"
         style={{ borderBottom: open ? '1px solid rgba(255,255,255,0.10)' : 'none' }}>
         <span className="text-lg">{icon}</span>
-        <span className="font-bold text-white text-sm flex-1">{title}</span>
-        <svg className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+        <span className="font-bold text-[#1a1a1a] text-sm flex-1">{title}</span>
+        <svg className={`text-[#6b7280] transition-transform ${open ? 'rotate-180' : ''}`}
           width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
@@ -236,26 +236,26 @@ export default function ReportsPage() {
   const infoItems     = complianceItems.filter((i: any) => i.severity === 'info')
 
   return (
-    <div className="min-h-screen" style={{ background: '#040810' }}>
+    <div className="min-h-screen" style={{ background: 'var(--color-surface-1)' }}>
 
       {/* Top bar */}
-      <div className="bg-white/[0.04] border-b px-6 py-4 flex items-center gap-4 sticky top-0 z-30"
+      <div className="bg-[#f8f8f7] border-b px-6 py-4 flex items-center gap-4 sticky top-0 z-30"
         style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-black text-white">Reports</h1>
-          <p className="text-slate-400 text-xs mt-0.5">Open, download, and share your roof reports</p>
+          <h1 className="text-xl font-black text-[#1a1a1a]">Reports</h1>
+          <p className="text-[#6b7280] text-xs mt-0.5">Open, download, and share your roof reports</p>
         </div>
 
         {/* Save status */}
         <div className="flex items-center gap-2 text-xs">
-          {saving && <span className="text-slate-400 flex items-center gap-1.5"><svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Saving…</span>}
+          {saving && <span className="text-[#6b7280] flex items-center gap-1.5"><svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Saving…</span>}
           {savedFlash && !saving && <span className="text-emerald-600 flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>Saved</span>}
         </div>
 
         {/* Export PDF (legacy project report) */}
         {SHOW_PROJECT_REPORTS && reportData && (
           <button onClick={handleExportPdf} disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold transition-all disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#1a1a1a] text-sm font-semibold transition-all disabled:opacity-50"
             style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.25)' }}>
             {exporting ? (
               <><svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>Exporting…</>
@@ -268,16 +268,16 @@ export default function ReportsPage() {
 
       {/* Roof reports — every measured roof across all projects, reopen / download / share */}
       <div className="px-6 pt-5 pb-8 max-w-4xl mx-auto">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-white/10 flex items-center gap-2">
+          <div className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#dededc] flex items-center gap-2">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
-              <h2 className="text-white font-semibold text-sm">Roof Reports</h2>
-              <span className="text-slate-500 text-xs">({roofReports.length})</span>
+              <h2 className="text-[#1a1a1a] font-semibold text-sm">Roof Reports</h2>
+              <span className="text-[#6b7280] text-xs">({roofReports.length})</span>
             </div>
             {roofReports.length === 0 ? (
               <div className="px-5 py-14 text-center">
-                <div className="text-slate-300 text-sm font-medium">No roof reports yet</div>
-                <div className="text-slate-500 text-xs mt-1">Measure a roof in the Roof Report tool, then generate its report — it&apos;ll show up here to open, download, or share.</div>
+                <div className="text-[#2d2d2d] text-sm font-medium">No roof reports yet</div>
+                <div className="text-[#6b7280] text-xs mt-1">Measure a roof in the Roof Report tool, then generate its report — it&apos;ll show up here to open, download, or share.</div>
               </div>
             ) : (
             <div className="divide-y divide-white/[0.06]">
@@ -285,10 +285,10 @@ export default function ReportsPage() {
                 const busyOpen = roofBusy === rep.run_id + ':open'
                 const busyShare = roofBusy === rep.run_id + ':share'
                 return (
-                  <div key={rep.run_id} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.03] transition-colors">
+                  <div key={rep.run_id} className="flex items-center gap-3 px-5 py-3 hover:bg-[#f8f8f7] transition-colors">
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm text-white font-medium truncate">{rep.project_name}</div>
-                      <div className="text-[11px] text-slate-500 truncate">
+                      <div className="text-sm text-[#1a1a1a] font-medium truncate">{rep.project_name}</div>
+                      <div className="text-[11px] text-[#6b7280] truncate">
                         {rep.address ? `${rep.address} · ` : ''}{new Date(rep.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </div>
                     </div>
@@ -297,11 +297,11 @@ export default function ReportsPage() {
                       {busyOpen ? '…' : 'Open'}
                     </button>
                     <button onClick={() => api.roofing.v2.downloadReport(rep.run_id).catch(() => toast.error('Download failed'))}
-                      className="text-xs font-medium text-slate-300 bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 px-3 py-1.5 rounded-lg transition-colors">
+                      className="text-xs font-medium text-[#2d2d2d] bg-[#f8f8f7] hover:bg-[#f8f8f7] border border-[#dededc] px-3 py-1.5 rounded-lg transition-colors">
                       Download
                     </button>
                     <button onClick={() => shareRoofReport(rep)} disabled={busyShare}
-                      className="text-xs font-medium text-slate-300 bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                      className="text-xs font-medium text-[#2d2d2d] bg-[#f8f8f7] hover:bg-[#f8f8f7] border border-[#dededc] px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
                       {busyShare ? '…' : 'Share'}
                     </button>
                   </div>
@@ -316,24 +316,20 @@ export default function ReportsPage() {
       <div className="flex gap-0">
 
         {/* Project sidebar */}
-        <div className="w-64 flex-shrink-0 border-r bg-white/[0.04] min-h-screen p-4 sticky top-[61px] self-start"
+        <div className="w-64 flex-shrink-0 border-r bg-[#f8f8f7] min-h-screen p-4 sticky top-[61px] self-start"
           style={{ borderColor: 'rgba(255,255,255,0.10)', maxHeight: 'calc(100vh - 61px)', overflowY: 'auto' }}>
-          <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Projects</div>
+          <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-3">Projects</div>
           {loadingProjects ? (
-            <div className="text-slate-600 text-sm text-center py-8">Loading…</div>
+            <div className="text-[#9ca3af] text-sm text-center py-8">Loading…</div>
           ) : projects.length === 0 ? (
-            <div className="text-slate-400 text-xs text-center py-8">No projects yet</div>
+            <div className="text-[#6b7280] text-xs text-center py-8">No projects yet</div>
           ) : (
             <div className="space-y-1">
               {projects.map(p => (
                 <button key={p.id} onClick={() => setSelectedId(p.id)}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all ${
-                    selectedId === p.id
-                      ? 'bg-blue-600 text-white font-semibold'
-                      : 'text-slate-600 hover:bg-white/[0.05] hover:text-white'
-                  }`}>
+                  className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all ${ selectedId === p.id ? 'bg-blue-600 text-white font-semibold' : 'text-[#9ca3af] hover:bg-[#f8f8f7] hover:text-white' }`}>
                   <div className="truncate font-medium">{p.name}</div>
-                  <div className={`text-[10px] mt-0.5 ${selectedId === p.id ? 'text-blue-200' : 'text-slate-400'}`}>
+                  <div className={`text-[10px] mt-0.5 ${selectedId === p.id ? 'text-blue-200' : 'text-[#6b7280]'}`}>
                     {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </div>
                 </button>
@@ -352,28 +348,28 @@ export default function ReportsPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
                 </svg>
-                <div className="text-slate-500 text-sm">Loading report data…</div>
+                <div className="text-[#6b7280] text-sm">Loading report data…</div>
               </div>
             </div>
           ) : !reportData || !project ? (
-            <div className="text-center py-32 text-slate-400">Select a project to view its report.</div>
+            <div className="text-center py-32 text-[#6b7280]">Select a project to view its report.</div>
           ) : (
             <>
               {/* Edit hint */}
-              <div className="flex items-center gap-2 text-xs text-slate-400 bg-blue-500/10 border border-blue-100 rounded-xl px-4 py-2.5">
+              <div className="flex items-center gap-2 text-xs text-[#6b7280] bg-blue-500/10 border border-blue-100 rounded-xl px-4 py-2.5">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Click any text field to edit it. Changes save automatically and are included in your PDF export.
               </div>
 
               {/* ── Project header ───────────────────────────────────────── */}
-              <div className="bg-white/[0.04] rounded-2xl px-6 py-5" style={cardStyle}>
+              <div className="bg-[#f8f8f7] rounded-2xl px-6 py-5" style={cardStyle}>
                 <EditableText
                   value={ov('project_name', project.name || '')}
                   onSave={v => setOv('project_name', v)}
                   placeholder="Project name"
-                  className="text-2xl font-black text-white !px-0 !py-0"
+                  className="text-2xl font-black text-[#1a1a1a] !px-0 !py-0"
                 />
-                <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-xs text-slate-500">
+                <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-xs text-[#6b7280]">
                   {project.city && <span>{[project.city, (project.region || '').replace('US-', '')].filter(Boolean).join(', ')}</span>}
                   {project.blueprint_type && <span>{project.blueprint_type.replace(/_/g,' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>}
                   <span>{new Date(project.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
@@ -382,17 +378,17 @@ export default function ReportsPage() {
                 <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
                   <div className="text-center">
                     <div className="text-xl font-black text-blue-600">{fmt(totalCost)}</div>
-                    <div className="text-slate-400 text-xs">Total Estimate</div>
+                    <div className="text-[#6b7280] text-xs">Total Estimate</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-xl font-black text-slate-200">{materials.length}</div>
-                    <div className="text-slate-400 text-xs">Material Items</div>
+                    <div className="text-xl font-black text-[#1a1a1a]">{materials.length}</div>
+                    <div className="text-[#6b7280] text-xs">Material Items</div>
                   </div>
                   <div className="text-center">
                     <div className={`text-xl font-black ${requiredItems.length > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
                       {requiredItems.length > 0 ? `${requiredItems.length} Required` : complianceItems.length > 0 ? 'Compliant' : '—'}
                     </div>
-                    <div className="text-slate-400 text-xs">Compliance</div>
+                    <div className="text-[#6b7280] text-xs">Compliance</div>
                   </div>
                 </div>
               </div>
@@ -413,9 +409,9 @@ export default function ReportsPage() {
                       { label: 'Confidence',  value: analysis.confidence ? `${Math.round(parseFloat(analysis.confidence) * 100)}%` : '—' },
                       { label: 'Blueprint',   value: reportData.blueprint?.file_type?.toUpperCase() || '—' },
                     ].map(m => (
-                      <div key={m.label} className="bg-white/[0.05] rounded-xl px-4 py-3 text-center" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
-                        <div className="text-white font-bold text-base">{m.value}</div>
-                        <div className="text-slate-400 text-xs mt-0.5">{m.label}</div>
+                      <div key={m.label} className="bg-[#f8f8f7] rounded-xl px-4 py-3 text-center" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+                        <div className="text-[#1a1a1a] font-bold text-base">{m.value}</div>
+                        <div className="text-[#6b7280] text-xs mt-0.5">{m.label}</div>
                       </div>
                     ))}
                   </div>
@@ -425,7 +421,7 @@ export default function ReportsPage() {
               {/* ── Daily Log (Procore-style) ────────────────────────────── */}
               {dailyLogs.length > 0 && (
                 <Section title={`Daily Log (${dailyLogs.length} day${dailyLogs.length !== 1 ? 's' : ''})`} icon="">
-                  <div className="text-xs text-slate-500 mb-3">
+                  <div className="text-xs text-[#6b7280] mb-3">
                     Auto-generated from uploaded photos, site notes, and AI auto-tags. Newest first.
                   </div>
                   <div className="space-y-3">
@@ -444,17 +440,17 @@ export default function ReportsPage() {
                       return (
                         <div
                           key={entry.date}
-                          className="rounded-xl border bg-white/[0.05] p-3"
+                          className="rounded-xl border bg-[#f8f8f7] p-3"
                           style={{ borderColor: 'rgba(255,255,255,0.10)' }}
                         >
                           <div className="flex items-center justify-between gap-3 flex-wrap mb-1.5">
-                            <div className="text-sm font-bold text-white">{dateLabel}</div>
-                            <div className="text-[11px] text-slate-500">
+                            <div className="text-sm font-bold text-[#1a1a1a]">{dateLabel}</div>
+                            <div className="text-[11px] text-[#6b7280]">
                               {entry.photo_count} photo{entry.photo_count !== 1 ? 's' : ''}
                               {phaseBits.length > 0 && <> &nbsp;·&nbsp; {phaseBits.join(', ')}</>}
                             </div>
                           </div>
-                          <p className="text-slate-200 text-sm leading-relaxed">{entry.summary}</p>
+                          <p className="text-[#1a1a1a] text-sm leading-relaxed">{entry.summary}</p>
                           {(entry.damage?.length > 0 || entry.safety?.length > 0) && (
                             <div className="flex flex-wrap gap-1.5 mt-2">
                               {(entry.damage || []).slice(0, 5).map((d: string, i: number) => (
@@ -481,7 +477,7 @@ export default function ReportsPage() {
                                 />
                               ))}
                               {entry.photos.length > 8 && (
-                                <div className="w-14 h-14 flex-shrink-0 rounded-lg border border-white/10 bg-white/[0.04] text-slate-500 text-[10px] font-semibold flex items-center justify-center">
+                                <div className="w-14 h-14 flex-shrink-0 rounded-lg border border-[#dededc] bg-[#f8f8f7] text-[#6b7280] text-[10px] font-semibold flex items-center justify-center">
                                   +{entry.photos.length - 8}
                                 </div>
                               )}
@@ -497,7 +493,7 @@ export default function ReportsPage() {
               {/* ── Materials List ───────────────────────────────────────── */}
               <Section title={`Materials List (${materials.length} items)`} icon="">
                 {materials.length === 0 ? (
-                  <div className="text-slate-400 text-sm text-center py-6">
+                  <div className="text-[#6b7280] text-sm text-center py-6">
                     No materials found. Run a blueprint analysis or add materials manually in the project page.
                   </div>
                 ) : (
@@ -505,34 +501,34 @@ export default function ReportsPage() {
                     <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="bg-white/[0.05]" style={{ borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
+                          <tr className="bg-[#f8f8f7]" style={{ borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
                             {['Item', 'Category', 'Qty', 'Unit', 'Unit Cost', 'Total'].map(h => (
-                              <th key={h} className="text-left px-4 py-2.5 text-slate-500 font-semibold">{h}</th>
+                              <th key={h} className="text-left px-4 py-2.5 text-[#6b7280] font-semibold">{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {materials.map((m: any, i: number) => (
                             <tr key={i} className="hover:bg-blue-500/30 transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.4)' }}>
-                              <td className="px-4 py-2.5 text-slate-200 font-medium">{m.item_name || m.name || '—'}</td>
-                              <td className="px-4 py-2.5 text-slate-500 capitalize">{m.category || '—'}</td>
-                              <td className="px-4 py-2.5 text-slate-600">{m.quantity || '—'}</td>
-                              <td className="px-4 py-2.5 text-slate-500">{m.unit || '—'}</td>
-                              <td className="px-4 py-2.5 text-slate-600">{m.unit_cost ? fmt(m.unit_cost) : '—'}</td>
-                              <td className="px-4 py-2.5 text-slate-200 font-semibold">{m.total_cost || m.total ? fmt(m.total_cost || m.total) : '—'}</td>
+                              <td className="px-4 py-2.5 text-[#1a1a1a] font-medium">{m.item_name || m.name || '—'}</td>
+                              <td className="px-4 py-2.5 text-[#6b7280] capitalize">{m.category || '—'}</td>
+                              <td className="px-4 py-2.5 text-[#9ca3af]">{m.quantity || '—'}</td>
+                              <td className="px-4 py-2.5 text-[#6b7280]">{m.unit || '—'}</td>
+                              <td className="px-4 py-2.5 text-[#9ca3af]">{m.unit_cost ? fmt(m.unit_cost) : '—'}</td>
+                              <td className="px-4 py-2.5 text-[#1a1a1a] font-semibold">{m.total_cost || m.total ? fmt(m.total_cost || m.total) : '—'}</td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot>
                           <tr className="bg-emerald-500/60" style={{ borderTop: '2px solid rgba(167,243,208,0.8)' }}>
-                            <td colSpan={5} className="px-4 py-3 text-slate-200 font-bold text-right text-sm">Total</td>
+                            <td colSpan={5} className="px-4 py-3 text-[#1a1a1a] font-bold text-right text-sm">Total</td>
                             <td className="px-4 py-3 text-emerald-700 font-black text-sm">{fmt(totalMaterialCost)}</td>
                           </tr>
                         </tfoot>
                       </table>
                     </div>
                     <div className="mt-3">
-                      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Materials Notes</div>
+                      <div className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-1.5">Materials Notes</div>
                       <EditableText
                         value={ov('materials_notes', '')}
                         onSave={v => setOv('materials_notes', v)}
@@ -547,7 +543,7 @@ export default function ReportsPage() {
               {/* ── Cost Breakdown ───────────────────────────────────────── */}
               <Section title="Projected Cost" icon="">
                 {!cost && totalMaterialCost === 0 ? (
-                  <div className="text-slate-400 text-sm text-center py-6">
+                  <div className="text-[#6b7280] text-sm text-center py-6">
                     No cost data yet. Analyze a blueprint to generate estimates.
                   </div>
                 ) : (
@@ -557,11 +553,11 @@ export default function ReportsPage() {
                         { label: 'Materials',       value: fmt(cost?.materials_cost || totalMaterialCost), color: 'text-blue-600' },
                         { label: 'Labor',           value: fmt(cost?.labor_cost || 0),                     color: 'text-violet-600' },
                         { label: 'Total Estimate',  value: fmt(totalCost),                                  color: 'text-emerald-600' },
-                        { label: 'Per Sqft',        value: analysis?.total_sqft && totalCost > 0 ? fmt(totalCost / parseFloat(analysis.total_sqft)) + '/sqft' : '—', color: 'text-slate-200' },
+                        { label: 'Per Sqft',        value: analysis?.total_sqft && totalCost > 0 ? fmt(totalCost / parseFloat(analysis.total_sqft)) + '/sqft' : '—', color: 'text-[#1a1a1a]' },
                       ].map(m => (
-                        <div key={m.label} className="bg-white/[0.05] rounded-xl px-4 py-3 text-center" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+                        <div key={m.label} className="bg-[#f8f8f7] rounded-xl px-4 py-3 text-center" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
                           <div className={`text-lg font-black ${m.color}`}>{m.value}</div>
-                          <div className="text-slate-400 text-xs mt-0.5">{m.label}</div>
+                          <div className="text-[#6b7280] text-xs mt-0.5">{m.label}</div>
                         </div>
                       ))}
                     </div>
@@ -569,16 +565,16 @@ export default function ReportsPage() {
                       <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
                         <table className="w-full text-xs">
                           <thead>
-                            <tr className="bg-white/[0.05]" style={{ borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
-                              <th className="text-left px-4 py-2.5 text-slate-500 font-semibold">Category</th>
-                              <th className="text-right px-4 py-2.5 text-slate-500 font-semibold">Amount</th>
+                            <tr className="bg-[#f8f8f7]" style={{ borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
+                              <th className="text-left px-4 py-2.5 text-[#6b7280] font-semibold">Category</th>
+                              <th className="text-right px-4 py-2.5 text-[#6b7280] font-semibold">Amount</th>
                             </tr>
                           </thead>
                           <tbody>
                             {Object.entries(cost.categories).map(([k, v]: any) => (
                               <tr key={k} className="hover:bg-blue-500/20 transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.4)' }}>
-                                <td className="px-4 py-2.5 text-slate-200 capitalize">{k.replace(/_/g, ' ')}</td>
-                                <td className="px-4 py-2.5 text-right text-slate-600 font-semibold">{fmt(v)}</td>
+                                <td className="px-4 py-2.5 text-[#1a1a1a] capitalize">{k.replace(/_/g, ' ')}</td>
+                                <td className="px-4 py-2.5 text-right text-[#9ca3af] font-semibold">{fmt(v)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -586,7 +582,7 @@ export default function ReportsPage() {
                       </div>
                     )}
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Cost Notes</div>
+                      <div className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-1.5">Cost Notes</div>
                       <EditableText
                         value={ov('cost_notes', '')}
                         onSave={v => setOv('cost_notes', v)}
@@ -601,24 +597,20 @@ export default function ReportsPage() {
               {/* ── Compliance ───────────────────────────────────────────── */}
               <Section title={`Code Compliance (${complianceItems.length} items)`} icon="">
                 {complianceItems.length === 0 ? (
-                  <div className="text-slate-400 text-sm text-center py-6">
+                  <div className="text-[#6b7280] text-sm text-center py-6">
                     No compliance check run. Go to the project page → Compliance tab to run a check.
                   </div>
                 ) : (
                   <div className="space-y-4">
                     {/* Summary banner */}
                     {compliance && (
-                      <div className={`rounded-xl px-4 py-3 flex items-start gap-3 ${
-                        compliance.risk_level === 'high'   ? 'bg-rose-500/10 border border-red-200' :
-                        compliance.risk_level === 'medium' ? 'bg-amber-500/10 border border-amber-200' :
-                        'bg-emerald-500/10 border border-emerald-200'
-                      }`}>
+                      <div className={`rounded-xl px-4 py-3 flex items-start gap-3 ${ compliance.risk_level === 'high' ? 'bg-rose-500/10 border border-red-200' : compliance.risk_level === 'medium' ? 'bg-amber-500/10 border border-amber-200' : 'bg-emerald-500/10 border border-emerald-200' }`}>
                         <span className="text-lg mt-0.5"></span>
                         <div>
-                          <div className="font-bold text-sm text-white capitalize">
+                          <div className="font-bold text-sm text-[#1a1a1a] capitalize">
                             {compliance.risk_level || 'Unknown'} Risk · {[compliance.city, compliance.region].filter(Boolean).join(', ')}
                           </div>
-                          <p className="text-slate-600 text-xs mt-0.5 leading-relaxed">{compliance.summary}</p>
+                          <p className="text-[#9ca3af] text-xs mt-0.5 leading-relaxed">{compliance.summary}</p>
                         </div>
                       </div>
                     )}
@@ -642,12 +634,12 @@ export default function ReportsPage() {
                           <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${SEVERITY_DOT[item.severity] || SEVERITY_DOT.info}`} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-semibold text-white">{item.title}</span>
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.04]/60 font-semibold capitalize flex-shrink-0">{item.severity}</span>
+                              <span className="text-sm font-semibold text-[#1a1a1a]">{item.title}</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f8f8f7]/60 font-semibold capitalize flex-shrink-0">{item.severity}</span>
                             </div>
-                            {item.description && <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{item.description}</p>}
-                            {item.action && <p className="text-xs font-semibold text-slate-200 mt-1">→ {item.action}</p>}
-                            {item.source && <p className="text-[10px] text-slate-400 mt-1">{item.source}</p>}
+                            {item.description && <p className="text-xs text-[#9ca3af] mt-0.5 leading-relaxed">{item.description}</p>}
+                            {item.action && <p className="text-xs font-semibold text-[#1a1a1a] mt-1">→ {item.action}</p>}
+                            {item.source && <p className="text-[10px] text-[#6b7280] mt-1">{item.source}</p>}
                           </div>
                         </div>
                       ))}
@@ -659,7 +651,7 @@ export default function ReportsPage() {
               {/* ── Permits ──────────────────────────────────────────────── */}
               <Section title="Permits Required" icon="">
                 <div className="space-y-4">
-                  <div className="text-sm text-slate-600 leading-relaxed">
+                  <div className="text-sm text-[#9ca3af] leading-relaxed">
                     Permit requirements for <strong>{[project.city, (project.region || '').replace('US-', '')].filter(Boolean).join(', ')}</strong> · {(project.blueprint_type || 'residential').replace(/_/g,' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} project.
                     Always verify with your local building department before starting work.
                   </div>
@@ -677,16 +669,16 @@ export default function ReportsPage() {
                         </div>
                       )}
                       {permitInfo.instructions && (
-                        <div className="bg-white/[0.05] rounded-xl px-4 py-3 border border-white/10">
-                          <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Instructions</div>
-                          <p className="text-slate-600 text-sm leading-relaxed">{permitInfo.instructions}</p>
+                        <div className="bg-[#f8f8f7] rounded-xl px-4 py-3 border border-[#dededc]">
+                          <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-1.5">Instructions</div>
+                          <p className="text-[#9ca3af] text-sm leading-relaxed">{permitInfo.instructions}</p>
                         </div>
                       )}
                       {permitInfo.form_url && (
-                        <div className="flex items-center gap-3 bg-white/[0.06] border border-white/12 rounded-xl px-4 py-3">
-                          <svg className="flex-shrink-0 text-slate-500" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <div className="flex items-center gap-3 bg-[#f8f8f7] border border-[#dededc] rounded-xl px-4 py-3">
+                          <svg className="flex-shrink-0 text-[#6b7280]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                           <div className="flex-1">
-                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Application Form</div>
+                            <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider">Application Form</div>
                             <a href={permitInfo.form_url} target="_blank" rel="noopener noreferrer"
                               className="text-blue-600 text-xs hover:underline break-all">{permitInfo.form_url}</a>
                           </div>
@@ -704,7 +696,7 @@ export default function ReportsPage() {
                   )}
 
                   <div>
-                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Permit Notes</div>
+                    <div className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-1.5">Permit Notes</div>
                     <EditableText
                       value={ov('permit_notes', '')}
                       onSave={v => setOv('permit_notes', v)}

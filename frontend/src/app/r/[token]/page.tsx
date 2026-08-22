@@ -72,7 +72,7 @@ function RoofVision({ renders, company, apiBase, token, beforeUrl }: { renders: 
   }
   return (
     <section className="mb-6 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-[0_12px_44px_-16px_rgba(15,40,80,0.28)]">
-      <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 70%, black))' }}>
+      <div className="px-5 py-3 text-[#1a1a1a]" style={{ background: 'linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 70%, black))' }}>
         <div className="text-sm font-bold">✨ See your home with a new roof</div>
         <p className="mt-0.5 text-[11px] text-blue-50/90">Your actual house, rendered in the shingle colors {company} installs — tap a color to preview it.</p>
       </div>
@@ -81,21 +81,21 @@ function RoofVision({ renders, company, apiBase, token, beforeUrl }: { renders: 
           <div className="relative bg-slate-100">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={src(beforeUrl)} alt="Your roof today" className="block h-full w-full object-cover" />
-            <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur">Before</div>
+            <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#1a1a1a]">Before</div>
           </div>
         )}
         <div className="relative bg-slate-100">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={src(active.image_url)} alt={`Your roof in ${active.name}`} className="block h-full w-full object-cover" />
-          <div className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur" style={{ background: 'color-mix(in srgb, var(--brand) 90%, transparent)' }}>After</div>
-          <div className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">{active.name} · {active.tier}</div>
+          <div className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#1a1a1a]" style={{ background: 'color-mix(in srgb, var(--brand) 90%, transparent)' }}>After</div>
+          <div className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-[#1a1a1a]">{active.name} · {active.tier}</div>
         </div>
       </div>
-      <div className="px-4 pb-1 pt-2 text-center text-[9px] text-slate-400">✨ AI preview — actual color may vary slightly</div>
+      <div className="px-4 pb-1 pt-2 text-center text-[9px] text-[#6b7280]">✨ AI preview — actual color may vary slightly</div>
       <div className="flex flex-wrap gap-2 p-4 pt-2">
         {renders.map((rn, i) => (
           <button key={rn.key} onClick={() => pick(i)}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${i === sel ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${i === sel ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-[#9ca3af] hover:border-slate-300'}`}>
             {rn.name}
           </button>
         ))}
@@ -137,7 +137,7 @@ export default function ReportPage() {
   const money = (v?: number | null) => v == null ? '—' : v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 
   if (notFound) {
-    return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-slate-600">This report link isn&apos;t valid — ask your contractor for a fresh one.</main>
+    return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-[#9ca3af]">This report link isn&apos;t valid — ask your contractor for a fresh one.</main>
   }
   if (!r) {
     return <main className="flex min-h-screen items-center justify-center bg-slate-50"><span className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" /></main>
@@ -165,9 +165,9 @@ export default function ReportPage() {
               <h1 className="text-2xl font-bold tracking-tight">{r.company_name}</h1>
             </>
           )}
-          <div className="mt-1 text-sm text-slate-500">Prepared for <strong className="text-slate-700">{r.first_name}</strong> · {r.address}</div>
-          <div className="text-[11px] text-slate-400">{new Date(r.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}</div>
-          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-slate-900/[0.04] px-2.5 py-0.5 text-[10px] font-medium text-slate-500 ring-1 ring-slate-200">
+          <div className="mt-1 text-sm text-[#6b7280]">Prepared for <strong className="text-slate-700">{r.first_name}</strong> · {r.address}</div>
+          <div className="text-[11px] text-[#6b7280]">{new Date(r.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#f8f8f7]/[0.04] px-2.5 py-0.5 text-[10px] font-medium text-[#6b7280] ring-1 ring-slate-200">
             <span className="font-bold text-blue-600">Axis</span> satellite roof intelligence
           </div>
         </header>
@@ -191,17 +191,17 @@ export default function ReportPage() {
         <section className="mb-2 grid grid-cols-2 gap-3">
           <div className="rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
             <div className="text-2xl font-bold">{r.roof_sqft ? Math.round(r.roof_sqft).toLocaleString() : '—'} ft²</div>
-            <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Measured roof area</div>
+            <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[#6b7280]">Measured roof area</div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
             <div className="text-2xl font-bold">{r.squares ?? '—'}</div>
-            <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Roofing squares</div>
+            <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[#6b7280]">Roofing squares</div>
           </div>
         </section>
 
         {/* Honest band — say HOW it was measured, in plain English */}
         {r.band && (
-          <p className={`mb-5 rounded-lg px-3 py-2 text-[11px] leading-relaxed ring-1 ${r.band.level === 'tight' ? 'bg-emerald-50 text-emerald-800 ring-emerald-100' : 'bg-slate-50 text-slate-600 ring-slate-100'}`}>
+          <p className={`mb-5 rounded-lg px-3 py-2 text-[11px] leading-relaxed ring-1 ${r.band.level === 'tight' ? 'bg-emerald-50 text-emerald-800 ring-emerald-100' : 'bg-slate-50 text-[#9ca3af] ring-slate-100'}`}>
             {r.band.level === 'tight' ? '🎯 ' : 'ℹ️ '}{r.band.how}
           </p>
         )}
@@ -211,20 +211,20 @@ export default function ReportPage() {
         {r.tiers && r.tiers.length > 0 ? (
           <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="text-sm font-semibold">Your options</div>
-            <p className="mt-0.5 text-[11px] text-slate-500">Three ways to do this job. {r.company_name} measures your roof and sends your exact price after a free on-site review.</p>
+            <p className="mt-0.5 text-[11px] text-[#6b7280]">Three ways to do this job. {r.company_name} measures your roof and sends your exact price after a free on-site review.</p>
             <div className="mt-3 space-y-2">
               {r.tiers.map((t, i) => (
                 <div key={t.name} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 ring-1 ${i === 1 ? 'bg-blue-50/60 ring-blue-200' : 'bg-slate-50 ring-slate-100'}`}>
                   <div>
-                    <div className="text-sm font-semibold">{t.name} — {t.headline}{i === 1 && <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white" style={{ background: 'var(--brand)' }}>Popular</span>}</div>
-                    <div className="text-[11px] text-slate-500">{t.detail}</div>
+                    <div className="text-sm font-semibold">{t.name} — {t.headline}{i === 1 && <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1a1a1a]" style={{ background: 'var(--brand)' }}>Popular</span>}</div>
+                    <div className="text-[11px] text-[#6b7280]">{t.detail}</div>
                   </div>
                   {SHOW_INSTANT_PRICE && <div className="shrink-0 text-right text-sm font-bold text-slate-800">{money(t.price)}</div>}
                 </div>
               ))}
             </div>
             {SHOW_INSTANT_PRICE && (
-              <p className="mt-2.5 flex items-start gap-1.5 text-[10px] leading-relaxed text-slate-400">
+              <p className="mt-2.5 flex items-start gap-1.5 text-[10px] leading-relaxed text-[#6b7280]">
                 <span className="mt-px shrink-0 rounded bg-amber-100 px-1 py-0.5 font-bold uppercase tracking-wide text-amber-700">Estimate only</span>
                 <span>A rough range from satellite data — not a final quote. Your exact price comes from {r.company_name}’s free on-site review.</span>
               </p>
@@ -232,20 +232,20 @@ export default function ReportPage() {
             {SHOW_INSTANT_PRICE && r.financing && (
               <p className="mt-3 text-center text-xs font-semibold text-emerald-700">
                 💳 From {money(r.financing.from_per_month)}/mo
-                <span className="mt-0.5 block text-[10px] font-normal text-slate-400">{r.financing.disclaimer}</span>
+                <span className="mt-0.5 block text-[10px] font-normal text-[#6b7280]">{r.financing.disclaimer}</span>
               </p>
             )}
           </section>
         ) : SHOW_INSTANT_PRICE && r.price_low != null && (
           <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="text-sm font-semibold">Estimated investment by material</div>
-            <p className="mt-0.5 text-[11px] text-slate-500">Rough ranges — your exact price follows a free on-site review.</p>
+            <p className="mt-0.5 text-[11px] text-[#6b7280]">Rough ranges — your exact price follows a free on-site review.</p>
             <div className="mt-3 space-y-2">
               {SCENARIOS.map(sc => (
                 <div key={sc.name} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5 ring-1 ring-slate-100">
                   <div>
                     <div className="text-sm font-semibold">{sc.name}</div>
-                    <div className="text-[11px] text-slate-500">{sc.note}</div>
+                    <div className="text-[11px] text-[#6b7280]">{sc.note}</div>
                   </div>
                   <div className="shrink-0 text-right text-sm font-bold text-slate-800">
                     {money((r.price_low ?? 0) * sc.mult)}–{money((r.price_high ?? 0) * sc.mult)}
@@ -260,14 +260,14 @@ export default function ReportPage() {
         {r.math && (
           <details className="mb-5 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
             <summary className="cursor-pointer select-none text-sm font-semibold text-slate-700">🧮 How we got this number</summary>
-            <div className="mt-3 space-y-1.5 text-xs text-slate-600">
+            <div className="mt-3 space-y-1.5 text-xs text-[#9ca3af]">
               <div className="flex justify-between"><span>Measured roof area</span><strong>{r.math.roof_sqft.toLocaleString()} ft²</strong></div>
               <div className="flex justify-between"><span>÷ 100 = roofing squares</span><strong>{r.math.squares}</strong></div>
               <div className="flex justify-between"><span>+ {r.math.waste_pct}% cut waste (industry standard)</span><strong>{r.math.order_squares} squares to order</strong></div>
               {r.math.rate_low_per_sq && r.math.rate_high_per_sq && (
                 <div className="flex justify-between"><span>× installed rate per square</span><strong>{money(r.math.rate_low_per_sq)}–{money(r.math.rate_high_per_sq)}</strong></div>
               )}
-              <div className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+              <div className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-[#6b7280]">
                 <strong>How it was measured:</strong>{' '}
                 {r.math.method === 'solar'
                   ? 'True 3D roof geometry from Google aerial solar data (real area + pitch).'
@@ -287,22 +287,22 @@ export default function ReportPage() {
           <div className="text-sm font-semibold">Your roof&apos;s situation</div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {r.details?.work_type && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-800">{WORK_LABELS[r.details.work_type] || r.details.work_type}</span>}
-            {r.details?.condition && <span className={`rounded-full px-2.5 py-1 text-[11px] ${r.details.condition === 'visible_damage' ? 'bg-rose-50 font-semibold text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{CONDITION_LABELS[r.details.condition] || r.details.condition}</span>}
-            {r.roof_age && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">Age: {r.roof_age} yrs</span>}
-            {r.stories && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">{r.stories} stor{r.stories === 1 ? 'y' : 'ies'}</span>}
+            {r.details?.condition && <span className={`rounded-full px-2.5 py-1 text-[11px] ${r.details.condition === 'visible_damage' ? 'bg-rose-50 font-semibold text-rose-700' : 'bg-slate-100 text-[#9ca3af]'}`}>{CONDITION_LABELS[r.details.condition] || r.details.condition}</span>}
+            {r.roof_age && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-[#9ca3af]">Age: {r.roof_age} yrs</span>}
+            {r.stories && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-[#9ca3af]">{r.stories} stor{r.stories === 1 ? 'y' : 'ies'}</span>}
             {r.issues.map(i => (
-              <span key={i} className={`rounded-full px-2.5 py-1 text-[11px] ${i === 'leak' || i === 'storm_damage' ? 'bg-rose-50 font-semibold text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+              <span key={i} className={`rounded-full px-2.5 py-1 text-[11px] ${i === 'leak' || i === 'storm_damage' ? 'bg-rose-50 font-semibold text-rose-700' : 'bg-slate-100 text-[#9ca3af]'}`}>
                 {ISSUE_LABELS[i] || i}
               </span>
             ))}
             {(r.details?.rooftop_items || []).filter(x => x !== 'nothing' && x !== 'unsure').map(x => (
-              <span key={x} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">{ROOFTOP_LABELS[x] || x}</span>
+              <span key={x} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-[#9ca3af]">{ROOFTOP_LABELS[x] || x}</span>
             ))}
-            {r.details?.chimney_skylights && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">🧱 Chimney / skylights</span>}
-            {r.details?.attic === true && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">🏚 Attic</span>}
-            {r.details?.drainage && r.details.drainage !== 'unsure' && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">{DRAINAGE_LABELS[r.details.drainage] || r.details.drainage}</span>}
+            {r.details?.chimney_skylights && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-[#9ca3af]">🧱 Chimney / skylights</span>}
+            {r.details?.attic === true && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-[#9ca3af]">🏚 Attic</span>}
+            {r.details?.drainage && r.details.drainage !== 'unsure' && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-[#9ca3af]">{DRAINAGE_LABELS[r.details.drainage] || r.details.drainage}</span>}
           </div>
-          {r.roof_age && <p className="mt-3 text-xs leading-relaxed text-slate-600">💡 {AGE_INSIGHT[r.roof_age]}</p>}
+          {r.roof_age && <p className="mt-3 text-xs leading-relaxed text-[#9ca3af]">💡 {AGE_INSIGHT[r.roof_age]}</p>}
           {urgent && (
             <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800 ring-1 ring-rose-100">
               ⚠ Based on what you shared, we recommend a professional inspection <strong>soon</strong> — active issues compound quickly.
@@ -317,17 +317,17 @@ export default function ReportPage() {
               <span className="text-emerald-500">✓</span> Satellite-verified measurement
             </span>
             {r.company_license && (
-              <span className="inline-flex items-center gap-1.5 font-medium text-slate-600">
+              <span className="inline-flex items-center gap-1.5 font-medium text-[#9ca3af]">
                 <span className="text-blue-500">✓</span> Licensed #{r.company_license}
               </span>
             )}
             {r.service_area && (
-              <span className="inline-flex items-center gap-1.5 font-medium text-slate-600">
+              <span className="inline-flex items-center gap-1.5 font-medium text-[#9ca3af]">
                 <span className="text-blue-500">📍</span> Serving {r.service_area}
               </span>
             )}
           </div>
-          <p className="mt-2.5 border-t border-slate-100 pt-2.5 text-[11px] leading-relaxed text-slate-500">
+          <p className="mt-2.5 border-t border-slate-100 pt-2.5 text-[11px] leading-relaxed text-[#6b7280]">
             🔒 Your details went to <strong className="text-slate-700">{r.company_name}</strong> only — not five call
             centers. No door-knock, no pressure, no shared leads.
           </p>
@@ -346,7 +346,7 @@ export default function ReportPage() {
         {/* What happens next */}
         <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="text-sm font-semibold">What happens next</div>
-          <ul className="mt-2 space-y-1.5 text-xs text-slate-600">
+          <ul className="mt-2 space-y-1.5 text-xs text-[#9ca3af]">
             <li>✓ <strong>{r.company_name}</strong> has your request and will reach out to schedule a <strong>free, precise on-site quote</strong> — this report is a rough instant estimate, not a final price.</li>
             <li>✓ Ready sooner? Call or text below to get on the schedule first.</li>
             <li>✓ Keep this link — your report updates if anything changes.</li>
@@ -356,7 +356,7 @@ export default function ReportPage() {
         {/* Book a free inspection — self-serve, lands on the contractor's calendar.
             id="book" lets the quote funnel's "Schedule an appointment" button deep-link here. */}
         <section id="book" className="mb-5 scroll-mt-4 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm print:hidden">
-          <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))' }}>
+          <div className="px-5 py-3 text-[#1a1a1a]" style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))' }}>
             <div className="text-sm font-semibold">📅 Book your free on-site inspection</div>
             <div className="text-[11px] text-blue-50/90">Pick a day and {r.company_name} will confirm — no charge, no obligation.</div>
           </div>
@@ -364,7 +364,7 @@ export default function ReportPage() {
             <div className="p-5 text-center">
               <div className="text-2xl">✅</div>
               <div className="mt-1 text-sm font-semibold text-slate-800">You&apos;re on the schedule!</div>
-              <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500">
+              <p className="mx-auto mt-1 max-w-sm text-xs text-[#6b7280]">
                 {r.company_name} has your request for <strong>{new Date(bookDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</strong>
                 {bookWindow !== 'anytime' && <> ({bookWindow})</>} and will reach out to confirm. {r.company_phone && <>Need it sooner? Call {r.company_phone}.</>}
               </p>
@@ -373,22 +373,22 @@ export default function ReportPage() {
             <div className="p-5">
               {/* honeypot */}
               <input type="text" value={hp} onChange={e => setHp(e.target.value)} name="website" autoComplete="off" tabIndex={-1} aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Preferred day</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">Preferred day</label>
               <input type="date" value={bookDate} min={new Date().toISOString().slice(0, 10)}
                 onChange={e => setBookDate(e.target.value)}
                 className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
 
-              <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Time that works best</div>
+              <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">Time that works best</div>
               <div className="mt-1.5 grid grid-cols-4 gap-1.5">
                 {[['anytime', 'Anytime'], ['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening']].map(([k, lbl]) => (
                   <button key={k} onClick={() => setBookWindow(k)}
-                    className={`rounded-lg border px-2 py-2 text-xs font-medium transition ${bookWindow === k ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>{lbl}</button>
+                    className={`rounded-lg border px-2 py-2 text-xs font-medium transition ${bookWindow === k ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm' : 'border-slate-200 bg-white text-[#9ca3af] hover:border-slate-300'}`}>{lbl}</button>
                 ))}
               </div>
 
               <input type="text" value={bookNote} onChange={e => setBookNote(e.target.value)}
                 placeholder="Anything we should know? (optional)"
-                className="mt-3 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                className="mt-3 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-[#6b7280] shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
 
               {bookErr && <p className="mt-2 text-xs text-rose-600">{bookErr}</p>}
               <button onClick={submitBooking} disabled={booking}
@@ -421,7 +421,7 @@ export default function ReportPage() {
           </div>
         </section>
 
-        <p className="text-center text-[10px] text-slate-400">Powered by Axis Roofing Performance aerial + solar intelligence.</p>
+        <p className="text-center text-[10px] text-[#6b7280]">Powered by Axis Roofing Performance aerial + solar intelligence.</p>
       </div>
     </main>
   )

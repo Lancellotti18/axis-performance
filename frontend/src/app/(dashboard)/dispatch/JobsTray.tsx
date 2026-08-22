@@ -101,7 +101,7 @@ function Row({ row, tab }: { row: TrayRow; tab: TabKey }) {
   const blocks = (row.conflicts || []).filter(c => c.severity === 'BLOCK')
   const warns = (row.conflicts || []).filter(c => c.severity === 'WARN')
   return (
-    <div className="flex items-center gap-3 rounded-md px-2.5 py-1.5 text-[12px] hover:bg-white/5" style={{ background: 'var(--panel2)' }}>
+    <div className="flex items-center gap-3 rounded-md px-2.5 py-1.5 text-[12px] hover:bg-[#eeeeed]" style={{ background: 'var(--panel2)' }}>
       <span className="w-10 shrink-0 font-mono text-[11px]" style={{ color: 'var(--muted)' }}>#{row.job_number}</span>
       <span className="w-32 shrink-0 truncate font-semibold">{jobTypeLabel(row.job_type)}</span>
       <span className="w-40 shrink-0 truncate" style={{ color: 'var(--muted)' }}>{[row.customer, row.city].filter(Boolean).join(' · ')}</span>

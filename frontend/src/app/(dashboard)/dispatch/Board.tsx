@@ -349,15 +349,15 @@ export default function Board({
           // next week in behind it, because the page derives the week from this.
           <div className="flex items-center gap-1">
             <button onClick={() => onFocusDate(shiftISODate(focusDate, -1))}
-              className="rounded-md px-2 py-1 text-sm hover:bg-white/5" aria-label="Previous day" title="Previous day (←)">←</button>
+              className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]" aria-label="Previous day" title="Previous day (←)">←</button>
             <span className="min-w-[132px] text-center text-[13px] font-semibold">{format(parseISO(focusDate), 'EEE, MMM d')}{focusDate === today && <span className="ml-1.5 rounded px-1 text-[9px] font-bold uppercase" style={{ background: 'var(--dawn)', color: '#1a0e05' }}>Today</span>}</span>
             <button onClick={() => onFocusDate(shiftISODate(focusDate, 1))}
-              className="rounded-md px-2 py-1 text-sm hover:bg-white/5" aria-label="Next day" title="Next day (→)">→</button>
+              className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]" aria-label="Next day" title="Next day (→)">→</button>
           </div>
         )}
         <span className="ml-auto hidden text-[11px] sm:inline" style={{ color: 'var(--muted)' }}>{view === 'week' ? 'Drag to move · click for detail' : view === 'day' ? 'One day, every crew' : 'Stops by location, routed in order'}</span>
-        <button onClick={() => setCrewMgrOpen(true)} className="ml-auto rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-white/5 sm:ml-3" style={{ borderColor: 'var(--line)' }}>Crews</button>
-        <button onClick={() => setAuditOpen(true)} className="rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>History</button>
+        <button onClick={() => setCrewMgrOpen(true)} className="ml-auto rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-[#eeeeed] sm:ml-3" style={{ borderColor: 'var(--line)' }}>Crews</button>
+        <button onClick={() => setAuditOpen(true)} className="rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>History</button>
       </div>
 
       {view === 'map' ? (
@@ -420,7 +420,7 @@ export default function Board({
               // Clicking a day focuses it, so switching to Day or Map lands on
               // the column you were already reading.
               <button key={d} onClick={() => onFocusDate(d)} title={`Focus ${format(dt, 'EEE, MMM d')}`}
-                className="border-l px-3 py-2 text-left transition-colors hover:bg-white/[0.03]"
+                className="border-l px-3 py-2 text-left transition-colors hover:bg-[#f8f8f7]"
                 style={{
                   borderColor: 'var(--line)',
                   background: storm ? 'rgba(90,169,255,0.05)' : undefined,
@@ -496,14 +496,14 @@ export default function Board({
       <DragOverlay dropAnimation={null}>
         {isTrayDrag(activeId) ? (
           <div className="w-[200px] rotate-1">
-            <div className="rounded-md px-2 py-1.5 shadow-2xl ring-1 ring-white/20" style={{ background: 'var(--panel)' }}>
+            <div className="rounded-md px-2 py-1.5 shadow-2xl ring-1 ring-[#dededc]" style={{ background: 'var(--panel)' }}>
               <div className="text-[13px] font-semibold">{dragLabel ?? 'New job'}</div>
             </div>
             <div className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold shadow-lg" style={{ background: 'var(--sky)', color: '#04121f' }}>drop to schedule</div>
           </div>
         ) : activeJob && activeAppt ? (
           <div className="w-[200px] rotate-1">
-            <div className="rounded-md px-2 py-1.5 shadow-2xl ring-1 ring-white/20" style={{ background: 'var(--panel)' }}>
+            <div className="rounded-md px-2 py-1.5 shadow-2xl ring-1 ring-[#dededc]" style={{ background: 'var(--panel)' }}>
               <div className="text-[13px] font-semibold">{jobTypeLabel(activeJob.job_type)}{activeJob.squares != null && <span style={{ color: 'var(--dawn)' }}> · {num(activeJob.squares)} sq</span>}</div>
             </div>
             {hoverPv && hoverPv !== 'loading' && (
@@ -621,7 +621,7 @@ function ShiftToggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClic
       // throw away the instant feedback that buys us.
       title={on ? 'Remove this working day' : 'Add a working day'}
       aria-label={on ? 'Remove this working day' : 'Add a working day'}
-      className="grid h-5 w-5 shrink-0 place-items-center rounded border text-[13px] font-bold leading-none transition-opacity hover:bg-white/10"
+      className="grid h-5 w-5 shrink-0 place-items-center rounded border text-[13px] font-bold leading-none transition-opacity hover:bg-[#eeeeed]"
       style={{ borderColor: 'var(--line)', color: on ? 'var(--muted)' : 'var(--ok, #4ade80)', opacity: busy ? 0.55 : 1 }}
     >{on ? '\u2212' : '+'}</button>
   )
@@ -702,7 +702,7 @@ function JobCardBody({
       <div className="flex items-center justify-between text-[10px]" style={{ color: 'var(--muted)' }}>
         <span>{start.slice(11, 16)}–{end.slice(11, 16)}</span>
         <span className="flex items-center gap-1">
-          {total > 1 && <span className="rounded bg-white/10 px-1 font-semibold" style={{ color: 'var(--text)' }}>{seq}/{total}</span>}
+          {total > 1 && <span className="rounded bg-[#eeeeed] px-1 font-semibold" style={{ color: 'var(--text)' }}>{seq}/{total}</span>}
           <span className="h-2 w-2 rounded-full" style={{ background: sc }} title={status.toLowerCase()} />
         </span>
       </div>

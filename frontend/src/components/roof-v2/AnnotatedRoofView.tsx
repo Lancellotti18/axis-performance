@@ -140,11 +140,11 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
   }
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">Annotated Roof View</h3>
-          <p className="text-xs text-slate-400">EagleView-style technical drawing with color-coded edges and measurements.</p>
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">Annotated Roof View</h3>
+          <p className="text-xs text-[#6b7280]">EagleView-style technical drawing with color-coded edges and measurements.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <Toggle label="Labels" value={showLabels} onChange={setShowLabels} />
@@ -156,7 +156,7 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-lg border border-white/10 bg-slate-950">
+      <div className="relative overflow-hidden rounded-lg border border-[#dededc] bg-[#f8f8f7]">
         {/* Hidden loader just to capture the tile's natural dimensions. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt="" className="hidden" onLoad={onImageLoad} />
@@ -267,7 +267,7 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
         {(['eave', 'rake', 'ridge', 'hip', 'valley'] as EdgeType[]).map(t => (
           <span key={t} className="flex items-center gap-1.5">
             <span className="inline-block h-2 w-4 rounded" style={{ background: EDGE_COLORS[t] }} />
-            <span className="text-slate-400 uppercase">{EDGE_LABELS[t]}</span>
+            <span className="text-[#6b7280] uppercase">{EDGE_LABELS[t]}</span>
           </span>
         ))}
       </div>
@@ -277,7 +277,7 @@ export function AnnotatedRoofView({ imageUrl, imageWidthPx, imageHeightPx, facet
 
 function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex cursor-pointer items-center gap-1 text-slate-300">
+    <label className="flex cursor-pointer items-center gap-1 text-[#2d2d2d]">
       <input type="checkbox" checked={value} onChange={e => onChange(e.target.checked)} className="accent-blue-500" />
       {label}
     </label>
@@ -286,9 +286,9 @@ function Toggle({ label, value, onChange }: { label: string; value: boolean; onC
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded bg-slate-900/60 p-2">
-      <div className="text-[9px] uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="text-sm font-semibold text-slate-100">{value}</div>
+    <div className="rounded bg-[#f8f8f7] p-2">
+      <div className="text-[9px] uppercase tracking-wide text-[#6b7280]">{label}</div>
+      <div className="text-sm font-semibold text-[#1a1a1a]">{value}</div>
     </div>
   )
 }

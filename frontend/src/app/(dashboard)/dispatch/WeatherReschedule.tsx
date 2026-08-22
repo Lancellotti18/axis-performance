@@ -68,7 +68,7 @@ export default function WeatherReschedule({
     <>
       {/* Banner */}
       <button onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-3 border-b px-4 py-2 text-left transition-colors hover:bg-white/5"
+        className="flex w-full items-center gap-3 border-b px-4 py-2 text-left transition-colors hover:bg-[#eeeeed]"
         style={{ borderColor: 'var(--line)', background: 'color-mix(in srgb, var(--tight) 10%, var(--ink))' }}>
         <span className="text-[15px]">⛈</span>
         <span className="text-[13px] font-semibold">
@@ -91,7 +91,7 @@ export default function WeatherReschedule({
                 <div className="text-[15px] font-bold">Clear the rain days</div>
                 <div className="text-[12px]" style={{ color: 'var(--muted)' }}>{data.risk_days.map(d => `${fmtDate(d.date)} · ${d.precip_probability}%`).join('   ')}</div>
               </div>
-              <button onClick={() => setOpen(false)} className="rounded-md px-2 py-1 text-sm hover:bg-white/5">✕</button>
+              <button onClick={() => setOpen(false)} className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]">✕</button>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -104,7 +104,7 @@ export default function WeatherReschedule({
             <div className="flex items-center justify-between border-t px-5 py-3" style={{ borderColor: 'var(--line)' }}>
               <span className="text-[12px]" style={{ color: 'var(--muted)' }}>{chosen.length} of {resolvable.length} selected</span>
               <div className="flex gap-2">
-                <button onClick={() => setOpen(false)} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-white/5" style={{ color: 'var(--muted)' }}>Cancel</button>
+                <button onClick={() => setOpen(false)} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ color: 'var(--muted)' }}>Cancel</button>
                 <button onClick={apply} disabled={busy || chosen.length === 0}
                   className="rounded-md px-4 py-1.5 text-[12px] font-bold disabled:opacity-40"
                   style={{ background: 'var(--dawn)', color: '#1a0e05' }}>

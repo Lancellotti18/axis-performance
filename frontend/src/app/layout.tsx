@@ -36,12 +36,12 @@ export default function RootLayout({
             duration: 4000,
             style: {
               borderRadius: '12px',
-              background: '#0f172a',
-              color: '#f8fafc',
+              background: '#1a1a1a',
+              color: '#f8f8f7',
               fontSize: '14px',
             },
-            success: { iconTheme: { primary: '#10b981', secondary: '#0f172a' } },
-            error: { iconTheme: { primary: '#ef4444', secondary: '#0f172a' } },
+            success: { iconTheme: { primary: '#10b981', secondary: '#1a1a1a' } },
+            error: { iconTheme: { primary: '#ef4444', secondary: '#1a1a1a' } },
           }}
         />
       </body>

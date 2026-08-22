@@ -59,8 +59,8 @@ export default function FirstRunGreeting({ name, onDismiss }: {
     >
       <div className="flex items-start justify-between gap-4 px-5 pt-5">
         <div>
-          <h2 className="text-lg font-bold text-white">Welcome to Axis, {name} 👋</h2>
-          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-slate-300">
+          <h2 className="text-lg font-bold text-[#1a1a1a]">Welcome to Axis, {name} 👋</h2>
+          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[#2d2d2d]">
             Axis measures roofs from satellite imagery and turns them into quotable reports. Here&apos;s the
             whole workflow in three steps — you can be through it on a real address in about five minutes.
           </p>
@@ -68,25 +68,25 @@ export default function FirstRunGreeting({ name, onDismiss }: {
         <button
           onClick={onDismiss}
           aria-label="Dismiss welcome"
-          className="shrink-0 rounded-lg px-2 py-1 text-sm text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+          className="shrink-0 rounded-lg px-2 py-1 text-sm text-[#6b7280] transition-colors hover:bg-[#eeeeed] hover:text-[#1a1a1a]"
         >✕</button>
       </div>
 
       <ol className="grid gap-3 px-5 py-4 sm:grid-cols-3">
         {STEPS.map(s => (
-          <li key={s.n} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3.5">
+          <li key={s.n} className="rounded-xl border border-white/[0.07] bg-[#f8f8f7] p-3.5">
             <div className="mb-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">
               {s.n}
             </div>
-            <div className="text-[13px] font-semibold text-white">{s.title}</div>
-            <p className="mt-1 text-[11.5px] leading-relaxed text-slate-400">{s.body}</p>
+            <div className="text-[13px] font-semibold text-[#1a1a1a]">{s.title}</div>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-[#6b7280]">{s.body}</p>
           </li>
         ))}
       </ol>
 
       <div className="border-t border-white/[0.07] px-5 py-3">
-        <p className="text-[12px] leading-relaxed text-slate-400">
-          <span className="font-semibold text-slate-200">💬 Axis AI is in the bottom-right corner.</span>{' '}
+        <p className="text-[12px] leading-relaxed text-[#6b7280]">
+          <span className="font-semibold text-[#1a1a1a]">💬 Axis AI is in the bottom-right corner.</span>{' '}
           It knows which page you&apos;re on, so ask it things like &ldquo;why is this pitch flagged?&rdquo; or
           &ldquo;what&apos;s missing from this report?&rdquo; and it answers about the job in front of you.
         </p>
@@ -99,7 +99,7 @@ export default function FirstRunGreeting({ name, onDismiss }: {
         >📐 Measure your first roof →</Link>
         <button
           onClick={onDismiss}
-          className="rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-slate-200 transition-colors hover:bg-white/[0.08]"
+          className="rounded-xl border border-[#dededc] bg-[#f8f8f7] px-4 py-2.5 text-sm font-semibold text-[#1a1a1a] transition-colors hover:bg-[#f8f8f7]"
         >I&apos;ll explore on my own</button>
       </div>
     </section>

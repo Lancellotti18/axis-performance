@@ -83,7 +83,7 @@ export default function MagnifierLoupe({
         border: `2px solid ${snapped ? '#22d3ee' : 'rgba(255,255,255,0.85)'}`,
       }}
     >
-      <svg viewBox={viewBox} width={size} height={size} className="block bg-slate-950">
+      <svg viewBox={viewBox} width={size} height={size} className="block bg-[#f8f8f7]">
         {/* The tile itself, sampled at the loupe's resolution. Smoothing off
             once we're past 1:1 so roof edges stay as crisp lines. */}
         <image
@@ -151,7 +151,7 @@ export default function MagnifierLoupe({
           between two planes sharing an edge and merely touching. */}
       <div className="absolute inset-x-0 bottom-1 flex justify-center">
         <span
-          className="rounded px-1.5 text-[9px] font-semibold text-white"
+          className="rounded px-1.5 text-[9px] font-semibold text-[#1a1a1a]"
           style={{ background: snapped ? 'rgba(8,145,178,0.9)' : 'rgba(0,0,0,0.65)' }}
         >
           {snapped ? 'snap to corner' : `${Math.round(pxPerImagePx * 10) / 10}×`}

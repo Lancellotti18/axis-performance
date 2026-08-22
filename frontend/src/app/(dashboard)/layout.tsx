@@ -287,7 +287,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* ── SIDEBAR ──────────────────────────────────────────────────────── */}
       <aside
         className={`relative flex-shrink-0 flex flex-col transition-[width] duration-200 ${collapsed ? 'w-[76px]' : 'w-64'}`}
-        style={{ zIndex: 10, background: '#ffffff', borderRight: '1px solid var(--color-surface-border)' }}
+        style={{ zIndex: 10, background: '#f8f8f7', borderRight: '1px solid var(--color-surface-border)' }}
       >
         {/* Soft blue glow line on the right edge */}
         <div className="absolute top-0 bottom-0 right-0 w-px pointer-events-none"
@@ -298,7 +298,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           onClick={toggleCollapsed}
           title={collapsed ? 'Expand' : 'Collapse'}
           className="absolute -right-3 top-7 z-20 w-6 h-6 rounded-full flex items-center justify-center text-[#6b7280] hover:text-[#1a1a1a] transition-colors"
-          style={{ background: '#ffffff', border: '1px solid var(--color-surface-border)', boxShadow: 'var(--shadow-card)' }}
+          style={{ background: '#f8f8f7', border: '1px solid var(--color-surface-border)', boxShadow: 'var(--shadow-card)' }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: collapsed ? 'rotate(180deg)' : 'none' }}>
             <polyline points="15 18 9 12 15 6" />
@@ -316,7 +316,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           {!collapsed && (
             <div className="leading-none">
-              <div className="text-[14px] font-black tracking-tight text-white">AXIS</div>
+              <div className="text-[14px] font-black tracking-tight text-[#1a1a1a]">AXIS</div>
               <div className="text-[9px] font-bold tracking-[0.3em] text-blue-300/70 mt-0.5">PERFORMANCE</div>
             </div>
           )}
@@ -338,9 +338,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       href={href}
                       title={collapsed ? label : undefined}
                       className={`relative flex items-center gap-3 rounded-xl text-sm font-semibold transition-all duration-200 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-[#007fff]' : 'text-[#6b7280] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'}`}
-                      style={active ? {
-                        background: '#e6f2ff',
-                      } : {}}
+                      style={active ? { background: 'var(--color-brand-500)', boxShadow: '0 1px 2px rgba(0,90,180,0.24)' } : {}}
                     >
                       <Icon active={active} />
                       {!collapsed && <span className="truncate">{label}</span>}
@@ -364,9 +362,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   href="/settings"
                   title={collapsed ? 'Settings' : undefined}
                   className={`relative flex items-center gap-3 rounded-xl text-sm font-semibold transition-all duration-200 ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} ${active ? 'text-[#007fff]' : 'text-[#6b7280] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'}`}
-                  style={active ? {
-                    background: '#e6f2ff',
-                  } : {}}
+                  style={active ? { background: 'var(--color-brand-500)', boxShadow: '0 1px 2px rgba(0,90,180,0.24)' } : {}}
                 >
                   <IconSettings active={active} />
                   {!collapsed && <span className="truncate">Settings</span>}
@@ -410,14 +406,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Top bar — 70px */}
         <header
           className="h-[70px] flex items-center justify-between gap-6 px-7 flex-shrink-0 relative"
-          style={{ background: '#ffffff', borderBottom: '1px solid var(--color-surface-border)' }}
+          style={{ background: '#f8f8f7', borderBottom: '1px solid var(--color-surface-border)' }}
         >
           {/* Bottom edge blue glow */}
           <div className="absolute left-0 right-0 bottom-0 h-px pointer-events-none"
             style={{ background: 'transparent' }} />
 
           {/* Current page title */}
-          <h1 className="text-lg font-semibold text-white flex-shrink-0">{titleFor(pathname)}</h1>
+          <h1 className="text-lg font-semibold text-[#1a1a1a] flex-shrink-0">{titleFor(pathname)}</h1>
 
           {/* Working global search */}
           <div className="flex-1 flex justify-end max-w-[440px] ml-auto">

@@ -41,7 +41,7 @@ function pitchSourceMeta(src?: string): { label: string; color: string } {
     case 'solar_measured': return { label: 'measured by Google Solar ✓', color: 'text-emerald-400' }
     case 'solar_direction': return { label: 'Solar pitch (same-facing plane)', color: 'text-emerald-300/80' }
     case 'ground_photo': return { label: 'from ground photo ✓', color: 'text-emerald-400' }
-    case 'ai_satellite': return { label: 'AI from satellite — verify', color: 'text-slate-400' }
+    case 'ai_satellite': return { label: 'AI from satellite — verify', color: 'text-[#6b7280]' }
     default: return { label: 'default — set this!', color: 'text-amber-400' }
   }
 }
@@ -204,11 +204,11 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
   }, [suggestions, existingFacets, onAccept, refinePolygon])
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">Auto-detect roof</h3>
-          <p className="text-xs text-slate-400">
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">Auto-detect roof</h3>
+          <p className="text-xs text-[#6b7280]">
             One click combines <strong>Google Solar</strong> (measured pitch + planes) with
             <strong> AI tracing</strong> (refined shapes). Solar-confirmed planes are marked ✓;
             unconfirmed guesses are flagged. <strong>Accept each one individually</strong> — accepted
@@ -264,12 +264,12 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
               <span className="text-amber-300/80">What the AI saw: </span>{reason}
             </div>
           )}
-          {message && <div className="mt-1 text-slate-300">{message}</div>}
+          {message && <div className="mt-1 text-[#2d2d2d]">{message}</div>}
           <div className="mt-2 flex flex-wrap gap-2">
             <button onClick={runDetect} className="rounded bg-blue-600 px-2.5 py-1 text-white hover:bg-blue-500">
               Re-detect
             </button>
-            <span className="flex items-center text-[10px] text-slate-400">
+            <span className="flex items-center text-[10px] text-[#6b7280]">
               …or just trace facets manually in the editor — snap-to-edge makes it quick.
             </span>
           </div>
@@ -277,7 +277,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
       )}
 
       {message && !error && !loading && suggestions.length > 0 && (
-        <p className="mt-2 text-xs text-slate-400">{message}</p>
+        <p className="mt-2 text-xs text-[#6b7280]">{message}</p>
       )}
 
       {suggestions.length > 0 && (
@@ -287,7 +287,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
               {suggestions.length} facet{suggestions.length === 1 ? '' : 's'} suggested · click thumbnail to enlarge
             </span>
             <div className="flex items-center gap-2">
-              <label className="flex cursor-pointer items-center gap-1 text-[10px] text-slate-300" title="Tighten each accepted polygon's vertices to the nearest crisp edge (small, safe radius)">
+              <label className="flex cursor-pointer items-center gap-1 text-[10px] text-[#2d2d2d]" title="Tighten each accepted polygon's vertices to the nearest crisp edge (small, safe radius)">
                 <input type="checkbox" checked={refineOnAccept} onChange={e => setRefineOnAccept(e.target.checked)} className="h-3 w-3" />
                 Refine to edges
               </label>
@@ -304,7 +304,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
               return (
                 <li
                   key={i}
-                  className="flex flex-col gap-3 rounded border bg-slate-900/40 p-3 sm:flex-row"
+                  className="flex flex-col gap-3 rounded border bg-[#f8f8f7] p-3 sm:flex-row"
                   style={{ borderColor: `${facetColor}66` }}
                 >
                   <PolygonThumb
@@ -316,13 +316,13 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                   <div className="flex flex-1 flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
-                        className="inline-flex h-6 w-6 items-center justify-center rounded text-xs font-bold text-white"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded text-xs font-bold text-[#1a1a1a]"
                         style={{ background: facetColor }}
                       >{nextLabel(existingFacets, i)}</span>
-                      <strong className="text-slate-100">
+                      <strong className="text-[#1a1a1a]">
                         Facet {nextLabel(existingFacets, i)}
                       </strong>
-                      <span className="rounded bg-slate-700/70 px-1.5 py-0.5 text-[10px] text-slate-200">
+                      <span className="rounded bg-[#e4e4e2] px-1.5 py-0.5 text-[10px] text-[#1a1a1a]">
                         {prettyFacetType(s.facet_type)}
                       </span>
                       {s.solar_confirmed ? (
@@ -343,10 +343,10 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                         {conf.label}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-400">
-                      <span className="text-slate-500">Why: </span>{s.note || '—'}
+                    <div className="text-xs text-[#6b7280]">
+                      <span className="text-[#6b7280]">Why: </span>{s.note || '—'}
                     </div>
-                    <div className="text-[10px] text-slate-500">
+                    <div className="text-[10px] text-[#6b7280]">
                       Pitch: {s.predicted_pitch || '6/12'}{' '}
                       <span className={pitchSourceMeta(s.pitch_source).color}>
                         ({pitchSourceMeta(s.pitch_source).label})
@@ -359,7 +359,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                       >Accept</button>
                       <button
                         onClick={() => reject(i)}
-                        className="rounded bg-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-600"
+                        className="rounded bg-[#e4e4e2] px-3 py-1.5 text-xs text-[#1a1a1a] hover:bg-[#d4d4d2]"
                       >Reject</button>
                       <button
                         onClick={() => setZoomedSuggestion(s)}
@@ -394,7 +394,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
       )}
 
       {!ran && !loading && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-[#6b7280]">
           Click <strong>Auto-detect facets</strong> to have AI propose polygons. You can also draw facets
           manually in the editor at any time.
         </p>
@@ -408,7 +408,7 @@ function PolygonThumb({
 }: { polygon: Pt[]; imageUrl: string; color?: string; onClick?: () => void }) {
   if (!imageUrl) {
     return (
-      <div className="flex h-[150px] w-[200px] items-center justify-center rounded border border-white/10 bg-slate-900/60 text-xs text-slate-500">
+      <div className="flex h-[150px] w-[200px] items-center justify-center rounded border border-[#dededc] bg-[#f8f8f7] text-xs text-[#6b7280]">
         no tile available
       </div>
     )
@@ -437,7 +437,7 @@ function PolygonThumb({
       type="button"
       onClick={onClick}
       title="Click to view at full size"
-      className="relative shrink-0 overflow-hidden rounded border-2 bg-slate-900/60 transition hover:brightness-110"
+      className="relative shrink-0 overflow-hidden rounded border-2 bg-[#f8f8f7] transition hover:brightness-110"
       style={{ width: tW, height: tH, borderColor: color }}
     >
       {/* Underlying satellite image, scaled + positioned so the polygon bbox
@@ -469,7 +469,7 @@ function PolygonThumb({
           strokeWidth={3}
         />
       </svg>
-      <div className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
+      <div className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-[#1a1a1a]">
         🔍 Click to enlarge
       </div>
     </button>
@@ -501,7 +501,7 @@ function ZoomModal({
       onClick={onClose}
     >
       <div
-        className="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg border border-amber-400/40 bg-slate-950 shadow-2xl"
+        className="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg border border-amber-400/40 bg-[#f8f8f7] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Image with polygon overlay at full size */}
@@ -530,18 +530,18 @@ function ZoomModal({
         </div>
 
         {/* Bottom controls */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-slate-900 p-4 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
           <div>
-            <div className="font-semibold text-slate-100">
+            <div className="font-semibold text-[#1a1a1a]">
               {prettyFacetType(suggestion.facet_type)}
               <span className={`ml-2 text-xs font-normal ${confidenceBand(suggestion.confidence).color}`}>
                 {confidenceBand(suggestion.confidence).label}
               </span>
             </div>
-            <div className="mt-1 text-xs text-slate-400">
-              <span className="text-slate-500">Why: </span>{suggestion.note || '—'}
+            <div className="mt-1 text-xs text-[#6b7280]">
+              <span className="text-[#6b7280]">Why: </span>{suggestion.note || '—'}
             </div>
-            <div className="text-[10px] text-slate-500">
+            <div className="text-[10px] text-[#6b7280]">
               Pitch: {suggestion.predicted_pitch || '6/12'}{' '}
               <span className={pitchSourceMeta(suggestion.pitch_source).color}>
                 ({pitchSourceMeta(suggestion.pitch_source).label})
@@ -559,7 +559,7 @@ function ZoomModal({
             >Accept</button>
             <button
               onClick={onClose}
-              className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-600"
+              className="rounded bg-[#e4e4e2] px-4 py-2 text-sm font-medium text-[#1a1a1a] hover:bg-[#d4d4d2]"
             >Close (Esc)</button>
           </div>
         </div>

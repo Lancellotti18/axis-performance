@@ -123,7 +123,7 @@ export default function AxisChat() {
           onClick={() => setOpen(true)}
           aria-label="Ask Axis"
           title="Ask Axis"
-          className="group fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full text-white opacity-70 shadow-lg transition-all hover:w-32 hover:opacity-100"
+          className="group fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full text-[#1a1a1a] opacity-70 shadow-lg transition-all hover:w-32 hover:opacity-100"
           style={{
             background: 'linear-gradient(135deg, #2563eb 0%, #1e3a5f 100%)',
             boxShadow: '0 4px 18px rgba(37,99,235,0.35), 0 0 0 1px rgba(127,201,244,0.25)',
@@ -149,7 +149,7 @@ export default function AxisChat() {
         >
           {/* Header */}
           <div
-            className="flex items-center justify-between px-4 py-3 text-white"
+            className="flex items-center justify-between px-4 py-3 text-[#1a1a1a]"
             style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #0f3a75 100%)' }}
           >
             <div className="flex items-center gap-2.5">
@@ -167,13 +167,13 @@ export default function AxisChat() {
             </div>
             <div className="flex items-center gap-1">
               {messages.length > 0 && (
-                <button onClick={clearChat} title="Clear conversation" className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10 transition-colors">
+                <button onClick={clearChat} title="Clear conversation" className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-[#eeeeed] transition-colors">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 01-2 2H9a2 2 0 01-2-2L5 6"/>
                   </svg>
                 </button>
               )}
-              <button onClick={() => setOpen(false)} title="Close" className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10 transition-colors">
+              <button onClick={() => setOpen(false)} title="Close" className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-[#eeeeed] transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -184,7 +184,7 @@ export default function AxisChat() {
             {messages.length === 0 && (
               <div className="text-center pt-2">
                 <div className="text-slate-700 font-bold text-sm mb-1">How can I help?</div>
-                <p className="text-slate-500 text-xs leading-relaxed mb-4">
+                <p className="text-[#6b7280] text-xs leading-relaxed mb-4">
                   I can see what's on your current screen and answer questions about it.
                 </p>
                 <div className="flex flex-col gap-2">
@@ -204,11 +204,7 @@ export default function AxisChat() {
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-                    m.role === 'user'
-                      ? 'bg-blue-600 text-white rounded-br-md'
-                      : 'bg-white text-slate-800 border border-slate-200 rounded-bl-md'
-                  }`}
+                  className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${ m.role === 'user' ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-md' }`}
                 >
                   {m.content}
                 </div>
@@ -248,13 +244,13 @@ export default function AxisChat() {
                 rows={1}
                 placeholder="Ask anything about this screen…"
                 disabled={busy}
-                className="flex-1 resize-none text-sm text-slate-700 placeholder-slate-400 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 max-h-24"
+                className="flex-1 resize-none text-sm text-slate-700 placeholder-[#9ca3af] bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 max-h-24"
                 style={{ minHeight: '38px' }}
               />
               <button
                 onClick={() => send()}
                 disabled={busy || !draft.trim()}
-                className="flex-shrink-0 w-9 h-9 rounded-xl text-white flex items-center justify-center transition-all disabled:opacity-40"
+                className="flex-shrink-0 w-9 h-9 rounded-xl text-[#1a1a1a] flex items-center justify-center transition-all disabled:opacity-40"
                 style={{ background: 'linear-gradient(135deg, #2563eb 0%, #1e3a5f 100%)' }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -262,7 +258,7 @@ export default function AxisChat() {
                 </svg>
               </button>
             </div>
-            <div className="text-[10px] text-slate-400 mt-1.5 text-center">
+            <div className="text-[10px] text-[#6b7280] mt-1.5 text-center">
               Axis can see this screen — it's read-only and won't edit anything for you
             </div>
           </div>

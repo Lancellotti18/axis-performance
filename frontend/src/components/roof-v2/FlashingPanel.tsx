@@ -98,11 +98,11 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
   }, [confirmedTotals, confirmed, onConfirmedChange])
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">Flashing intelligence</h3>
-          <p className="text-xs text-slate-400">
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">Flashing intelligence</h3>
+          <p className="text-xs text-[#6b7280]">
             Auto-derived from your roof-to-wall edges, valleys, and penetrations. Every line shows
             <strong> why</strong> it was added — dismiss anything that doesn&apos;t apply.
           </p>
@@ -115,7 +115,7 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
       </div>
 
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
-      {message && !error && <p className="mt-2 text-xs text-slate-400">{message}</p>}
+      {message && !error && <p className="mt-2 text-xs text-[#6b7280]">{message}</p>}
 
       {/* Ground-photo completeness: conditions the photos detected but that
           aren't reflected on the roof yet — so the flashing order isn't short. */}
@@ -131,7 +131,7 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
 
       {/* Confirmed totals */}
       {confirmed.length > 0 && (
-        <div className="mt-3 grid grid-cols-2 gap-2 rounded-md border border-white/10 bg-slate-900/60 p-2 text-xs md:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-2 rounded-md border border-[#dededc] bg-[#f8f8f7] p-2 text-xs md:grid-cols-4">
           <Tot label="Step" v={`${ft(confirmedTotals.step_flashing_ft)} (${confirmedTotals.step_pieces} pc)`} />
           <Tot label="Counter" v={ft(confirmedTotals.counter_flashing_ft)} />
           <Tot label="Apron/headwall" v={ft(confirmedTotals.apron_flashing_ft + confirmedTotals.headwall_flashing_ft)} />
@@ -158,8 +158,8 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
                 <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ background: meta.color }} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-100">{meta.label}</span>
-                    <span className="text-xs text-slate-300">
+                    <span className="font-medium text-[#1a1a1a]">{meta.label}</span>
+                    <span className="text-xs text-[#2d2d2d]">
                       {r.measure === 'linear' ? ft(r.length_ft) : `×${r.quantity}`}
                       {r.pieces ? ` · ${r.pieces} pc` : ''}
                     </span>
@@ -167,13 +167,13 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
                       <span className="rounded bg-amber-900/40 px-1.5 py-0.5 text-[9px] font-semibold text-amber-300">VERIFY</span>
                     )}
                   </div>
-                  <div className="truncate text-[11px] text-slate-400">{r.source}</div>
+                  <div className="truncate text-[11px] text-[#6b7280]">{r.source}</div>
                 </div>
                 <button
                   onClick={() => setDismissed(prev => {
                     const n = new Set(prev); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n
                   })}
-                  className="shrink-0 rounded px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
+                  className="shrink-0 rounded px-2 py-1 text-xs text-[#2d2d2d] hover:bg-[#eeeeed]"
                 >{off ? 'Restore' : 'Dismiss'}</button>
               </li>
             )
@@ -187,7 +187,7 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
             <strong>No flashing conditions yet</strong> — flashing is built from what&apos;s on the roof.
             Add the conditions, then it fills in automatically:
           </p>
-          <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-slate-300">
+          <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-[#2d2d2d]">
             <li><strong>Chimney / skylight</strong> → upload a ground photo and tap <em>Add</em> (step ①) — flows in automatically.</li>
             <li><strong>Roof meets a taller wall, or a dormer</strong> → label that roof edge as <em>wall intersection</em>.</li>
           </ul>
@@ -205,9 +205,9 @@ export default function FlashingPanel({ runId, onConfirmedChange }: Props) {
 
 function Tot({ label, v }: { label: string; v: string }) {
   return (
-    <div className="rounded bg-slate-900/60 p-1.5">
-      <div className="text-[9px] uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="text-xs font-semibold text-slate-100">{v}</div>
+    <div className="rounded bg-[#f8f8f7] p-1.5">
+      <div className="text-[9px] uppercase tracking-wide text-[#6b7280]">{label}</div>
+      <div className="text-xs font-semibold text-[#1a1a1a]">{v}</div>
     </div>
   )
 }

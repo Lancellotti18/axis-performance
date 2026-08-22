@@ -97,15 +97,15 @@ export default function ScaleCheckPanel({ runId, imageUrl, imageWidthPx, imageHe
   }, [refPpf, realFeet, runId])
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
-      <h3 className="text-sm font-semibold text-slate-100">Scale check</h3>
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
+      <h3 className="text-sm font-semibold text-[#1a1a1a]">Scale check</h3>
       {savedScaleDescription && !saved && (
         <div className="mt-2 flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
           <span>✓</span>
           <span>Scale on file from your last visit: <strong>{savedScaleDescription}</strong>. Re-measure below only if the tile changed.</span>
         </div>
       )}
-      <p className="mt-2 text-xs text-slate-400">
+      <p className="mt-2 text-xs text-[#6b7280]">
         Click the two ends of a <strong>standard-size</strong> object on the tile (a parked car is best —
         you can see it clearly from above; avoid driveways/sidewalks, which have no standard size),
         then pick its real size. Confirms whether the imagery scale — and every measurement — is accurate.
@@ -116,7 +116,7 @@ export default function ScaleCheckPanel({ runId, imageUrl, imageWidthPx, imageHe
         <div
           ref={boxRef}
           onClick={onClick}
-          className="relative w-full cursor-crosshair overflow-hidden rounded border border-white/10 bg-black"
+          className="relative w-full cursor-crosshair overflow-hidden rounded border border-[#dededc] bg-black"
           style={{ aspectRatio: `${imageWidthPx} / ${imageHeightPx}` }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -129,12 +129,12 @@ export default function ScaleCheckPanel({ runId, imageUrl, imageWidthPx, imageHe
             {b && <circle cx={b[0]} cy={b[1]} r={0.008} fill="#22d3ee" />}
           </svg>
           {!a && (
-            <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/70 px-2 py-0.5 text-[10px] text-white">
+            <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/70 px-2 py-0.5 text-[10px] text-[#1a1a1a]">
               Click the first end of a known object
             </div>
           )}
           {a && !b && (
-            <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/70 px-2 py-0.5 text-[10px] text-white">
+            <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/70 px-2 py-0.5 text-[10px] text-[#1a1a1a]">
               Now click the other end
             </div>
           )}
@@ -142,47 +142,47 @@ export default function ScaleCheckPanel({ runId, imageUrl, imageWidthPx, imageHe
 
         {/* Controls + result */}
         <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-wide text-slate-400">Real-world size</div>
+          <div className="text-[10px] uppercase tracking-wide text-[#6b7280]">Real-world size</div>
           <div className="flex flex-wrap gap-1">
             {PRESETS.map(p => (
               <button
                 key={p.label}
                 onClick={() => setRealFeet(p.feet)}
-                className={`rounded px-2 py-1 text-[10px] ${realFeet === p.feet ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                className={`rounded px-2 py-1 text-[10px] ${realFeet === p.feet ? 'bg-blue-600 text-white' : 'bg-[#eeeeed] text-[#2d2d2d] hover:bg-[#e4e4e2]'}`}
               >{p.label}</button>
             ))}
           </div>
-          <label className="flex items-center gap-2 text-xs text-slate-300">
+          <label className="flex items-center gap-2 text-xs text-[#2d2d2d]">
             Custom:
             <input
               type="number" min={1} step={0.5} value={realFeet}
               onChange={e => setRealFeet(Number(e.target.value) || 0)}
-              className="w-20 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-white"
+              className="w-20 rounded border border-[#dededc] bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
             /> ft
           </label>
 
           {a && b ? (
-            <div className="rounded-md border border-white/10 bg-slate-900/60 p-2 text-xs">
-              <div className="text-slate-400">Current scale says: <span className="font-semibold text-slate-100">{fmtFt(currentFt)}</span></div>
-              <div className="text-slate-400">You entered: <span className="font-semibold text-slate-100">{fmtFt(realFeet)}</span></div>
+            <div className="rounded-md border border-[#dededc] bg-[#f8f8f7] p-2 text-xs">
+              <div className="text-[#6b7280]">Current scale says: <span className="font-semibold text-[#1a1a1a]">{fmtFt(currentFt)}</span></div>
+              <div className="text-[#6b7280]">You entered: <span className="font-semibold text-[#1a1a1a]">{fmtFt(realFeet)}</span></div>
               <div className={`mt-1 font-semibold ${verdictTone}`}>
                 {verdict === 'good' && '✓ Scale looks accurate'}
                 {verdict === 'minor' && `⚠ Off by ${Math.abs(discrepancyPct).toFixed(0)}%`}
                 {verdict === 'significant' && `✕ Off by ${Math.abs(discrepancyPct).toFixed(0)}% — areas ~${Math.abs(areaErrPct).toFixed(0)}% wrong`}
               </div>
               {verdict !== 'good' && (
-                <div className="mt-1 text-[10px] text-slate-500">
+                <div className="mt-1 text-[10px] text-[#6b7280]">
                   Measurements read {discrepancyPct > 0 ? 'too large' : 'too small'}. Re-fetch imagery (re-center on the house) for a tighter zoom, or proceed knowing this.
                 </div>
               )}
               <button
                 onClick={saveReference}
                 disabled={saving || saved || refPpf <= 0}
-                className="mt-2 w-full rounded bg-slate-700 py-1 text-[11px] text-white hover:bg-slate-600 disabled:opacity-40"
+                className="mt-2 w-full rounded bg-[#e4e4e2] py-1 text-[11px] text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-40"
               >{saved ? 'Recorded ✓' : saving ? 'Saving…' : 'Record reference scale'}</button>
             </div>
           ) : (
-            <div className="rounded-md border border-dashed border-white/10 p-2 text-[11px] text-slate-500">
+            <div className="rounded-md border border-dashed border-[#dededc] p-2 text-[11px] text-[#6b7280]">
               Drop two points on the tile to compare.
             </div>
           )}

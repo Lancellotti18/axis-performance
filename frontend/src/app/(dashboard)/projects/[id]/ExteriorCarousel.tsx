@@ -77,19 +77,19 @@ export default function ExteriorCarousel({ views }: Props) {
             ← → keys
           </span>
         </div>
-        <span className="text-slate-400 text-xs">{idx + 1} / {views.length}</span>
+        <span className="text-[#6b7280] text-xs">{idx + 1} / {views.length}</span>
       </div>
 
       {/* Image */}
       <div ref={imgRef} className="relative bg-slate-100 select-none" style={{ aspectRatio: '16/9' }}>
         {/* Loading spinner — shown until image resolves or errors */}
         {current.url && !imgLoaded[idx] && !imgErrors[idx] && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-900">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#f8f8f7]">
             <svg className="animate-spin text-indigo-400" width="28" height="28" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
             </svg>
-            <span className="text-slate-400 text-xs">Generating {label.toLowerCase()} view…</span>
+            <span className="text-[#6b7280] text-xs">Generating {label.toLowerCase()} view…</span>
           </div>
         )}
 
@@ -104,7 +104,7 @@ export default function ExteriorCarousel({ views }: Props) {
             onError={() => setImgErrors(prev => ({ ...prev, [idx]: true }))}
           />
         ) : !current.url || imgErrors[idx] ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900 text-slate-400">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#f8f8f7] text-[#6b7280]">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <rect x="3" y="3" width="18" height="14" rx="2"/>
               <path d="M3 9l4-4 4 4 4-4 4 4"/>
@@ -113,7 +113,7 @@ export default function ExteriorCarousel({ views }: Props) {
             {imgErrors[idx] && (
               <button
                 onClick={() => setImgErrors(prev => { const n = {...prev}; delete n[idx]; return n })}
-                className="mt-1 px-3 py-1 rounded-lg text-xs font-semibold text-white"
+                className="mt-1 px-3 py-1 rounded-lg text-xs font-semibold text-[#1a1a1a]"
                 style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
               >
                 ↺ Retry
@@ -124,7 +124,7 @@ export default function ExteriorCarousel({ views }: Props) {
 
         {/* Angle badge */}
         <div
-          className="absolute bottom-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-white"
+          className="absolute bottom-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-[#1a1a1a]"
           style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
         >
           {label}
@@ -137,7 +137,7 @@ export default function ExteriorCarousel({ views }: Props) {
             target="_blank"
             rel="noreferrer"
             download={`exterior_${current.angle}.jpg`}
-            className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full text-xs font-semibold text-white"
+            className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full text-xs font-semibold text-[#1a1a1a]"
             style={{ background: 'rgba(0,0,0,0.50)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
             onClick={e => e.stopPropagation()}
           >
@@ -149,7 +149,7 @@ export default function ExteriorCarousel({ views }: Props) {
         <button
           onClick={prev}
           aria-label="Previous view"
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white text-xl font-bold transition-all hover:scale-110"
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-[#1a1a1a] text-xl font-bold transition-all hover:scale-110"
           style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
         >
           ‹
@@ -159,7 +159,7 @@ export default function ExteriorCarousel({ views }: Props) {
         <button
           onClick={next}
           aria-label="Next view"
-          className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white text-xl font-bold transition-all hover:scale-110"
+          className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-[#1a1a1a] text-xl font-bold transition-all hover:scale-110"
           style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
         >
           ›
@@ -187,7 +187,7 @@ export default function ExteriorCarousel({ views }: Props) {
                 <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-400" />
               )}
               {!v.url && (
-                <span className="ml-1 text-[9px] text-slate-300">●</span>
+                <span className="ml-1 text-[9px] text-[#2d2d2d]">●</span>
               )}
             </button>
           )

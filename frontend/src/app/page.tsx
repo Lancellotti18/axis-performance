@@ -101,13 +101,13 @@ function PhaseCard({
             <div className="font-mono text-[10px] font-bold uppercase tracking-[0.26em] text-blue-300/90">{label}</div>
           </div>
 
-          <h3 className="mb-3 text-[27px] md:text-[33px] font-bold leading-[1.07] tracking-tight text-white">{title}</h3>
-          <p className="text-[14.5px] md:text-[15px] leading-relaxed text-white/65 font-light">{body}</p>
+          <h3 className="mb-3 text-[27px] md:text-[33px] font-bold leading-[1.07] tracking-tight text-[#1a1a1a]">{title}</h3>
+          <p className="text-[14.5px] md:text-[15px] leading-relaxed text-[#1a1a1a]/65 font-light">{body}</p>
 
           {chips.length > 0 && (
             <div className="mt-5 flex flex-wrap gap-2">
               {chips.map(c => (
-                <span key={c} className="rounded-full border border-white/[0.12] bg-white/[0.04] px-3 py-1 text-[11px] font-medium tracking-wide text-blue-100/85">
+                <span key={c} className="rounded-full border border-white/[0.12] bg-[#f8f8f7] px-3 py-1 text-[11px] font-medium tracking-wide text-blue-100/85">
                   {c}
                 </span>
               ))}
@@ -161,7 +161,7 @@ function Capability({
       <h3 className="text-2xl md:text-[26px] font-semibold text-slate-900 mb-3.5 tracking-tight leading-tight">
         {title}
       </h3>
-      <p className="text-slate-500 text-[15px] md:text-base leading-relaxed font-light">
+      <p className="text-[#6b7280] text-[15px] md:text-base leading-relaxed font-light">
         {body}
       </p>
       {/* subtle hover glow */}
@@ -219,31 +219,31 @@ function Nav() {
               <path d="M12.5 15 H15.5 L14 11 Z" fill="#06090E" />
             </svg>
           </div>
-          <span className="text-white font-semibold text-[15px] tracking-tight">Axis Roofing Performance</span>
+          <span className="text-[#1a1a1a] font-semibold text-[15px] tracking-tight">Axis Roofing Performance</span>
         </div>
         <div className="flex items-center gap-2">
           <Link
             href="/pricing"
-            className="hidden sm:block text-white/60 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-white/5 transition-all"
+            className="hidden sm:block text-[#1a1a1a]/60 hover:text-[#1a1a1a] text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#eeeeed] transition-all"
           >
             Pricing
           </Link>
           <Link
             href="/portal"
-            className="hidden sm:block text-white/60 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-white/5 transition-all"
+            className="hidden sm:block text-[#1a1a1a]/60 hover:text-[#1a1a1a] text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#eeeeed] transition-all"
             title="Homeowners: open the project link your contractor sent you"
           >
             Homeowner Sign In
           </Link>
           <Link
             href="/login"
-            className="text-white/80 hover:text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-white/5 transition-all"
+            className="text-[#1a1a1a]/80 hover:text-[#1a1a1a] text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#eeeeed] transition-all"
           >
             Sign In
           </Link>
           <Link
             href="/register"
-            className="text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all"
+            className="text-[#1a1a1a] text-sm font-semibold px-4 py-2 rounded-lg transition-all"
             style={{
               background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)',
               boxShadow: '0 4px 14px rgba(59,130,246,0.45), inset 0 1px 0 rgba(255,255,255,0.2)',
@@ -291,7 +291,7 @@ export default function HomePage() {
             The Roofing Growth Platform
           </div>
           <h1
-            className="font-display font-bold text-white text-5xl sm:text-7xl md:text-8xl leading-[0.95] mb-6"
+            className="font-display font-bold text-[#1a1a1a] text-5xl sm:text-7xl md:text-8xl leading-[0.95] mb-6"
             style={{ textShadow: '0 4px 60px rgba(0,0,0,0.6)' }}
           >
             Stop buying leads.
@@ -305,7 +305,7 @@ export default function HomePage() {
               Start owning them.
             </span>
           </h1>
-          <p className="text-white/65 text-base md:text-lg max-w-xl mx-auto font-light leading-relaxed mb-10">
+          <p className="text-[#1a1a1a]/65 text-base md:text-lg max-w-xl mx-auto font-light leading-relaxed mb-10">
             Homeowners get an instant, satellite-verified roof quote on
             <em> your</em> website — and you get a scored, exclusive lead in
             your CRM. No shared leads. No per-seat tax. Free to start.
@@ -313,7 +313,7 @@ export default function HomePage() {
           <div className="pointer-events-auto flex flex-col sm:flex-row gap-3">
             <Link
               href="/register"
-              className="text-white font-semibold text-sm px-7 py-3.5 rounded-xl transition-all hover:scale-[1.02]"
+              className="text-[#1a1a1a] font-semibold text-sm px-7 py-3.5 rounded-xl transition-all hover:scale-[1.02]"
               style={{
                 background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)',
                 boxShadow: '0 8px 28px rgba(59,130,246,0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
@@ -323,7 +323,7 @@ export default function HomePage() {
             </Link>
             <Link
               href="/login"
-              className="text-white/90 font-semibold text-sm px-7 py-3.5 rounded-xl backdrop-blur-md transition-all hover:bg-white/10"
+              className="text-[#1a1a1a]/90 font-semibold text-sm px-7 py-3.5 rounded-xl transition-all hover:bg-[#eeeeed]"
               style={{
                 background: 'rgba(255,255,255,0.04)',
                 border: '1px solid rgba(255,255,255,0.12)',
@@ -338,7 +338,7 @@ export default function HomePage() {
             className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
             style={{ opacity: 1 - Math.min(1, progress * 8) }}
           >
-            <span className="text-white/35 text-[10px] font-mono tracking-[0.4em] uppercase">Scroll to build</span>
+            <span className="text-[#1a1a1a]/35 text-[10px] font-mono tracking-[0.4em] uppercase">Scroll to build</span>
             <motion.div
               animate={{ y: [0, 6, 0] }}
               transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
@@ -437,7 +437,7 @@ export default function HomePage() {
               <h2 className="font-display text-4xl md:text-6xl font-bold text-slate-900 tracking-tight leading-tight max-w-3xl mx-auto">
                 Everything a contractor needs.
                 <br />
-                <span className="text-slate-400">One platform.</span>
+                <span className="text-[#6b7280]">One platform.</span>
               </h2>
             </div>
           </FadeIn>
@@ -494,7 +494,7 @@ export default function HomePage() {
                 >
                   {s.value}
                 </div>
-                <div className="text-slate-400 text-xs md:text-sm font-mono tracking-widest uppercase">
+                <div className="text-[#6b7280] text-xs md:text-sm font-mono tracking-widest uppercase">
                   {s.label}
                 </div>
               </div>
@@ -510,7 +510,7 @@ export default function HomePage() {
             <div className="text-red-500/80 text-[10px] font-mono tracking-[0.3em] uppercase mb-5">
               Without Axis
             </div>
-            <h3 className="font-display text-3xl md:text-4xl font-bold text-slate-400 mb-10 tracking-tight leading-tight">
+            <h3 className="font-display text-3xl md:text-4xl font-bold text-[#6b7280] mb-10 tracking-tight leading-tight">
               Renting leads. Chasing quotes.
             </h3>
             <ul className="space-y-4">
@@ -522,7 +522,7 @@ export default function HomePage() {
                 'Pay per seat for the office admin to see the CRM',
                 'Pay again for every measurement report',
               ].map(item => (
-                <li key={item} className="flex items-start gap-3 text-slate-500 text-[15px] font-light leading-relaxed">
+                <li key={item} className="flex items-start gap-3 text-[#6b7280] text-[15px] font-light leading-relaxed">
                   <span className="mt-2 w-3.5 h-px bg-red-400/60 flex-shrink-0" />
                   {item}
                 </li>
@@ -543,7 +543,7 @@ export default function HomePage() {
               <div className="text-blue-300 text-[10px] font-mono tracking-[0.3em] uppercase mb-5">
                 With Axis
               </div>
-              <h3 className="font-display text-3xl md:text-4xl font-bold text-white mb-10 tracking-tight leading-tight">
+              <h3 className="font-display text-3xl md:text-4xl font-bold text-[#1a1a1a] mb-10 tracking-tight leading-tight">
                 Automated in <span className="text-blue-300">seconds.</span>
               </h3>
               <ul className="space-y-4">
@@ -555,7 +555,7 @@ export default function HomePage() {
                   'Whole crew on one flat price, unlimited seats',
                   'Unlimited reports, your branding on every one',
                 ].map(item => (
-                  <li key={item} className="flex items-start gap-3 text-white/80 text-[15px] font-light leading-relaxed">
+                  <li key={item} className="flex items-start gap-3 text-[#1a1a1a]/80 text-[15px] font-light leading-relaxed">
                     <span className="mt-1.5 w-4 h-4 rounded-full bg-blue-500/15 border border-blue-400/40 flex items-center justify-center flex-shrink-0">
                       <svg width="9" height="7" viewBox="0 0 10 8" fill="none">
                         <path d="M1 4L3.5 6.5L9 1" stroke="rgba(147,197,253,0.95)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -585,7 +585,7 @@ export default function HomePage() {
         />
         <FadeIn>
           <div className="relative max-w-2xl mx-auto text-center">
-            <h2 className="font-display text-4xl md:text-6xl font-bold text-white tracking-tight leading-[1.05] mb-6">
+            <h2 className="font-display text-4xl md:text-6xl font-bold text-[#1a1a1a] tracking-tight leading-[1.05] mb-6">
               See it quote
               <br />
               <span
@@ -595,13 +595,13 @@ export default function HomePage() {
                 your own house.
               </span>
             </h2>
-            <p className="text-white/60 text-base md:text-lg font-light max-w-md mx-auto mb-10">
+            <p className="text-[#1a1a1a]/60 text-base md:text-lg font-light max-w-md mx-auto mb-10">
               Create a free account, type your address, and watch RoofIQ measure
               your roof — that&apos;s the demo. No credit card.
             </p>
             <Link
               href="/register"
-              className="inline-block text-white font-semibold text-base px-9 py-4 rounded-xl transition-all hover:scale-[1.03]"
+              className="inline-block text-[#1a1a1a] font-semibold text-base px-9 py-4 rounded-xl transition-all hover:scale-[1.03]"
               style={{
                 background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)',
                 boxShadow: '0 12px 36px rgba(59,130,246,0.55), inset 0 1px 0 rgba(255,255,255,0.2)',
@@ -614,7 +614,7 @@ export default function HomePage() {
       </section>
 
       {/* ─── Footer ──────────────────────────────────────────────────────── */}
-      <footer className="relative border-t border-slate-200 bg-white px-6 md:px-10 py-8 flex items-center justify-between text-slate-400 text-xs">
+      <footer className="relative border-t border-slate-200 bg-white px-6 md:px-10 py-8 flex items-center justify-between text-[#6b7280] text-xs">
         <span className="font-semibold text-slate-700">Axis Roofing Performance</span>
         <span className="font-mono tracking-wide">© 2026 · Built for contractors</span>
       </footer>

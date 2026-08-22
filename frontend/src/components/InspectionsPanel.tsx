@@ -16,7 +16,7 @@ const STATUS_STYLE: Record<AppointmentStatus, { label: string; cls: string }> = 
   requested: { label: 'Requested', cls: 'bg-amber-500/15 text-amber-300 ring-amber-500/30' },
   confirmed: { label: 'Confirmed', cls: 'bg-blue-500/15 text-blue-300 ring-blue-500/30' },
   completed: { label: 'Completed', cls: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30' },
-  cancelled: { label: 'Cancelled', cls: 'bg-slate-500/15 text-slate-400 ring-slate-500/30' },
+  cancelled: { label: 'Cancelled', cls: 'bg-[#9ca3af] text-[#6b7280] ring-[#dededc]' },
   no_show: { label: 'No-show', cls: 'bg-rose-500/15 text-rose-300 ring-rose-500/30' },
 }
 const WINDOW_LABEL: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', anytime: 'Anytime' }
@@ -81,17 +81,17 @@ export default function InspectionsPanel() {
   const hasDone = appts.some(a => a.status === 'cancelled' || a.status === 'completed' || a.status === 'no_show' || a.preferred_date < today)
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+    <div className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-white">📅 Inspections</span>
+          <span className="text-sm font-semibold text-[#1a1a1a]">📅 Inspections</span>
           {upcomingCount > 0 && (
             <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[11px] font-semibold text-blue-300 ring-1 ring-blue-500/30">{upcomingCount} upcoming</span>
           )}
         </div>
         {hasDone && (
           <button onClick={clearDone}
-            className="rounded-lg bg-white/5 px-2.5 py-1 text-[11px] font-medium text-slate-300 ring-1 ring-white/10 hover:bg-white/10">
+            className="rounded-lg bg-[#eeeeed] px-2.5 py-1 text-[11px] font-medium text-[#2d2d2d] ring-1 ring-[#dededc] hover:bg-[#eeeeed]">
             🧹 Clear old
           </button>
         )}
@@ -101,33 +101,33 @@ export default function InspectionsPanel() {
         {appts.map(a => {
           const st = STATUS_STYLE[a.status]
           return (
-            <div key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-white/[0.03] px-3 py-2.5 ring-1 ring-white/5">
+            <div key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-[#f8f8f7] px-3 py-2.5 ring-1 ring-[#dededc]">
               <div className="min-w-[92px] shrink-0">
-                <div className="text-sm font-semibold text-white">{fmtDay(a.preferred_date)}</div>
-                <div className="text-[11px] text-slate-400">{WINDOW_LABEL[a.time_window] || a.time_window}</div>
+                <div className="text-sm font-semibold text-[#1a1a1a]">{fmtDay(a.preferred_date)}</div>
+                <div className="text-[11px] text-[#6b7280]">{WINDOW_LABEL[a.time_window] || a.time_window}</div>
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-white">{a.homeowner_name || 'Homeowner'}</div>
-                <div className="truncate text-[11px] text-slate-400">
+                <div className="truncate text-sm text-[#1a1a1a]">{a.homeowner_name || 'Homeowner'}</div>
+                <div className="truncate text-[11px] text-[#6b7280]">
                   {a.address || '—'}
                   {a.homeowner_phone && <> · {a.homeowner_phone}</>}
                 </div>
-                {a.homeowner_note && <div className="mt-0.5 truncate text-[11px] italic text-slate-500">“{a.homeowner_note}”</div>}
+                {a.homeowner_note && <div className="mt-0.5 truncate text-[11px] italic text-[#6b7280]">“{a.homeowner_note}”</div>}
               </div>
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${st.cls}`}>{st.label}</span>
               <div className="flex shrink-0 items-center gap-1.5">
                 {a.report_token && (
                   <a href={`/r/${a.report_token}`} target="_blank" rel="noreferrer"
-                    className="rounded-lg bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-300 ring-1 ring-white/10 hover:bg-white/10">Report</a>
+                    className="rounded-lg bg-[#eeeeed] px-2 py-1 text-[11px] font-medium text-[#2d2d2d] ring-1 ring-[#dededc] hover:bg-[#eeeeed]">Report</a>
                 )}
                 {ACTIONS[a.status].map(act => (
                   <button key={act.to} onClick={() => setStatus(a.id, act.to)} disabled={busyId === a.id}
-                    className="rounded-lg bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-200 ring-1 ring-white/10 transition hover:bg-white/10 disabled:opacity-40">
+                    className="rounded-lg bg-[#eeeeed] px-2 py-1 text-[11px] font-medium text-[#1a1a1a] ring-1 ring-[#dededc] transition hover:bg-[#eeeeed] disabled:opacity-40">
                     {act.label}
                   </button>
                 ))}
                 <button onClick={() => removeOne(a)} disabled={busyId === a.id} title="Delete this inspection (customer stays in your CRM)"
-                  className="rounded-lg bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-white/10 transition hover:bg-rose-500/15 hover:text-rose-300 disabled:opacity-40">
+                  className="rounded-lg bg-[#eeeeed] px-2 py-1 text-[11px] font-medium text-[#6b7280] ring-1 ring-[#dededc] transition hover:bg-rose-500/15 hover:text-rose-300 disabled:opacity-40">
                   ✕
                 </button>
               </div>

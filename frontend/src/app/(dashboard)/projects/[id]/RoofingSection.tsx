@@ -135,8 +135,8 @@ export default function RoofingSection({
     setDraft(prev => prev ? { ...prev, [field]: value } : prev)
   }
 
-  const inputCls = 'w-full bg-white/[0.06] border border-white/12 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-3 py-2 text-slate-200 text-sm focus:outline-none transition-all'
-  const labelCls = 'block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1'
+  const inputCls = 'w-full bg-[#f8f8f7] border border-[#dededc] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-3 py-2 text-[#1a1a1a] text-sm focus:outline-none transition-all'
+  const labelCls = 'block text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-1'
 
   const ROOF_TABS: { key: RoofTab; label: string }[] = [
     { key: 'measurements', label: 'Measurements' },
@@ -151,14 +151,12 @@ export default function RoofingSection({
   return (
     <div>
       {/* Sub-tabs */}
-      <div className="flex items-center gap-1 mb-6 bg-white/[0.06] p-1 rounded-2xl w-fit">
+      <div className="flex items-center gap-1 mb-6 bg-[#f8f8f7] p-1 rounded-2xl w-fit">
         {ROOF_TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-              tab === t.key ? 'bg-white/[0.04] text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-200'
-            }`}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${ tab === t.key ? 'bg-[#f8f8f7] text-blue-700 shadow-sm' : 'text-[#6b7280] hover:text-[#1a1a1a]' }`}
           >
             {t.label}
           </button>
@@ -172,8 +170,8 @@ export default function RoofingSection({
           {!measurements && !analyzing && (
             <div className="bg-blue-500/10 border border-blue-200 rounded-2xl p-6 text-center">
               <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl"></div>
-              <h3 className="text-white font-bold mb-1">Analyze Roof Measurements</h3>
-              <p className="text-slate-500 text-sm mb-4 max-w-sm mx-auto">
+              <h3 className="text-[#1a1a1a] font-bold mb-1">Analyze Roof Measurements</h3>
+              <p className="text-[#6b7280] text-sm mb-4 max-w-sm mx-auto">
                 AI will analyze your uploaded blueprint or roof image to extract measurements. You'll review and confirm before anything is used.
               </p>
               {analysisError && (
@@ -181,7 +179,7 @@ export default function RoofingSection({
               )}
               <button
                 onClick={handleAnalyze}
-                className="inline-flex items-center gap-2 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all hover:scale-[1.02]"
+                className="inline-flex items-center gap-2 text-[#1a1a1a] font-bold px-6 py-2.5 rounded-xl text-sm transition-all hover:scale-[1.02]"
                 style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
@@ -191,13 +189,13 @@ export default function RoofingSection({
           )}
 
           {analyzing && (
-            <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
+            <div className="bg-[#f8f8f7] rounded-2xl p-10 text-center" style={cardStyle}>
               <svg className="w-10 h-10 text-blue-500 animate-spin mx-auto mb-4" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
               </svg>
-              <p className="text-slate-200 font-semibold">Analyzing roof measurements…</p>
-              <p className="text-slate-400 text-sm mt-1">Claude is examining your blueprint for dimensions, pitch, and structure.</p>
+              <p className="text-[#1a1a1a] font-semibold">Analyzing roof measurements…</p>
+              <p className="text-[#6b7280] text-sm mt-1">Claude is examining your blueprint for dimensions, pitch, and structure.</p>
             </div>
           )}
 
@@ -215,7 +213,7 @@ export default function RoofingSection({
                     <button
                       onClick={handleDownloadPdf}
                       disabled={downloadingPdf}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-3 py-1.5 rounded-xl transition-all hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1a1a1a] px-3 py-1.5 rounded-xl transition-all hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed"
                       style={{ background: 'linear-gradient(135deg, #059669, #047857)', boxShadow: '0 2px 10px rgba(5,150,105,0.25)' }}
                       title="Download professional roof report PDF"
                     >
@@ -254,14 +252,14 @@ export default function RoofingSection({
               )}
 
               {measurements.notes && (
-                <div className="bg-white/[0.06] border border-white/12 rounded-xl px-4 py-3 text-slate-300 text-sm italic">
+                <div className="bg-[#f8f8f7] border border-[#dededc] rounded-xl px-4 py-3 text-[#2d2d2d] text-sm italic">
                   {measurements.notes}
                 </div>
               )}
 
               {/* Measurement fields */}
-              <div className="bg-white/[0.04] rounded-2xl p-6" style={cardStyle}>
-                <h3 className="text-white font-bold text-sm mb-4">Roof Measurements</h3>
+              <div className="bg-[#f8f8f7] rounded-2xl p-6" style={cardStyle}>
+                <h3 className="text-[#1a1a1a] font-bold text-sm mb-4">Roof Measurements</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <label className={labelCls}>Total Sq Ft</label>
@@ -313,12 +311,12 @@ export default function RoofingSection({
                   <button
                     onClick={handleConfirm}
                     disabled={confirming}
-                    className="flex items-center gap-2 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40"
+                    className="flex items-center gap-2 text-[#1a1a1a] font-bold px-6 py-2.5 rounded-xl text-sm transition-all disabled:opacity-40"
                     style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 14px rgba(16,185,129,0.25)' }}
                   >
                     {confirming ? 'Saving…' : 'Confirm Measurements'}
                   </button>
-                  <button onClick={handleAnalyze} className="text-sm text-slate-500 hover:text-slate-200 font-medium px-4 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.06] transition-all">
+                  <button onClick={handleAnalyze} className="text-sm text-[#6b7280] hover:text-[#1a1a1a] font-medium px-4 py-2 rounded-xl bg-[#f8f8f7] hover:bg-[#f8f8f7] transition-all">
                     Re-analyze
                   </button>
                 </div>
@@ -331,10 +329,10 @@ export default function RoofingSection({
                   { label: 'Gross w/ Waste', value: (draft.total_sqft * (1 + draft.waste_pct / 100) / 100).toFixed(1) + ' sq', sub: `${draft.waste_pct}% waste factor` },
                   { label: 'Perimeter Est.', value: `${Math.round(draft.eaves_ft + draft.rakes_ft)} ft`, sub: 'Eaves + rakes' },
                 ].map(s => (
-                  <div key={s.label} className="bg-white/[0.04] rounded-2xl p-4 text-center" style={cardStyle}>
-                    <div className="text-2xl font-black text-white">{s.value}</div>
-                    <div className="text-slate-300 text-sm font-semibold mt-0.5">{s.label}</div>
-                    <div className="text-slate-400 text-xs">{s.sub}</div>
+                  <div key={s.label} className="bg-[#f8f8f7] rounded-2xl p-4 text-center" style={cardStyle}>
+                    <div className="text-2xl font-black text-[#1a1a1a]">{s.value}</div>
+                    <div className="text-[#2d2d2d] text-sm font-semibold mt-0.5">{s.label}</div>
+                    <div className="text-[#6b7280] text-xs">{s.sub}</div>
                   </div>
                 ))}
               </div>
@@ -346,12 +344,12 @@ export default function RoofingSection({
       {/* ── WASTE CALC TAB ─────────────────────────────────── */}
       {tab === 'waste' && (
         <div className="space-y-5">
-          <div className="bg-white/[0.04] rounded-2xl p-6" style={cardStyle}>
-            <h3 className="text-white font-bold text-sm mb-1">Waste & Overage Calculator</h3>
-            <p className="text-slate-400 text-xs mb-5">Adjust inputs to see how waste percentage affects your order quantities.</p>
+          <div className="bg-[#f8f8f7] rounded-2xl p-6" style={cardStyle}>
+            <h3 className="text-[#1a1a1a] font-bold text-sm mb-1">Waste & Overage Calculator</h3>
+            <p className="text-[#6b7280] text-xs mb-5">Adjust inputs to see how waste percentage affects your order quantities.</p>
 
             {!draft ? (
-              <div className="text-center py-10 text-slate-400">
+              <div className="text-center py-10 text-[#6b7280]">
                 <div className="text-4xl mb-3"></div>
                 Run roof measurements first to use the waste calculator.
               </div>
@@ -377,8 +375,8 @@ export default function RoofingSection({
                 </div>
 
                 {/* Waste guide */}
-                <div className="bg-white/[0.05] rounded-xl p-4 mb-5">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Recommended Waste by Roof Type</div>
+                <div className="bg-[#f8f8f7] rounded-xl p-4 mb-5">
+                  <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-3">Recommended Waste by Roof Type</div>
                   <div className="grid grid-cols-3 gap-2 text-xs">
                     {[
                       { type: 'Simple Gable (2 facets)', pct: '10%' },
@@ -388,9 +386,9 @@ export default function RoofingSection({
                       { type: 'Many valleys/cuts', pct: '+3–5%' },
                       { type: 'Cut-up dormers', pct: '+5%' },
                     ].map(r => (
-                      <div key={r.type} className="bg-white/[0.04] rounded-lg p-2.5 border border-white/10">
-                        <div className="font-bold text-slate-200">{r.pct}</div>
-                        <div className="text-slate-400 mt-0.5">{r.type}</div>
+                      <div key={r.type} className="bg-[#f8f8f7] rounded-lg p-2.5 border border-[#dededc]">
+                        <div className="font-bold text-[#1a1a1a]">{r.pct}</div>
+                        <div className="text-[#6b7280] mt-0.5">{r.type}</div>
                       </div>
                     ))}
                   </div>
@@ -407,7 +405,7 @@ export default function RoofingSection({
                     <div key={r.label} className="bg-blue-500/10 border border-blue-100 rounded-xl p-4 text-center">
                       <div className="text-2xl font-black text-blue-700">{r.value}</div>
                       <div className="text-blue-600 text-xs font-semibold mt-0.5">{r.unit}</div>
-                      <div className="text-slate-400 text-xs mt-0.5">{r.label}</div>
+                      <div className="text-[#6b7280] text-xs mt-0.5">{r.label}</div>
                     </div>
                   ))}
                 </div>
@@ -421,12 +419,12 @@ export default function RoofingSection({
       {tab === 'shingles' && (
         <div className="space-y-5">
           {loadingShingles ? (
-            <div className="flex items-center justify-center py-16 text-slate-400">Loading estimate…</div>
+            <div className="flex items-center justify-center py-16 text-[#6b7280]">Loading estimate…</div>
           ) : !shingleData || !shingleData.ready ? (
-            <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
+            <div className="bg-[#f8f8f7] rounded-2xl p-10 text-center" style={cardStyle}>
               <div className="text-4xl mb-3"></div>
-              <div className="text-slate-200 font-bold mb-1">Measurements Not Confirmed</div>
-              <div className="text-slate-400 text-sm mb-4">
+              <div className="text-[#1a1a1a] font-bold mb-1">Measurements Not Confirmed</div>
+              <div className="text-[#6b7280] text-sm mb-4">
                 {shingleData?.message || 'Confirm your roof measurements first to generate the shingle material list.'}
               </div>
               <button
@@ -445,48 +443,48 @@ export default function RoofingSection({
                   { label: 'Materials Cost', value: formatMoney(shingleData.total_materials_cost), sub: 'materials only' },
                   { label: 'Pitch', value: shingleData.measurements?.pitch || '—', sub: shingleData.measurements?.roof_type || '' },
                 ].map(s => (
-                  <div key={s.label} className="bg-white/[0.04] rounded-2xl p-5" style={cardStyle}>
-                    <div className="text-2xl font-black text-white">{s.value}</div>
-                    <div className="text-slate-300 text-sm font-semibold mt-0.5">{s.label}</div>
-                    <div className="text-slate-400 text-xs">{s.sub}</div>
+                  <div key={s.label} className="bg-[#f8f8f7] rounded-2xl p-5" style={cardStyle}>
+                    <div className="text-2xl font-black text-[#1a1a1a]">{s.value}</div>
+                    <div className="text-[#2d2d2d] text-sm font-semibold mt-0.5">{s.label}</div>
+                    <div className="text-[#6b7280] text-xs">{s.sub}</div>
                   </div>
                 ))}
               </div>
 
               {/* Materials table */}
-              <div className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+              <div className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={cardStyle}>
                 <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-                  <h3 className="text-white font-bold text-sm">Roofing Material List</h3>
-                  <span className="text-xs text-slate-400">Quantities include waste factor</span>
+                  <h3 className="text-[#1a1a1a] font-bold text-sm">Roofing Material List</h3>
+                  <span className="text-xs text-[#6b7280]">Quantities include waste factor</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b bg-white/[0.05]" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-                        <th className="text-left px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Material</th>
-                        <th className="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Qty</th>
-                        <th className="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Unit</th>
-                        <th className="text-right px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Unit Cost</th>
-                        <th className="text-right px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Total</th>
+                      <tr className="border-b bg-[#f8f8f7]" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+                        <th className="text-left px-6 py-3 text-xs font-bold text-[#6b7280] uppercase tracking-wider">Material</th>
+                        <th className="text-right px-4 py-3 text-xs font-bold text-[#6b7280] uppercase tracking-wider">Qty</th>
+                        <th className="text-right px-4 py-3 text-xs font-bold text-[#6b7280] uppercase tracking-wider">Unit</th>
+                        <th className="text-right px-4 py-3 text-xs font-bold text-[#6b7280] uppercase tracking-wider">Unit Cost</th>
+                        <th className="text-right px-6 py-3 text-xs font-bold text-[#6b7280] uppercase tracking-wider">Total</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(shingleData.materials as ShingleMaterial[]).map((m, i) => (
                         <tr key={i} className="border-b hover:bg-blue-500/30 transition-colors" style={{ borderColor: 'rgba(255,255,255,0.4)' }}>
                           <td className="px-6 py-4">
-                            <div className="text-white font-medium text-sm">{m.item_name}</div>
-                            {m.notes && <div className="text-slate-400 text-xs mt-0.5">{m.notes}</div>}
+                            <div className="text-[#1a1a1a] font-medium text-sm">{m.item_name}</div>
+                            {m.notes && <div className="text-[#6b7280] text-xs mt-0.5">{m.notes}</div>}
                           </td>
-                          <td className="px-4 py-4 text-right text-slate-200 font-semibold text-sm">{m.quantity}</td>
-                          <td className="px-4 py-4 text-right text-slate-400 text-sm">{m.unit}</td>
-                          <td className="px-4 py-4 text-right text-slate-300 text-sm">${m.unit_cost.toFixed(2)}</td>
-                          <td className="px-6 py-4 text-right font-bold text-white text-sm">{formatMoney(m.total_cost)}</td>
+                          <td className="px-4 py-4 text-right text-[#1a1a1a] font-semibold text-sm">{m.quantity}</td>
+                          <td className="px-4 py-4 text-right text-[#6b7280] text-sm">{m.unit}</td>
+                          <td className="px-4 py-4 text-right text-[#2d2d2d] text-sm">${m.unit_cost.toFixed(2)}</td>
+                          <td className="px-6 py-4 text-right font-bold text-[#1a1a1a] text-sm">{formatMoney(m.total_cost)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="bg-blue-500/10 border-t-2 border-blue-200">
-                        <td colSpan={4} className="px-6 py-4 text-sm font-bold text-slate-200">Total Materials</td>
+                        <td colSpan={4} className="px-6 py-4 text-sm font-bold text-[#1a1a1a]">Total Materials</td>
                         <td className="px-6 py-4 text-right text-lg font-black text-blue-700">{formatMoney(shingleData.total_materials_cost)}</td>
                       </tr>
                     </tfoot>

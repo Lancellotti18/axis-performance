@@ -55,7 +55,7 @@ function LoginForm() {
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <Label htmlFor="password" className="mb-0">Password</Label>
-            <Link href="/forgot-password" className="text-xs text-slate-500 hover:text-brand-600 transition-colors">
+            <Link href="/forgot-password" className="text-xs text-[#6b7280] hover:text-brand-600 transition-colors">
               Forgot password?
             </Link>
           </div>
@@ -73,7 +73,7 @@ function LoginForm() {
           {loading ? 'Signing in…' : 'Sign In'}
         </Button>
       </form>
-      <p className="text-center text-slate-500 text-sm mt-6">
+      <p className="text-center text-[#6b7280] text-sm mt-6">
         No account?{' '}
         <Link href="/register" className="text-brand-700 hover:text-brand-800 font-medium underline underline-offset-2">
           Create one free

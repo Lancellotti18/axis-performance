@@ -30,7 +30,7 @@ export default function NotificationBell() {
     <button
       onClick={() => router.push('/notifications')}
       aria-label={`Notifications${unread ? ` (${unread} unread)` : ''}`}
-      className="relative w-10 h-10 rounded-full flex items-center justify-center text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors"
+      className="relative w-10 h-10 rounded-full flex items-center justify-center text-[#2d2d2d] hover:text-[#1a1a1a] hover:bg-[#f8f8f7] transition-colors"
     >
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />

@@ -280,7 +280,7 @@ export default function HouseScrollScene({
 
         {/* Hairline progress strip — only shows while loading */}
         {bootstrapLoaded && loadProgress < 1 && (
-          <div className="absolute top-0 left-0 right-0 h-px bg-white/5">
+          <div className="absolute top-0 left-0 right-0 h-px bg-[#eeeeed]">
             <div
               className="h-full bg-gradient-to-r from-blue-400/0 via-blue-300/80 to-blue-400/0 transition-all duration-300"
               style={{ width: `${loadProgress * 100}%` }}

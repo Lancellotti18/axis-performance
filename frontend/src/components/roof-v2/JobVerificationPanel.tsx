@@ -96,11 +96,11 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
   }, [userId, profile])
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">📏 Job verification</h3>
-          <p className="text-xs text-slate-400">
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">📏 Job verification</h3>
+          <p className="text-xs text-[#6b7280]">
             After the crew measures for real, enter the actual squares. Axis compares it against
             its prediction{predictedSquares ? <> (<strong>{predictedSquares.toFixed(1)} sq</strong> on this roof)</> : null} and
             builds your <strong>verified accuracy</strong> stat.
@@ -121,18 +121,18 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-        <label className="text-slate-300">Actual roof size:</label>
+        <label className="text-[#2d2d2d]">Actual roof size:</label>
         <input
           type="number" min={1} step={0.1} value={actualSquares}
           onChange={e => setActualSquares(e.target.value)}
           placeholder="e.g. 24.5"
-          className="w-24 rounded border border-slate-700 bg-slate-800 px-2 py-1.5 text-white"
+          className="w-24 rounded border border-[#dededc] bg-[#eeeeed] px-2 py-1.5 text-[#1a1a1a]"
         />
-        <span className="text-slate-500">squares</span>
+        <span className="text-[#6b7280]">squares</span>
         <input
           type="text" value={notes} onChange={e => setNotes(e.target.value)}
           placeholder="Notes (optional)"
-          className="min-w-40 flex-1 rounded border border-slate-700 bg-slate-800 px-2 py-1.5 text-white"
+          className="min-w-40 flex-1 rounded border border-[#dededc] bg-[#eeeeed] px-2 py-1.5 text-[#1a1a1a]"
         />
         <button
           onClick={submit} disabled={saving}
@@ -141,16 +141,16 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
       </div>
       {result && <p className="mt-2 text-xs text-emerald-300">{result}</p>}
       {calibration && calibration.jobs > 0 && calibration.jobs < 3 && (
-        <p className="mt-2 text-[11px] text-slate-500">
+        <p className="mt-2 text-[11px] text-[#6b7280]">
           {calibration.jobs} verified job{calibration.jobs === 1 ? '' : 's'} so far — your accuracy stat appears on reports after 3.
         </p>
       )}
 
       {/* ---- Report branding (white-label) ---- */}
-      <div className="mt-4 border-t border-white/10 pt-3">
+      <div className="mt-4 border-t border-[#dededc] pt-3">
         <button onClick={() => setBrandOpen(o => !o)} className="flex w-full items-center justify-between text-left">
-          <span className="text-xs font-semibold text-slate-200">🏷 Report branding — your company on every report</span>
-          <span className="text-xs text-slate-500">{brandOpen ? 'Hide' : 'Edit'}</span>
+          <span className="text-xs font-semibold text-[#1a1a1a]">🏷 Report branding — your company on every report</span>
+          <span className="text-xs text-[#6b7280]">{brandOpen ? 'Hide' : 'Edit'}</span>
         </button>
         {brandOpen && (
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -160,38 +160,38 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
               ['phone', 'Phone'],
               ['email', 'Email'],
             ] as [keyof ContractorProfile, string][]).map(([key, label]) => (
-              <label key={key} className={`text-[11px] text-slate-400 ${key === 'logo_url' ? 'sm:col-span-2' : ''}`}>
+              <label key={key} className={`text-[11px] text-[#6b7280] ${key === 'logo_url' ? 'sm:col-span-2' : ''}`}>
                 {label}
                 <input
                   type="text"
                   value={(profile[key] as string) || ''}
                   onChange={e => setProfile(p => ({ ...p, [key]: e.target.value }))}
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs text-white"
+                  className="mt-1 w-full rounded border border-[#dededc] bg-[#eeeeed] px-2 py-1.5 text-xs text-[#1a1a1a]"
                 />
               </label>
             ))}
             {/* Logo: upload a file — Axis preps it (trim, center, pad, hi-res). */}
             <div className="sm:col-span-2">
-              <div className="text-[11px] text-slate-400">Company logo</div>
+              <div className="text-[11px] text-[#6b7280]">Company logo</div>
               <div className="mt-1 flex items-center gap-3">
                 {profile.logo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={profile.logo_url} alt="logo" className="h-10 max-w-40 rounded bg-white object-contain p-1" />
                 ) : (
-                  <span className="text-[11px] text-slate-500">No logo yet</span>
+                  <span className="text-[11px] text-[#6b7280]">No logo yet</span>
                 )}
                 <label className="cursor-pointer rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">
                   {logoUploading ? 'Preparing…' : profile.logo_url ? 'Replace logo' : 'Upload logo'}
                   <input type="file" accept="image/*" hidden disabled={logoUploading}
                     onChange={e => { const f = e.target.files?.[0]; if (f) void uploadLogo(f); e.target.value = '' }} />
                 </label>
-                <span className="text-[10px] text-slate-500">PNG/JPG — we auto-trim, center and size it for the report.</span>
+                <span className="text-[10px] text-[#6b7280]">PNG/JPG — we auto-trim, center and size it for the report.</span>
               </div>
             </div>
             <div className="sm:col-span-2">
               <button
                 onClick={saveBrand} disabled={brandSaving}
-                className="rounded bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-600 disabled:opacity-50"
+                className="rounded bg-[#e4e4e2] px-3 py-1.5 text-xs font-semibold text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-50"
               >{brandSaving ? 'Saving…' : 'Save branding'}</button>
             </div>
           </div>

@@ -53,12 +53,12 @@ export default function RegisterPage() {
         <Button type="submit" size="lg" loading={loading} className="w-full">
           {loading ? 'Creating account…' : 'Create Account'}
         </Button>
-        <p className="text-center text-xs leading-relaxed text-slate-500">
-          Next, add your <strong className="text-slate-600">business name and logo</strong> in Settings —
+        <p className="text-center text-xs leading-relaxed text-[#6b7280]">
+          Next, add your <strong className="text-[#9ca3af]">business name and logo</strong> in Settings —
           they brand every roof report and proposal you send, and appear throughout your CRM.
         </p>
       </form>
-      <p className="text-center text-slate-500 text-sm mt-6">
+      <p className="text-center text-[#6b7280] text-sm mt-6">
         Already have an account?{' '}
         <Link href="/login" className="text-brand-700 hover:text-brand-800 font-medium underline underline-offset-2">
           Sign in

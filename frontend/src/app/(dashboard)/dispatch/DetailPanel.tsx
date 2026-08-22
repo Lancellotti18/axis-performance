@@ -86,7 +86,7 @@ export default function DetailPanel({
             <div className="text-[15px] font-bold">{jobTypeLabel(job.job_type)} <span className="text-[12px] font-normal" style={{ color: 'var(--muted)' }}>#{job.job_number}</span></div>
             <div className="text-[12px]" style={{ color: 'var(--muted)' }}>{[cust ? `${cust.first_name} ${cust.last_name}` : null, prop?.line1, prop?.city].filter(Boolean).join(' · ')}</div>
           </div>
-          <button onClick={onClose} className="rounded-md px-2 py-1 text-sm hover:bg-white/5">✕</button>
+          <button onClick={onClose} className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]">✕</button>
         </div>
 
         <div className="space-y-5 p-5">
@@ -286,7 +286,7 @@ function JobProjectSection({ jobId }: { jobId: string }) {
             {data.photos.map((ph, i) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img key={i} src={mediaUrl(ph.url) || ''} alt={ph.caption || 'Job photo'} title={ph.caption || ph.phase || ''}
-                className="h-12 w-12 shrink-0 rounded-md object-cover ring-1 ring-white/10" />
+                className="h-12 w-12 shrink-0 rounded-md object-cover ring-1 ring-[#dededc]" />
             ))}
           </div>
         )}
@@ -296,11 +296,11 @@ function JobProjectSection({ jobId }: { jobId: string }) {
             className="rounded-md px-2.5 py-1 text-[11px] font-bold" style={{ background: 'var(--sky)', color: '#04121f' }}>Open project ↗</a>
           {data.share_token && (
             <a href={`/crew/${data.share_token}`} target="_blank" rel="noreferrer"
-              className="rounded-md border px-2.5 py-1 text-[11px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Crew photos ↗</a>
+              className="rounded-md border px-2.5 py-1 text-[11px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>Crew photos ↗</a>
           )}
           {data.has_report && (
             <a href={`/projects/${p.id}`} target="_blank" rel="noreferrer"
-              className="rounded-md border px-2.5 py-1 text-[11px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)' }}>Report ↗</a>
+              className="rounded-md border px-2.5 py-1 text-[11px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>Report ↗</a>
           )}
           <button disabled={busy} onClick={() => relink(null)} className="ml-auto rounded-md px-2 py-1 text-[11px] disabled:opacity-50" style={{ color: 'var(--muted)' }}>Unlink</button>
         </div>
@@ -328,7 +328,7 @@ function ProjectPicker({ busy, onPick }: { busy: boolean; onPick: (id: string) =
   if (!open) {
     return (
       <button onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-[12px] font-semibold transition-colors hover:bg-white/5"
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-[12px] font-semibold transition-colors hover:bg-[#eeeeed]"
         style={{ borderColor: 'var(--line)', color: 'var(--muted)' }}>
         🔗 Link this job to a roofing project
       </button>
@@ -348,7 +348,7 @@ function ProjectPicker({ busy, onPick }: { busy: boolean; onPick: (id: string) =
           <div className="py-4 text-center text-[11px]" style={{ color: 'var(--muted)' }}>No projects found.</div>
         ) : results.map(r => (
           <button key={r.id} disabled={busy} onClick={() => onPick(r.id)}
-            className="flex w-full items-center gap-2 rounded-md p-1.5 text-left hover:bg-white/5 disabled:opacity-50">
+            className="flex w-full items-center gap-2 rounded-md p-1.5 text-left hover:bg-[#eeeeed] disabled:opacity-50">
             {mediaUrl(r.thumbnail_url) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={mediaUrl(r.thumbnail_url)!} alt="" className="h-9 w-9 shrink-0 rounded object-cover" />

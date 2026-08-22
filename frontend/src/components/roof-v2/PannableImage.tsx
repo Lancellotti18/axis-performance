@@ -31,7 +31,7 @@ export default function PannableImage({
       ref={map.containerRef}
       {...map.bind}
       tabIndex={0}
-      className={`relative select-none overflow-hidden rounded border border-white/10 bg-slate-950 outline-none focus:ring-1 focus:ring-blue-500/40 ${map.isPanning ? 'cursor-grabbing' : 'cursor-grab'} ${className}`}
+      className={`relative select-none overflow-hidden rounded border border-[#dededc] bg-[#f8f8f7] outline-none focus:ring-1 focus:ring-blue-500/40 ${map.isPanning ? 'cursor-grabbing' : 'cursor-grab'} ${className}`}
       style={{ height: maxHeight, touchAction: 'none' }}
     >
       {/* Blurred backdrop fills the letterbox with a soft satellite continuation
@@ -60,39 +60,39 @@ export default function PannableImage({
         <button
           onClick={map.zoomIn}
           title="Zoom in (+)"
-          className="flex h-8 w-8 items-center justify-center rounded bg-slate-900/85 text-lg text-white shadow-lg backdrop-blur hover:bg-blue-600"
+          className="flex h-8 w-8 items-center justify-center rounded bg-[#f8f8f7] text-lg text-white shadow-lg hover:bg-blue-600"
         >+</button>
         <button
           onClick={map.zoomOut}
           title="Zoom out (−)"
-          className="flex h-8 w-8 items-center justify-center rounded bg-slate-900/85 text-lg text-white shadow-lg backdrop-blur hover:bg-blue-600"
+          className="flex h-8 w-8 items-center justify-center rounded bg-[#f8f8f7] text-lg text-white shadow-lg hover:bg-blue-600"
         >−</button>
         <button
           onClick={map.reset}
           title="Reset view (0 or R)"
-          className="flex h-8 w-8 items-center justify-center rounded bg-slate-900/85 text-xs text-white shadow-lg backdrop-blur hover:bg-blue-600"
+          className="flex h-8 w-8 items-center justify-center rounded bg-[#f8f8f7] text-xs text-white shadow-lg hover:bg-blue-600"
         >⟲</button>
       </div>
 
       {/* Instant pan keypad (top-right) — CSS transform, no refetch */}
-      <div className="absolute right-2 top-2 grid grid-cols-3 gap-0.5 rounded-md border border-white/20 bg-slate-900/85 p-1 shadow-lg backdrop-blur">
+      <div className="absolute right-2 top-2 grid grid-cols-3 gap-0.5 rounded-md border border-[#dededc] bg-[#f8f8f7] p-1 shadow-lg">
         <div></div>
         <button onClick={() => map.panBy(0, 60)} title="Pan up (↑ / W)"
-          className="flex h-7 w-7 items-center justify-center rounded bg-slate-800 text-white hover:bg-blue-600">↑</button>
+          className="flex h-7 w-7 items-center justify-center rounded bg-[#eeeeed] text-white hover:bg-blue-600">↑</button>
         <div></div>
         <button onClick={() => map.panBy(60, 0)} title="Pan left (← / A)"
-          className="flex h-7 w-7 items-center justify-center rounded bg-slate-800 text-white hover:bg-blue-600">←</button>
-        <div className="flex h-7 w-7 items-center justify-center text-[9px] text-slate-500">pan</div>
+          className="flex h-7 w-7 items-center justify-center rounded bg-[#eeeeed] text-white hover:bg-blue-600">←</button>
+        <div className="flex h-7 w-7 items-center justify-center text-[9px] text-[#6b7280]">pan</div>
         <button onClick={() => map.panBy(-60, 0)} title="Pan right (→ / D)"
-          className="flex h-7 w-7 items-center justify-center rounded bg-slate-800 text-white hover:bg-blue-600">→</button>
+          className="flex h-7 w-7 items-center justify-center rounded bg-[#eeeeed] text-white hover:bg-blue-600">→</button>
         <div></div>
         <button onClick={() => map.panBy(0, -60)} title="Pan down (↓ / S)"
-          className="flex h-7 w-7 items-center justify-center rounded bg-slate-800 text-white hover:bg-blue-600">↓</button>
+          className="flex h-7 w-7 items-center justify-center rounded bg-[#eeeeed] text-white hover:bg-blue-600">↓</button>
         <div></div>
       </div>
 
       {/* Hint */}
-      <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-[10px] text-white">
+      <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-[10px] text-[#1a1a1a]">
         Drag to pan · scroll to zoom · arrows / WASD · 0 resets
       </div>
 

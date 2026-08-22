@@ -106,7 +106,7 @@ function TransitionThumb({
   if (x + w > imgW) w = imgW - x
   if (y + h > imgH) h = imgH - y
   return (
-    <svg viewBox={`${x} ${y} ${w} ${h}`} className="h-14 w-14 shrink-0 rounded border border-white/10 bg-black">
+    <svg viewBox={`${x} ${y} ${w} ${h}`} className="h-14 w-14 shrink-0 rounded border border-[#dededc] bg-black">
       <image href={imageUrl} x={0} y={0} width={imgW} height={imgH} preserveAspectRatio="none" />
       <line x1={ax} y1={ay} x2={bx} y2={by} stroke={color} strokeWidth={w * 0.04} strokeLinecap="round" opacity={0.95} />
     </svg>
@@ -154,10 +154,10 @@ export default function WallTransitionPanel({
   }, [edges, onApplyEdges])
 
   return (
-    <section id="roof-to-wall-panel" className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm scroll-mt-16">
+    <section id="roof-to-wall-panel" className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm scroll-mt-16">
       <div>
-        <h3 className="text-sm font-semibold text-slate-100">Roof-to-wall transitions</h3>
-        <p className="text-xs text-slate-400">
+        <h3 className="text-sm font-semibold text-[#1a1a1a]">Roof-to-wall transitions</h3>
+        <p className="text-xs text-[#6b7280]">
           Where the roof meets a wall or dormer (step flashing). Driven by your <strong>ground photos</strong> —
           they detect the condition, then you confirm the matching roof edge with one tap.
         </p>
@@ -180,7 +180,7 @@ export default function WallTransitionPanel({
             className="mt-1.5 rounded bg-emerald-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-600 disabled:opacity-40"
           >{showCandidates ? 'Hide likely edges' : `Show ${candidates.length} likely wall edge${candidates.length === 1 ? '' : 's'}`}</button>
           {candidates.length === 0 && (
-            <span className="ml-2 text-slate-500">Trace the facet that meets the wall first, then this lights up.</span>
+            <span className="ml-2 text-[#6b7280]">Trace the facet that meets the wall first, then this lights up.</span>
           )}
         </div>
       )}
@@ -190,7 +190,7 @@ export default function WallTransitionPanel({
           {candidates.map((c, i) => {
             const done = labeledKeys.has(edgeKey(c.facetLabel, c.vertexIndexStart))
             return (
-              <li key={i} className="flex items-center gap-3 rounded-md border border-white/10 p-2">
+              <li key={i} className="flex items-center gap-3 rounded-md border border-[#dededc] p-2">
                 {imageUrl && (
                   <TransitionThumb
                     imageUrl={imageUrl} imgW={imageWidthPx} imgH={imageHeightPx}
@@ -199,10 +199,10 @@ export default function WallTransitionPanel({
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-100">Facet {c.facetLabel}</span>
-                    <span className="text-[10px] text-slate-400">edge {c.vertexIndexStart}</span>
+                    <span className="font-medium text-[#1a1a1a]">Facet {c.facetLabel}</span>
+                    <span className="text-[10px] text-[#6b7280]">edge {c.vertexIndexStart}</span>
                   </div>
-                  <div className="truncate text-[11px] text-slate-400">{c.reason}</div>
+                  <div className="truncate text-[11px] text-[#6b7280]">{c.reason}</div>
                 </div>
                 <button
                   onClick={() => labelOneEdge(c)}

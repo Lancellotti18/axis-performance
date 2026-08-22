@@ -251,13 +251,13 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-white/10 bg-slate-900/40 p-4">
+    <div className="space-y-3 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
       {/* Photo + type picker */}
       <div className="flex flex-wrap items-center gap-3 text-xs">
         <select
           value={selectedPhotoId ?? ''}
           onChange={e => setSelectedPhotoId(e.target.value)}
-          className="rounded bg-slate-800 px-2 py-1 text-slate-100"
+          className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
         >
           {photos.map(p => (
             <option key={p.id} value={p.id}>
@@ -268,7 +268,7 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
         <select
           value={type}
           onChange={e => setType(e.target.value as MeasurementType)}
-          className="rounded bg-slate-800 px-2 py-1 text-slate-100"
+          className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
         >
           {MEASUREMENT_TYPE_OPTIONS.map(o => (
             <option key={o.key} value={o.key}>{o.label}</option>
@@ -277,7 +277,7 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
         <select
           value={elevation}
           onChange={e => setElevation(e.target.value as typeof elevation)}
-          className="rounded bg-slate-800 px-2 py-1 text-slate-100"
+          className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
         >
           {['front', 'right', 'rear', 'left', 'other'].map(e => (
             <option key={e} value={e}>{e}</option>
@@ -287,7 +287,7 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
           <select
             value={material}
             onChange={e => setMaterial(e.target.value)}
-            className="rounded bg-slate-800 px-2 py-1 text-slate-100"
+            className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
           >
             {MATERIAL_TYPES.map(m => <option key={m} value={m}>{m.replace('_', ' ')}</option>)}
           </select>
@@ -296,7 +296,7 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
           placeholder="Facade ID (SI-1, W-103, D-1…)"
           value={facadeId}
           onChange={e => setFacadeId(e.target.value)}
-          className="w-44 rounded bg-slate-800 px-2 py-1 text-slate-100"
+          className="w-44 rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
         />
       </div>
 
@@ -310,22 +310,20 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
               if (p === 'review' && tracePoints.length < 1) return
               setPhase(p)
             }}
-            className={`rounded-full px-3 py-1 ${
-              phase === p ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
+            className={`rounded-full px-3 py-1 ${ phase === p ? 'bg-blue-600 text-white' : 'bg-[#eeeeed] text-[#2d2d2d] hover:bg-[#e4e4e2]' }`}
           >{i + 1}. {p}</button>
         ))}
       </div>
 
       {/* Scale controls */}
       {phase === 'scale' && (
-        <div className="space-y-2 rounded border border-white/10 bg-slate-800/40 p-3 text-xs">
+        <div className="space-y-2 rounded border border-[#dededc] bg-[#eeeeed] p-3 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            <label className="text-slate-400">Reference:</label>
+            <label className="text-[#6b7280]">Reference:</label>
             <select
               value={refKey}
               onChange={e => setRefKey(e.target.value as typeof REFERENCE_OPTIONS[number]['key'])}
-              className="rounded bg-slate-800 px-2 py-1 text-slate-100"
+              className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
             >
               {REFERENCE_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
@@ -334,10 +332,10 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
                 type="number" min={1} step={1}
                 value={customInches}
                 onChange={e => setCustomInches(Number(e.target.value))}
-                className="w-24 rounded bg-slate-800 px-2 py-1 text-slate-100"
+                className="w-24 rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
               />
             )}
-            <span className="text-slate-500">Click TOP then BOTTOM of the reference object.</span>
+            <span className="text-[#6b7280]">Click TOP then BOTTOM of the reference object.</span>
           </div>
           {scaleEndpoints.length === 2 && (
             <div className="rounded bg-emerald-500/15 px-2 py-1 text-emerald-300">
@@ -355,8 +353,8 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
 
       {/* Trace controls */}
       {phase === 'trace' && (
-        <div className="space-y-2 rounded border border-white/10 bg-slate-800/40 p-3 text-xs">
-          <div className="text-slate-400">
+        <div className="space-y-2 rounded border border-[#dededc] bg-[#eeeeed] p-3 text-xs">
+          <div className="text-[#6b7280]">
             {geometry === 'polygon' && 'Click points around the region. At least 3.'}
             {geometry === 'rect' && 'Click the top-left then bottom-right corners.'}
             {geometry === 'polyline' && 'Click along the trim run. At least 2 points.'}
@@ -366,12 +364,12 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
             <button
               onClick={() => setTracePoints(prev => prev.slice(0, -1))}
               disabled={tracePoints.length === 0}
-              className="rounded bg-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-600 disabled:opacity-50"
+              className="rounded bg-[#e4e4e2] px-2 py-1 text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-50"
             >Undo</button>
             <button
               onClick={() => setTracePoints([])}
               disabled={tracePoints.length === 0}
-              className="rounded bg-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-600 disabled:opacity-50"
+              className="rounded bg-[#e4e4e2] px-2 py-1 text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-50"
             >Clear</button>
             <button
               onClick={advance}
@@ -400,7 +398,7 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
             placeholder="Notes (optional)"
             value={notes}
             onChange={e => setNotes(e.target.value)}
-            className="h-14 w-full rounded bg-slate-800 px-2 py-1 text-slate-100"
+            className="h-14 w-full rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
           />
           <button
             onClick={save}
@@ -411,7 +409,7 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
       )}
 
       {/* Photo canvas */}
-      <div className="relative max-h-[600px] overflow-hidden rounded-lg border border-white/10 bg-black">
+      <div className="relative max-h-[600px] overflow-hidden rounded-lg border border-[#dededc] bg-black">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={selectedPhoto.photo_url}

@@ -16,7 +16,7 @@ export default function ProjectError({
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6">
       <div className="bg-white rounded-2xl p-8 max-w-xl w-full shadow-lg border border-red-100">
         <h2 className="text-lg font-bold text-red-600 mb-2">Something went wrong</h2>
-        <p className="text-slate-600 text-sm mb-4">
+        <p className="text-[#9ca3af] text-sm mb-4">
           The project page encountered an error. The details below will help fix it.
         </p>
         <pre className="bg-slate-50 rounded-xl p-4 text-xs text-red-700 overflow-auto max-h-48 mb-5 border border-red-100">

@@ -91,8 +91,8 @@ export default function ResetPasswordPage() {
         </Button>
       </form>
 
-      <p className="text-center text-slate-500 text-sm mt-6">
-        <Link href="/login" className="text-slate-500 hover:text-brand-700 transition-colors">
+      <p className="text-center text-[#6b7280] text-sm mt-6">
+        <Link href="/login" className="text-[#6b7280] hover:text-brand-700 transition-colors">
           ← Back to Sign In
         </Link>
       </p>

@@ -11,7 +11,7 @@ import { useParams } from 'next/navigation'
 
 import { api, type PublicProposal, type ProposalTier } from '@/lib/api'
 
-const inputCls = 'rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20'
+const inputCls = 'rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-[#6b7280] shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20'
 
 export default function PublicProposalPage() {
   const params = useParams<{ token: string }>()
@@ -58,7 +58,7 @@ export default function PublicProposalPage() {
 
   if (notFound) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-slate-600">
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-[#9ca3af]">
         This proposal link isn&apos;t valid — please contact your contractor for a fresh one.
       </main>
     )
@@ -87,7 +87,7 @@ export default function PublicProposalPage() {
             <img src={p.logo_url} alt={p.company_name} className="mx-auto mb-3 h-24 sm:h-28 max-w-[340px] object-contain" />
           )}
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{p.company_name}</h1>
-          <div className="mt-1 text-xs text-slate-500">
+          <div className="mt-1 text-xs text-[#6b7280]">
             {[p.license_number ? `License ${p.license_number}` : null, p.phone, p.email].filter(Boolean).join(' · ')}
           </div>
         </header>
@@ -99,18 +99,18 @@ export default function PublicProposalPage() {
           <div className="mt-3 grid grid-cols-3 gap-3 text-center">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="text-lg font-bold text-slate-900">{p.total_roof_sqft ? Math.round(p.total_roof_sqft).toLocaleString() : '—'} ft²</div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Measured roof area</div>
+              <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[#6b7280]">Measured roof area</div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="text-lg font-bold text-slate-900">{p.squares ?? '—'}</div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Roofing squares</div>
+              <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[#6b7280]">Roofing squares</div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="text-lg font-bold text-slate-900">{p.predominant_pitch || '—'}</div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">Roof pitch</div>
+              <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[#6b7280]">Roof pitch</div>
             </div>
           </div>
-          <p className="mt-2 text-[11px] text-slate-400">
+          <p className="mt-2 text-[11px] text-[#6b7280]">
             Measured from aerial + solar data{p.valid_until ? ` · proposal valid through ${p.valid_until}` : ''}.
           </p>
         </section>
@@ -121,7 +121,7 @@ export default function PublicProposalPage() {
             <h2 className="mt-2 text-xl font-bold text-emerald-800">
               {accepted || `Accepted — ${p.accepted_tier} option`}
             </h2>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-[#9ca3af]">
               {p.company_name} will contact you to confirm details and schedule the work.
             </p>
             {p.phone && (
@@ -141,11 +141,7 @@ export default function PublicProposalPage() {
                   tabIndex={0}
                   onClick={() => { setChoosing(t); setError(null) }}
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setChoosing(t); setError(null) } }}
-                  className={`relative flex cursor-pointer flex-col rounded-2xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                    i === popularIdx
-                      ? 'border-blue-400 shadow-[0_16px_44px_-14px_rgba(59,130,246,0.35)]'
-                      : 'border-slate-200 shadow-[0_8px_30px_-14px_rgba(15,40,80,0.15)]'
-                  }`}
+                  className={`relative flex cursor-pointer flex-col rounded-2xl border bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${ i === popularIdx ? 'border-blue-400 shadow-[0_16px_44px_-14px_rgba(59,130,246,0.35)]' : 'border-slate-200 shadow-[0_8px_30px_-14px_rgba(15,40,80,0.15)]' }`}
                 >
                   {i === popularIdx && !t.homeowner_pick && (
                     <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-blue-600 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
@@ -162,7 +158,7 @@ export default function PublicProposalPage() {
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={t.render_url} alt={`Your roof in ${t.color_name || t.name}`} className="block aspect-[4/3] w-full object-cover" />
                       {t.color_name && (
-                        <div className="bg-slate-900/80 px-2 py-1 text-center text-[10px] font-medium text-white">
+                        <div className="bg-[#f8f8f7] px-2 py-1 text-center text-[10px] font-medium text-[#1a1a1a]">
                           Your home in {t.color_name}
                         </div>
                       )}
@@ -171,21 +167,17 @@ export default function PublicProposalPage() {
                   <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-600/80">{t.name}</div>
                   <div className="mt-1 text-base font-semibold text-slate-900">{t.headline}</div>
                   <div className="mt-3 text-3xl font-bold text-slate-900">{money(t.price)}</div>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-500">{t.description}</p>
+                  <p className="mt-2 text-xs leading-relaxed text-[#6b7280]">{t.description}</p>
                   <ul className="mt-3 flex-1 space-y-1.5">
                     {t.features.map(f => (
-                      <li key={f} className="flex items-start gap-1.5 text-xs text-slate-600">
+                      <li key={f} className="flex items-start gap-1.5 text-xs text-[#9ca3af]">
                         <span className="mt-0.5 text-emerald-500">✓</span>{f}
                       </li>
                     ))}
                   </ul>
                   <button
                     onClick={e => { e.stopPropagation(); setChoosing(t); setError(null) }}
-                    className={`mt-4 rounded-lg py-2.5 text-sm font-semibold transition ${
-                      i === popularIdx
-                        ? 'text-white hover:scale-[1.02]'
-                        : 'bg-slate-100 text-slate-800 ring-1 ring-slate-200 hover:bg-slate-200'
-                    }`}
+                    className={`mt-4 rounded-lg py-2.5 text-sm font-semibold transition ${ i === popularIdx ? 'text-[#1a1a1a] hover:scale-[1.02]' : 'bg-slate-100 text-slate-800 ring-1 ring-slate-200 hover:bg-slate-200' }`}
                     style={i === popularIdx ? { background: 'linear-gradient(180deg, #3B82F6 0%, #1E40AF 100%)', boxShadow: '0 6px 20px rgba(59,130,246,0.35)' } : undefined}
                   >Choose {t.name}</button>
                 </div>
@@ -194,13 +186,13 @@ export default function PublicProposalPage() {
 
             {/* Accept modal */}
             {choosing && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm" onClick={() => setChoosing(null)}>
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#f8f8f7] p-4" onClick={() => setChoosing(null)}>
                 <div
                   className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
                   onClick={e => e.stopPropagation()}
                 >
                   <h3 className="text-lg font-bold text-slate-900">Accept the {choosing.name} option</h3>
-                  <div className="mt-1 text-sm text-slate-500">{choosing.headline} — <strong className="text-slate-900">{money(choosing.price)}</strong></div>
+                  <div className="mt-1 text-sm text-[#6b7280]">{choosing.headline} — <strong className="text-slate-900">{money(choosing.price)}</strong></div>
                   <div className="mt-4 grid gap-2">
                     <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" className={inputCls} />
                     <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email (optional)" className={inputCls} />
@@ -213,9 +205,9 @@ export default function PublicProposalPage() {
                       className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(5,150,105,0.3)] hover:bg-emerald-500 disabled:opacity-50">
                       {submitting ? 'Accepting…' : `Accept — ${money(choosing.price)}`}
                     </button>
-                    <button onClick={() => setChoosing(null)} className="rounded-lg bg-slate-100 px-4 text-sm text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200">Back</button>
+                    <button onClick={() => setChoosing(null)} className="rounded-lg bg-slate-100 px-4 text-sm text-[#9ca3af] ring-1 ring-slate-200 hover:bg-slate-200">Back</button>
                   </div>
-                  <p className="mt-3 text-[10px] text-slate-400">
+                  <p className="mt-3 text-[10px] text-[#6b7280]">
                     Accepting signals your intent to move forward — {p.company_name} will confirm final details
                     and paperwork before any work begins.
                   </p>
@@ -225,7 +217,7 @@ export default function PublicProposalPage() {
           </>
         )}
 
-        <p className="mt-8 text-center text-[10px] text-slate-400">Proposal generated with Axis Roofing Performance.</p>
+        <p className="mt-8 text-center text-[10px] text-[#6b7280]">Proposal generated with Axis Roofing Performance.</p>
       </div>
     </main>
   )

@@ -59,22 +59,22 @@ function LeadImage({ lat, lng }: { lat: number; lng: number }) {
       } catch { setStreet('none') }
     }
   }
-  const imgCls = 'h-full w-full rounded-lg bg-slate-800 object-cover ring-1 ring-white/10'
+  const imgCls = 'h-full w-full rounded-lg bg-[#eeeeed] object-cover ring-1 ring-[#dededc]'
   return (
     <div className="relative h-28 w-36 flex-shrink-0">
       {mode === 'street' && typeof street === 'string' && street.startsWith('data:') ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={street} alt="Street view" className={imgCls} />
       ) : mode === 'street' && street === 'loading' ? (
-        <div className={`flex items-center justify-center text-[10px] text-slate-400 ${imgCls}`}>Loading street view…</div>
+        <div className={`flex items-center justify-center text-[10px] text-[#6b7280] ${imgCls}`}>Loading street view…</div>
       ) : mode === 'street' && street === 'none' ? (
-        <div className={`flex items-center justify-center px-2 text-center text-[10px] text-slate-500 ${imgCls}`}>No street view here</div>
+        <div className={`flex items-center justify-center px-2 text-center text-[10px] text-[#6b7280] ${imgCls}`}>No street view here</div>
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={roofThumb(lat, lng)} alt="Roof satellite" loading="lazy" className={imgCls} />
       )}
       <button onClick={toggle} type="button"
-        className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white backdrop-blur transition-colors hover:bg-black/80">
+        className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-[#1a1a1a] transition-colors hover:bg-black/80">
         {mode === 'street' ? '🛰 Satellite' : '📷 Street'}
       </button>
     </div>
@@ -84,7 +84,7 @@ function LeadImage({ lat, lng }: { lat: number; lng: number }) {
 const TIER: Record<string, string> = {
   Hot: 'bg-rose-500/15 text-rose-300 ring-rose-400/30',
   Warm: 'bg-amber-500/15 text-amber-300 ring-amber-400/30',
-  Cool: 'bg-slate-500/15 text-slate-300 ring-slate-400/30',
+  Cool: 'bg-[#9ca3af] text-[#2d2d2d] ring-slate-400/30',
 }
 
 export default function FindRoofsPage() {
@@ -147,18 +147,18 @@ export default function FindRoofsPage() {
   }, [router])
 
   return (
-    <div className="min-h-full" style={{ background: '#040810' }}>
+    <div className="min-h-full" style={{ background: 'var(--color-surface-1)' }}>
       <div className="mx-auto max-w-5xl p-8">
         <div className="mb-5">
-          <h1 className="text-2xl font-bold text-white">Find Roofs</h1>
-          <p className="mt-1 text-sm text-slate-400">Find where the work is — rank neighborhoods, then pull real homes with a satellite view, the reasons they&apos;re a lead, and the homeowner&apos;s details.</p>
+          <h1 className="text-2xl font-bold text-[#1a1a1a]">Find Roofs</h1>
+          <p className="mt-1 text-sm text-[#6b7280]">Find where the work is — rank neighborhoods, then pull real homes with a satellite view, the reasons they&apos;re a lead, and the homeowner&apos;s details.</p>
         </div>
 
         {/* Mode toggle */}
-        <div className="mb-4 inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-1 text-sm">
+        <div className="mb-4 inline-flex rounded-xl border border-[#dededc] bg-[#f8f8f7] p-1 text-sm">
           {([['homes', 'Homes'], ['heat', 'Neighborhood heat']] as const).map(([m, label]) => (
             <button key={m} onClick={() => setMode(m)}
-              className={`rounded-lg px-4 py-1.5 font-semibold transition-colors ${mode === m ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+              className={`rounded-lg px-4 py-1.5 font-semibold transition-colors ${mode === m ? 'bg-blue-600 text-white' : 'text-[#6b7280] hover:text-[#1a1a1a]'}`}>
               {label}
             </button>
           ))}
@@ -167,22 +167,22 @@ export default function FindRoofsPage() {
         {mode === 'homes' ? (
           <>
             {/* Homes controls */}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] p-4">
               <div className="flex flex-wrap items-end gap-3">
                 <div className="min-w-[240px] flex-1">
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">County</label>
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6b7280]">County</label>
                   <select value={county} onChange={e => setCounty(e.target.value)}
-                    className="w-full rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-sm text-slate-200 focus:border-blue-400/40 focus:outline-none">
+                    className="w-full rounded-xl border border-[#dededc] bg-[#f8f8f7] px-3 py-2.5 text-sm text-[#1a1a1a] focus:border-blue-400/40 focus:outline-none">
                     {sources.length === 0 && <option value="">Loading…</option>}
                     {sources.map(s => <option key={s.key} value={s.key}>{s.name}</option>)}
                   </select>
                 </div>
-                <label className="flex items-center gap-2 pb-2.5 text-xs text-slate-300">
+                <label className="flex items-center gap-2 pb-2.5 text-xs text-[#2d2d2d]">
                   <input type="checkbox" checked={ownerOnly} onChange={e => setOwnerOnly(e.target.checked)} className="accent-blue-500" />
                   Owner-occupied only
                 </label>
                 <button onClick={search} disabled={loading || !county}
-                  className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-all disabled:opacity-50"
+                  className="rounded-xl px-5 py-2.5 text-sm font-bold text-[#1a1a1a] transition-all disabled:opacity-50"
                   style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
                   {loading ? 'Searching…' : 'Find roofs'}
                 </button>
@@ -198,30 +198,30 @@ export default function FindRoofsPage() {
 
             {result && (
               <div className="mt-4">
-                <div className="mb-2 text-xs text-slate-500">{result.count} homes in {result.county}</div>
+                <div className="mb-2 text-xs text-[#6b7280]">{result.count} homes in {result.county}</div>
                 <div className="grid gap-3 lg:grid-cols-2">
                   {result.prospects.map(p => (
                     <div key={p.pin}
-                      className="group flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all duration-200 hover:-translate-y-1 hover:border-blue-400/30 hover:shadow-[0_12px_30px_rgba(59,130,246,0.15)]">
+                      className="group flex flex-col overflow-hidden rounded-2xl border border-[#dededc] bg-[#f8f8f7] transition-all duration-200 hover:-translate-y-1 hover:border-blue-400/30 hover:shadow-[0_12px_30px_rgba(59,130,246,0.15)]">
                       <div className="flex gap-3 p-3">
                         <LeadImage lat={p.lat} lng={p.lng} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
-                            <div className="truncate text-sm font-semibold text-white">{p.address}</div>
+                            <div className="truncate text-sm font-semibold text-[#1a1a1a]">{p.address}</div>
                             <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${TIER[p.tier] || TIER.Cool}`}>{p.tier}</span>
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
                             {p.year_built && <span className="rounded bg-blue-500/15 px-1.5 py-0.5 font-medium text-blue-200">Built {p.year_built}</span>}
                             {p.sold_year && <span className="rounded bg-purple-500/15 px-1.5 py-0.5 font-medium text-purple-200">Sold {p.sold_year}</span>}
                             {p.owner_occupied === true && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300">Owner-occupied</span>}
-                            {p.owner_occupied === false && <span className="rounded bg-slate-500/15 px-1.5 py-0.5 text-slate-400">Absentee</span>}
-                            <span className={p.confidence === 'low' ? 'text-slate-500' : 'text-slate-400'}>conf: {p.confidence}</span>
+                            {p.owner_occupied === false && <span className="rounded bg-[#9ca3af] px-1.5 py-0.5 text-[#6b7280]">Absentee</span>}
+                            <span className={p.confidence === 'low' ? 'text-[#6b7280]' : 'text-[#6b7280]'}>conf: {p.confidence}</span>
                           </div>
                           {/* Why this tier — bullet points */}
                           {p.reasons.length > 0 && (
                             <ul className="mt-1.5 space-y-0.5">
                               {p.reasons.map((r, i) => (
-                                <li key={i} className="flex gap-1.5 text-[11px] leading-snug text-slate-300">
+                                <li key={i} className="flex gap-1.5 text-[11px] leading-snug text-[#2d2d2d]">
                                   <span className="mt-[3px] h-1 w-1 flex-shrink-0 rounded-full bg-blue-400/70" />
                                   <span>{r}</span>
                                 </li>
@@ -233,15 +233,15 @@ export default function FindRoofsPage() {
 
                       {/* Homeowner contact */}
                       <div className="mx-3 rounded-lg border border-white/8 bg-black/20 px-3 py-2">
-                        <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Homeowner</div>
+                        <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-[#6b7280]">Homeowner</div>
                         {p.owner ? (
-                          <div className="space-y-0.5 text-[11px] text-slate-300">
-                            <div><span className="text-slate-500">Name:</span> {p.owner}</div>
-                            {p.owner_mail && <div><span className="text-slate-500">Mailing:</span> {p.owner_mail}</div>}
-                            <div className="text-slate-500">Phone / email: <span className="text-slate-400">not in public records</span></div>
+                          <div className="space-y-0.5 text-[11px] text-[#2d2d2d]">
+                            <div><span className="text-[#6b7280]">Name:</span> {p.owner}</div>
+                            {p.owner_mail && <div><span className="text-[#6b7280]">Mailing:</span> {p.owner_mail}</div>}
+                            <div className="text-[#6b7280]">Phone / email: <span className="text-[#6b7280]">not in public records</span></div>
                           </div>
                         ) : (
-                          <div className="text-[11px] text-slate-500">Owner name isn&apos;t in this county&apos;s free records.</div>
+                          <div className="text-[11px] text-[#6b7280]">Owner name isn&apos;t in this county&apos;s free records.</div>
                         )}
                       </div>
 
@@ -251,36 +251,36 @@ export default function FindRoofsPage() {
                           {converting === p.pin ? 'Starting…' : 'Create project & measure'}
                         </button>
                         <a href={mapsLink(p.lat, p.lng)} target="_blank" rel="noreferrer"
-                          className="text-[11px] text-slate-400 underline decoration-dotted hover:text-slate-200">Street view ↗</a>
+                          className="text-[11px] text-[#6b7280] underline decoration-dotted hover:text-[#1a1a1a]">Street view ↗</a>
                       </div>
                     </div>
                   ))}
                 </div>
-                {result.count === 0 && <div className="py-16 text-center text-sm text-slate-500">No homes found — try a different county or clear the filter.</div>}
+                {result.count === 0 && <div className="py-16 text-center text-sm text-[#6b7280]">No homes found — try a different county or clear the filter.</div>}
               </div>
             )}
 
             {!result && !loading && (
               <div className="py-20 text-center">
-                <div className="text-sm font-medium text-slate-300">Pick a county and search</div>
-                <div className="mx-auto mt-1 max-w-md text-xs text-slate-500">You&apos;ll get real homes with a satellite view of each roof, why each one is a lead, and the homeowner&apos;s details. Scan for worn roofs, then create a project to measure and quote.</div>
+                <div className="text-sm font-medium text-[#2d2d2d]">Pick a county and search</div>
+                <div className="mx-auto mt-1 max-w-md text-xs text-[#6b7280]">You&apos;ll get real homes with a satellite view of each roof, why each one is a lead, and the homeowner&apos;s details. Scan for worn roofs, then create a project to measure and quote.</div>
               </div>
             )}
           </>
         ) : (
           <>
             {/* Heat controls */}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] p-4">
               <div className="flex flex-wrap items-end gap-3">
                 <div className="min-w-[240px] flex-1">
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">County</label>
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6b7280]">County</label>
                   <select value={heatCounty} onChange={e => setHeatCounty(e.target.value)}
-                    className="w-full rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-sm text-slate-200 focus:border-blue-400/40 focus:outline-none">
+                    className="w-full rounded-xl border border-[#dededc] bg-[#f8f8f7] px-3 py-2.5 text-sm text-[#1a1a1a] focus:border-blue-400/40 focus:outline-none">
                     {CENSUS_COUNTIES.map(c => <option key={c.key} value={c.key}>{c.name}</option>)}
                   </select>
                 </div>
                 <button onClick={rankNeighborhoods} disabled={heatLoading}
-                  className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-all disabled:opacity-50"
+                  className="rounded-xl px-5 py-2.5 text-sm font-bold text-[#1a1a1a] transition-all disabled:opacity-50"
                   style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
                   {heatLoading ? 'Ranking…' : 'Rank neighborhoods'}
                 </button>
@@ -296,27 +296,27 @@ export default function FindRoofsPage() {
 
             {heat?.available && heat.tracts.length > 0 && (
               <div className="mt-4">
-                <div className="mb-2 text-xs text-slate-500">{heat.count} neighborhoods in {heat.county}, ranked by roof opportunity</div>
+                <div className="mb-2 text-xs text-[#6b7280]">{heat.count} neighborhoods in {heat.county}, ranked by roof opportunity</div>
                 <div className="grid gap-2.5">
                   {heat.tracts.map(t => (
                     <div key={t.tract}
-                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-400/30 hover:shadow-[0_8px_22px_rgba(59,130,246,0.12)]">
+                      className="flex items-center gap-3 rounded-xl border border-[#dededc] bg-[#f8f8f7] px-4 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-400/30 hover:shadow-[0_8px_22px_rgba(59,130,246,0.12)]">
                       <span className={`flex-shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ring-1 ${TIER[t.tier] || TIER.Cool}`}>{t.tier}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                          <span className="text-sm font-semibold text-white">{t.place || t.tract}</span>
-                          {t.place && <span className="text-[11px] text-slate-500">{t.tract}</span>}
-                          <span className="text-[11px] text-slate-500">· {t.units.toLocaleString()} homes</span>
+                          <span className="text-sm font-semibold text-[#1a1a1a]">{t.place || t.tract}</span>
+                          {t.place && <span className="text-[11px] text-[#6b7280]">{t.tract}</span>}
+                          <span className="text-[11px] text-[#6b7280]">· {t.units.toLocaleString()} homes</span>
                           {t.lat != null && t.lng != null && (
                             <a href={mapAreaLink(t.lat, t.lng)} target="_blank" rel="noreferrer"
                               className="text-[11px] text-blue-300 underline decoration-dotted hover:text-blue-200">📍 See the area ↗</a>
                           )}
                         </div>
-                        <div className="mt-0.5 text-[11px] leading-snug text-slate-400">{t.why}</div>
+                        <div className="mt-0.5 text-[11px] leading-snug text-[#6b7280]">{t.why}</div>
                       </div>
                       <div className="flex flex-shrink-0 gap-3 text-center">
-                        <div><div className="text-sm font-bold text-blue-300">{t.pct_pre_1980}%</div><div className="text-[9px] uppercase tracking-wide text-slate-600">pre-1980</div></div>
-                        <div><div className="text-sm font-bold text-emerald-300">{t.pct_owner_occupied}%</div><div className="text-[9px] uppercase tracking-wide text-slate-600">owner-occ</div></div>
+                        <div><div className="text-sm font-bold text-blue-300">{t.pct_pre_1980}%</div><div className="text-[9px] uppercase tracking-wide text-[#9ca3af]">pre-1980</div></div>
+                        <div><div className="text-sm font-bold text-emerald-300">{t.pct_owner_occupied}%</div><div className="text-[9px] uppercase tracking-wide text-[#9ca3af]">owner-occ</div></div>
                       </div>
                     </div>
                   ))}
@@ -326,8 +326,8 @@ export default function FindRoofsPage() {
 
             {!heat && !heatLoading && (
               <div className="py-20 text-center">
-                <div className="text-sm font-medium text-slate-300">Rank a county&apos;s neighborhoods</div>
-                <div className="mx-auto mt-1 max-w-md text-xs text-slate-500">Free Census data scores every neighborhood by how many homes are older and owner-occupied — so you know exactly where to knock, even where per-home data isn&apos;t public.</div>
+                <div className="text-sm font-medium text-[#2d2d2d]">Rank a county&apos;s neighborhoods</div>
+                <div className="mx-auto mt-1 max-w-md text-xs text-[#6b7280]">Free Census data scores every neighborhood by how many homes are older and owner-occupied — so you know exactly where to knock, even where per-home data isn&apos;t public.</div>
               </div>
             )}
           </>

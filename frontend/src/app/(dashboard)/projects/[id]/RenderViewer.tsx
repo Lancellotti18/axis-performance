@@ -214,15 +214,15 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
         <div className="flex items-center gap-2 flex-wrap">
           {/* Zoom controls */}
           <div className="flex items-center gap-1 bg-white rounded-lg border px-1.5 py-0.5" style={{ borderColor: 'rgba(219,234,254,0.9)' }}>
-            <button onClick={() => setZoom(z => clampZoom(z / 1.25))} className="text-slate-500 hover:text-slate-800 text-base font-bold w-6 h-6 flex items-center justify-center" title="Zoom out">−</button>
-            <span className="text-slate-500 text-xs w-10 text-center select-none">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => setZoom(z => clampZoom(z * 1.25))} className="text-slate-500 hover:text-slate-800 text-base font-bold w-6 h-6 flex items-center justify-center" title="Zoom in">+</button>
+            <button onClick={() => setZoom(z => clampZoom(z / 1.25))} className="text-[#6b7280] hover:text-slate-800 text-base font-bold w-6 h-6 flex items-center justify-center" title="Zoom out">−</button>
+            <span className="text-[#6b7280] text-xs w-10 text-center select-none">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => setZoom(z => clampZoom(z * 1.25))} className="text-[#6b7280] hover:text-slate-800 text-base font-bold w-6 h-6 flex items-center justify-center" title="Zoom in">+</button>
           </div>
 
           {/* Measure toggle */}
           <button
             onClick={() => { setMeasuring(m => !m); setCalibrating(false); setPointA(null); setPointB(null) }}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${measuring ? 'text-white' : 'text-slate-600 bg-white border hover:bg-slate-50'}`}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${measuring ? 'text-[#1a1a1a]' : 'text-[#9ca3af] bg-white border hover:bg-slate-50'}`}
             style={measuring ? { background: 'linear-gradient(135deg,#6366f1,#4f46e5)', border: 'none' } : { borderColor: 'rgba(219,234,254,0.9)' }}
             title="Click two points to measure distance"
           >
@@ -232,7 +232,7 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
           {/* Calibrate */}
           <button
             onClick={() => { setCalibrating(c => !c); setMeasuring(false); setCalA(null); setCalB(null) }}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${calibrating ? 'text-white' : 'text-slate-600 bg-white border hover:bg-slate-50'}`}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${calibrating ? 'text-[#1a1a1a]' : 'text-[#9ca3af] bg-white border hover:bg-slate-50'}`}
             style={calibrating ? { background: 'linear-gradient(135deg,#f59e0b,#d97706)', border: 'none' } : { borderColor: 'rgba(219,234,254,0.9)' }}
             title="Set a known real-world distance to calibrate measurements"
           >
@@ -240,7 +240,7 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
           </button>
 
           {/* Reset */}
-          <button onClick={resetView} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-600 bg-white border hover:bg-slate-50" style={{ borderColor: 'rgba(219,234,254,0.9)' }}>
+          <button onClick={resetView} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-[#9ca3af] bg-white border hover:bg-slate-50" style={{ borderColor: 'rgba(219,234,254,0.9)' }}>
             Reset
           </button>
 
@@ -288,13 +288,13 @@ export default function RenderViewer({ src, label, totalSqft }: Props) {
 
       {/* ── Scale info bar ── */}
       {!measuring && !calibrating && feetPerPixel && (
-        <div className="px-4 py-1.5 bg-slate-50 border-b text-xs text-slate-400 flex items-center gap-1" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+        <div className="px-4 py-1.5 bg-slate-50 border-b text-xs text-[#6b7280] flex items-center gap-1" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
           {calConfirmed ? 'Custom calibration active' : '~Estimated scale from blueprint sqft'}
           {' '}— scroll to zoom, drag to pan
         </div>
       )}
       {!measuring && !calibrating && !feetPerPixel && (
-        <div className="px-4 py-1.5 bg-slate-50 border-b text-xs text-slate-400" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
+        <div className="px-4 py-1.5 bg-slate-50 border-b text-xs text-[#6b7280]" style={{ borderColor: 'rgba(219,234,254,0.6)' }}>
           Scroll to zoom · Drag to pan · Use Calibrate for real-world measurements
         </div>
       )}

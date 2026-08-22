@@ -71,7 +71,7 @@ function ProjectCard({
   return (
     <div
       onClick={() => router.push(`/projects/${project.id}`)}
-      className="group relative cursor-pointer rounded-2xl overflow-hidden border border-white/10 bg-white/[0.04] backdrop-blur-sm transition-all duration-200 hover:-translate-y-1 hover:border-blue-400/40 hover:shadow-[0_14px_44px_rgba(59,130,246,0.22)]"
+      className="group relative cursor-pointer rounded-2xl overflow-hidden border border-[#dededc] bg-[#f8f8f7] transition-all duration-200 hover:-translate-y-1 hover:border-blue-400/40 hover:shadow-[0_14px_44px_rgba(59,130,246,0.22)]"
     >
       {/* Thumbnail */}
       <div className="relative aspect-[16/10] overflow-hidden">
@@ -94,14 +94,14 @@ function ProjectCard({
         <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
           <button
             onClick={e => { e.stopPropagation(); setEditing(true); setDraftName(project.name) }}
-            className="w-7 h-7 rounded-lg bg-slate-900/70 backdrop-blur-sm flex items-center justify-center text-slate-200 hover:bg-slate-900 hover:text-white transition-colors border border-white/10"
+            className="w-7 h-7 rounded-lg bg-[#f8f8f7] flex items-center justify-center text-[#1a1a1a] hover:bg-[#f8f8f7] hover:text-[#1a1a1a] transition-colors border border-[#dededc]"
             title="Rename"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
           </button>
           <button
             onClick={e => { e.stopPropagation(); onArchive(project.id) }}
-            className="w-7 h-7 rounded-lg bg-slate-900/70 backdrop-blur-sm flex items-center justify-center text-slate-400 hover:bg-slate-900 hover:text-rose-300 transition-colors border border-white/10"
+            className="w-7 h-7 rounded-lg bg-[#f8f8f7] flex items-center justify-center text-[#6b7280] hover:bg-[#f8f8f7] hover:text-rose-300 transition-colors border border-[#dededc]"
             title="Move to Trash"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>
@@ -120,19 +120,19 @@ function ProjectCard({
             onKeyDown={e => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') { setEditing(false); setDraftName(project.name) } }}
             onBlur={saveRename}
             disabled={saving}
-            className="w-full text-white font-semibold text-sm leading-tight border-b border-blue-400 outline-none bg-transparent"
+            className="w-full text-[#1a1a1a] font-semibold text-sm leading-tight border-b border-blue-400 outline-none bg-transparent"
           />
         ) : (
-          <div className="text-white font-semibold text-sm leading-tight line-clamp-1">{project.name}</div>
+          <div className="text-[#1a1a1a] font-semibold text-sm leading-tight line-clamp-1">{project.name}</div>
         )}
-        <div className="text-slate-400 text-xs mt-1 line-clamp-1 min-h-[16px]">
+        <div className="text-[#6b7280] text-xs mt-1 line-clamp-1 min-h-[16px]">
           {address || project.description || 'No address yet'}
         </div>
 
         <div className="mt-3 pt-3 border-t border-white/[0.07] flex items-center justify-between">
           <StatusBadge status={project.status} />
           {photoCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-slate-300"
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#f8f8f7] px-1.5 py-0.5 text-[10px] font-semibold text-[#2d2d2d]"
               title={`${photoCount} job photo${photoCount === 1 ? '' : 's'}`}>
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="12" cy="12" r="3" />
@@ -140,7 +140,7 @@ function ProjectCard({
               {photoCount}
             </span>
           )}
-          <span className="text-[11px] text-slate-500">{relTime(project.updated_at || project.created_at)}</span>
+          <span className="text-[11px] text-[#6b7280]">{relTime(project.updated_at || project.created_at)}</span>
         </div>
       </div>
     </div>
@@ -149,15 +149,15 @@ function ProjectCard({
 
 function StatTile({ label, value, icon }: { label: string; value: number | string; icon: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-sm p-5 flex items-center gap-4">
+    <div className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] p-5 flex items-center gap-4">
       <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(96,165,250,0.22)' }}>
         {icon}
       </div>
       <div>
-        <div className="text-2xl font-bold text-white leading-none">
+        <div className="text-2xl font-bold text-[#1a1a1a] leading-none">
           {typeof value === 'number' ? <CountUp value={value} /> : value}
         </div>
-        <div className="text-slate-400 text-xs mt-1">{label}</div>
+        <div className="text-[#6b7280] text-xs mt-1">{label}</div>
       </div>
     </div>
   )
@@ -251,7 +251,7 @@ export default function DashboardPage() {
   const showWelcome = !loading && projects.length === 0 && !storedDismissed && !justDismissed
 
   return (
-    <div className="relative min-h-full" style={{ background: '#040810' }}>
+    <div className="relative min-h-full" style={{ background: 'var(--color-surface-1)' }}>
       {/* Blueprint-grid background + corner glow */}
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.11]"
@@ -267,8 +267,8 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="flex items-end justify-between gap-4 mb-7">
           <div>
-            <h1 className="text-2xl font-bold text-white leading-tight">Welcome back, {name}</h1>
-            <p className="text-slate-400 text-sm mt-1">
+            <h1 className="text-2xl font-bold text-[#1a1a1a] leading-tight">Welcome back, {name}</h1>
+            <p className="text-[#6b7280] text-sm mt-1">
               {projects.length === 0
                 ? 'Start your first project to get going.'
                 : `${completed} complete · ${inProgress} in progress`}
@@ -303,10 +303,10 @@ export default function DashboardPage() {
               8 newest, while /projects is the working list with status filters,
               search and a table view. Without the count it reads as "all your
               projects", which makes the Projects nav item look redundant. */}
-          <h2 className="text-base font-semibold text-white">
+          <h2 className="text-base font-semibold text-[#1a1a1a]">
             Recent projects
             {projects.length > recent.length && (
-              <span className="ml-2 text-xs font-normal text-slate-500">
+              <span className="ml-2 text-xs font-normal text-[#6b7280]">
                 {recent.length} of {projects.length}
               </span>
             )}
@@ -321,22 +321,22 @@ export default function DashboardPage() {
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {[1, 2, 3, 4].map(i => (
-              <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden animate-pulse">
-                <div className="aspect-[16/10] bg-white/[0.03]" />
+              <div key={i} className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] overflow-hidden animate-pulse">
+                <div className="aspect-[16/10] bg-[#f8f8f7]" />
                 <div className="p-4 space-y-2">
-                  <div className="h-3.5 w-3/4 rounded bg-white/10" />
-                  <div className="h-3 w-1/2 rounded bg-white/[0.07]" />
+                  <div className="h-3.5 w-3/4 rounded bg-[#eeeeed]" />
+                  <div className="h-3 w-1/2 rounded bg-[#f8f8f7]" />
                 </div>
               </div>
             ))}
           </div>
         ) : recent.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] py-16 flex flex-col items-center justify-center text-center">
+          <div className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] py-16 flex flex-col items-center justify-center text-center">
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(96,165,250,0.25)' }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
             </div>
-            <div className="text-white font-semibold text-base mb-1">No projects yet</div>
-            <div className="text-slate-400 text-sm mb-5">Create your first project to get started.</div>
+            <div className="text-[#1a1a1a] font-semibold text-base mb-1">No projects yet</div>
+            <div className="text-[#6b7280] text-sm mb-5">Create your first project to get started.</div>
             <ButtonLink href="/projects/new" variant="primary" size="lg">New Project</ButtonLink>
           </div>
         ) : (
@@ -351,16 +351,16 @@ export default function DashboardPage() {
         {/* Trash */}
         {archivedProjects.length > 0 && (
           <div className="mt-10">
-            <button onClick={() => setShowTrash(o => !o)} className="flex items-center gap-2 text-slate-400 hover:text-slate-200 text-sm font-medium transition-colors mb-4">
+            <button onClick={() => setShowTrash(o => !o)} className="flex items-center gap-2 text-[#6b7280] hover:text-[#1a1a1a] text-sm font-medium transition-colors mb-4">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
               Trash ({archivedProjects.length}) <span>{showTrash ? '↑' : '↓'}</span>
             </button>
             {showTrash && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                 {archivedProjects.map(p => (
-                  <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                    <div className="text-slate-200 font-semibold text-sm mb-1 line-clamp-1">{p.name}</div>
-                    <div className="text-slate-500 text-xs mb-3">{relTime(p.updated_at || p.created_at)}</div>
+                  <div key={p.id} className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] p-4">
+                    <div className="text-[#1a1a1a] font-semibold text-sm mb-1 line-clamp-1">{p.name}</div>
+                    <div className="text-[#6b7280] text-xs mb-3">{relTime(p.updated_at || p.created_at)}</div>
                     <div className="flex gap-2">
                       <button onClick={() => handleRestore(p.id)} className="flex-1 text-xs font-semibold text-blue-300 bg-blue-500/15 hover:bg-blue-500/25 py-1.5 rounded-lg transition-colors border border-blue-400/20">Restore</button>
                       <button onClick={() => handleDelete(p.id)} className="flex-1 text-xs font-semibold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 py-1.5 rounded-lg transition-colors border border-rose-400/20">Delete</button>

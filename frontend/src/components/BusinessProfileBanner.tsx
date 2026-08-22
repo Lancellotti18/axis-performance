@@ -68,7 +68,7 @@ export default function BusinessProfileBanner({ userId }: { userId: string }) {
             {open ? 'Hide' : 'Set up now (1 min)'}
           </button>
           <button onClick={() => { setDismissed(true); try { sessionStorage.setItem('axis_profile_banner_dismissed', '1') } catch { /* ignore */ } }}
-            className="rounded p-1 text-amber-200/60 hover:text-white" aria-label="Dismiss">✕</button>
+            className="rounded p-1 text-amber-200/60 hover:text-[#1a1a1a]" aria-label="Dismiss">✕</button>
         </div>
       </div>
       {open && (
@@ -81,7 +81,7 @@ export default function BusinessProfileBanner({ userId }: { userId: string }) {
           ] as [keyof typeof form, string][]).map(([k, label]) => (
             <input key={k} type="text" value={form[k]} placeholder={label}
               onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-              className="rounded border border-amber-400/30 bg-slate-900/60 px-2.5 py-1.5 text-xs text-white placeholder:text-slate-500" />
+              className="rounded border border-amber-400/30 bg-[#f8f8f7] px-2.5 py-1.5 text-xs text-[#1a1a1a] placeholder:text-[#6b7280]" />
           ))}
           <button onClick={save} disabled={saving}
             className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">

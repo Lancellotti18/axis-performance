@@ -131,28 +131,28 @@ export function LocationPicker({ initialQuery = '', onSelected }: Props) {
 
   if (selected) {
     return (
-      <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-slate-100">
+      <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-[#1a1a1a]">
         <div className="flex items-start justify-between gap-2">
           <div>
             <div className="font-semibold">{selected.matched_address}</div>
-            <div className="mt-1 text-xs text-slate-300">
+            <div className="mt-1 text-xs text-[#2d2d2d]">
               {selected.city}, {selected.state} {selected.zip}
               {selected.county && (
                 <span> · <strong>{selected.county}</strong> County</span>
               )}
               {selected.county_fips && (
-                <span className="ml-2 text-slate-500">FIPS {selected.county_fips}</span>
+                <span className="ml-2 text-[#6b7280]">FIPS {selected.county_fips}</span>
               )}
             </div>
             {selected.lat !== 0 && (
-              <div className="text-[10px] text-slate-500">
+              <div className="text-[10px] text-[#6b7280]">
                 {selected.lat.toFixed(5)}, {selected.lng.toFixed(5)} · source: {selected.source}
               </div>
             )}
           </div>
           <button
             onClick={() => { setSelected(null); setQuery(''); setMatches([]); setManual(false) }}
-            className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600"
+            className="rounded bg-[#e4e4e2] px-2 py-1 text-xs text-[#1a1a1a] hover:bg-[#d4d4d2]"
           >Change</button>
         </div>
       </div>
@@ -161,46 +161,46 @@ export function LocationPicker({ initialQuery = '', onSelected }: Props) {
 
   if (manual) {
     return (
-      <div className="space-y-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
-        <div className="text-xs text-slate-300">Enter address manually</div>
+      <div className="space-y-3 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-3">
+        <div className="text-xs text-[#2d2d2d]">Enter address manually</div>
         <div className="grid grid-cols-2 gap-2">
           <input
             placeholder="Street"
             value={manualForm.street}
             onChange={e => setManualForm(s => ({ ...s, street: e.target.value }))}
-            className="col-span-2 rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-100"
+            className="col-span-2 rounded bg-[#eeeeed] px-2 py-1.5 text-sm text-[#1a1a1a]"
           />
           <input
             placeholder="City"
             value={manualForm.city}
             onChange={e => setManualForm(s => ({ ...s, city: e.target.value }))}
-            className="rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-100"
+            className="rounded bg-[#eeeeed] px-2 py-1.5 text-sm text-[#1a1a1a]"
           />
           <input
             placeholder="State (2-letter)"
             maxLength={2}
             value={manualForm.state}
             onChange={e => setManualForm(s => ({ ...s, state: e.target.value.toUpperCase() }))}
-            className="rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-100"
+            className="rounded bg-[#eeeeed] px-2 py-1.5 text-sm text-[#1a1a1a]"
           />
           <input
             placeholder="ZIP"
             value={manualForm.zip}
             onChange={e => setManualForm(s => ({ ...s, zip: e.target.value }))}
-            className="rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-100"
+            className="rounded bg-[#eeeeed] px-2 py-1.5 text-sm text-[#1a1a1a]"
           />
           <input
             placeholder="County (optional)"
             value={manualForm.county}
             onChange={e => setManualForm(s => ({ ...s, county: e.target.value }))}
-            className="rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-100"
+            className="rounded bg-[#eeeeed] px-2 py-1.5 text-sm text-[#1a1a1a]"
           />
         </div>
         <div className="flex gap-2">
           <button onClick={submitManual} className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500">Use this address</button>
-          <button onClick={() => setManual(false)} className="rounded bg-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-600">Back to search</button>
+          <button onClick={() => setManual(false)} className="rounded bg-[#e4e4e2] px-3 py-1.5 text-xs text-[#1a1a1a] hover:bg-[#d4d4d2]">Back to search</button>
         </div>
-        <p className="text-[10px] text-slate-500">Manual entry skips Census validation. The report will note this in the methodology section.</p>
+        <p className="text-[10px] text-[#6b7280]">Manual entry skips Census validation. The report will note this in the methodology section.</p>
       </div>
     )
   }
@@ -212,22 +212,22 @@ export function LocationPicker({ initialQuery = '', onSelected }: Props) {
         placeholder="Start typing the property address…"
         value={query}
         onChange={e => setQuery(e.target.value)}
-        className="w-full rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400/60 focus:outline-none"
+        className="w-full rounded-lg border border-[#dededc] bg-[#f8f8f7] px-3 py-2 text-sm text-[#1a1a1a] placeholder:text-[#6b7280] focus:border-blue-400/60 focus:outline-none"
         autoFocus
       />
-      {loading && <p className="text-xs text-slate-500">Searching US Census Geocoder…</p>}
+      {loading && <p className="text-xs text-[#6b7280]">Searching US Census Geocoder…</p>}
       {error && !loading && <p className="text-xs text-rose-400">{error}</p>}
 
       {matches.length > 0 && (
-        <ul className="max-h-60 overflow-y-auto rounded-lg border border-white/10 bg-slate-900/80">
+        <ul className="max-h-60 overflow-y-auto rounded-lg border border-[#dededc] bg-[#f8f8f7]">
           {matches.map((m, i) => (
             <li
               key={i}
               onClick={() => void pick(m)}
-              className="cursor-pointer border-b border-white/5 px-3 py-2 text-sm text-slate-100 transition hover:bg-blue-500/10"
+              className="cursor-pointer border-b border-[#dededc] px-3 py-2 text-sm text-[#1a1a1a] transition hover:bg-blue-500/10"
             >
               <div className="font-medium">{m.matched_address}</div>
-              <div className="text-[10px] text-slate-500">
+              <div className="text-[10px] text-[#6b7280]">
                 {m.lat.toFixed(5)}, {m.lng.toFixed(5)}
                 {m.county && ` · ${m.county} County`}
               </div>
@@ -236,7 +236,7 @@ export function LocationPicker({ initialQuery = '', onSelected }: Props) {
         </ul>
       )}
 
-      <div className="flex items-center justify-between text-xs text-slate-400">
+      <div className="flex items-center justify-between text-xs text-[#6b7280]">
         <span>Powered by US Census Bureau + FCC Area API (free, authoritative)</span>
         <button onClick={() => setManual(true)} className="text-blue-400 hover:text-blue-300">Enter manually →</button>
       </div>

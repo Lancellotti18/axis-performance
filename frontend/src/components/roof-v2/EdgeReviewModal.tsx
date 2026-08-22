@@ -163,7 +163,7 @@ export default function EdgeReviewModal({
   if (!current || !crop || !endpoints) {
     return (
       <Backdrop onClose={onClose}>
-        <div className="rounded-lg bg-slate-900 p-6 text-center text-sm text-slate-300">
+        <div className="rounded-lg bg-[#f8f8f7] p-6 text-center text-sm text-[#2d2d2d]">
           No reviewable edges. <button onClick={onClose} className="ml-2 underline">Close</button>
         </div>
       </Backdrop>
@@ -173,16 +173,16 @@ export default function EdgeReviewModal({
   return (
     <Backdrop onClose={onClose}>
       <div
-        className="w-[min(720px,94vw)] overflow-hidden rounded-xl border border-white/10 bg-slate-900 shadow-2xl"
+        className="w-[min(720px,94vw)] overflow-hidden rounded-xl border border-[#dededc] bg-[#f8f8f7] shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <div className="text-sm font-semibold text-white">
+        <div className="flex items-center justify-between border-b border-[#dededc] px-4 py-3">
+          <div className="text-sm font-semibold text-[#1a1a1a]">
             Review edge {idx + 1} of {total}
-            <span className="ml-2 text-xs font-normal text-slate-400">{acceptedCount} confirmed</span>
+            <span className="ml-2 text-xs font-normal text-[#6b7280]">{acceptedCount} confirmed</span>
           </div>
-          <button onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white">✕</button>
+          <button onClick={onClose} className="rounded p-1 text-[#6b7280] hover:bg-[#eeeeed] hover:text-[#1a1a1a]">✕</button>
         </div>
 
         {/* Progress dots */}
@@ -192,18 +192,14 @@ export default function EdgeReviewModal({
               key={i}
               onClick={() => setIdx(i)}
               title={`Edge ${i + 1}`}
-              className={`h-1.5 w-5 rounded-full transition ${
-                done[i] === 'accepted' ? 'bg-emerald-500'
-                : done[i] === 'skipped' ? 'bg-slate-600'
-                : i === idx ? 'bg-blue-400' : 'bg-slate-700'
-              }`}
+              className={`h-1.5 w-5 rounded-full transition ${ done[i] === 'accepted' ? 'bg-emerald-500' : done[i] === 'skipped' ? 'bg-[#d4d4d2]' : i === idx ? 'bg-blue-400' : 'bg-[#e4e4e2]' }`}
             />
           ))}
         </div>
 
         <div className="grid gap-4 p-4 sm:grid-cols-2">
           {/* Zoomed inset with the edge highlighted */}
-          <div className="overflow-hidden rounded-lg border border-white/10 bg-black">
+          <div className="overflow-hidden rounded-lg border border-[#dededc] bg-black">
             <svg
               viewBox={`${crop.x} ${crop.y} ${crop.w} ${crop.h}`}
               className="block aspect-square w-full"
@@ -225,7 +221,7 @@ export default function EdgeReviewModal({
 
           {/* AI verdict + reclassify */}
           <div className="flex flex-col">
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-[#6b7280]">
               {current.existing ? 'Current label' : 'AI classification'}
             </div>
             <div className="flex items-center gap-2">
@@ -233,16 +229,16 @@ export default function EdgeReviewModal({
                 className="inline-block h-3 w-3 rounded-full"
                 style={{ background: colorFor(current.suggested_edge_type) }}
               />
-              <span className="text-lg font-bold capitalize text-white">
+              <span className="text-lg font-bold capitalize text-[#1a1a1a]">
                 {current.suggested_edge_type.replace('_', ' ')}
               </span>
               {!current.existing && <ConfidencePill v={current.confidence} />}
             </div>
             {current.reason && (
-              <div className="mt-1 text-xs text-slate-400">{current.reason}</div>
+              <div className="mt-1 text-xs text-[#6b7280]">{current.reason}</div>
             )}
             {current.shared_with_facet_label && (
-              <div className="mt-1 text-[10px] text-slate-500">
+              <div className="mt-1 text-[10px] text-[#6b7280]">
                 Shared with facet {current.shared_with_facet_label}
               </div>
             )}
@@ -260,9 +256,7 @@ export default function EdgeReviewModal({
                       key={t.type}
                       onClick={() => setChoice(c => ({ ...c, [idx]: t.type }))}
                       title={`${i + 1} · ${t.hint}`}
-                      className={`flex items-center gap-1.5 rounded-md px-2.5 py-2 text-left text-xs font-medium transition ${
-                        selected ? 'ring-2' : 'bg-slate-800/60 hover:bg-slate-800'
-                      }`}
+                      className={`flex items-center gap-1.5 rounded-md px-2.5 py-2 text-left text-xs font-medium transition ${ selected ? 'ring-2' : 'bg-[#eeeeed] hover:bg-[#eeeeed]' }`}
                       style={selected
                         ? { background: `${t.color}26`, color: '#fff', boxShadow: `0 0 0 2px ${t.color}` }
                         : { color: '#cbd5e1' }}
@@ -279,12 +273,12 @@ export default function EdgeReviewModal({
         </div>
 
         {/* Footer actions */}
-        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-4 py-3">
+        <div className="flex items-center justify-between gap-2 border-t border-[#dededc] px-4 py-3">
           <div className="flex gap-2">
             <button onClick={goPrev} disabled={idx === 0}
-              className="rounded bg-slate-800 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-30">← Prev</button>
+              className="rounded bg-[#eeeeed] px-3 py-1.5 text-xs text-[#1a1a1a] hover:bg-[#e4e4e2] disabled:opacity-30">← Prev</button>
             <button onClick={skip}
-              className="rounded bg-slate-800 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700">Skip (S)</button>
+              className="rounded bg-[#eeeeed] px-3 py-1.5 text-xs text-[#1a1a1a] hover:bg-[#e4e4e2]">Skip (S)</button>
           </div>
           <div className="flex gap-2">
             <button onClick={accept}

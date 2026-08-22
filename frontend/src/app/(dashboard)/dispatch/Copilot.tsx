@@ -69,7 +69,7 @@ function CapacityCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--dawn)' }}>Crew capacity</span>
-            <button onClick={onOpenBar} className="ml-auto rounded-md border px-2 py-0.5 text-[11px] font-semibold hover:bg-white/5" style={{ borderColor: 'var(--line)', color: 'var(--muted)' }}>⌘K to dispatch by voice</button>
+            <button onClick={onOpenBar} className="ml-auto rounded-md border px-2 py-0.5 text-[11px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)', color: 'var(--muted)' }}>⌘K to dispatch by voice</button>
             <button onClick={() => setDismissed(true)} className="rounded-md px-1.5 py-0.5 text-[12px]" style={{ color: 'var(--muted)' }}>✕</button>
           </div>
 
@@ -185,7 +185,7 @@ function CommandBar({
             <div className="space-y-1.5">
               <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Try</div>
               {EXAMPLES.map(ex => (
-                <button key={ex} onClick={() => setText(ex)} className="block w-full rounded-md px-2.5 py-1.5 text-left text-[12px] hover:bg-white/5" style={{ color: 'var(--text)' }}>“{ex}”</button>
+                <button key={ex} onClick={() => setText(ex)} className="block w-full rounded-md px-2.5 py-1.5 text-left text-[12px] hover:bg-[#eeeeed]" style={{ color: 'var(--text)' }}>“{ex}”</button>
               ))}
               <div className="pt-1 text-[11px]" style={{ color: 'var(--muted)' }}>The Copilot only proposes — you approve every change, and it’s one undo.</div>
             </div>
@@ -220,7 +220,7 @@ function CommandBar({
                 })}
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setPlan(null)} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-white/5" style={{ color: 'var(--muted)' }}>Back</button>
+                <button onClick={() => setPlan(null)} className="rounded-md px-3 py-1.5 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ color: 'var(--muted)' }}>Back</button>
                 <button onClick={apply} disabled={applying || hasBlocks} className="rounded-md px-4 py-1.5 text-[12px] font-bold disabled:opacity-40" style={{ background: hasBlocks ? 'var(--panel2)' : 'var(--dawn)', color: hasBlocks ? 'var(--muted)' : '#1a0e05' }}>
                   {hasBlocks ? 'Resolve conflicts' : 'Approve & apply'}
                 </button>

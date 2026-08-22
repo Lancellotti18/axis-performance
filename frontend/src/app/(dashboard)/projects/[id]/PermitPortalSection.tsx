@@ -359,7 +359,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         <span className="text-[10px] font-semibold bg-amber-500/10 text-amber-700 border border-amber-200 rounded-full px-1.5 py-0.5" title="Inferred from your blueprint or uploaded docs — verify">AI inferred · verify</span>
       )
       return (
-        <span className="text-[10px] font-semibold bg-white/[0.06] text-slate-300 border border-white/10 rounded-full px-1.5 py-0.5" title="Generic default — verify">Default · verify</span>
+        <span className="text-[10px] font-semibold bg-[#f8f8f7] text-[#2d2d2d] border border-[#dededc] rounded-full px-1.5 py-0.5" title="Generic default — verify">Default · verify</span>
       )
     }
     return null
@@ -377,7 +377,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
     return (
       <div key={f.key} className={fullWidth ? 'col-span-2' : ''}>
         <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+          <span className="text-[11px] font-semibold text-[#6b7280] uppercase tracking-wider">
             {f.label}{f.required ? <span className="text-red-400 ml-0.5">*</span> : ''}
           </span>
           {confidenceBadge(f, hasValue)}
@@ -389,11 +389,11 @@ export default function PermitPortalSection({ project, projectId }: { project: a
           )}
         </div>
         {f.field_type === 'signature' ? (
-          <div className="border-b-2 border-white/15 h-8 flex items-end pb-1">
+          <div className="border-b-2 border-[#dededc] h-8 flex items-end pb-1">
             <input type="text" placeholder="Type full name as signature"
               value={fieldValues[f.key] || ''}
               onChange={e => setFieldValues(p => ({...p, [f.key]: e.target.value}))}
-              className="w-full text-sm italic text-slate-200 focus:outline-none bg-transparent placeholder-slate-500"
+              className="w-full text-sm italic text-[#1a1a1a] focus:outline-none bg-transparent placeholder-[#9ca3af]"
             />
           </div>
         ) : (
@@ -402,7 +402,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               type={f.field_type === 'date' ? 'date' : 'text'}
               value={fieldValues[f.key] || ''}
               onChange={e => setFieldValues(p => ({...p, [f.key]: e.target.value}))}
-              className="w-full bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-500/20 transition-all"
+              className="w-full bg-[#f8f8f7] border border-[#dededc] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-500/20 transition-all"
               style={showVoice ? { paddingRight: '34px' } : undefined}
               placeholder={f.required ? 'Required' : 'Optional'}
               autoFocus={entryMode === 'wizard'}
@@ -411,9 +411,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               <button
                 type="button"
                 onClick={() => voiceActive === f.key ? stopVoiceInput() : startVoiceInput(f.key)}
-                className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
-                  voiceActive === f.key ? 'bg-rose-500 text-white animate-pulse' : 'bg-white/[0.06] text-slate-500 hover:bg-blue-100 hover:text-blue-600'
-                }`}
+                className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center transition-all ${ voiceActive === f.key ? 'bg-rose-500 text-white animate-pulse' : 'bg-[#f8f8f7] text-[#6b7280] hover:bg-blue-100 hover:text-blue-600' }`}
                 title={voiceActive === f.key ? 'Stop' : 'Speak to fill'}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
@@ -442,7 +440,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
       </div>
 
       {/* Progress steps */}
-      <div className="flex items-center gap-2 bg-white/[0.04] rounded-2xl px-5 py-4" style={cardStyle}>
+      <div className="flex items-center gap-2 bg-[#f8f8f7] rounded-2xl px-5 py-4" style={cardStyle}>
         {[
           { key: 'portal',       label: 'Find Portal' },
           { key: 'confirm',      label: 'Confirm' },
@@ -457,16 +455,14 @@ export default function PermitPortalSection({ project, projectId }: { project: a
           return (
             <React.Fragment key={s.key}>
               <div className="flex items-center gap-1.5 min-w-0">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
-                  isDone ? 'bg-emerald-500 text-white' : isActive ? 'bg-blue-600 text-white' : 'bg-white/[0.06] text-slate-400'
-                }`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${ isDone ? 'bg-emerald-500 text-white' : isActive ? 'bg-blue-600 text-white' : 'bg-[#f8f8f7] text-[#6b7280]' }`}>
                   {isDone ? '' : i + 1}
                 </div>
-                <span className={`text-xs font-semibold truncate ${isActive ? 'text-blue-600' : isDone ? 'text-emerald-600' : 'text-slate-400'}`}>
+                <span className={`text-xs font-semibold truncate ${isActive ? 'text-blue-600' : isDone ? 'text-emerald-600' : 'text-[#6b7280]'}`}>
                   {s.label}
                 </span>
               </div>
-              {i < arr.length - 1 && <div className="flex-1 h-px bg-white/10 min-w-[8px]" />}
+              {i < arr.length - 1 && <div className="flex-1 h-px bg-[#eeeeed] min-w-[8px]" />}
             </React.Fragment>
           )
         })}
@@ -475,8 +471,8 @@ export default function PermitPortalSection({ project, projectId }: { project: a
       {/* Step 1: Find Portal */}
       {step === 'portal' && (
         <>
-          <div className="bg-white/[0.04] rounded-2xl p-5" style={cardStyle}>
-            <h3 className="text-white font-bold text-sm mb-3">Project Location</h3>
+          <div className="bg-[#f8f8f7] rounded-2xl p-5" style={cardStyle}>
+            <h3 className="text-[#1a1a1a] font-bold text-sm mb-3">Project Location</h3>
             <div className="space-y-1">
               {[
                 { label: 'City', value: project?.city || '—' },
@@ -484,20 +480,20 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 { label: 'Project Type', value: project?.blueprint_type || 'residential' },
               ].map(row => (
                 <div key={row.label} className="flex justify-between py-2 border-b last:border-0" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-                  <span className="text-slate-400 text-sm">{row.label}</span>
-                  <span className="text-white text-sm font-semibold capitalize">{row.value}</span>
+                  <span className="text-[#6b7280] text-sm">{row.label}</span>
+                  <span className="text-[#1a1a1a] text-sm font-semibold capitalize">{row.value}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {!portal ? (
-            <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
+            <div className="bg-[#f8f8f7] rounded-2xl p-10 text-center" style={cardStyle}>
               <div className="w-16 h-16 bg-blue-500/10 border border-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
               </div>
-              <div className="text-white font-bold text-lg mb-2">Find Your Permit Portal</div>
-              <div className="text-slate-400 text-sm mb-6 leading-relaxed">
+              <div className="text-[#1a1a1a] font-bold text-lg mb-2">Find Your Permit Portal</div>
+              <div className="text-[#6b7280] text-sm mb-6 leading-relaxed">
                 We'll search for the official {project?.city ? `${project.city}` : 'city'} building permit portal and fetch the exact application form.
               </div>
               <button onClick={handleFindPortal} disabled={portalLoading}
@@ -509,7 +505,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               )}
             </div>
           ) : (
-            <div className="bg-white/[0.04] rounded-2xl p-6 space-y-4" style={cardStyle}>
+            <div className="bg-[#f8f8f7] rounded-2xl p-6 space-y-4" style={cardStyle}>
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${portal.portal_url ? 'bg-emerald-500/10 border border-emerald-100' : 'bg-amber-500/10 border border-amber-100'}`}>
                   {portal.portal_url
@@ -518,8 +514,8 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                   }
                 </div>
                 <div>
-                  <div className="text-white font-bold text-sm">{portal.portal_name || (portal.portal_url ? 'Permit Portal Found' : 'Permit Portal Not Found')}</div>
-                  <div className="text-slate-400 text-xs">{project?.city}, {project?.region?.replace('US-', '')}</div>
+                  <div className="text-[#1a1a1a] font-bold text-sm">{portal.portal_name || (portal.portal_url ? 'Permit Portal Found' : 'Permit Portal Not Found')}</div>
+                  <div className="text-[#6b7280] text-xs">{project?.city}, {project?.region?.replace('US-', '')}</div>
                 </div>
               </div>
 
@@ -532,13 +528,13 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               {portal.instructions && (
                 <div className="bg-blue-500/10 border border-blue-100 rounded-xl p-4">
                   <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Portal Instructions</div>
-                  <p className="text-slate-200 text-sm leading-relaxed">{portal.instructions}</p>
+                  <p className="text-[#1a1a1a] text-sm leading-relaxed">{portal.instructions}</p>
                 </div>
               )}
               <div className="flex items-center gap-3 pt-1">
                 {portal.portal_url && (
                   <a href={portal.portal_url} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 bg-white/[0.06] hover:bg-white/10 text-slate-200 font-semibold px-4 py-2 rounded-xl text-sm transition-all">
+                    className="inline-flex items-center gap-1.5 bg-[#f8f8f7] hover:bg-[#eeeeed] text-[#1a1a1a] font-semibold px-4 py-2 rounded-xl text-sm transition-all">
                     View Portal
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                   </a>
@@ -558,21 +554,21 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-white font-bold text-sm">Confirm Your Permit</h3>
-              <p className="text-slate-400 text-xs mt-0.5">Verify the form we found is the right one for your project before we autofill it.</p>
+              <h3 className="text-[#1a1a1a] font-bold text-sm">Confirm Your Permit</h3>
+              <p className="text-[#6b7280] text-xs mt-0.5">Verify the form we found is the right one for your project before we autofill it.</p>
             </div>
-            <button onClick={() => setStep('portal')} className="text-slate-400 text-xs hover:text-slate-300">← Back</button>
+            <button onClick={() => setStep('portal')} className="text-[#6b7280] text-xs hover:text-[#2d2d2d]">← Back</button>
           </div>
 
           {/* Permit summary card */}
-          <div className="bg-white/[0.04] rounded-2xl p-5 space-y-3" style={cardStyle}>
+          <div className="bg-[#f8f8f7] rounded-2xl p-5 space-y-3" style={cardStyle}>
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 bg-blue-500/10 border border-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.75" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-white font-bold text-sm">{portal?.portal_name || `${project?.city} Building Department`}</div>
-                <div className="text-slate-400 text-xs mt-0.5 capitalize">{project?.blueprint_type || 'residential'} permit · {project?.city}, {project?.region?.replace('US-', '')}</div>
+                <div className="text-[#1a1a1a] font-bold text-sm">{portal?.portal_name || `${project?.city} Building Department`}</div>
+                <div className="text-[#6b7280] text-xs mt-0.5 capitalize">{project?.blueprint_type || 'residential'} permit · {project?.city}, {project?.region?.replace('US-', '')}</div>
                 {portal?.portal_url && (
                   <a href={portal.portal_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs mt-1 hover:underline truncate block">{portal.portal_url}</a>
                 )}
@@ -582,16 +578,16 @@ export default function PermitPortalSection({ project, projectId }: { project: a
 
           {/* Fees + timeline */}
           {feesTimeline && (feesTimeline.fees_estimate || feesTimeline.review_days_estimate) && (
-            <div className="bg-white/[0.04] rounded-2xl p-5 grid grid-cols-2 gap-4" style={cardStyle}>
+            <div className="bg-[#f8f8f7] rounded-2xl p-5 grid grid-cols-2 gap-4" style={cardStyle}>
               <div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Estimated Fees</div>
-                <div className="text-white font-bold text-lg">{feesTimeline.fees_estimate || '—'}</div>
+                <div className="text-[10px] font-bold text-[#6b7280] uppercase tracking-wider mb-1">Estimated Fees</div>
+                <div className="text-[#1a1a1a] font-bold text-lg">{feesTimeline.fees_estimate || '—'}</div>
               </div>
               <div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Review Timeline</div>
-                <div className="text-white font-bold text-lg">{feesTimeline.review_days_estimate || '—'}</div>
+                <div className="text-[10px] font-bold text-[#6b7280] uppercase tracking-wider mb-1">Review Timeline</div>
+                <div className="text-[#1a1a1a] font-bold text-lg">{feesTimeline.review_days_estimate || '—'}</div>
               </div>
-              <div className="col-span-2 text-[10px] text-slate-400 italic">AI estimate — confirm exact fees with the building department</div>
+              <div className="col-span-2 text-[10px] text-[#6b7280] italic">AI estimate — confirm exact fees with the building department</div>
             </div>
           )}
 
@@ -599,25 +595,25 @@ export default function PermitPortalSection({ project, projectId }: { project: a
           {!showManualOverride ? (
             <button
               onClick={() => setShowManualOverride(true)}
-              className="w-full text-slate-500 text-xs py-2 hover:text-slate-200 underline"
+              className="w-full text-[#6b7280] text-xs py-2 hover:text-[#1a1a1a] underline"
             >
               This isn't the right permit form →
             </button>
           ) : (
-            <div className="bg-white/[0.04] rounded-2xl p-5 space-y-3" style={cardStyle}>
+            <div className="bg-[#f8f8f7] rounded-2xl p-5 space-y-3" style={cardStyle}>
               <div>
-                <div className="text-white font-bold text-sm mb-1">Use a different permit form</div>
-                <p className="text-slate-400 text-xs mb-2">Paste the URL of the correct permit form (PDF or web page).</p>
+                <div className="text-[#1a1a1a] font-bold text-sm mb-1">Use a different permit form</div>
+                <p className="text-[#6b7280] text-xs mb-2">Paste the URL of the correct permit form (PDF or web page).</p>
                 <input
                   type="url"
                   value={manualFormUrl}
                   onChange={e => setManualFormUrl(e.target.value)}
                   placeholder="https://example.gov/permits/application.pdf"
-                  className="w-full bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-400"
+                  className="w-full bg-[#f8f8f7] border border-[#dededc] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:border-blue-400"
                 />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => { setShowManualOverride(false); setManualFormUrl('') }} className="text-xs text-slate-400 hover:text-slate-300 px-3 py-2">Cancel</button>
+                <button onClick={() => { setShowManualOverride(false); setManualFormUrl('') }} className="text-xs text-[#6b7280] hover:text-[#2d2d2d] px-3 py-2">Cancel</button>
                 <button
                   onClick={() => handleConfirmForm({ useManual: true, manualUrl: manualFormUrl || null })}
                   disabled={!manualFormUrl.trim() || confirming}
@@ -652,22 +648,22 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-white font-bold text-sm">Add Documents & Notes</h3>
-              <p className="text-slate-400 text-xs mt-0.5">AI extracts data from these to autofill the permit. Optional — skip if you've got everything in your profile.</p>
+              <h3 className="text-[#1a1a1a] font-bold text-sm">Add Documents & Notes</h3>
+              <p className="text-[#6b7280] text-xs mt-0.5">AI extracts data from these to autofill the permit. Optional — skip if you've got everything in your profile.</p>
             </div>
-            <button onClick={() => setStep('confirm')} className="text-slate-400 text-xs hover:text-slate-300 transition-colors flex-shrink-0 ml-4">← Back</button>
+            <button onClick={() => setStep('confirm')} className="text-[#6b7280] text-xs hover:text-[#2d2d2d] transition-colors flex-shrink-0 ml-4">← Back</button>
           </div>
 
           {/* Blueprint scan preview */}
           {(scanning || blueprintScan !== null) && (
-            <div className="bg-white/[0.04] rounded-2xl p-5" style={cardStyle}>
+            <div className="bg-[#f8f8f7] rounded-2xl p-5" style={cardStyle}>
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-8 h-8 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>
                 </div>
                 <div>
-                  <div className="text-white font-bold text-sm">From Your Blueprint</div>
-                  <div className="text-slate-400 text-[11px]">AI scan — verify before applying</div>
+                  <div className="text-[#1a1a1a] font-bold text-sm">From Your Blueprint</div>
+                  <div className="text-[#6b7280] text-[11px]">AI scan — verify before applying</div>
                 </div>
               </div>
               {scanning && (
@@ -682,23 +678,23 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               {!scanning && blueprintScan && Object.keys(blueprintScan).length > 0 && (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   {Object.entries(blueprintScan).map(([k, v]) => (
-                    <div key={k} className="flex justify-between border-b border-white/10 py-1.5">
-                      <span className="text-slate-400 text-xs capitalize">{k.replace(/_/g, ' ')}</span>
-                      <span className="text-white text-xs font-semibold">{v}</span>
+                    <div key={k} className="flex justify-between border-b border-[#dededc] py-1.5">
+                      <span className="text-[#6b7280] text-xs capitalize">{k.replace(/_/g, ' ')}</span>
+                      <span className="text-[#1a1a1a] text-xs font-semibold">{v}</span>
                     </div>
                   ))}
                 </div>
               )}
               {!scanning && blueprintScan && Object.keys(blueprintScan).length === 0 && (
-                <div className="text-slate-400 text-xs italic">No data extracted — you can fill in manually.</div>
+                <div className="text-[#6b7280] text-xs italic">No data extracted — you can fill in manually.</div>
               )}
             </div>
           )}
 
           {/* Text notes */}
-          <div className="bg-white/[0.04] rounded-2xl p-5" style={cardStyle}>
-            <label className="text-slate-200 font-semibold text-sm block mb-1.5">
-              Notes <span className="text-slate-400 font-normal">(type any relevant info)</span>
+          <div className="bg-[#f8f8f7] rounded-2xl p-5" style={cardStyle}>
+            <label className="text-[#1a1a1a] font-semibold text-sm block mb-1.5">
+              Notes <span className="text-[#6b7280] font-normal">(type any relevant info)</span>
             </label>
             <textarea
               value={reqNotes}
@@ -706,15 +702,15 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               disabled={reqLoading}
               placeholder={`Owner: John Smith, 123 Main St, Charlotte NC 28202, 704-555-1234\nAPN: 123-456-789 · 2,400 sq ft · Est. cost $280,000`}
               rows={3}
-              className="w-full text-sm rounded-xl px-3.5 py-2.5 border text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-400 resize-none disabled:opacity-50"
+              className="w-full text-sm rounded-xl px-3.5 py-2.5 border text-[#1a1a1a] placeholder-[#9ca3af] focus:outline-none focus:border-indigo-400 resize-none disabled:opacity-50"
               style={{ borderColor: 'rgba(255,255,255,0.10)', background: '#f8faff' }}
             />
           </div>
 
           {/* File upload */}
-          <div className="bg-white/[0.04] rounded-2xl p-5" style={cardStyle}>
-            <label className="text-slate-200 font-semibold text-sm block mb-1.5">
-              Upload Documents <span className="text-slate-400 font-normal">(PDF, image, screenshot — optional)</span>
+          <div className="bg-[#f8f8f7] rounded-2xl p-5" style={cardStyle}>
+            <label className="text-[#1a1a1a] font-semibold text-sm block mb-1.5">
+              Upload Documents <span className="text-[#6b7280] font-normal">(PDF, image, screenshot — optional)</span>
             </label>
             <label
               className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl py-6 px-4 transition-all ${reqLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30'}`}
@@ -722,8 +718,8 @@ export default function PermitPortalSection({ project, projectId }: { project: a
             >
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               <div className="text-center">
-                <div className="text-slate-200 font-semibold text-sm">Click to upload or drag & drop</div>
-                <div className="text-slate-400 text-xs">Property records, survey maps, deed, prior permits, photos</div>
+                <div className="text-[#1a1a1a] font-semibold text-sm">Click to upload or drag & drop</div>
+                <div className="text-[#6b7280] text-xs">Property records, survey maps, deed, prior permits, photos</div>
               </div>
               <input
                 type="file"
@@ -745,17 +741,17 @@ export default function PermitPortalSection({ project, projectId }: { project: a
             {reqFiles.length > 0 && (
               <div className="mt-3 space-y-2">
                 {reqFiles.map((file, i) => (
-                  <div key={i} className="flex items-center justify-between bg-white/[0.05] rounded-xl px-3 py-2">
+                  <div key={i} className="flex items-center justify-between bg-[#f8f8f7] rounded-xl px-3 py-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="min-w-0">
-                        <div className="text-slate-200 text-xs font-semibold truncate">{file.name}</div>
-                        <div className="text-slate-400 text-[10px]">{(file.size / 1024).toFixed(0)} KB</div>
+                        <div className="text-[#1a1a1a] text-xs font-semibold truncate">{file.name}</div>
+                        <div className="text-[#6b7280] text-[10px]">{(file.size / 1024).toFixed(0)} KB</div>
                       </div>
                     </div>
                     <button
                       disabled={reqLoading}
                       onClick={() => setReqFiles(prev => prev.filter((_, j) => j !== i))}
-                      className="text-slate-300 hover:text-red-400 transition-colors flex-shrink-0 ml-2 disabled:opacity-30"
+                      className="text-[#2d2d2d] hover:text-red-400 transition-colors flex-shrink-0 ml-2 disabled:opacity-30"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
@@ -791,7 +787,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 <button
                   onClick={handleAnalyzeRequirements}
                   disabled={reqLoading || formLoading}
-                  className="w-full text-white font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-40"
+                  className="w-full text-[#1a1a1a] font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-40"
                   style={{ background: (reqLoading || formLoading) ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}
                 >
                   {reqLoading || formLoading ? 'Processing…' : 'Analyze & Fill Permit →'}
@@ -799,7 +795,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                 <button
                   onClick={() => handleFetchForm({})}
                   disabled={reqLoading || formLoading}
-                  className="w-full text-slate-400 text-sm py-2 hover:text-slate-300 transition-colors disabled:opacity-40"
+                  className="w-full text-[#6b7280] text-sm py-2 hover:text-[#2d2d2d] transition-colors disabled:opacity-40"
                 >
                   Skip analysis — continue with project + blueprint data only →
                 </button>
@@ -808,7 +804,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               <button
                 onClick={() => handleFetchForm({})}
                 disabled={reqLoading || formLoading}
-                className="w-full text-white font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-40"
+                className="w-full text-[#1a1a1a] font-bold py-3.5 rounded-xl text-sm transition-all disabled:opacity-40"
                 style={{ background: (reqLoading || formLoading) ? '#94a3b8' : 'linear-gradient(135deg, #2563eb, #1d4ed8)', boxShadow: '0 4px 14px rgba(37,99,235,0.3)' }}
               >
                 {reqLoading || formLoading ? 'Processing…' : 'Continue without documents →'}
@@ -822,11 +818,11 @@ export default function PermitPortalSection({ project, projectId }: { project: a
       {step === 'form' && !formData && (
         <div className="space-y-4">
           {[1,2,3].map(i => (
-            <div key={i} className="bg-white/[0.04] rounded-2xl p-5 animate-pulse" style={cardStyle}>
-              <div className="h-4 w-32 bg-white/10 rounded mb-4" />
+            <div key={i} className="bg-[#f8f8f7] rounded-2xl p-5 animate-pulse" style={cardStyle}>
+              <div className="h-4 w-32 bg-[#eeeeed] rounded mb-4" />
               <div className="grid grid-cols-2 gap-4">
                 {[1,2,3,4].map(j => (
-                  <div key={j}><div className="h-3 w-24 bg-white/[0.06] rounded mb-2"/><div className="h-9 bg-white/[0.06] rounded-xl"/></div>
+                  <div key={j}><div className="h-3 w-24 bg-[#f8f8f7] rounded mb-2"/><div className="h-9 bg-[#f8f8f7] rounded-xl"/></div>
                 ))}
               </div>
             </div>
@@ -839,15 +835,15 @@ export default function PermitPortalSection({ project, projectId }: { project: a
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-white font-bold">Permit Application</h3>
-              <p className="text-slate-400 text-xs mt-0.5">
+              <h3 className="text-[#1a1a1a] font-bold">Permit Application</h3>
+              <p className="text-[#6b7280] text-xs mt-0.5">
                 {formData.form_url ? 'Fields extracted from the official form · ' : 'Standard form · '}
                 {filledCount} of {formData.fields?.length || 0} fields filled
               </p>
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setStep('requirements')} className="text-blue-300 text-xs hover:text-blue-200 transition-colors" title="Only if this permit requires supporting documents">＋ Add supporting documents</button>
-              <button onClick={() => setStep('confirm')} className="text-slate-400 text-sm hover:text-slate-300 transition-colors">← Back</button>
+              <button onClick={() => setStep('confirm')} className="text-[#6b7280] text-sm hover:text-[#2d2d2d] transition-colors">← Back</button>
             </div>
           </div>
 
@@ -874,13 +870,13 @@ export default function PermitPortalSection({ project, projectId }: { project: a
           {/* Jurisdiction card */}
           {formData.jurisdiction && (
             formData.jurisdiction.found ? (
-              <div className="bg-white/[0.04] rounded-2xl p-4 flex items-start gap-3" style={cardStyle}>
+              <div className="bg-[#f8f8f7] rounded-2xl p-4 flex items-start gap-3" style={cardStyle}>
                 <div className="w-9 h-9 bg-emerald-500/10 border border-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-white font-bold text-sm">{formData.jurisdiction.authority_name}</span>
+                    <span className="text-[#1a1a1a] font-bold text-sm">{formData.jurisdiction.authority_name}</span>
                     {formData.jurisdiction.submission_method && formData.jurisdiction.submission_method !== 'unknown' && (
                       <span className="text-[10px] font-semibold rounded-full px-2 py-0.5 capitalize bg-blue-500/10 text-blue-600 border border-blue-100">{formData.jurisdiction.submission_method.replace('_', ' ')}</span>
                     )}
@@ -920,7 +916,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                         input?.focus()
                       }
                     }}
-                    className="text-[11px] font-semibold bg-white/[0.04] border border-amber-300 hover:border-amber-500 text-amber-800 rounded-full px-2.5 py-1 transition-colors"
+                    className="text-[11px] font-semibold bg-[#f8f8f7] border border-amber-300 hover:border-amber-500 text-amber-800 rounded-full px-2.5 py-1 transition-colors"
                   >
                     {f.label}
                   </button>
@@ -935,13 +931,13 @@ export default function PermitPortalSection({ project, projectId }: { project: a
               const idx = Math.min(wizardIdx, missingFields.length - 1)
               const f = missingFields[idx]
               return (
-                <div className="bg-white/[0.04] rounded-2xl p-6" style={cardStyle}>
+                <div className="bg-[#f8f8f7] rounded-2xl p-6" style={cardStyle}>
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Step {idx + 1} of {missingFields.length}</div>
-                    <button onClick={() => setEntryMode('checklist')} className="text-xs text-slate-400 hover:text-slate-300">Switch to checklist</button>
+                    <button onClick={() => setEntryMode('checklist')} className="text-xs text-[#6b7280] hover:text-[#2d2d2d]">Switch to checklist</button>
                   </div>
-                  <div className="text-white font-bold text-lg mb-1">{f.label}</div>
-                  <div className="text-slate-400 text-xs mb-4">Section: {f.section}</div>
+                  <div className="text-[#1a1a1a] font-bold text-lg mb-1">{f.label}</div>
+                  <div className="text-[#6b7280] text-xs mb-4">Section: {f.section}</div>
                   <div id={`field-${f.key}`}>
                     {renderField(f, { fullWidth: true })}
                   </div>
@@ -949,7 +945,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                     <button
                       disabled={idx === 0}
                       onClick={() => setWizardIdx(i => Math.max(0, i - 1))}
-                      className="text-sm text-slate-500 hover:text-slate-200 disabled:opacity-40"
+                      className="text-sm text-[#6b7280] hover:text-[#1a1a1a] disabled:opacity-40"
                     >
                       ← Previous
                     </button>
@@ -959,7 +955,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                           if (idx >= missingFields.length - 1) setEntryMode('checklist')
                           else setWizardIdx(i => i + 1)
                         }}
-                        className="text-sm text-slate-500 hover:text-slate-200"
+                        className="text-sm text-[#6b7280] hover:text-[#1a1a1a]"
                       >
                         Skip
                       </button>
@@ -981,9 +977,9 @@ export default function PermitPortalSection({ project, projectId }: { project: a
 
           {/* Checklist mode — full form grouped by section */}
           {entryMode === 'checklist' && Object.entries(fieldsBySection).map(([section, sFields]) => (
-            <div key={section} className="bg-white/[0.04] rounded-2xl overflow-hidden" style={cardStyle}>
+            <div key={section} className="bg-[#f8f8f7] rounded-2xl overflow-hidden" style={cardStyle}>
               <div className="px-5 py-4 border-b flex items-center gap-2" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                <span className="text-white font-bold text-sm">{section}</span>
+                <span className="text-[#1a1a1a] font-bold text-sm">{section}</span>
               </div>
               <div className="p-5 grid grid-cols-2 gap-x-5 gap-y-4">
                 {(sFields as any[]).map((f: any) => (
@@ -999,7 +995,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                       onChange={e => setSaveProfile(e.target.checked)}
                       className="w-4 h-4 rounded accent-blue-600"
                     />
-                    <label htmlFor="save-profile" className="text-sm text-slate-200 cursor-pointer flex-1">
+                    <label htmlFor="save-profile" className="text-sm text-[#1a1a1a] cursor-pointer flex-1">
                       Save contractor info to my profile — auto-fill on future permit applications
                     </label>
                     {saveProfile && !profileSaved && (
@@ -1028,26 +1024,26 @@ export default function PermitPortalSection({ project, projectId }: { project: a
       {step === 'review' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-white font-bold">Ready to Download</h3>
-            <button onClick={() => setStep('form')} className="text-slate-400 text-sm hover:text-slate-300 transition-colors">← Edit</button>
+            <h3 className="text-[#1a1a1a] font-bold">Ready to Download</h3>
+            <button onClick={() => setStep('form')} className="text-[#6b7280] text-sm hover:text-[#2d2d2d] transition-colors">← Edit</button>
           </div>
 
           {/* Summary */}
-          <div className="bg-white/[0.04] rounded-2xl p-5" style={cardStyle}>
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Application Summary</div>
+          <div className="bg-[#f8f8f7] rounded-2xl p-5" style={cardStyle}>
+            <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-3">Application Summary</div>
             <div className="space-y-1">
               {(Array.isArray(formData?.fields) ? formData.fields : []).filter((f: any) => fieldValues[f.key]).slice(0, 8).map((f: any) => (
                 <div key={f.key} className="flex justify-between py-2 border-b last:border-0" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                  <span className="text-slate-400 text-sm">{f.label}</span>
-                  <span className="text-white text-sm font-semibold truncate max-w-[55%] text-right">{fieldValues[f.key]}</span>
+                  <span className="text-[#6b7280] text-sm">{f.label}</span>
+                  <span className="text-[#1a1a1a] text-sm font-semibold truncate max-w-[55%] text-right">{fieldValues[f.key]}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Download options */}
-          <div className="bg-white/[0.04] rounded-2xl p-6" style={cardStyle}>
-            <div className="text-white font-bold text-sm mb-4">Download Options</div>
+          <div className="bg-[#f8f8f7] rounded-2xl p-6" style={cardStyle}>
+            <div className="text-[#1a1a1a] font-bold text-sm mb-4">Download Options</div>
             <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={() => handleDownloadClick(false)}
@@ -1058,26 +1054,26 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.75" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 </div>
                 <div className="text-center">
-                  <div className="text-white font-bold text-sm">Official Form PDF</div>
-                  <div className="text-slate-400 text-xs mt-0.5">Values overlaid on the city's actual form</div>
+                  <div className="text-[#1a1a1a] font-bold text-sm">Official Form PDF</div>
+                  <div className="text-[#6b7280] text-xs mt-0.5">Values overlaid on the city's actual form</div>
                 </div>
               </button>
               <button
                 onClick={() => handleDownloadClick(true)}
                 disabled={generatingPdf}
-                className="flex flex-col items-center gap-3 p-5 border-2 border-white/10 hover:border-slate-400 rounded-2xl transition-all hover:bg-white/[0.05] disabled:opacity-50"
+                className="flex flex-col items-center gap-3 p-5 border-2 border-[#dededc] hover:border-slate-400 rounded-2xl transition-all hover:bg-[#f8f8f7] disabled:opacity-50"
               >
-                <div className="w-12 h-12 bg-white/[0.06] rounded-xl flex items-center justify-center">
+                <div className="w-12 h-12 bg-[#f8f8f7] rounded-xl flex items-center justify-center">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="1.75" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
                 </div>
                 <div className="text-center">
-                  <div className="text-white font-bold text-sm">Clean Form PDF</div>
-                  <div className="text-slate-400 text-xs mt-0.5">Professional formatted version to print</div>
+                  <div className="text-[#1a1a1a] font-bold text-sm">Clean Form PDF</div>
+                  <div className="text-[#6b7280] text-xs mt-0.5">Professional formatted version to print</div>
                 </div>
               </button>
             </div>
             {generatingPdf && (
-              <div className="flex items-center justify-center gap-2 mt-4 text-slate-500 text-sm">
+              <div className="flex items-center justify-center gap-2 mt-4 text-[#6b7280] text-sm">
                 <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
                 Generating PDF…
               </div>
@@ -1131,25 +1127,25 @@ export default function PermitPortalSection({ project, projectId }: { project: a
       {/* Pre-flight modal */}
       {preflightModal?.open && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setPreflightModal(null)}>
-          <div className="bg-white/[0.04] rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+          <div className="bg-[#f8f8f7] rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 bg-amber-500/10 border border-amber-200 rounded-xl flex items-center justify-center flex-shrink-0">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               </div>
               <div>
-                <div className="text-white font-bold text-base">Hold on — incomplete permit</div>
-                <div className="text-slate-400 text-xs">Submitting now will likely get bounced back</div>
+                <div className="text-[#1a1a1a] font-bold text-base">Hold on — incomplete permit</div>
+                <div className="text-[#6b7280] text-xs">Submitting now will likely get bounced back</div>
               </div>
             </div>
-            <p className="text-slate-200 text-sm mb-3">
+            <p className="text-[#1a1a1a] text-sm mb-3">
               <span className="font-bold">{preflightModal.missing.length} required field{preflightModal.missing.length > 1 ? 's are' : ' is'} still empty:</span>
             </p>
-            <div className="bg-white/[0.05] rounded-xl p-3 max-h-48 overflow-y-auto mb-4">
+            <div className="bg-[#f8f8f7] rounded-xl p-3 max-h-48 overflow-y-auto mb-4">
               <ul className="space-y-1">
                 {preflightModal.missing.map(m => (
-                  <li key={m.key} className="text-slate-200 text-sm flex items-start gap-2">
+                  <li key={m.key} className="text-[#1a1a1a] text-sm flex items-start gap-2">
                     <span className="text-amber-500 mt-0.5">•</span>
-                    <span><span className="font-semibold">{m.label}</span> <span className="text-slate-400 text-xs">({m.section})</span></span>
+                    <span><span className="font-semibold">{m.label}</span> <span className="text-[#6b7280] text-xs">({m.section})</span></span>
                   </li>
                 ))}
               </ul>
@@ -1187,7 +1183,7 @@ export default function PermitPortalSection({ project, projectId }: { project: a
                   setPreflightModal(null)
                   await actuallyDownloadPdf(useWebForm, fields)
                 }}
-                className="flex-1 bg-white/[0.06] hover:bg-white/10 text-slate-200 font-semibold text-sm py-2.5 rounded-xl"
+                className="flex-1 bg-[#f8f8f7] hover:bg-[#eeeeed] text-[#1a1a1a] font-semibold text-sm py-2.5 rounded-xl"
               >
                 Download anyway
               </button>

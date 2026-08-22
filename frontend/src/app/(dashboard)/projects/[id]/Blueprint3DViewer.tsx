@@ -1110,14 +1110,14 @@ function PropertyPanel({ obj,onClose }:{ obj:SelectedObject; onClose:()=>void })
         </div>
         <div className="flex flex-wrap gap-x-5 gap-y-1">
           {rows.map(r=>(
-            <div key={r.label} className="text-xs text-slate-500">
-              <span className="text-slate-400">{r.label}: </span>
+            <div key={r.label} className="text-xs text-[#6b7280]">
+              <span className="text-[#6b7280]">{r.label}: </span>
               <span className="font-semibold text-slate-700">{r.value}</span>
             </div>
           ))}
         </div>
       </div>
-      <button className="text-slate-400 hover:text-slate-600 text-lg leading-none" onClick={onClose}>×</button>
+      <button className="text-[#6b7280] hover:text-[#9ca3af] text-lg leading-none" onClick={onClose}>×</button>
     </div>
   );
 }
@@ -1193,7 +1193,7 @@ export default function Blueprint3DViewer({ analysis, sceneData, blueprintUrl }:
           {/* Style mode */}
           <div className="flex rounded-lg overflow-hidden border border-gray-200 shadow-sm">
             {(["photo","minimal","wireframe"] as StyleMode[]).map((s,i)=>(
-              <button key={s} className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${i>0?"border-l border-gray-200":""} ${styleMode===s?"bg-slate-800 text-white":"bg-white text-gray-600 hover:bg-gray-50"}`} onClick={()=>setStyleMode(s)}>
+              <button key={s} className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${i>0?"border-l border-gray-200":""} ${styleMode===s?"bg-[#eeeeed] text-[#1a1a1a]":"bg-white text-gray-600 hover:bg-gray-50"}`} onClick={()=>setStyleMode(s)}>
                 {s==="photo"?"Photo":s==="minimal"?"Flat":"Wire"}
               </button>
             ))}
@@ -1203,7 +1203,7 @@ export default function Blueprint3DViewer({ analysis, sceneData, blueprintUrl }:
 
           {/* Layers */}
           <div className="relative">
-            <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showLayers?"bg-gray-800 text-white border-gray-800":"bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={()=>setShowLayers(p=>!p)}>Layers</button>
+            <button className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${showLayers?"bg-gray-800 text-[#1a1a1a] border-gray-800":"bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} onClick={()=>setShowLayers(p=>!p)}>Layers</button>
             {showLayers&&(
               <div className="absolute left-0 top-full mt-1 z-40 bg-white border border-gray-200 rounded-xl shadow-xl p-3 w-48">
                 <p className="text-xs font-semibold text-gray-400 mb-2 uppercase tracking-widest">Visibility</p>

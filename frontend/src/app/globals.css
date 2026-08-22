@@ -32,11 +32,11 @@
 
   /* Surfaces. White Smoke is the page; cards are pure white and lift off
      it with a hairline and a whisper of shadow, never a heavy one. */
-  --color-surface-0:  #ffffff;   /* cards, elevated surfaces */
-  --color-surface-1:  #f5f5f5;   /* page ground — White Smoke */
-  --color-surface-2:  #ececec;   /* wells, striped rows, hover */
-  --color-surface-border: #e4e4e7;
-  --color-surface-glass: #ffffff;
+  --color-surface-0:  #f8f8f7;   /* cards — smokey white, not glaring */
+  --color-surface-1:  #eeeeed;   /* page ground, a step below the cards */
+  --color-surface-2:  #e4e4e2;   /* wells, striped rows, hover */
+  --color-surface-border: #dededc;
+  --color-surface-glass: #f8f8f7;
 
   /* Ink. Soft charcoal rather than pure black — black on white smoke is
      harsher than it looks and reads as unfinished at body sizes. */
@@ -71,7 +71,7 @@
 }
 
 :root {
-  --background: #f5f5f5;
+  --background: #eeeeed;
   --foreground: #1a1a1a;
   /* Vertical rhythm — one number the whole app can breathe against. */
   --gutter: 1.5rem;

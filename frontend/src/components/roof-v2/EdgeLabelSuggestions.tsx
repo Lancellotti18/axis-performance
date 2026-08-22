@@ -219,19 +219,19 @@ export function EdgeLabelSuggestions({
   const highConfidenceCount = suggestions.filter(s => s.confidence >= 0.7).length
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-100">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-[#1a1a1a]">
             ✨ Auto-label edges
             <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">recommended</span>
             <button
               onClick={() => setShowHowTo(v => !v)}
-              className="flex h-4 w-4 items-center justify-center rounded-full border border-white/20 text-[10px] text-slate-400 hover:bg-slate-800 hover:text-white"
+              className="flex h-4 w-4 items-center justify-center rounded-full border border-[#dededc] text-[10px] text-[#6b7280] hover:bg-[#eeeeed] hover:text-[#1a1a1a]"
               title="How does auto-labeling work?"
             >?</button>
           </h3>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-[#6b7280]">
             One click names every edge — <strong>eave, rake, ridge, hip, valley</strong> — from the
             roof&apos;s geometry. You review and accept; label by hand only where you disagree.
           </p>
@@ -262,23 +262,23 @@ export function EdgeLabelSuggestions({
         <div className="mt-3 rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-3 text-xs">
           <div className="mb-2 flex items-center justify-between">
             <span className="font-semibold text-emerald-200">How auto-labeling works</span>
-            <button onClick={dismissHowTo} className="rounded p-0.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Dismiss">✕</button>
+            <button onClick={dismissHowTo} className="rounded p-0.5 text-[#6b7280] hover:bg-[#eeeeed] hover:text-[#1a1a1a]" aria-label="Dismiss">✕</button>
           </div>
-          <ol className="space-y-1.5 text-slate-300">
+          <ol className="space-y-1.5 text-[#2d2d2d]">
             <li className="flex gap-2">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">1</span>
-              <span><strong className="text-white">Map out the whole house first.</strong> Trace every roof plane in the editor (or add them with Google Solar / AI auto-detect). The labeler reads how the planes fit together — so the more complete the outline, the smarter the labels.</span>
+              <span><strong className="text-[#1a1a1a]">Map out the whole house first.</strong> Trace every roof plane in the editor (or add them with Google Solar / AI auto-detect). The labeler reads how the planes fit together — so the more complete the outline, the smarter the labels.</span>
             </li>
             <li className="flex gap-2">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">2</span>
-              <span><strong className="text-white">Click ✨ Auto-label.</strong> Where two planes meet it knows ridge vs hip vs valley from the geometry; outline edges are read as eaves (gutter lines) or rakes (gable sides). Every call shows a confidence % and a plain-English reason.</span>
+              <span><strong className="text-[#1a1a1a]">Click ✨ Auto-label.</strong> Where two planes meet it knows ridge vs hip vs valley from the geometry; outline edges are read as eaves (gutter lines) or rakes (gable sides). Every call shows a confidence % and a plain-English reason.</span>
             </li>
             <li className="flex gap-2">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">3</span>
-              <span><strong className="text-white">Review &amp; accept.</strong> Take the edges one at a time, or 🔍 <strong>Review visually</strong> to step through each one zoomed-in. Disagree with one? Fix just that edge in the editor&apos;s <strong>Label by hand</strong> mode.</span>
+              <span><strong className="text-[#1a1a1a]">Review &amp; accept.</strong> Take the edges one at a time, or 🔍 <strong>Review visually</strong> to step through each one zoomed-in. Disagree with one? Fix just that edge in the editor&apos;s <strong>Label by hand</strong> mode.</span>
             </li>
           </ol>
-          <p className="mt-2 text-[11px] text-slate-500">
+          <p className="mt-2 text-[11px] text-[#6b7280]">
             Labels drive the material order — ridge cap, valley metal, drip edge, flashing — so a quick review here keeps the order right.
           </p>
           <button onClick={dismissHowTo} className="mt-2 w-full rounded bg-emerald-700 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-600">Got it</button>
@@ -286,12 +286,12 @@ export function EdgeLabelSuggestions({
       )}
 
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
-      {message && !error && <p className="mt-2 text-xs text-slate-400">{message}</p>}
+      {message && !error && <p className="mt-2 text-xs text-[#6b7280]">{message}</p>}
 
       {/* Explain a disabled button instead of looking broken. */}
       {!loading && unlabeledEdges.length === 0 && (
         edges.length === 0 ? (
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-[#6b7280]">
             No edges to label yet — accept or draw a facet first (step ②). Edges are created automatically from each facet.
           </p>
         ) : unconfirmedLabeled.length > 0 ? (
@@ -319,7 +319,7 @@ export function EdgeLabelSuggestions({
             </div>
           </div>
         ) : (
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-[#6b7280]">
             All {counts.totalLines} roof line{counts.totalLines === 1 ? '' : 's'} labeled and confirmed ✓ — move on to flashing.
           </p>
         )
@@ -344,7 +344,7 @@ export function EdgeLabelSuggestions({
           <ul className="space-y-3">
             {Object.entries(byFacet).map(([facetLabel, sugList]) => (
               <li key={facetLabel}>
-                <div className="mb-1 text-xs font-semibold text-slate-300">
+                <div className="mb-1 text-xs font-semibold text-[#2d2d2d]">
                   Facet {facetLabel}
                 </div>
                 <ul className="space-y-1">
@@ -357,28 +357,28 @@ export function EdgeLabelSuggestions({
                     return (
                       <li
                         key={`${facetLabel}-${s.vertex_index_start}`}
-                        className="flex items-center justify-between gap-2 rounded border border-white/5 bg-slate-800/40 px-2 py-1.5 text-xs"
+                        className="flex items-center justify-between gap-2 rounded border border-[#dededc] bg-[#eeeeed] px-2 py-1.5 text-xs"
                       >
                         <div className="flex items-center gap-2">
                           <span
                             className="inline-block h-2 w-4 rounded"
                             style={{ background: color }}
                           />
-                          <span className="text-slate-400">
+                          <span className="text-[#6b7280]">
                             edge {s.vertex_index_start}→
                           </span>
-                          <strong className="text-slate-100 uppercase">
+                          <strong className="text-[#1a1a1a] uppercase">
                             {s.suggested_edge_type.replace('_', ' ')}
                           </strong>
                           <span className={`text-[10px] ${confColor}`}>
                             {(s.confidence * 100).toFixed(0)}%
                           </span>
                           {s.shared_with_facet_label && (
-                            <span className="rounded bg-slate-700 px-1 text-[10px] text-slate-300">
+                            <span className="rounded bg-[#e4e4e2] px-1 text-[10px] text-[#2d2d2d]">
                               ↔{s.shared_with_facet_label}
                             </span>
                           )}
-                          <span className="text-[10px] text-slate-500">
+                          <span className="text-[10px] text-[#6b7280]">
                             — {s.reason}
                           </span>
                         </div>
@@ -389,7 +389,7 @@ export function EdgeLabelSuggestions({
                           >Accept</button>
                           <button
                             onClick={() => skipOne(s)}
-                            className="rounded bg-slate-700 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-600"
+                            className="rounded bg-[#e4e4e2] px-2 py-0.5 text-[10px] text-[#1a1a1a] hover:bg-[#d4d4d2]"
                           >Skip</button>
                         </div>
                       </li>
@@ -404,19 +404,19 @@ export function EdgeLabelSuggestions({
               you want it you have read to the bottom of the list and decided
               the suggestions are wrong. Up top it competed with the labels
               themselves for a first-time user's attention. */}
-          <div className="mt-3 flex justify-end border-t border-white/5 pt-3">
+          <div className="mt-3 flex justify-end border-t border-[#dededc] pt-3">
             <button
               onClick={runSuggest}
               disabled={loading || unlabeledEdges.length === 0}
               title="Run the labeler again over the edges that are still unlabeled"
-              className="rounded border border-white/10 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-white/5 disabled:opacity-40"
+              className="rounded border border-[#dededc] px-2.5 py-1 text-[11px] text-[#2d2d2d] hover:bg-[#eeeeed] disabled:opacity-40"
             >{loading ? 'Analyzing…' : '↻ Re-analyze'}</button>
           </div>
         </div>
       )}
 
       {!suggestions.length && !loading && !error && unlabeledEdges.length > 0 && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-[#6b7280]">
           {unlabeledEdges.length} edge{unlabeledEdges.length === 1 ? '' : 's'} need labels.
           Click <strong>Auto-label</strong> to have AI suggest them all at once.
         </p>

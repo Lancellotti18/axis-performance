@@ -268,11 +268,11 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
   const showClose = phase === 'trace' && cursor != null && nearFirst(cursor)
 
   return (
-    <div className="space-y-4 rounded-lg border border-white/10 bg-slate-900/40 p-4">
+    <div className="space-y-4 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">Siding measurement</h3>
-          <p className="text-xs text-slate-400">
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">Siding measurement</h3>
+          <p className="text-xs text-[#6b7280]">
             Trace siding on a ground photo with a known-size reference. Contractor-entered
             (not a satellite measurement) — labeled that way on the report.
           </p>
@@ -297,11 +297,7 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
               key={p}
               onClick={() => { if (!locked) setPhase(p) }}
               disabled={locked}
-              className={`rounded-full px-3 py-1 capitalize ${
-                phase === p ? 'bg-blue-600 text-white'
-                  : locked ? 'cursor-not-allowed bg-slate-800/50 text-slate-600'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
+              className={`rounded-full px-3 py-1 capitalize ${ phase === p ? 'bg-blue-600 text-white' : locked ? 'cursor-not-allowed bg-[#eeeeed] text-[#9ca3af]' : 'bg-[#eeeeed] text-[#2d2d2d] hover:bg-[#e4e4e2]' }`}
             >{i + 1}. {p}</button>
           )
         })}
@@ -309,13 +305,13 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
 
       {/* Upload */}
       {phase === 'upload' && (
-        <div className="rounded-lg border-2 border-dashed border-white/15 p-8 text-center">
+        <div className="rounded-lg border-2 border-dashed border-[#dededc] p-8 text-center">
           <input ref={fileRef} type="file" accept="image/*" onChange={onFileChange} className="hidden" />
           <button
             onClick={() => fileRef.current?.click()}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500"
           >Upload elevation photo</button>
-          <p className="mx-auto mt-3 max-w-md text-xs text-slate-500">
+          <p className="mx-auto mt-3 max-w-md text-xs text-[#6b7280]">
             Stand square-on to the wall in good light. Keep a <strong>door, garage door, or window</strong>
             {' '}fully in frame — you&apos;ll use it to set scale. You can zoom in after to place points precisely.
           </p>
@@ -326,14 +322,14 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
       {imageUrl && phase !== 'upload' && (
         <>
           {phase === 'scale' && (
-            <div className="space-y-2 rounded border border-white/10 bg-slate-800/40 p-3 text-xs">
+            <div className="space-y-2 rounded border border-[#dededc] bg-[#eeeeed] p-3 text-xs">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-slate-200">1.</span>
-                <label className="text-slate-400">Reference:</label>
+                <span className="font-semibold text-[#1a1a1a]">1.</span>
+                <label className="text-[#6b7280]">Reference:</label>
                 <select
                   value={refKey}
                   onChange={e => setRefKey(e.target.value as typeof REFERENCE_OPTIONS[number]['key'])}
-                  className="rounded bg-slate-800 px-2 py-1 text-slate-100"
+                  className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
                 >
                   {REFERENCE_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
                 </select>
@@ -341,13 +337,13 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
                   <input
                     type="number" min={1} step={1} value={customInches}
                     onChange={e => setCustomInches(Number(e.target.value))}
-                    className="w-24 rounded bg-slate-800 px-2 py-1 text-slate-100"
+                    className="w-24 rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]"
                   />
                 )}
-                {refKey === 'custom' && <span className="text-slate-500">inches</span>}
+                {refKey === 'custom' && <span className="text-[#6b7280]">inches</span>}
               </div>
-              <p className="text-slate-400">
-                <span className="font-semibold text-slate-200">2.</span> Click the two ends of that {refInches}″ dimension on the photo
+              <p className="text-[#6b7280]">
+                <span className="font-semibold text-[#1a1a1a]">2.</span> Click the two ends of that {refInches}″ dimension on the photo
                 (e.g. top &amp; bottom of the door). <strong>Drag either dot to fine-tune.</strong> Zoom in for accuracy.
               </p>
               {scaleEndpoints.length === 2 && (
@@ -355,7 +351,7 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
                   <span className="rounded bg-emerald-500/15 px-2 py-1 text-emerald-300">
                     Scale: {refInches}″ ÷ {scalePixelH.toFixed(0)}px = {scaleInPerPx.toFixed(3)} in/px
                   </span>
-                  <button onClick={() => setScaleEndpoints([])} className="rounded bg-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-600">Redo</button>
+                  <button onClick={() => setScaleEndpoints([])} className="rounded bg-[#e4e4e2] px-2 py-1 text-[#1a1a1a] hover:bg-[#d4d4d2]">Redo</button>
                   <button onClick={() => setPhase('trace')} className="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-500">Next: trace siding →</button>
                 </div>
               )}
@@ -363,16 +359,16 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
           )}
 
           {phase === 'trace' && (
-            <div className="space-y-2 rounded border border-white/10 bg-slate-800/40 p-3 text-xs">
-              <p className="text-slate-400">
+            <div className="space-y-2 rounded border border-[#dededc] bg-[#eeeeed] p-3 text-xs">
+              <p className="text-[#6b7280]">
                 Click around the siding region — each click drops a point. <strong>Drag any point to adjust.</strong>
                 {tracePoly.length >= 3 && <> Click the <span className="text-emerald-300">first point</span> to close.</>}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => setTracePoly(prev => prev.slice(0, -1))} disabled={!tracePoly.length}
-                  className="rounded bg-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-600 disabled:opacity-40">Undo</button>
+                  className="rounded bg-[#e4e4e2] px-2 py-1 text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-40">Undo</button>
                 <button onClick={() => setTracePoly([])} disabled={!tracePoly.length}
-                  className="rounded bg-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-600 disabled:opacity-40">Clear</button>
+                  className="rounded bg-[#e4e4e2] px-2 py-1 text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-40">Clear</button>
                 {tracePoly.length >= 3 && (
                   <>
                     <button onClick={() => setPhase('review')} className="rounded bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-500">Finish ({tracePoly.length}) →</button>
@@ -387,22 +383,22 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
             <div className="space-y-2 rounded border border-emerald-400/30 bg-emerald-500/10 p-3 text-xs">
               <div className="text-emerald-200">
                 Siding area: <strong>{liveAreaSqft.toLocaleString()} ft²</strong> @ {scaleInPerPx.toFixed(3)} in/px.
-                {' '}<button onClick={() => setPhase('trace')} className="underline hover:text-white">edit shape</button>
+                {' '}<button onClick={() => setPhase('trace')} className="underline hover:text-[#1a1a1a]">edit shape</button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <label className="text-slate-300">Elevation:</label>
+                <label className="text-[#2d2d2d]">Elevation:</label>
                 <select value={elevation} onChange={e => setElevation(e.target.value as typeof ELEVATIONS[number])}
-                  className="rounded bg-slate-800 px-2 py-1 capitalize text-slate-100">
+                  className="rounded bg-[#eeeeed] px-2 py-1 capitalize text-[#1a1a1a]">
                   {ELEVATIONS.map(e => <option key={e} value={e}>{e}</option>)}
                 </select>
-                <label className="text-slate-300">Material:</label>
+                <label className="text-[#2d2d2d]">Material:</label>
                 <select value={material} onChange={e => setMaterial(e.target.value)}
-                  className="rounded bg-slate-800 px-2 py-1 text-slate-100">
+                  className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]">
                   {MATERIAL_TYPES.map(m => <option key={m} value={m}>{m.replace('_', ' ')}</option>)}
                 </select>
               </div>
               <textarea placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)}
-                className="h-14 w-full rounded bg-slate-800 px-2 py-1 text-slate-100" />
+                className="h-14 w-full rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a]" />
               <button onClick={save} disabled={saving}
                 className="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-500 disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save siding measurement'}
@@ -412,14 +408,14 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
 
           {/* Zoom toolbar */}
           <div className="flex items-center gap-1 text-xs">
-            <button onClick={() => zoomCenter(1.18)} className="rounded bg-slate-800 px-2 py-1 text-slate-200 hover:bg-slate-700" title="Zoom in">＋</button>
-            <button onClick={() => zoomCenter(1 / 1.18)} className="rounded bg-slate-800 px-2 py-1 text-slate-200 hover:bg-slate-700" title="Zoom out">－</button>
-            <button onClick={resetView} className="rounded bg-slate-800 px-2 py-1 text-slate-200 hover:bg-slate-700">Fit</button>
-            <span className="ml-1 text-slate-500">{zoom.toFixed(1)}× · wheel to zoom · drag empty area to pan</span>
+            <button onClick={() => zoomCenter(1.18)} className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a] hover:bg-[#e4e4e2]" title="Zoom in">＋</button>
+            <button onClick={() => zoomCenter(1 / 1.18)} className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a] hover:bg-[#e4e4e2]" title="Zoom out">－</button>
+            <button onClick={resetView} className="rounded bg-[#eeeeed] px-2 py-1 text-[#1a1a1a] hover:bg-[#e4e4e2]">Fit</button>
+            <span className="ml-1 text-[#6b7280]">{zoom.toFixed(1)}× · wheel to zoom · drag empty area to pan</span>
           </div>
 
           {/* Canvas */}
-          <div className="relative w-full overflow-hidden rounded-lg border border-white/10 bg-black"
+          <div className="relative w-full overflow-hidden rounded-lg border border-[#dededc] bg-black"
             style={{ aspectRatio: `${imageDims.w || 4} / ${imageDims.h || 3}`, maxHeight: '70vh' }}>
             {/* hidden loader for natural dims */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -501,26 +497,26 @@ function SidingGuide() {
     <div className="rounded-md border border-blue-400/20 bg-blue-500/5">
       <button onClick={() => setOpen(o => !o)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs">
         <span className="font-semibold text-blue-200">📐 How siding measurement works — read first</span>
-        <span className="text-slate-400">{open ? 'Hide' : 'Show'}</span>
+        <span className="text-[#6b7280]">{open ? 'Hide' : 'Show'}</span>
       </button>
       {open && (
-        <div className="space-y-2.5 border-t border-blue-400/10 px-3 py-2.5 text-[11px] text-slate-300">
-          <p className="text-slate-400">
+        <div className="space-y-2.5 border-t border-blue-400/10 px-3 py-2.5 text-[11px] text-[#2d2d2d]">
+          <p className="text-[#6b7280]">
             A satellite tile can&apos;t measure walls, so siding is measured from a <strong>straight-on
             ground photo</strong> of each wall. You give it scale with a known-size object, trace the wall,
             and it computes the square footage. <strong>Do one wall at a time</strong> and repeat for each side.
           </p>
           <ol className="space-y-1.5">
-            <li><strong className="text-white">1 · Upload</strong> a square-on photo of one wall (front, back, left, or right). Keep a <strong>door, garage door, or window fully in frame</strong> — that&apos;s your scale reference.</li>
-            <li><strong className="text-white">2 · Scale</strong> — pick what the reference is (e.g. standard door = 80″), then click its two ends on the photo (top &amp; bottom of the door). This tells the tool how big a pixel is.</li>
-            <li><strong className="text-white">3 · Trace</strong> the siding area — click around the wall; trace <strong>around big windows/garage doors</strong> to leave them out. Drag any point to adjust.</li>
-            <li><strong className="text-white">4 · Review &amp; save</strong> — set the elevation + material, check the ft², and save. Then upload the next wall.</li>
+            <li><strong className="text-[#1a1a1a]">1 · Upload</strong> a square-on photo of one wall (front, back, left, or right). Keep a <strong>door, garage door, or window fully in frame</strong> — that&apos;s your scale reference.</li>
+            <li><strong className="text-[#1a1a1a]">2 · Scale</strong> — pick what the reference is (e.g. standard door = 80″), then click its two ends on the photo (top &amp; bottom of the door). This tells the tool how big a pixel is.</li>
+            <li><strong className="text-[#1a1a1a]">3 · Trace</strong> the siding area — click around the wall; trace <strong>around big windows/garage doors</strong> to leave them out. Drag any point to adjust.</li>
+            <li><strong className="text-[#1a1a1a]">4 · Review &amp; save</strong> — set the elevation + material, check the ft², and save. Then upload the next wall.</li>
           </ol>
           <div className="rounded border border-amber-400/20 bg-amber-500/5 p-2 text-amber-200/90">
             <strong>For the best accuracy:</strong> stand back and square-on (not at an angle), shoot in daylight,
             and pick the <em>biggest</em> reference object in frame (a garage door beats a window) — bigger reference = less scale error.
           </div>
-          <p className="text-slate-500">A typical house = <strong>4 walls = 4 photos</strong>. One-story ranch may only need the visible faces; skip walls with no siding.</p>
+          <p className="text-[#6b7280]">A typical house = <strong>4 walls = 4 photos</strong>. One-story ranch may only need the visible faces; skip walls with no siding.</p>
         </div>
       )}
     </div>

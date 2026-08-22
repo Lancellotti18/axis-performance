@@ -143,38 +143,38 @@ function PhotoAnnotator({ photo, onClose, onSaved, onDeleted }: {
         <div className="flex flex-wrap items-center gap-2 text-sm">
           {(['arrow', 'circle', 'text'] as Tool[]).map(t => (
             <button key={t} onClick={() => setTool(t)}
-              className={`rounded-lg px-3 py-1.5 font-semibold capitalize ${tool === t ? 'bg-rose-600 text-white' : 'bg-white/10 text-slate-300 hover:bg-white/15'}`}>
+              className={`rounded-lg px-3 py-1.5 font-semibold capitalize ${tool === t ? 'bg-rose-600 text-white' : 'bg-[#eeeeed] text-[#2d2d2d] hover:bg-white/15'}`}>
               {t === 'arrow' ? '↗ Arrow' : t === 'circle' ? '◯ Circle' : '🅣 Text'}
             </button>
           ))}
           <button onClick={() => setAnn(a => a.slice(0, -1))} disabled={!ann.length}
-            className="rounded-lg bg-white/10 px-3 py-1.5 text-slate-300 hover:bg-white/15 disabled:opacity-40">Undo</button>
+            className="rounded-lg bg-[#eeeeed] px-3 py-1.5 text-[#2d2d2d] hover:bg-white/15 disabled:opacity-40">Undo</button>
           <button onClick={() => setAnn([])} disabled={!ann.length}
-            className="rounded-lg bg-white/10 px-3 py-1.5 text-slate-300 hover:bg-white/15 disabled:opacity-40">Clear</button>
+            className="rounded-lg bg-[#eeeeed] px-3 py-1.5 text-[#2d2d2d] hover:bg-white/15 disabled:opacity-40">Clear</button>
           <div className="ml-auto flex items-center gap-2">
             <select value={phase} onChange={e => setPhase(e.target.value)}
-              className="rounded-lg border border-white/15 bg-slate-900 px-2 py-1.5 text-slate-200">
+              className="rounded-lg border border-[#dededc] bg-[#f8f8f7] px-2 py-1.5 text-[#1a1a1a]">
               {PHASE_ORDER.map(p => <option key={p} value={p}>{PHASE_META[p].label}</option>)}
             </select>
-            <button onClick={onClose} className="rounded-lg bg-white/10 px-3 py-1.5 text-slate-300 hover:bg-white/15">Close</button>
+            <button onClick={onClose} className="rounded-lg bg-[#eeeeed] px-3 py-1.5 text-[#2d2d2d] hover:bg-white/15">Close</button>
           </div>
         </div>
 
         {/* Canvas */}
         <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
-          className="relative flex-1 touch-none select-none self-center overflow-hidden rounded-xl bg-slate-950"
+          className="relative flex-1 touch-none select-none self-center overflow-hidden rounded-xl bg-[#f8f8f7]"
           style={{ maxHeight: '70vh', cursor: tool === 'text' ? 'copy' : 'crosshair' }}>
           {photo.url
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={photo.url} alt="" draggable={false} className="pointer-events-none block max-h-[70vh] w-auto select-none" />
-            : <div className="flex h-64 w-96 items-center justify-center text-slate-600">image unavailable</div>}
+            : <div className="flex h-64 w-96 items-center justify-center text-[#9ca3af]">image unavailable</div>}
           <PhotoMarkup annotations={[...ann, ...preview]} />
         </div>
 
         {/* Caption + actions */}
         <div className="flex flex-wrap items-center gap-2">
           <input value={caption} onChange={e => setCaption(e.target.value)} placeholder="Caption / note for the crew…"
-            className="min-w-[200px] flex-1 rounded-lg border border-white/12 bg-white/[0.06] px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-blue-400/40 focus:outline-none" />
+            className="min-w-[200px] flex-1 rounded-lg border border-[#dededc] bg-[#f8f8f7] px-3 py-2 text-sm text-[#1a1a1a] placeholder-[#9ca3af] focus:border-blue-400/40 focus:outline-none" />
           <button onClick={del} className="rounded-lg border border-rose-400/30 px-3 py-2 text-sm font-semibold text-rose-300 hover:bg-rose-500/10">Delete</button>
           <button onClick={save} disabled={saving}
             className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
@@ -231,18 +231,18 @@ export default function ProjectPhotos({ projectId }: { projectId: string }) {
     }
   }, [projectId])
 
-  if (loading) return <div className="py-16 text-center text-sm text-slate-500">Loading photos…</div>
+  if (loading) return <div className="py-16 text-center text-sm text-[#6b7280]">Loading photos…</div>
 
   return (
     <div className="max-w-5xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white">Project photos</h2>
-          <p className="text-sm text-slate-400">Organize job-site photos by phase, mark them up, and share a link your crew can open on their phone.</p>
+          <h2 className="text-lg font-bold text-[#1a1a1a]">Project photos</h2>
+          <p className="text-sm text-[#6b7280]">Organize job-site photos by phase, mark them up, and share a link your crew can open on their phone.</p>
         </div>
         <div className="flex items-center gap-2">
           {shareUrl && (
-            <span className="max-w-[240px] truncate rounded-lg bg-white/[0.06] px-2.5 py-1.5 text-[11px] text-slate-400">{shareUrl}</span>
+            <span className="max-w-[240px] truncate rounded-lg bg-[#f8f8f7] px-2.5 py-1.5 text-[11px] text-[#6b7280]">{shareUrl}</span>
           )}
           <button onClick={share}
             className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">
@@ -255,25 +255,25 @@ export default function ProjectPhotos({ projectId }: { projectId: string }) {
         const inPhase = photos.filter(p => p.phase === phase)
         const meta = PHASE_META[phase]
         return (
-          <section key={phase} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <section key={phase} className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${meta.chip}`}>{meta.label}</span>
-                <span className="text-xs text-slate-500">{inPhase.length} photo{inPhase.length === 1 ? '' : 's'}</span>
+                <span className="text-xs text-[#6b7280]">{inPhase.length} photo{inPhase.length === 1 ? '' : 's'}</span>
               </div>
-              <label className="cursor-pointer rounded-lg border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/[0.08]">
+              <label className="cursor-pointer rounded-lg border border-[#dededc] bg-[#f8f8f7] px-3 py-1.5 text-xs font-semibold text-[#1a1a1a] hover:bg-[#f8f8f7]">
                 {uploading === phase ? 'Uploading…' : '+ Add photos'}
                 <input type="file" accept="image/*,.heic,.heif,.HEIC,.HEIF" multiple hidden
                   onChange={e => { handleFiles(phase, e.target.files); e.currentTarget.value = '' }} />
               </label>
             </div>
             {inPhase.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-white/10 py-6 text-center text-xs text-slate-600">No {meta.label.toLowerCase()} photos yet — add some.</div>
+              <div className="rounded-lg border border-dashed border-[#dededc] py-6 text-center text-xs text-[#9ca3af]">No {meta.label.toLowerCase()} photos yet — add some.</div>
             ) : (
               <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
                 {inPhase.map(p => (
                   <button key={p.id} onClick={() => setEditing(p)}
-                    className={`group relative aspect-square overflow-hidden rounded-lg bg-slate-900 ring-1 ${meta.ring} transition-transform hover:scale-[1.02]`}>
+                    className={`group relative aspect-square overflow-hidden rounded-lg bg-[#f8f8f7] ring-1 ${meta.ring} transition-transform hover:scale-[1.02]`}>
                     {p.url
                       // eslint-disable-next-line @next/next/no-img-element
                       ? <img src={p.url} alt={p.caption || ''} loading="lazy" className="h-full w-full object-cover" />
@@ -284,14 +284,14 @@ export default function ProjectPhotos({ projectId }: { projectId: string }) {
                       : (
                         <div className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center">
                           <span className="text-base leading-none">🔒</span>
-                          <span className="text-[9px] leading-tight text-slate-400">Link expired</span>
+                          <span className="text-[9px] leading-tight text-[#6b7280]">Link expired</span>
                           <span onClick={e => { e.stopPropagation(); void reload() }}
                             className="cursor-pointer text-[9px] font-semibold text-blue-400 underline">Refresh</span>
                         </div>
                       )}
                     <PhotoMarkup annotations={p.annotations || []} />
                     {(p.annotations?.length || p.caption) && (
-                      <span className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-white">✎ marked</span>
+                      <span className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-[#1a1a1a]">✎ marked</span>
                     )}
                     {p.caption && (
                       <div className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-2 pb-1.5 pt-4 text-left text-[10px] text-white">{p.caption}</div>

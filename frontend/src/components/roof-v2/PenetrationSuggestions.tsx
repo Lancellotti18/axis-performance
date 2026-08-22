@@ -140,11 +140,11 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
   }, [runId, refreshConfirmed])
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">Roof penetrations</h3>
-          <p className="text-xs text-slate-400">
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">Roof penetrations</h3>
+          <p className="text-xs text-[#6b7280]">
             AI suggests likely chimneys, vents, skylights from the satellite tile.
             <strong> Each suggestion must be confirmed</strong> before it enters the materials list or PDF.
           </p>
@@ -157,7 +157,7 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
       </div>
 
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
-      {message && !error && <p className="mt-2 text-xs text-slate-400">{message}</p>}
+      {message && !error && <p className="mt-2 text-xs text-[#6b7280]">{message}</p>}
 
       {/* AI suggestions awaiting confirmation */}
       {suggestions.length > 0 && (
@@ -177,15 +177,15 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
                       <MarkerPreview x={s.pos_x_frac} y={s.pos_y_frac} color={TYPE_COLORS[s.type] || '#cbd5e1'} imageUrl={imageUrl} label={s.type?.replace('_', ' ')} />
                     )}
                     <div>
-                      <div className="font-medium text-slate-100">
+                      <div className="font-medium text-[#1a1a1a]">
                         <span className="inline-block h-2 w-2 rounded-full" style={{ background: TYPE_COLORS[s.type] || '#cbd5e1' }} />{' '}
                         {TYPE_LABELS[s.type] || s.type}
-                        <span className="ml-2 text-xs text-slate-400">
+                        <span className="ml-2 text-xs text-[#6b7280]">
                           {(s.confidence * 100).toFixed(0)}% confidence
                         </span>
                       </div>
-                      <div className="text-xs text-slate-400">{s.note}</div>
-                      <div className="text-[10px] text-slate-500">
+                      <div className="text-xs text-[#6b7280]">{s.note}</div>
+                      <div className="text-[10px] text-[#6b7280]">
                         {s.pos_x_frac != null && s.pos_y_frac != null
                           ? <>Position: {(s.pos_x_frac * 100).toFixed(0)}%, {(s.pos_y_frac * 100).toFixed(0)}% of tile</>
                           : <>📷 From your ground photos</>}
@@ -199,7 +199,7 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
                     >Accept</button>
                     <button
                       onClick={() => reject(i)}
-                      className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600"
+                      className="rounded bg-[#e4e4e2] px-2 py-1 text-xs text-[#1a1a1a] hover:bg-[#d4d4d2]"
                     >Reject</button>
                   </div>
                 </div>
@@ -219,12 +219,12 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
             {confirmed.map(p => (
               <li
                 key={p.id}
-                className="flex items-center justify-between rounded bg-slate-800/40 px-3 py-1.5 text-xs"
+                className="flex items-center justify-between rounded bg-[#eeeeed] px-3 py-1.5 text-xs"
               >
                 <span>
                   <span className="inline-block h-2 w-2 rounded-full" style={{ background: TYPE_COLORS[p.type] || '#cbd5e1' }} />{' '}
                   {TYPE_LABELS[p.type] || p.type} × {p.count}
-                  {p.notes && <span className="ml-2 text-slate-500">— {p.notes}</span>}
+                  {p.notes && <span className="ml-2 text-[#6b7280]">— {p.notes}</span>}
                 </span>
                 <button
                   onClick={() => removeConfirmed(p.id)}
@@ -237,7 +237,7 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
       )}
 
       {suggestions.length === 0 && confirmed.length === 0 && !loading && !error && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-[#6b7280]">
           No penetrations recorded yet. Click <strong>Find penetrations</strong> to have AI scan the satellite tile.
         </p>
       )}
@@ -263,7 +263,7 @@ function TileCrop({
   zoom: number; className?: string; dotSize?: number
 }) {
   return (
-    <div className={`relative overflow-hidden bg-slate-900/60 ${className || ''}`}>
+    <div className={`relative overflow-hidden bg-[#f8f8f7] ${className || ''}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={imageUrl}
@@ -302,7 +302,7 @@ function MarkerPreview({
 
   if (!imageUrl) {
     return (
-      <div className="flex h-[60px] w-[80px] items-center justify-center rounded border border-white/10 bg-slate-900/60 text-[10px] text-slate-500">
+      <div className="flex h-[60px] w-[80px] items-center justify-center rounded border border-[#dededc] bg-[#f8f8f7] text-[10px] text-[#6b7280]">
         no tile
       </div>
     )
@@ -314,11 +314,11 @@ function MarkerPreview({
         onClick={(e) => { e.stopPropagation(); setOpen(true) }}
         title="Click to enlarge"
         aria-label="Enlarge this marker"
-        className="group relative block h-[60px] w-[80px] shrink-0 rounded border border-white/10 hover:border-white/40"
+        className="group relative block h-[60px] w-[80px] shrink-0 rounded border border-[#dededc] hover:border-white/40"
       >
         <TileCrop x={x} y={y} color={color} imageUrl={imageUrl} zoom={8}
                   className="h-full w-full rounded" dotSize={10} />
-        <span className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/40 text-[10px] font-semibold text-white group-hover:flex">
+        <span className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/40 text-[10px] font-semibold text-[#1a1a1a] group-hover:flex">
           Enlarge
         </span>
       </button>
@@ -329,30 +329,30 @@ function MarkerPreview({
           onClick={() => setOpen(false)}
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-6"
         >
           <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-3xl">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-semibold text-white">{label || 'Penetration'}</span>
+              <span className="text-sm font-semibold text-[#1a1a1a]">{label || 'Penetration'}</span>
               <button
                 onClick={() => setOpen(false)}
                 aria-label="Close"
-                className="rounded px-2 py-0.5 text-lg leading-none text-slate-300 hover:bg-white/10 hover:text-white"
+                className="rounded px-2 py-0.5 text-lg leading-none text-[#2d2d2d] hover:bg-[#eeeeed] hover:text-[#1a1a1a]"
               >×</button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <TileCrop x={x} y={y} color={color} imageUrl={imageUrl} zoom={6}
-                          className="aspect-[4/3] w-full rounded-lg border border-white/15" dotSize={18} />
-                <p className="mt-1 text-center text-[11px] text-slate-400">Close up</p>
+                          className="aspect-[4/3] w-full rounded-lg border border-[#dededc]" dotSize={18} />
+                <p className="mt-1 text-center text-[11px] text-[#6b7280]">Close up</p>
               </div>
               <div>
                 <TileCrop x={x} y={y} color={color} imageUrl={imageUrl} zoom={1}
-                          className="aspect-[4/3] w-full rounded-lg border border-white/15" dotSize={14} />
-                <p className="mt-1 text-center text-[11px] text-slate-400">Whole roof — where it sits</p>
+                          className="aspect-[4/3] w-full rounded-lg border border-[#dededc]" dotSize={14} />
+                <p className="mt-1 text-center text-[11px] text-[#6b7280]">Whole roof — where it sits</p>
               </div>
             </div>
-            <p className="mt-2 text-center text-[11px] text-slate-500">Click outside, press Esc, or hit × to close.</p>
+            <p className="mt-2 text-center text-[11px] text-[#6b7280]">Click outside, press Esc, or hit × to close.</p>
           </div>
         </div>
       )}

@@ -113,11 +113,7 @@ export function PhotoUploadZone({ jobId, userId, onPhotosRegistered, maxPhotos =
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
-        className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition ${
-          dragOver
-            ? 'border-blue-400 bg-blue-500/10'
-            : 'border-white/15 bg-slate-900/40 hover:border-white/30'
-        }`}
+        className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition ${ dragOver ? 'border-blue-400 bg-blue-500/10' : 'border-[#dededc] bg-[#f8f8f7] hover:border-[#c9c9c6]' }`}
       >
         <input
           ref={inputRef}
@@ -127,10 +123,10 @@ export function PhotoUploadZone({ jobId, userId, onPhotosRegistered, maxPhotos =
           onChange={onPick}
           className="hidden"
         />
-        <div className="text-sm text-slate-200">
+        <div className="text-sm text-[#1a1a1a]">
           <strong>Drop photos here</strong> or click to browse
         </div>
-        <div className="mt-1 text-xs text-slate-500">
+        <div className="mt-1 text-xs text-[#6b7280]">
           JPEG, PNG, WebP, HEIC. 6 minimum recommended, {maxPhotos} max. Each photo is
           classified by Gemini Vision (elevation + features) — never used to estimate dimensions.
         </div>
@@ -139,14 +135,9 @@ export function PhotoUploadZone({ jobId, userId, onPhotosRegistered, maxPhotos =
       {statuses.length > 0 && (
         <ul className="space-y-1 text-xs">
           {statuses.map((s, i) => (
-            <li key={i} className="flex items-center justify-between rounded bg-slate-800/40 px-2 py-1">
-              <span className="truncate text-slate-300">{s.filename}</span>
-              <span className={`ml-2 shrink-0 rounded px-2 py-0.5 text-[10px] ${
-                s.status === 'done' ? 'bg-emerald-500/20 text-emerald-300'
-                : s.status === 'error' ? 'bg-rose-500/20 text-rose-300'
-                : s.status === 'classifying' ? 'bg-amber-500/20 text-amber-300'
-                : 'bg-slate-700 text-slate-300'
-              }`}>
+            <li key={i} className="flex items-center justify-between rounded bg-[#eeeeed] px-2 py-1">
+              <span className="truncate text-[#2d2d2d]">{s.filename}</span>
+              <span className={`ml-2 shrink-0 rounded px-2 py-0.5 text-[10px] ${ s.status === 'done' ? 'bg-emerald-500/20 text-emerald-300' : s.status === 'error' ? 'bg-rose-500/20 text-rose-300' : s.status === 'classifying' ? 'bg-amber-500/20 text-amber-300' : 'bg-[#e4e4e2] text-[#2d2d2d]' }`}>
                 {s.status === 'done' ? 'ready'
                   : s.status === 'classifying' ? 'classifying…'
                   : s.status === 'uploading' ? 'uploading…'
@@ -159,7 +150,7 @@ export function PhotoUploadZone({ jobId, userId, onPhotosRegistered, maxPhotos =
       )}
 
       {activeCount > 0 && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-[#6b7280]">
           {activeCount} photo{activeCount === 1 ? '' : 's'} still processing. Gemini classification takes a few seconds per photo.
         </p>
       )}

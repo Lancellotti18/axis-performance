@@ -85,13 +85,13 @@ function RiskBar({ label, score, icon }: { label: string; score: number; icon?: 
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-slate-600 text-xs font-semibold flex items-center gap-1.5">
+        <span className="text-[#9ca3af] text-xs font-semibold flex items-center gap-1.5">
           {icon && <span>{icon}</span>}
           {label}
         </span>
         <span className={`text-xs font-bold ${c.text}`}>{score}/10</span>
       </div>
-      <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
+      <div className="h-2 bg-[#f8f8f7] rounded-full overflow-hidden">
         <div className={`h-full rounded-full ${c.bar}`} style={{ width: `${Math.max(0, Math.min(10, score)) * 10}%` }} />
       </div>
     </div>
@@ -175,27 +175,27 @@ export default function StormReportPage() {
   const c = RISK_COLORS[riskColor] || RISK_COLORS.amber
 
   return (
-    <div className="min-h-screen p-6 md:p-8" style={{ background: '#040810' }}>
+    <div className="min-h-screen p-6 md:p-8" style={{ background: 'var(--color-surface-1)' }}>
       <div className="max-w-3xl mx-auto space-y-6">
 
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Natural Disaster Risk Report</h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-[#1a1a1a] tracking-tight">Natural Disaster Risk Report</h1>
+          <p className="text-[#6b7280] text-sm mt-1">
             Hurricane, tornado, hail, wind, flood, wildfire, earthquake and winter-storm exposure for any US city — grounded in recent
             NOAA, USGS, FEMA and news-report data with actionable reinforcement recommendations.
           </p>
         </div>
 
         {/* Input card */}
-        <div className="bg-white/[0.04] rounded-2xl p-6 space-y-4" style={cardStyle}>
+        <div className="bg-[#f8f8f7] rounded-2xl p-6 space-y-4" style={cardStyle}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">State *</label>
+              <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">State *</label>
               <select
                 value={state}
                 onChange={e => setState(e.target.value)}
-                className="w-full border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white/[0.04]"
+                className="w-full border border-[#dededc] rounded-xl px-3 py-2.5 text-sm text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-blue-300 bg-[#f8f8f7]"
               >
                 <option value="">Select</option>
                 {STATES.map(s => (
@@ -204,25 +204,25 @@ export default function StormReportPage() {
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">City *</label>
+              <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">City *</label>
               <input
                 type="text"
                 value={city}
                 onChange={e => setCity(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 placeholder="Dallas"
-                className="w-full border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full border border-[#dededc] rounded-xl px-3 py-2.5 text-sm text-[#1a1a1a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Zip Code</label>
+              <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">Zip Code</label>
               <input
                 type="text"
                 value={zip}
                 onChange={e => setZip(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 placeholder="75201"
-                className="w-full border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full border border-[#dededc] rounded-xl px-3 py-2.5 text-sm text-[#1a1a1a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
             </div>
           </div>
@@ -230,7 +230,7 @@ export default function StormReportPage() {
           <button
             onClick={handleSubmit}
             disabled={!canSubmit || loading}
-            className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 rounded-xl text-[#1a1a1a] font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               background: !canSubmit || loading ? '#94a3b8' : 'linear-gradient(135deg, #0ea5e9, #0369a1)',
               boxShadow: canSubmit && !loading ? '0 4px 14px rgba(14,165,233,0.3)' : undefined,
@@ -250,13 +250,13 @@ export default function StormReportPage() {
 
         {/* Loading */}
         {loading && (
-          <div className="bg-white/[0.04] rounded-2xl p-10 text-center" style={cardStyle}>
+          <div className="bg-[#f8f8f7] rounded-2xl p-10 text-center" style={cardStyle}>
             <svg className="animate-spin text-blue-500 mx-auto mb-4" width="28" height="28" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
             </svg>
-            <div className="text-slate-200 font-semibold text-sm mb-1">Researching recent disaster history…</div>
-            <div className="text-slate-400 text-xs">Hurricanes · Tornadoes · Hail · Wildfire · Earthquakes · Floods · Code updates</div>
+            <div className="text-[#1a1a1a] font-semibold text-sm mb-1">Researching recent disaster history…</div>
+            <div className="text-[#6b7280] text-xs">Hurricanes · Tornadoes · Hail · Wildfire · Earthquakes · Floods · Code updates</div>
           </div>
         )}
 
@@ -296,18 +296,18 @@ export default function StormReportPage() {
 
             {/* Per-hazard risk graph — always shows the full 8-hazard spectrum */}
             {visibleHazards.length > 0 && (
-              <div className="bg-white/[0.04] rounded-2xl px-5 py-5" style={cardStyle}>
+              <div className="bg-[#f8f8f7] rounded-2xl px-5 py-5" style={cardStyle}>
                 <div className="flex items-baseline justify-between mb-1">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Natural Disaster Risk Graph</div>
-                  <div className="text-[10px] text-slate-400">Score 0–10 · higher = more exposure</div>
+                  <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider">Natural Disaster Risk Graph</div>
+                  <div className="text-[10px] text-[#6b7280]">Score 0–10 · higher = more exposure</div>
                 </div>
                 {/* 0–10 scale axis */}
                 <div className="relative ml-[42%] mr-1 mt-2 mb-3 h-3 select-none">
-                  <div className="absolute inset-x-0 top-1/2 h-px bg-white/10" />
+                  <div className="absolute inset-x-0 top-1/2 h-px bg-[#eeeeed]" />
                   {[0, 2, 4, 6, 8, 10].map(n => (
                     <div
                       key={n}
-                      className="absolute -translate-x-1/2 text-[9px] text-slate-400 font-semibold"
+                      className="absolute -translate-x-1/2 text-[9px] text-[#6b7280] font-semibold"
                       style={{ left: `${n * 10}%` }}
                     >
                       {n}
@@ -319,10 +319,10 @@ export default function StormReportPage() {
                     <div key={h.key} className="grid grid-cols-[42%_1fr] gap-3 items-center">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="flex-shrink-0">{HAZARD_ICON[h.key] || '⚠️'}</span>
-                        <span className="text-slate-200 text-xs font-semibold truncate">{h.label}</span>
+                        <span className="text-[#1a1a1a] text-xs font-semibold truncate">{h.label}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-3 bg-white/[0.06] rounded-full overflow-hidden relative">
+                        <div className="flex-1 h-3 bg-[#f8f8f7] rounded-full overflow-hidden relative">
                           <div
                             className={`h-full rounded-full transition-[width] ${RISK_COLORS[barColorFor(h.score || 0)].bar}`}
                             style={{ width: `${Math.max(0, Math.min(10, h.score || 0)) * 10}%` }}
@@ -333,7 +333,7 @@ export default function StormReportPage() {
                         </span>
                       </div>
                       {h.rationale && (
-                        <p className="col-start-2 text-slate-500 text-[11px] leading-relaxed -mt-1">{h.rationale}</p>
+                        <p className="col-start-2 text-[#6b7280] text-[11px] leading-relaxed -mt-1">{h.rationale}</p>
                       )}
                     </div>
                   ))}
@@ -343,11 +343,11 @@ export default function StormReportPage() {
 
             {/* Scoring rationale + significance */}
             {(result.scoring_rationale || result.significance) && (
-              <div className="bg-white/[0.04] rounded-2xl px-5 py-4 space-y-3" style={cardStyle}>
+              <div className="bg-[#f8f8f7] rounded-2xl px-5 py-4 space-y-3" style={cardStyle}>
                 {result.scoring_rationale && (
                   <div>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Why This Score</div>
-                    <p className="text-slate-600 text-sm leading-relaxed">{result.scoring_rationale}</p>
+                    <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-1">Why This Score</div>
+                    <p className="text-[#9ca3af] text-sm leading-relaxed">{result.scoring_rationale}</p>
                   </div>
                 )}
                 {result.significance && (
@@ -361,10 +361,10 @@ export default function StormReportPage() {
 
             {/* Reinforcement recommendations */}
             {recs.length > 0 && (
-              <div className="bg-white/[0.04] rounded-2xl px-5 py-4" style={cardStyle}>
+              <div className="bg-[#f8f8f7] rounded-2xl px-5 py-4" style={cardStyle}>
                 <div className="flex items-baseline justify-between mb-3">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Reinforcement Recommendations</div>
-                  <div className="text-[10px] text-slate-400">Based on recent events + code updates</div>
+                  <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider">Reinforcement Recommendations</div>
+                  <div className="text-[10px] text-[#6b7280]">Based on recent events + code updates</div>
                 </div>
                 <div className="space-y-3">
                   {recs.map((r, i) => {
@@ -376,14 +376,14 @@ export default function StormReportPage() {
                         <div className="flex items-start justify-between gap-3 mb-1.5">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             {hazardIcon && <span className="text-base flex-shrink-0">{hazardIcon}</span>}
-                            <div className="text-white text-sm font-semibold">{r.action}</div>
+                            <div className="text-[#1a1a1a] text-sm font-semibold">{r.action}</div>
                           </div>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border flex-shrink-0 ${p.chip}`}>
                             {p.label}
                           </span>
                         </div>
                         {r.why && (
-                          <p className="text-slate-500 text-xs leading-relaxed ml-6">{r.why}</p>
+                          <p className="text-[#6b7280] text-xs leading-relaxed ml-6">{r.why}</p>
                         )}
                       </div>
                     )
@@ -394,8 +394,8 @@ export default function StormReportPage() {
 
             {/* Recent events */}
             {result.recent_events && result.recent_events.length > 0 && (
-              <div className="bg-white/[0.04] rounded-2xl px-5 py-4" style={cardStyle}>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Recent Events</div>
+              <div className="bg-[#f8f8f7] rounded-2xl px-5 py-4" style={cardStyle}>
+                <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-3">Recent Events</div>
                 <div className="space-y-3">
                   {result.recent_events.map((ev, i) => (
                     <div key={i} className="flex items-start gap-3">
@@ -403,11 +403,11 @@ export default function StormReportPage() {
                         {ev.year || '—'}
                       </div>
                       <div className="flex-1">
-                        <div className="text-slate-200 text-sm font-semibold">
+                        <div className="text-[#1a1a1a] text-sm font-semibold">
                           {ev.type ? `${ev.type}${ev.severity ? ` — ${ev.severity}` : ''}` : ev.severity || 'Event'}
                         </div>
-                        {ev.impact && <div className="text-slate-500 text-xs mt-0.5">{ev.impact}</div>}
-                        {ev.source && <div className="text-slate-400 text-[11px] mt-1 italic">Source: {ev.source}</div>}
+                        {ev.impact && <div className="text-[#6b7280] text-xs mt-0.5">{ev.impact}</div>}
+                        {ev.source && <div className="text-[#6b7280] text-[11px] mt-1 italic">Source: {ev.source}</div>}
                       </div>
                     </div>
                   ))}
@@ -417,10 +417,10 @@ export default function StormReportPage() {
 
             {/* Source articles — the actual research the analysis is grounded in */}
             {result.articles && result.articles.length > 0 && (
-              <div className="bg-white/[0.04] rounded-2xl px-5 py-4" style={cardStyle}>
+              <div className="bg-[#f8f8f7] rounded-2xl px-5 py-4" style={cardStyle}>
                 <div className="flex items-baseline justify-between mb-3">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Source Articles</div>
-                  <div className="text-[10px] text-slate-400">{result.articles.length} result{result.articles.length === 1 ? '' : 's'} · NOAA, FEMA, USGS, news</div>
+                  <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider">Source Articles</div>
+                  <div className="text-[10px] text-[#6b7280]">{result.articles.length} result{result.articles.length === 1 ? '' : 's'} · NOAA, FEMA, USGS, news</div>
                 </div>
                 <div className="space-y-2.5">
                   {result.articles.map((a, i) => {
@@ -439,26 +439,26 @@ export default function StormReportPage() {
                           <div className="text-base flex-shrink-0 leading-none mt-0.5">{cat.icon}</div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold border bg-white/[0.05] text-slate-600 border-white/10">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold border bg-[#f8f8f7] text-[#9ca3af] border-[#dededc]">
                                 {cat.label}
                               </span>
                               {host && (
-                                <span className="text-[10px] text-slate-400 truncate">{host}</span>
+                                <span className="text-[10px] text-[#6b7280] truncate">{host}</span>
                               )}
                               {a.published && (
-                                <span className="text-[10px] text-slate-400">· {a.published}</span>
+                                <span className="text-[10px] text-[#6b7280]">· {a.published}</span>
                               )}
                             </div>
-                            <div className="text-white text-sm font-semibold leading-snug">
+                            <div className="text-[#1a1a1a] text-sm font-semibold leading-snug">
                               {a.title || a.url}
                             </div>
                             {a.snippet && (
-                              <p className="text-slate-500 text-xs leading-relaxed mt-1 line-clamp-3">
+                              <p className="text-[#6b7280] text-xs leading-relaxed mt-1 line-clamp-3">
                                 {a.snippet}
                               </p>
                             )}
                           </div>
-                          <svg className="text-slate-600 flex-shrink-0 mt-1" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                          <svg className="text-[#9ca3af] flex-shrink-0 mt-1" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
                         </div>
                       </a>
                     )
@@ -469,9 +469,9 @@ export default function StormReportPage() {
 
             {/* Insurance note */}
             {result.insurance_note && (
-              <div className="bg-white/[0.04] rounded-2xl px-5 py-4" style={cardStyle}>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Insurance Note</div>
-                <p className="text-slate-600 text-sm leading-relaxed">{result.insurance_note}</p>
+              <div className="bg-[#f8f8f7] rounded-2xl px-5 py-4" style={cardStyle}>
+                <div className="text-xs font-bold text-[#6b7280] uppercase tracking-wider mb-1">Insurance Note</div>
+                <p className="text-[#9ca3af] text-sm leading-relaxed">{result.insurance_note}</p>
               </div>
             )}
 
@@ -479,8 +479,8 @@ export default function StormReportPage() {
             {result.data_source && (
               <div className="bg-blue-500/10 border border-blue-100 rounded-2xl px-5 py-4 flex gap-3">
                 <svg className="flex-shrink-0 text-blue-400 mt-0.5" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                <p className="text-slate-500 text-xs leading-relaxed">
-                  <strong className="text-slate-200">Source:</strong> {result.data_source}
+                <p className="text-[#6b7280] text-xs leading-relaxed">
+                  <strong className="text-[#1a1a1a]">Source:</strong> {result.data_source}
                 </p>
               </div>
             )}

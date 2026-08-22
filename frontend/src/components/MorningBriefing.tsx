@@ -83,19 +83,19 @@ export default function MorningBriefing() {
 
   return (
     <section
-      className="mb-8 overflow-hidden rounded-2xl border border-white/10"
+      className="mb-8 overflow-hidden rounded-2xl border border-[#dededc]"
       style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.10) 0%, rgba(255,255,255,0.03) 55%)' }}
     >
       <div className="flex items-center justify-between gap-3 border-b border-white/[0.07] px-5 py-3">
         <div className="flex items-center gap-2">
           <span className="text-base leading-none">☀</span>
-          <h2 className="text-sm font-bold text-white">{greeting}</h2>
+          <h2 className="text-sm font-bold text-[#1a1a1a]">{greeting}</h2>
           <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-300">
             Briefing
           </span>
         </div>
         {items.length > 0 && (
-          <span className="text-[11px] text-slate-400">{items.length} to action</span>
+          <span className="text-[11px] text-[#6b7280]">{items.length} to action</span>
         )}
       </div>
 
@@ -114,17 +114,17 @@ export default function MorningBriefing() {
       <div className="p-5">
         {isLoading ? (
           <div className="space-y-2">
-            <div className="h-3.5 w-2/3 animate-pulse rounded bg-white/10" />
-            <div className="h-3.5 w-1/2 animate-pulse rounded bg-white/[0.07]" />
+            <div className="h-3.5 w-2/3 animate-pulse rounded bg-[#eeeeed]" />
+            <div className="h-3.5 w-1/2 animate-pulse rounded bg-[#f8f8f7]" />
           </div>
         ) : isError ? (
           // Never imply an empty business when we simply couldn't read it.
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-[#6b7280]">
             Couldn&apos;t put your briefing together just now — the numbers below are still accurate.
           </p>
         ) : items.length === 0 ? (
           // A quiet morning is a real answer and worth saying plainly.
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-[#2d2d2d]">
             ✅ Nothing needs your attention this morning. Nobody&apos;s waiting on a reply, no leads have gone quiet,
             and tomorrow&apos;s weather is clear for the crews that are booked.
           </p>
@@ -135,11 +135,11 @@ export default function MorningBriefing() {
               const body = (
                 <>
                   <span className={`mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full ${style.dot}`} />
-                  <span className="min-w-0 flex-1 text-[13px] leading-relaxed text-slate-200">{item.text}</span>
+                  <span className="min-w-0 flex-1 text-[13px] leading-relaxed text-[#1a1a1a]">{item.text}</span>
                 </>
               )
               return (
-                <li key={item.key} className="group flex items-start gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-white/[0.04]">
+                <li key={item.key} className="group flex items-start gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-[#f8f8f7]">
                   {item.href
                     ? <Link href={item.href} className="flex min-w-0 flex-1 items-start gap-2">{body}</Link>
                     : <span className="flex min-w-0 flex-1 items-start gap-2">{body}</span>}
@@ -147,7 +147,7 @@ export default function MorningBriefing() {
                     onClick={() => snooze(item.key)}
                     title="Snooze for a week"
                     aria-label={`Snooze: ${item.text}`}
-                    className="flex-shrink-0 rounded px-1.5 py-0.5 text-[11px] text-slate-500 opacity-0 transition-opacity hover:bg-white/10 hover:text-slate-200 group-hover:opacity-100"
+                    className="flex-shrink-0 rounded px-1.5 py-0.5 text-[11px] text-[#6b7280] opacity-0 transition-opacity hover:bg-[#eeeeed] hover:text-[#1a1a1a] group-hover:opacity-100"
                   >snooze</button>
                 </li>
               )
@@ -163,12 +163,12 @@ function Figure({ label, value, sub, tone = 'ok' }: {
   label: string; value: string; sub: string; tone?: 'ok' | 'warn'
 }) {
   return (
-    <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
-      <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className={`mt-0.5 text-xl font-bold leading-none ${tone === 'warn' ? 'text-amber-300' : 'text-white'}`}>
+    <div className="rounded-xl border border-white/[0.07] bg-[#f8f8f7] px-4 py-3">
+      <div className="text-[11px] uppercase tracking-wide text-[#6b7280]">{label}</div>
+      <div className={`mt-0.5 text-xl font-bold leading-none ${tone === 'warn' ? 'text-amber-300' : 'text-[#1a1a1a]'}`}>
         {value}
       </div>
-      <div className="mt-1 text-[11px] text-slate-500">{sub}</div>
+      <div className="mt-1 text-[11px] text-[#6b7280]">{sub}</div>
     </div>
   )
 }

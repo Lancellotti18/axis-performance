@@ -16,11 +16,11 @@ interface Props {
 }
 
 const STATUS_TONE: Record<string, string> = {
-  draft: 'bg-slate-600/30 text-slate-300 border-slate-500/40',
+  draft: 'bg-[#d4d4d2] text-[#2d2d2d] border-slate-500/40',
   sent: 'bg-blue-500/20 text-blue-300 border-blue-400/40',
   accepted: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40',
   declined: 'bg-rose-500/20 text-rose-300 border-rose-400/40',
-  expired: 'bg-slate-600/30 text-slate-400 border-slate-500/40',
+  expired: 'bg-[#d4d4d2] text-[#6b7280] border-slate-500/40',
 }
 
 // Standard asphalt-shingle re-roof cost structure: the classic "10 and 10"
@@ -100,11 +100,11 @@ export default function ProposalPanel({ runId, projectId }: Props) {
   }, [editingPrices, refresh])
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">💼 Customer proposal</h3>
-          <p className="text-xs text-slate-400">
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">💼 Customer proposal</h3>
+          <p className="text-xs text-[#6b7280]">
             Turn this measurement into a <strong>Good / Better / Best</strong> proposal your customer
             accepts online. Axis suggests a price from the roof&apos;s squares — open the cost breakdown
             to check it against your real costs and set your own before sending.
@@ -124,14 +124,14 @@ export default function ProposalPanel({ runId, projectId }: Props) {
           {proposals.map(p => {
             const drafts = editingPrices[p.id]
             return (
-              <li key={p.id} className="rounded-lg border border-white/10 bg-slate-800/40 p-3">
+              <li key={p.id} className="rounded-lg border border-[#dededc] bg-[#eeeeed] p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${STATUS_TONE[p.status] || STATUS_TONE.draft}`}>
                       {p.status}
                     </span>
-                    <span className="text-slate-300">{p.address || 'Proposal'}</span>
-                    <span className="text-slate-500">· {p.squares ?? '—'} sq</span>
+                    <span className="text-[#2d2d2d]">{p.address || 'Proposal'}</span>
+                    <span className="text-[#6b7280]">· {p.squares ?? '—'} sq</span>
                     {p.status === 'accepted' && p.accepted_tier && (
                       <span className="font-semibold text-emerald-300">
                         ✓ {p.accepted_by_name} accepted “{p.accepted_tier}”
@@ -140,14 +140,14 @@ export default function ProposalPanel({ runId, projectId }: Props) {
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => copyLink(p)} className="rounded bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-500">Copy link</button>
-                    <a href={`/p/${p.token}`} target="_blank" rel="noreferrer" className="rounded bg-slate-700 px-2.5 py-1 text-[11px] text-slate-200 hover:bg-slate-600">Preview ↗</a>
+                    <a href={`/p/${p.token}`} target="_blank" rel="noreferrer" className="rounded bg-[#e4e4e2] px-2.5 py-1 text-[11px] text-[#1a1a1a] hover:bg-[#d4d4d2]">Preview ↗</a>
                   </div>
                 </div>
                 {/* Tier prices — inline edit */}
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
                   {p.tiers.map((t, i) => (
-                    <span key={t.name} className="flex items-center gap-1 rounded bg-slate-900/60 px-2 py-1">
-                      <span className="text-slate-400">{t.name}:</span>
+                    <span key={t.name} className="flex items-center gap-1 rounded bg-[#f8f8f7] px-2 py-1">
+                      <span className="text-[#6b7280]">{t.name}:</span>
                       {drafts ? (
                         <input
                           type="number"
@@ -155,10 +155,10 @@ export default function ProposalPanel({ runId, projectId }: Props) {
                           onChange={e => setEditingPrices(prev => ({
                             ...prev, [p.id]: prev[p.id].map((v, k) => k === i ? e.target.value : v),
                           }))}
-                          className="w-20 rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-white"
+                          className="w-20 rounded border border-[#dededc] bg-[#eeeeed] px-1 py-0.5 text-[#1a1a1a]"
                         />
                       ) : (
-                        <strong className="text-white">{money(t.price)}</strong>
+                        <strong className="text-[#1a1a1a]">{money(t.price)}</strong>
                       )}
                     </span>
                   ))}
@@ -166,12 +166,12 @@ export default function ProposalPanel({ runId, projectId }: Props) {
                     <>
                       <button onClick={() => savePrices(p)} className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white hover:bg-emerald-500">Save</button>
                       <button onClick={() => setEditingPrices(prev => { const n = { ...prev }; delete n[p.id]; return n })}
-                        className="rounded bg-slate-700 px-2 py-1 text-slate-300 hover:bg-slate-600">Cancel</button>
+                        className="rounded bg-[#e4e4e2] px-2 py-1 text-[#2d2d2d] hover:bg-[#d4d4d2]">Cancel</button>
                     </>
                   ) : (
                     <button
                       onClick={() => setEditingPrices(prev => ({ ...prev, [p.id]: p.tiers.map(t => String(t.price)) }))}
-                      className="rounded bg-slate-700 px-2 py-1 text-slate-300 hover:bg-slate-600"
+                      className="rounded bg-[#e4e4e2] px-2 py-1 text-[#2d2d2d] hover:bg-[#d4d4d2]"
                     >Edit prices</button>
                   ))}
                 </div>
@@ -183,7 +183,7 @@ export default function ProposalPanel({ runId, projectId }: Props) {
                 <div className="mt-2">
                   <button
                     onClick={() => setOpenBreakdown(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
-                    className="text-[11px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-200"
+                    className="text-[11px] text-[#6b7280] underline decoration-dotted underline-offset-2 hover:text-[#1a1a1a]"
                   >
                     {openBreakdown[p.id] ? 'Hide' : 'Show'} cost breakdown 🔒 (only you see this)
                   </button>
@@ -191,28 +191,28 @@ export default function ProposalPanel({ runId, projectId }: Props) {
                     const prices = p.tiers.map((t, i) => drafts ? (parseFloat(drafts[i]) || t.price) : t.price)
                     const bds = prices.map(pr => costBreakdown(pr, p.squares))
                     return (
-                      <div className="mt-2 overflow-x-auto rounded-lg border border-white/10 bg-slate-900/60 p-2">
+                      <div className="mt-2 overflow-x-auto rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2">
                         <table className="w-full text-[11px]">
                           <thead>
-                            <tr className="text-slate-500">
+                            <tr className="text-[#6b7280]">
                               <th className="py-1 text-left font-medium">Where the money goes</th>
                               {p.tiers.map(t => <th key={t.name} className="px-2 py-1 text-right font-medium">{t.name}</th>)}
                             </tr>
                           </thead>
                           <tbody>
                             {bds[0].lines.map((ln, ri) => (
-                              <tr key={ln.label} className="text-slate-300">
+                              <tr key={ln.label} className="text-[#2d2d2d]">
                                 <td className="py-0.5 pr-2">{ln.label}</td>
                                 {bds.map((bd, ci) => <td key={ci} className="px-2 py-0.5 text-right tabular-nums">{money(bd.lines[ri].total)}</td>)}
                               </tr>
                             ))}
-                            <tr className="border-t border-white/10 font-semibold text-white">
+                            <tr className="border-t border-[#dededc] font-semibold text-[#1a1a1a]">
                               <td className="py-1 pr-2">Customer price</td>
                               {prices.map((pr, ci) => <td key={ci} className="px-2 py-1 text-right tabular-nums">{money(pr)}</td>)}
                             </tr>
                           </tbody>
                         </table>
-                        <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+                        <p className="mt-1.5 text-[10px] leading-relaxed text-[#6b7280]">
                           Typical asphalt re-roof structure (standard 10% overhead + 10% profit). These are estimates to check against —
                           your customer never sees this. Use <strong>Edit prices</strong> above to set your own number.
                         </p>

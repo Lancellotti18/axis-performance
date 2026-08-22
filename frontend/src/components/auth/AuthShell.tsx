@@ -35,7 +35,7 @@ export function AuthShell({
             <span className="text-lg font-bold text-slate-800 tracking-tight">Axis Roofing Performance</span>
           </Link>
           <h1 className="text-2xl font-black text-slate-800">{title}</h1>
-          {subtitle && <p className="text-slate-500 text-sm mt-1">{subtitle}</p>}
+          {subtitle && <p className="text-[#6b7280] text-sm mt-1">{subtitle}</p>}
         </div>
 
         <div

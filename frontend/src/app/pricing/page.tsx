@@ -54,12 +54,12 @@ const PLANS = [
 
 export default function PricingPage() {
   return (
-    <main className="min-h-screen px-5 py-16 text-white" style={{ background: '#040810' }}>
+    <main className="min-h-screen px-5 py-16 text-[#1a1a1a]" style={{ background: 'var(--color-surface-1)' }}>
       <div className="mx-auto max-w-5xl">
         <header className="mb-12 text-center">
           <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.28em] text-blue-300/90">Pricing</div>
           <h1 className="text-4xl font-bold tracking-tight">Flat. Public. No per-seat tax.</h1>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-white/60">
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-[#1a1a1a]/60">
             Month-to-month. Cancel anytime. No setup fee. And never, ever pay for a shared lead again —
             every lead RoofIQ captures is yours alone.
           </p>
@@ -69,11 +69,7 @@ export default function PricingPage() {
           {PLANS.map(p => (
             <div
               key={p.name}
-              className={`relative flex flex-col rounded-2xl border p-6 ${
-                p.highlight
-                  ? 'border-blue-400/50 bg-blue-500/[0.07] shadow-[0_0_60px_-20px_rgba(59,130,246,0.5)]'
-                  : 'border-white/10 bg-white/[0.03]'
-              }`}
+              className={`relative flex flex-col rounded-2xl border p-6 ${ p.highlight ? 'border-blue-400/50 bg-blue-500/[0.07] shadow-[0_0_60px_-20px_rgba(59,130,246,0.5)]' : 'border-[#dededc] bg-[#f8f8f7]' }`}
             >
               {p.highlight && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wide">
@@ -81,12 +77,12 @@ export default function PricingPage() {
                 </span>
               )}
               <h2 className="text-lg font-bold">{p.name}</h2>
-              <p className="mt-0.5 text-xs text-white/50">{p.tagline}</p>
+              <p className="mt-0.5 text-xs text-[#1a1a1a]/50">{p.tagline}</p>
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="text-4xl font-black">${p.price}</span>
-                <span className="text-sm text-white/50">/mo</span>
+                <span className="text-sm text-[#1a1a1a]/50">/mo</span>
               </div>
-              <ul className="mt-5 flex-1 space-y-2.5 text-sm text-white/75">
+              <ul className="mt-5 flex-1 space-y-2.5 text-sm text-[#1a1a1a]/75">
                 {p.features.map(f => (
                   <li key={f} className="flex gap-2">
                     <span className="text-emerald-400">✓</span>
@@ -96,11 +92,7 @@ export default function PricingPage() {
               </ul>
               <Link
                 href="/register"
-                className={`mt-6 rounded-xl py-3 text-center text-sm font-bold transition ${
-                  p.highlight
-                    ? 'bg-blue-500 text-white hover:bg-blue-400'
-                    : 'bg-white/[0.08] text-white hover:bg-white/[0.14]'
-                }`}
+                className={`mt-6 rounded-xl py-3 text-center text-sm font-bold transition ${ p.highlight ? 'bg-blue-500 text-white hover:bg-blue-400' : 'bg-[#f8f8f7] text-[#1a1a1a] hover:bg-[#f8f8f7]' }`}
               >
                 {p.cta}
               </Link>
@@ -108,8 +100,8 @@ export default function PricingPage() {
           ))}
         </div>
 
-        <section className="mx-auto mt-14 max-w-2xl space-y-4 text-sm text-white/60">
-          <h3 className="text-center text-base font-semibold text-white">Why flat pricing?</h3>
+        <section className="mx-auto mt-14 max-w-2xl space-y-4 text-sm text-[#1a1a1a]/60">
+          <h3 className="text-center text-base font-semibold text-[#1a1a1a]">Why flat pricing?</h3>
           <p>
             Roofing software loves to nickel-and-dime: $60–100 per extra user, $13–19 per measurement
             report, price hikes with 60-day lock-ins. Axis is one flat price with unlimited seats —
@@ -122,7 +114,7 @@ export default function PricingPage() {
           </p>
         </section>
 
-        <p className="mt-12 text-center text-xs text-white/40">
+        <p className="mt-12 text-center text-xs text-[#1a1a1a]/40">
           Questions? <Link href="/register" className="text-blue-300 underline">Create a free account</Link> or
           reach out — upgrades are handled personally while we onboard our founding contractors.
         </p>

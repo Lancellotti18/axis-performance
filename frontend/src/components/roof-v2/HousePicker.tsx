@@ -102,7 +102,7 @@ export default function HousePicker({
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-emerald-100">📍 Tap your house</h3>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-[#6b7280]">
             Tap the <strong>center of YOUR roof</strong> so auto-detect locks onto the right building —
             not a neighbor or a shed. The marker starts on the address; re-tap to adjust.
           </p>
@@ -122,23 +122,23 @@ export default function HousePicker({
       {/* Street-level reference: the view people actually recognize. Find THIS
           house on the satellite below, then tap its roof. */}
       {streetView && (
-        <div className="mt-3 flex gap-3 rounded-lg border border-white/10 bg-slate-900/50 p-2.5">
+        <div className="mt-3 flex gap-3 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={streetView}
             alt="Street view of the address"
-            className="h-24 w-36 shrink-0 rounded-md border border-white/10 object-cover"
+            className="h-24 w-36 shrink-0 rounded-md border border-[#dededc] object-cover"
             draggable={false}
           />
-          <div className="text-[11px] leading-relaxed text-slate-400">
-            <span className="font-semibold text-slate-200">Don&apos;t recognize it from above?</span>{' '}
+          <div className="text-[11px] leading-relaxed text-[#6b7280]">
+            <span className="font-semibold text-[#1a1a1a]">Don&apos;t recognize it from above?</span>{' '}
             This is the address from the street. Find <em>this same house</em> on the satellite
             image below — it&apos;s the building at the center — and tap its roof.
           </div>
         </div>
       )}
 
-      <div className="mt-3 overflow-hidden rounded-lg border border-white/10 bg-black">
+      <div className="mt-3 overflow-hidden rounded-lg border border-[#dededc] bg-black">
         <div className="relative">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -175,7 +175,7 @@ export default function HousePicker({
         >
           {saving ? 'Saving…' : confirmed ? 'Saved ✓ — re-tap to change' : 'Confirm this is my house'}
         </button>
-        <span className="text-[11px] text-slate-500">
+        <span className="text-[11px] text-[#6b7280]">
           {confirmed ? 'Locked in. Now run Auto-detect below.' : 'Tap the roof, then confirm — takes 2 seconds.'}
         </span>
       </div>

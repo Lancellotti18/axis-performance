@@ -86,11 +86,11 @@ export default function ClientPortalPanel({ projectId }: Props) {
   const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/c/${portal.token}`
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-sm">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">🏠 Client portal</h3>
-          <p className="text-xs text-slate-400">
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">🏠 Client portal</h3>
+          <p className="text-xs text-[#6b7280]">
             One link your customer keeps for the whole job — live status, proposal, report, photos,
             messages. Text it once; update the stage as work progresses.
           </p>
@@ -101,10 +101,10 @@ export default function ClientPortalPanel({ projectId }: Props) {
             className="rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
           >Copy link</button>
           <a href={`/c/${portal.token}`} target="_blank" rel="noreferrer"
-            className="rounded bg-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-600">Preview ↗</a>
+            className="rounded bg-[#e4e4e2] px-3 py-1.5 text-xs text-[#1a1a1a] hover:bg-[#d4d4d2]">Preview ↗</a>
           <button
             onClick={() => setChatOpen(o => !o)}
-            className="relative rounded bg-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-600"
+            className="relative rounded bg-[#e4e4e2] px-3 py-1.5 text-xs text-[#1a1a1a] hover:bg-[#d4d4d2]"
           >
             💬 Messages
             {unread > 0 && (
@@ -126,11 +126,7 @@ export default function ClientPortalPanel({ projectId }: Props) {
             <button
               key={s.key}
               onClick={() => setStage(s.key)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                active ? 'border-blue-400/60 bg-blue-500/20 font-semibold text-blue-200'
-                  : done ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300'
-                  : 'border-white/10 bg-slate-800/60 text-slate-400 hover:text-white'
-              }`}
+              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${ active ? 'border-blue-400/60 bg-blue-500/20 font-semibold text-blue-200' : done ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300' : 'border-[#dededc] bg-[#eeeeed] text-[#6b7280] hover:text-white' }`}
               title="Set the job to this stage"
             >{done ? '✓ ' : ''}{s.label}</button>
           )
@@ -139,22 +135,18 @@ export default function ClientPortalPanel({ projectId }: Props) {
 
       {/* Message thread (contractor side) */}
       {chatOpen && (
-        <div className="mt-3 rounded-lg border border-white/10 bg-slate-800/40 p-3">
+        <div className="mt-3 rounded-lg border border-[#dededc] bg-[#eeeeed] p-3">
           <div ref={threadRef} className="max-h-64 space-y-2 overflow-y-auto pr-1">
             {messages.length === 0 && (
-              <p className="py-3 text-center text-xs text-slate-500">
+              <p className="py-3 text-center text-xs text-[#6b7280]">
                 No messages yet. Post an update — your customer sees it on their portal and can reply.
               </p>
             )}
             {messages.map(m => (
               <div key={m.id} className={`flex ${m.sender === 'contractor' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-xs ${
-                  m.sender === 'contractor'
-                    ? 'rounded-br-md bg-blue-600 text-white'
-                    : 'rounded-bl-md bg-slate-700 text-slate-100'
-                }`}>
+                <div className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-xs ${ m.sender === 'contractor' ? 'rounded-br-md bg-blue-600 text-white' : 'rounded-bl-md bg-[#e4e4e2] text-[#1a1a1a]' }`}>
                   <div className="whitespace-pre-wrap break-words">{m.body}</div>
-                  <div className={`mt-0.5 text-[9px] ${m.sender === 'contractor' ? 'text-blue-200' : 'text-slate-400'}`}>
+                  <div className={`mt-0.5 text-[9px] ${m.sender === 'contractor' ? 'text-blue-200' : 'text-[#6b7280]'}`}>
                     {m.sender === 'contractor' ? 'You' : (m.sender_name || 'Homeowner')}
                     {' · '}{new Date(m.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                   </div>
@@ -167,7 +159,7 @@ export default function ClientPortalPanel({ projectId }: Props) {
               type="text" value={draft} onChange={e => setDraft(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') void send() }}
               placeholder="Message your customer… (e.g. 'Crew arrives Tuesday 8am')"
-              className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-white placeholder:text-slate-500"
+              className="min-w-0 flex-1 rounded border border-[#dededc] bg-[#eeeeed] px-2.5 py-2 text-xs text-[#1a1a1a] placeholder:text-[#6b7280]"
             />
             <button
               onClick={send} disabled={sending || !draft.trim()}

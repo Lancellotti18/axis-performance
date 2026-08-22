@@ -370,9 +370,9 @@ function FacetMesh({ mesh, selected, onSelect }: { mesh: FacetMesh3D; selected: 
           distanceFactor={20}
           occlude={false}
         >
-          <div className="pointer-events-none rounded bg-slate-900/95 px-2 py-1 text-xs text-white shadow-lg ring-1 ring-blue-400/60">
+          <div className="pointer-events-none rounded bg-[#f8f8f7] px-2 py-1 text-xs text-[#1a1a1a] shadow-lg ring-1 ring-blue-400/60">
             <div className="font-semibold">Facet {mesh.label}</div>
-            <div className="text-[10px] text-slate-300">{mesh.pitch} · {Math.round(mesh.trueAreaSqft)} ft²</div>
+            <div className="text-[10px] text-[#2d2d2d]">{mesh.pitch} · {Math.round(mesh.trueAreaSqft)} ft²</div>
           </div>
         </Html>
       )}
@@ -494,18 +494,18 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
 
   if (meshes.length === 0) {
     return (
-      <section className="rounded-lg border border-white/10 bg-slate-900/40 p-6 text-center text-sm text-slate-400">
+      <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-6 text-center text-sm text-[#6b7280]">
         Draw at least one facet to see the 3D model.
       </section>
     )
   }
 
   return (
-    <section className="rounded-lg border border-white/10 bg-slate-900/40 p-4">
+    <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">3D Roof Model</h3>
-          <p className="text-xs text-slate-400">
+          <h3 className="text-sm font-semibold text-[#1a1a1a]">3D Roof Model</h3>
+          <p className="text-xs text-[#6b7280]">
             Computed from your traced facets + pitches. Drag to rotate · wheel to zoom · right-drag to pan.
             Click a facet for its area + pitch.
           </p>
@@ -519,17 +519,17 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
               key={v}
               onClick={() => applyView(v)}
               title={`${label} view (${key})`}
-              className="rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-200 hover:bg-blue-600"
+              className="rounded bg-[#eeeeed] px-2 py-1 text-[11px] text-[#1a1a1a] hover:bg-blue-600"
             >{label}</button>
           ))}
           <button
             onClick={() => setSelected(null)}
-            className="ml-1 rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-600"
+            className="ml-1 rounded bg-[#e4e4e2] px-2 py-1 text-[11px] text-[#1a1a1a] hover:bg-[#d4d4d2]"
           >Clear</button>
         </div>
       </div>
 
-      <div className="relative h-[600px] overflow-hidden rounded-lg border border-white/10 bg-gradient-to-b from-slate-800 to-slate-950">
+      <div className="relative h-[600px] overflow-hidden rounded-lg border border-[#dededc] bg-gradient-to-b from-slate-800 to-slate-950">
         <Canvas
           shadows
           camera={{ position: [50, 60, 80], fov: 50, near: 0.1, far: 5000 }}
@@ -601,7 +601,7 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
         <Stat label="Predominant pitch" value={meshes.sort((a, b) => b.trueAreaSqft - a.trueAreaSqft)[0]?.pitch || '—'} />
       </div>
 
-      <div className="mt-2 text-[10px] text-slate-500">
+      <div className="mt-2 text-[10px] text-[#6b7280]">
         2.5D computed model — geometry derived from contractor traces + pitches. Not photoreal,
         not photogrammetry. Use the view buttons (or keys 1-6) to snap to iso / top / front / back / left / right.
         Edge colors match the legend (ridges black, eaves gold, rakes purple, hips gray, valleys blue).
@@ -612,9 +612,9 @@ export function RoofViewer3D({ facets, edges, lat, zoom, imageWidthPx, imageHeig
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded bg-slate-900/60 p-2">
-      <div className="text-[9px] uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="text-sm font-semibold text-slate-100">{value}</div>
+    <div className="rounded bg-[#f8f8f7] p-2">
+      <div className="text-[9px] uppercase tracking-wide text-[#6b7280]">{label}</div>
+      <div className="text-sm font-semibold text-[#1a1a1a]">{value}</div>
     </div>
   )
 }
