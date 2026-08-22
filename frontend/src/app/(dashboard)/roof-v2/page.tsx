@@ -494,6 +494,18 @@ export default function RoofV2Page() {
     if (p) void persistGeometryRef.current?.(p.facets, p.edges)
   }, [debouncedRef])
 
+  /** Drop a queued canvas write.
+   *
+   *  Anything that persists geometry from OUTSIDE the canvas — accepting edge
+   *  labels, accepting AI facets, a manual save — has just written newer state
+   *  than whatever the debounce is holding. Letting that queued write land
+   *  afterwards overwrites the labels that were just accepted, which is why
+   *  edges appeared to need re-analyzing after they had already been done. */
+  const cancelPending = useCallback(() => {
+    if (debouncedRef.t) { clearTimeout(debouncedRef.t); debouncedRef.t = null }
+    debouncedRef.pending = null
+  }, [debouncedRef])
+
   const onEditorChange = useCallback((newFacets: Facet[], newEdges: LabeledEdge[]) => {
     setFacets(newFacets)
     setEdges(newEdges)
@@ -501,8 +513,11 @@ export default function RoofV2Page() {
     if (debouncedRef.t) clearTimeout(debouncedRef.t)
     debouncedRef.t = setTimeout(() => {
       debouncedRef.t = null
+      // Write whatever is CURRENT, not what this callback closed over 800ms ago.
+      // The closure could be several edits — or an accepted label set — behind.
+      const p = debouncedRef.pending ?? { facets: newFacets, edges: newEdges }
       debouncedRef.pending = null
-      void persistGeometry(newFacets, newEdges)
+      void persistGeometry(p.facets, p.edges)
     }, 800)
   }, [persistGeometry, debouncedRef])
 
@@ -723,10 +738,10 @@ export default function RoofV2Page() {
                     {busy ? (
                       <>
                         <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                        <span>Opening editor…</span>
+                        <span>Opening…</span>
                       </>
                     ) : (
-                      <>Open facet editor →</>
+                      <>Ready to trace →</>
                     )}
                   </button>
                 </div>
@@ -829,7 +844,7 @@ export default function RoofV2Page() {
           {/* Save state, always on screen while drawing. Tracing is the most
               expensive work in the app and it saves on a debounce — the
               contractor should never have to wonder whether it landed. */}
-          <SaveIndicator state={saveState} savedAt={savedAt} onRetry={() => { void persistGeometry(facets, edges) }} />
+          <SaveIndicator state={saveState} savedAt={savedAt} onRetry={() => { cancelPending(); void persistGeometry(facets, edges) }} />
           {/* Vision auto-detect retired: field testing showed it didn't reliably
               pick up houses. The workflow is now trace the roof by hand →
               ✨ Auto-label edges (kept, below the canvas). */}
@@ -863,6 +878,7 @@ export default function RoofV2Page() {
                 imageHeightPx={imagery?.height_px ?? 1366}
                 trigger={autoLabelTrigger}
                 onAcceptEdges={async (updatedEdges) => {
+                  cancelPending()   // a queued canvas write would clobber these labels
                   setEdges(updatedEdges)
                   setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
                   // Persist FIRST, then bump geometryStamp so MeasurementsSummary
@@ -885,7 +901,7 @@ export default function RoofV2Page() {
             runConfirmed={runConfirmed}
             zip={project?.zip}
             city={project?.city}
-            onForceSave={async () => { await persistGeometry(facets, edges) }}
+            onForceSave={async () => { cancelPending(); await persistGeometry(facets, edges) }}
           />
 
 
@@ -951,6 +967,7 @@ export default function RoofV2Page() {
             imageWidthPx={imagery?.width_px ?? 2048}
             imageHeightPx={imagery?.height_px ?? 1366}
             onApplyEdges={(updated) => {
+              cancelPending()   // same clobber risk as accepting labels
               setEdges(updated)
               setEditorSyncRev(r => r + 1)
               void persistGeometry(facets, updated)
@@ -1004,6 +1021,7 @@ export default function RoofV2Page() {
                 onApplyPitch={(pitch) => {
                   if (facets.length === 0) return false
                   const updated = facets.map(f => ({ ...f, pitch }))
+                  cancelPending()   // ditto — a queued write holds the old pitches
                   setFacets(updated)
                   setGeometryStamp(s => s + 1)
                   setEditorSyncRev(r => r + 1)
