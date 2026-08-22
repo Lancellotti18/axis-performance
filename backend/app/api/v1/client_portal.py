@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import require_user
 from app.core.supabase import get_supabase
+from app.api.v1.contractor_profile import fresh_logo_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -105,7 +106,8 @@ async def public_portal(token: str) -> dict:
                 "license_number": p.get("license_number"),
                 "phone": p.get("phone"),
                 "email": p.get("email"),
-                "logo_url": p.get("logo_url"),
+                # Signed-URL logos expire a year after upload; mint a fresh one.
+                "logo_url": fresh_logo_url(db, portal["user_id"], p.get("logo_url")),
             }
     except Exception:
         pass

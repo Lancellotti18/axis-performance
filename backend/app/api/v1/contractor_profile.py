@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from app.core.auth import require_user
 from app.core.supabase import get_supabase
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -25,13 +29,49 @@ class ContractorProfile(BaseModel):
     logo_url: Optional[str] = ""
 
 
+LOGO_TTL = 31_536_000          # 1 year — long, but nothing lasts forever
+LOGO_KEY = "logos/{user_id}.png"
+
+
+def fresh_logo_url(db, user_id: str, stored: Optional[str]) -> Optional[str]:
+    """Re-sign the logo from its deterministic storage key.
+
+    upload_logo signs for a year and stores the resulting URL verbatim, so every
+    logo silently 404s on its first birthday — vanishing from reports, proposals
+    and the client portal with nothing to explain it. The key is always
+    logos/{user_id}.png, so we can just mint a fresh URL whenever the profile is
+    read and never depend on the stored one not having lapsed.
+
+    Falls back to whatever was stored if signing fails, so a storage hiccup
+    degrades to the old behaviour rather than dropping the logo outright.
+    """
+    if not stored:
+        return stored
+    try:
+        signed = db.storage.from_("blueprints").create_signed_url(
+            LOGO_KEY.format(user_id=user_id), LOGO_TTL)
+        url = None
+        if isinstance(signed, dict):
+            url = (signed.get("signedURL") or signed.get("signedUrl")
+                   or signed.get("signed_url") or signed.get("url"))
+        if url and url.startswith("/"):
+            from app.core.config import settings
+            url = settings.SUPABASE_URL.rstrip("/") + url
+        return url or stored
+    except Exception:
+        logger.debug("logo re-sign failed for %s", user_id, exc_info=True)
+        return stored
+
+
 @router.get("/{user_id}")
 async def get_contractor_profile(user_id: str, user: dict = Depends(require_user)):
     db = get_supabase()
     result = db.table("contractor_profiles").select("*").eq("user_id", user["id"]).limit(1).execute()
     if not result.data:
         return {}
-    return result.data[0]
+    row = result.data[0]
+    row["logo_url"] = fresh_logo_url(db, user["id"], row.get("logo_url"))
+    return row
 
 
 @router.post("/{user_id}")

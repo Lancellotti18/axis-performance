@@ -3606,7 +3606,11 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
             prof = db.table("contractor_profiles").select("*").eq("user_id", owner).limit(1).execute()
             if prof.data:
                 contractor = dict(prof.data[0])
-                logo_url = contractor.get("logo_url")
+                # Re-sign rather than trusting the stored URL: it was signed
+                # for a year at upload time and silently 404s after that,
+                # dropping the logo off the report with no error.
+                from app.api.v1.contractor_profile import fresh_logo_url
+                logo_url = fresh_logo_url(db, owner, contractor.get("logo_url"))
                 if logo_url:
                     import httpx
                     async with httpx.AsyncClient(timeout=10) as client:
