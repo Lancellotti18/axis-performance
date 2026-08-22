@@ -307,11 +307,22 @@ export default function RoofV2Page() {
     // Persist the validated address onto the project so the Permits and Report
     // tabs can resolve the county without re-asking. Best-effort — a roofing
     // project otherwise carries only a name, which blocks the permit lookup.
-    if (projectId && loc.city && loc.state) {
+    // Everything the geocoder resolved goes onto the project, not just the
+    // three fields the permit lookup happened to need. Dropping address, state
+    // and the coordinates left the details panel blank and, because lat/lng
+    // were never written, "Add to dispatch" refused every project with
+    // "no location yet" despite the roof having been measured at that address.
+    if (projectId && (loc.matched_address || loc.city || loc.lat)) {
       api.projects.saveLocation(projectId, {
-        city: loc.city,
-        region: `US-${loc.state}`,
-        zip_code: loc.zip,
+        address: loc.matched_address || undefined,
+        city: loc.city || undefined,
+        state: loc.state || undefined,
+        region: loc.state ? `US-${loc.state}` : undefined,
+        zip_code: loc.zip || undefined,
+        county: loc.county || undefined,
+        // 0,0 means manual entry with no geocode — never persist that as a place.
+        lat: loc.lat || undefined,
+        lng: loc.lng || undefined,
       }).catch(() => {})
     }
     if (loc.lat === 0 && loc.lng === 0) {

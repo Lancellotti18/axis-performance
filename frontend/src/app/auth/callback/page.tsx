@@ -91,7 +91,7 @@ export default function AuthCallbackPage() {
       className="min-h-screen flex items-center justify-center px-4 bg-cover bg-center"
       style={{ backgroundImage: "url('/blueprint-hero.png')" }}
     >
-      <div className="absolute inset-0 bg-[#1a3a6b]/70" />
+      <div className="absolute inset-0 bg-[#0060c4]/70" />
       <div className="relative z-10 w-full max-w-sm">
         <div className="bg-[#eeeeed] border border-[#dededc] rounded-2xl p-10 shadow-2xl">
           <Suspense fallback={<div className="text-center text-[#1a1a1a]/50 text-sm">Loading…</div>}>

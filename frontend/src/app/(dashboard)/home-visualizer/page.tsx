@@ -341,7 +341,7 @@ export default function HomeVisualizerPage() {
                   </button>
                 )}
                 {pickerOpen && (
-                  <div className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border border-[#dededc] bg-[#0b111b] p-1.5 shadow-2xl">
+                  <div className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border border-[#dededc] bg-[#f8f8f7] p-1.5 shadow-lg">
                     <div className="flex items-center justify-between px-2.5 py-1.5">
                       <span className="text-xs font-semibold text-[#2d2d2d]">Add to which project?</span>
                       <button onClick={() => setPickerOpen(false)} className="text-xs text-[#6b7280] hover:text-[#2d2d2d]">✕</button>

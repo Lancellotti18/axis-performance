@@ -120,7 +120,7 @@ function ProjectHero({
               <div className="relative bg-[#f8f8f7]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={beforeUrl} alt="The home before" className="h-[280px] w-full object-cover" />
-                <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1a1a1a]">Before</span>
+                <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Before</span>
               </div>
             )}
             <div className="relative bg-[#f8f8f7]">
@@ -831,7 +831,7 @@ Thank you for your time.`
     </div>
   )
 
-  const cardStyle = { boxShadow: '0 8px 32px rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.10)' }
+  const cardStyle = { boxShadow: 'var(--shadow-card)', border: '1px solid var(--color-surface-border)' }
   const isRoofing = project?.blueprint_type === 'roofing'
   const TABS: { id: Tab; label: string; badge?: number }[] = [
     { id: 'overview',   label: 'Overview' },
@@ -848,7 +848,7 @@ Thank you for your time.`
     <div className="flex flex-col h-full" style={{ background: 'var(--color-surface-1)' }}>
 
       {/* Header */}
-      <div className="bg-[#070b13] border-b px-6 py-4 flex items-center gap-4 flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
+      <div className="bg-[#f8f8f7] border-b px-6 py-4 flex items-center gap-4 flex-shrink-0" style={{ borderColor: 'var(--color-surface-border)' }}>
         <Link href="/projects" className="text-[#6b7280] hover:text-[#1a1a1a] transition-colors">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </Link>
@@ -899,7 +899,7 @@ Thank you for your time.`
                     ['Type', project?.blueprint_type || 'Roofing'],
                     ['Created', project?.created_at ? new Date(project.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'],
                   ].map(([label, value]) => (
-                    <div key={label} className="flex justify-between gap-3 border-b border-white/[0.07] py-2 last:border-0">
+                    <div key={label} className="flex justify-between gap-3 border-b border-[#dededc] py-2 last:border-0">
                       <span className="text-sm text-[#6b7280]">{label}</span>
                       <span className="max-w-[60%] truncate text-right text-sm font-semibold text-[#1a1a1a]">{value || '—'}</span>
                     </div>
@@ -934,10 +934,6 @@ Thank you for your time.`
                       {openingReport ? 'Preparing report…' : 'View report (PDF)'}
                     </button>
                   )}
-                  <Link href="/home-visualizer"
-                    className="rounded-xl border border-[#dededc] bg-[#f8f8f7] px-4 py-2.5 text-center text-sm font-semibold text-[#1a1a1a] transition-colors hover:bg-[#f8f8f7]">
-                    Roof Visualizer
-                  </Link>
                 </div>
               </div>
             </div>
@@ -988,7 +984,7 @@ Thank you for your time.`
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
 
           {/* Tab bar */}
-          <div className="flex border-b bg-[#0a0f1a] px-6 flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
+          <div className="flex border-b bg-[#f8f8f7] px-6 flex-shrink-0" style={{ borderColor: 'var(--color-surface-border)' }}>
             {TABS.map(t => (
               <button
                 key={t.id}

@@ -404,7 +404,7 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ hero_render_url }),
       }),
-    saveLocation: (id: string, loc: { city?: string; region?: string; zip_code?: string }) =>
+    saveLocation: (id: string, loc: { address?: string; city?: string; state?: string; region?: string; zip_code?: string; county?: string; lat?: number; lng?: number }) =>
       apiRequest<Project>(`/api/v1/projects/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(loc),
