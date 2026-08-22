@@ -123,10 +123,24 @@ async def upload_photo(
         logger.warning("photo upload to storage failed: %s", e)
         raise HTTPException(status_code=502, detail="Could not store the photo — try again.")
 
-    ins = db.table("project_photos").insert({
-        "project_id": project_id, "user_id": user["id"], "phase": phase,
-        "storage_path": path, "caption": (caption or None),
-    }).execute()
+    try:
+        ins = db.table("project_photos").insert({
+            "project_id": project_id, "user_id": user["id"], "phase": phase,
+            "storage_path": path, "caption": (caption or None),
+        }).execute()
+    except Exception as e:
+        # This used to escape as a bare 500. It was a schema mismatch — the
+        # table pre-existed under an older shape, so `create table if not
+        # exists` skipped the real definition and every column written here was
+        # missing. Name the cause; "Internal server error" is undiagnosable.
+        msg = str(e)
+        logger.exception("photo insert failed for project %s", project_id)
+        if "does not exist" in msg or "42703" in msg:
+            raise HTTPException(status_code=500, detail=(
+                "The photo table is missing columns this app writes — run the "
+                "migration 20260822_project_photos_repair.sql, then try again."))
+        raise HTTPException(status_code=500, detail=f"Could not save the photo record: {msg[:140]}")
+
     row = (ins.data or [None])[0]
     if not row:
         raise HTTPException(status_code=500, detail="Could not save the photo record.")
