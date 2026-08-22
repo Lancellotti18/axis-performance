@@ -174,7 +174,7 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
                     {s.pos_x_frac != null && s.pos_y_frac != null && (
-                      <MarkerPreview x={s.pos_x_frac} y={s.pos_y_frac} color={TYPE_COLORS[s.type] || '#cbd5e1'} imageUrl={imageUrl} />
+                      <MarkerPreview x={s.pos_x_frac} y={s.pos_y_frac} color={TYPE_COLORS[s.type] || '#cbd5e1'} imageUrl={imageUrl} label={s.type?.replace('_', ' ')} />
                     )}
                     <div>
                       <div className="font-medium text-slate-100">
@@ -245,8 +245,61 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
   )
 }
 
-function MarkerPreview({ x, y, color, imageUrl }: { x: number; y: number; color: string; imageUrl?: string }) {
-  // 80x60 thumbnail of the satellite tile with a crosshair at (x, y)
+/** A tile crop centred on one marker.
+ *
+ *  This used to squeeze the whole ~2048px tile into 80x60 and drop a dot on it,
+ *  which is why the marker looked like it was "all over the place" — at that
+ *  scale a roof is four pixels and the dot has nothing to sit against. We now
+ *  blow the tile up and slide it so the marked point is dead centre, so the
+ *  thumbnail actually shows the penetration and its surroundings.
+ *
+ *  `zoom` is how many times larger than the frame the tile is drawn: 8 means
+ *  you are looking at an eighth of the tile.
+ */
+function TileCrop({
+  x, y, color, imageUrl, zoom, className, dotSize = 12,
+}: {
+  x: number; y: number; color: string; imageUrl: string
+  zoom: number; className?: string; dotSize?: number
+}) {
+  return (
+    <div className={`relative overflow-hidden bg-slate-900/60 ${className || ''}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imageUrl}
+        alt=""
+        className="absolute max-w-none"
+        style={{
+          width: `${zoom * 100}%`,
+          height: `${zoom * 100}%`,
+          // Put the fraction (x, y) of the image exactly at the frame centre.
+          left: `${50 - x * zoom * 100}%`,
+          top: `${50 - y * zoom * 100}%`,
+        }}
+      />
+      <div
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow"
+        style={{ width: dotSize, height: dotSize, background: color }}
+      />
+    </div>
+  )
+}
+
+function MarkerPreview({
+  x, y, color, imageUrl, label,
+}: { x: number; y: number; color: string; imageUrl?: string; label?: string }) {
+  const [open, setOpen] = useState(false)
+
+  // Esc closes, and the body must not scroll behind the overlay.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+  }, [open])
+
   if (!imageUrl) {
     return (
       <div className="flex h-[60px] w-[80px] items-center justify-center rounded border border-white/10 bg-slate-900/60 text-[10px] text-slate-500">
@@ -254,15 +307,56 @@ function MarkerPreview({ x, y, color, imageUrl }: { x: number; y: number; color:
       </div>
     )
   }
+
   return (
-    <div className="relative h-[60px] w-[80px] overflow-hidden rounded border border-white/10 bg-slate-900/60">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-      <div
-        className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white"
-        style={{ left: `${x * 100}%`, top: `${y * 100}%`, background: color }}
-      />
-    </div>
+    <>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(true) }}
+        title="Click to enlarge"
+        aria-label="Enlarge this marker"
+        className="group relative block h-[60px] w-[80px] shrink-0 rounded border border-white/10 hover:border-white/40"
+      >
+        <TileCrop x={x} y={y} color={color} imageUrl={imageUrl} zoom={8}
+                  className="h-full w-full rounded" dotSize={10} />
+        <span className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/40 text-[10px] font-semibold text-white group-hover:flex">
+          Enlarge
+        </span>
+      </button>
+
+      {open && (
+        // Click anywhere outside the image to dismiss, exactly like the X.
+        <div
+          onClick={() => setOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm"
+        >
+          <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-3xl">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-semibold text-white">{label || 'Penetration'}</span>
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Close"
+                className="rounded px-2 py-0.5 text-lg leading-none text-slate-300 hover:bg-white/10 hover:text-white"
+              >×</button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <TileCrop x={x} y={y} color={color} imageUrl={imageUrl} zoom={6}
+                          className="aspect-[4/3] w-full rounded-lg border border-white/15" dotSize={18} />
+                <p className="mt-1 text-center text-[11px] text-slate-400">Close up</p>
+              </div>
+              <div>
+                <TileCrop x={x} y={y} color={color} imageUrl={imageUrl} zoom={1}
+                          className="aspect-[4/3] w-full rounded-lg border border-white/15" dotSize={14} />
+                <p className="mt-1 text-center text-[11px] text-slate-400">Whole roof — where it sits</p>
+              </div>
+            </div>
+            <p className="mt-2 text-center text-[11px] text-slate-500">Click outside, press Esc, or hit × to close.</p>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

@@ -168,6 +168,8 @@ export function RoofFacetEditor({
   initialFacets = [], initialEdges = [], onChange, syncRev, onAutoLabelEdges,
 }: Props) {
   const [facets, setFacets] = useState<Facet[]>(initialFacets)
+  // Closed on arrival — see the aside below for why.
+  const [facetPanelOpen, setFacetPanelOpen] = useState(false)
   const [edges, setEdges] = useState<LabeledEdge[]>(initialEdges)
 
   // Pull EXTERNAL facet/edge changes onto the canvas when the parent bumps
@@ -1277,11 +1279,32 @@ export function RoofFacetEditor({
           </div>
         </div>
 
-        {/* Side panel */}
-        <aside className="w-72 shrink-0 overflow-y-auto rounded-lg border border-white/10 bg-slate-900/60 p-3 text-sm">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Facets ({facets.length})
-          </h3>
+        {/* Side panel — collapsed by default.
+            A first-timer does not need a per-facet list to trace a roof; the
+            canvas is the job. This is the by-hand escape hatch (rename, repitch,
+            delete), so it stays one click away instead of being the loudest
+            thing on screen the moment the editor opens. */}
+        <aside className={`shrink-0 overflow-y-auto rounded-lg border border-white/10 bg-slate-900/60 text-sm transition-all ${facetPanelOpen ? 'w-72 p-3' : 'w-11 p-2'}`}>
+          <button
+            onClick={() => setFacetPanelOpen(o => !o)}
+            title={facetPanelOpen ? 'Hide facet list' : 'Edit facets by hand'}
+            aria-expanded={facetPanelOpen}
+            className={`flex w-full items-center gap-2 rounded text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-white ${facetPanelOpen ? 'mb-2 justify-between' : 'flex-col justify-center gap-1'}`}
+          >
+            {facetPanelOpen ? (
+              <>
+                <span>Facets ({facets.length})</span>
+                <span aria-hidden>×</span>
+              </>
+            ) : (
+              <>
+                <span aria-hidden>☰</span>
+                <span className="tabular-nums">{facets.length}</span>
+              </>
+            )}
+          </button>
+          {!facetPanelOpen ? null : (
+          <>
 
           {facets.length === 0 && (
             <p className="text-xs text-slate-500">
@@ -1389,6 +1412,8 @@ export function RoofFacetEditor({
               </li>
             ))}
           </ul>
+          </>
+          )}
         </aside>
       </div>
     </div>

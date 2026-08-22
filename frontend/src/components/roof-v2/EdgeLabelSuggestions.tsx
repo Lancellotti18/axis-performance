@@ -10,7 +10,8 @@
  *
  * Each suggestion has a confidence score and short reason ("gutter visible
  * below", "shared with facet B, matching pitch", etc.). Contractor accepts
- * each individually or hits "Accept all high-confidence" to batch-apply.
+ * each individually, or steps through them zoomed-in via Review visually.
+ * There is deliberately no batch-accept: see the note on acceptAllHighConfidence.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
@@ -178,6 +179,12 @@ export function EdgeLabelSuggestions({
     ))
   }, [])
 
+  // Retained but intentionally not surfaced. A one-click "accept everything
+  // above 70%" makes the contractor the author of every label without them
+  // having looked at any — and a mislabeled eave silently inflates by the
+  // slope multiplier and walks onto the material order. Per-edge accept keeps
+  // the decision where the liability is.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const acceptAllHighConfidence = useCallback((threshold = 0.7) => {
     const accepts = suggestions.filter(s => s.confidence >= threshold)
     if (accepts.length === 0) return
@@ -229,6 +236,9 @@ export function EdgeLabelSuggestions({
             roof&apos;s geometry. You review and accept; label by hand only where you disagree.
           </p>
         </div>
+        {/* Primary call to action only. Once results exist this becomes noise at
+            the top of the panel, and Re-analyze lives under the list instead. */}
+        {suggestions.length === 0 && (
         <button
           onClick={runSuggest}
           disabled={loading || unlabeledEdges.length === 0}
@@ -244,6 +254,7 @@ export function EdgeLabelSuggestions({
             : unlabeledEdges.length === 0 ? 'All labeled ✓'
             : `✨ Auto-label ${unlabeledEdges.length} edge${unlabeledEdges.length === 1 ? '' : 's'}`}
         </button>
+        )}
       </div>
 
       {/* How-it-works bubble — first visit + reopenable. */}
@@ -264,7 +275,7 @@ export function EdgeLabelSuggestions({
             </li>
             <li className="flex gap-2">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">3</span>
-              <span><strong className="text-white">Review &amp; accept.</strong> Hit <strong>Accept all ≥ 70%</strong> for the confident ones, or 🔍 <strong>Review visually</strong> to step through each edge zoomed-in. Disagree with one? Fix just that edge in the editor&apos;s <strong>Label by hand</strong> mode.</span>
+              <span><strong className="text-white">Review &amp; accept.</strong> Take the edges one at a time, or 🔍 <strong>Review visually</strong> to step through each one zoomed-in. Disagree with one? Fix just that edge in the editor&apos;s <strong>Label by hand</strong> mode.</span>
             </li>
           </ol>
           <p className="mt-2 text-[11px] text-slate-500">
@@ -328,12 +339,6 @@ export function EdgeLabelSuggestions({
                   title="Step through each edge with a zoomed view of the roof"
                 >🔍 Review visually</button>
               )}
-              {highConfidenceCount > 0 && (
-                <button
-                  onClick={() => acceptAllHighConfidence(0.7)}
-                  className="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600"
-                >Accept all ≥ 70% ({highConfidenceCount})</button>
-              )}
             </div>
           </div>
           <ul className="space-y-3">
@@ -394,6 +399,19 @@ export function EdgeLabelSuggestions({
               </li>
             ))}
           </ul>
+
+          {/* Re-analyze belongs after the results, not above them: by the time
+              you want it you have read to the bottom of the list and decided
+              the suggestions are wrong. Up top it competed with the labels
+              themselves for a first-time user's attention. */}
+          <div className="mt-3 flex justify-end border-t border-white/5 pt-3">
+            <button
+              onClick={runSuggest}
+              disabled={loading || unlabeledEdges.length === 0}
+              title="Run the labeler again over the edges that are still unlabeled"
+              className="rounded border border-white/10 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-white/5 disabled:opacity-40"
+            >{loading ? 'Analyzing…' : '↻ Re-analyze'}</button>
+          </div>
         </div>
       )}
 
