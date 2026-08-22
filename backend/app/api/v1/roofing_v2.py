@@ -715,6 +715,52 @@ class PutFacetsRequest(BaseModel):
     satellite_image_url: Optional[str] = None
 
 
+
+async def _solar_pitch_for_polygons(
+    run: dict, polygons: list[list], zoom: int,
+) -> list[Optional[str]]:
+    """Google Solar's MEASURED pitch for each traced polygon, or None.
+
+    Solar pitch used to reach facets only through Auto-detect, because that is
+    where `_layer_with_solar` runs. A contractor who traced the roof by hand —
+    the primary path — got 6/12 on every plane while Google's measured pitch for
+    that exact roof sat unused on the run. This closes that gap: same overlap
+    matching as the auto-detect path, applied to whatever was drawn.
+
+    Best-effort throughout: no coverage, no key, or any failure yields None and
+    the caller keeps the default.
+    """
+    out: list[Optional[str]] = [None] * len(polygons)
+    s_lat, s_lng = run.get("satellite_lat"), run.get("satellite_lng")
+    if s_lat is None or s_lng is None or not polygons:
+        return out
+    try:
+        from app.services import solar_service
+        solar = await solar_service.get_building_insights(float(s_lat), float(s_lng))
+        if not solar.get("available"):
+            return out
+        segs = _solar_segments_as_fractions(
+            solar, float(s_lat), float(s_lng), int(zoom or run.get("satellite_zoom") or 20))
+        if not segs:
+            return out
+        rects = [_oriented_positive(sg["rect"]) for sg in segs]
+        for i, poly in enumerate(polygons):
+            best_j, best_cov = None, 0.0
+            for j, rect in enumerate(rects):
+                cov = _coverage(poly, rect)
+                if cov > best_cov:
+                    best_cov, best_j = cov, j
+            # Same 50% threshold Auto-detect uses, so both paths agree on what
+            # counts as "this plane is that Solar plane".
+            if best_j is not None and best_cov >= 0.5:
+                pitch = (segs[best_j].get("pitch") or "").strip()
+                if pitch:
+                    out[i] = pitch
+    except Exception as e:
+        logger.info("solar pitch lookup failed for run %s: %s", run.get("id"), e)
+    return out
+
+
 @router.put("/runs/{run_id}/facets")
 async def put_facets(
     run_id: str, req: PutFacetsRequest, user: dict = Depends(require_user)
@@ -728,11 +774,19 @@ async def put_facets(
     db = get_supabase()
 
     # Make sure the run exists (RLS will reject otherwise)
-    run = db.table("roof_measurement_runs").select("id").eq("id", run_id).single().execute()
+    # Pull the tile anchor too — the Solar pitch lookup below needs it. Selecting
+    # only "id" here silently starved that lookup of coordinates.
+    run = (db.table("roof_measurement_runs")
+           .select("id, satellite_lat, satellite_lng, satellite_zoom")
+           .eq("id", run_id).single().execute())
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
 
     db.table("roof_facets").delete().eq("run_id", run_id).execute()
+
+    solar_pitches = await _solar_pitch_for_polygons(
+        run.data, [f.polygon for f in req.facets], req.zoom,
+    )
 
     rows: list[dict] = []
     for f in req.facets:
@@ -748,11 +802,21 @@ async def put_facets(
         pitch_source = f.pitch_source
         if not pitch_source:
             pitch_source = "default" if (f.pitch or "6/12") == "6/12" else "manual"
+        # A facet still sitting on the bare default gets Google's measured pitch
+        # when Solar covers that plane. Anything the contractor set by hand, or
+        # that already came from Solar/a ground photo, is left alone.
+        if pitch_source == "default" and solar_pitches[len(rows)]:
+            f_pitch = solar_pitches[len(rows)]
+            mult = geo.slope_multiplier(f_pitch)
+            deg = geo.pitch_string_to_degrees(f_pitch)
+            pitch_source = "solar_measured"
+        else:
+            f_pitch = f.pitch
         rows.append({
             "run_id": run_id,
             "facet_label": f.facet_label,
             "polygon": f.polygon,
-            "pitch": f.pitch,
+            "pitch": f_pitch,
             "pitch_degrees": round(deg, 2),
             "pitch_source": pitch_source,
             "orientation_deg": round(orient, 1) if orient is not None else None,

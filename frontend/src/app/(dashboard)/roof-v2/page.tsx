@@ -81,6 +81,9 @@ interface ImageryPayload {
 // bring either back; nothing else needs changing.
 const SHOW_FLASHING = false
 const SHOW_SIDING = false
+// Xactimate line codes + RCV/ACV claim summary. Parked, not deleted — the
+// endpoint, the estimator service and the report all stay wired.
+const SHOW_ADJUSTER_MODE = false
 
 type Step = 'project' | 'location' | 'imagery' | 'editor' | 'details' | 'siding' | 'report'
 
@@ -1079,7 +1082,7 @@ export default function RoofV2Page() {
           <ProposalPanel runId={runId} projectId={projectId} />
 
           {/* Adjuster Mode — Xactimate line codes + RCV/ACV claim summary */}
-          <AdjusterModePanel runId={runId} />
+          {SHOW_ADJUSTER_MODE && <AdjusterModePanel runId={runId} />}
 
           {/* Homeowner portal — one link with live status, proposal, report, photos */}
           {projectId && <ClientPortalPanel projectId={projectId} />}
