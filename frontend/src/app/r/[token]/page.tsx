@@ -219,7 +219,7 @@ export default function ReportPage() {
         {r.tiers && r.tiers.length > 0 ? (
           <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="text-sm font-semibold">Your options</div>
-            <p className="mt-0.5 text-[11px] text-[#6b7280]">Three ways to do this job. {r.company_name} measures your roof and sends your exact price after a free on-site review.</p>
+            <p className="mt-0.5 text-[11px] text-[#6b7280]">Three ways to do this job.</p>
             <div className="mt-3 space-y-2">
               {r.tiers.map((t, i) => (
                 <div key={t.name} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 ring-1 ${i === 1 ? 'bg-blue-50/60 ring-blue-200' : 'bg-slate-50 ring-slate-100'}`}>
@@ -247,7 +247,7 @@ export default function ReportPage() {
         ) : SHOW_INSTANT_PRICE && r.price_low != null && (
           <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="text-sm font-semibold">Estimated investment by material</div>
-            <p className="mt-0.5 text-[11px] text-[#6b7280]">Rough ranges — your exact price follows a free on-site review.</p>
+            <p className="mt-0.5 text-[11px] text-[#6b7280]">Rough ranges from satellite measurements.</p>
             <div className="mt-3 space-y-2">
               {SCENARIOS.map(sc => (
                 <div key={sc.name} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5 ring-1 ring-slate-100">
@@ -347,7 +347,6 @@ export default function ReportPage() {
             <strong>ⓘ About this report:</strong> a free, AI-powered roof overview built from satellite imagery —
             not an official quote or inspection. Your exact price depends on an on-site evaluation: decking
             condition, tear-off layers, material selection, and access.
-            <strong> {r.company_name} measures your roof and provides an exact written proposal after a free on-site review.</strong>
           </p>
         </section>
 
@@ -355,7 +354,7 @@ export default function ReportPage() {
         <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="text-sm font-semibold">What happens next</div>
           <ul className="mt-2 space-y-1.5 text-xs text-[#9ca3af]">
-            <li>✓ <strong>{r.company_name}</strong> has your request and will reach out to schedule a <strong>free, precise on-site quote</strong> — this report is a rough instant estimate, not a final price.</li>
+            <li>✓ <strong>{r.company_name}</strong> has your request and will reach out to schedule a <strong>free, precise on-site quote</strong>.</li>
             <li>✓ Ready sooner? Call or text below to get on the schedule first.</li>
             <li>✓ Keep this link — your report updates if anything changes.</li>
           </ul>
