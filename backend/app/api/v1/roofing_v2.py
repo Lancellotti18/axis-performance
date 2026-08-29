@@ -3487,12 +3487,31 @@ class ActualsIn(BaseModel):
 def _calibration_stats(db, user_id: str) -> Optional[dict]:
     """Aggregate this contractor's field-verified jobs into calibration stats:
     how far Axis's numbers were from what the crew actually measured. This is
-    the honest, earned accuracy number — never estimated, never made up."""
-    rows = db.table("roof_actuals").select(
-        "actual_squares, predicted_squares"
-    ).eq("user_id", user_id).execute().data or []
-    errs: list[float] = []
+    the honest, earned accuracy number — never estimated, never made up.
+
+    One run counts once. Actuals used to be appended, so re-recording a job to
+    correct a typo left two rows and the same roof counted as two separate
+    "field-verified jobs" — which is how three rows covering two roofs once
+    cleared the 3-job trust gate. The newest row for a run wins: a re-recording
+    is a correction, not new evidence.
+    """
+    rows = (
+        db.table("roof_actuals")
+        .select("id, run_id, actual_squares, predicted_squares, created_at")
+        .eq("user_id", user_id)
+        .order("created_at")  # ascending, so the newest row for a run wins below
+        .execute()
+        .data
+        or []
+    )
+    latest: dict = {}
     for r in rows:
+        # Fall back to the row id when a row predates run_id, so it still counts
+        # as its own job rather than collapsing every legacy row into one.
+        latest[r.get("run_id") or f"row:{r.get('id')}"] = r
+
+    errs: list[float] = []
+    for r in latest.values():
         a = float(r.get("actual_squares") or 0)
         p = float(r.get("predicted_squares") or 0)
         if a > 0 and p > 0:
@@ -3540,8 +3559,18 @@ async def record_actuals(
         "predicted_eave_ft": agg.get("eaves_ft"),
         "notes": payload.notes,
     }
-    ins = db.table("roof_actuals").insert({k: v for k, v in row.items() if v is not None}).execute()
-    if not ins.data:
+    values = {k: v for k, v in row.items() if v is not None}
+    # One run, one actual. Recording a second time corrects the job in place
+    # rather than appending another "field-verified job" for the same roof —
+    # otherwise a single corrected typo inflates the trust gate's job count.
+    prior = (db.table("roof_actuals").select("id")
+             .eq("run_id", run_id).eq("user_id", user["id"])
+             .limit(1).execute().data or [])
+    if prior:
+        res = db.table("roof_actuals").update(values).eq("id", prior[0]["id"]).execute()
+    else:
+        res = db.table("roof_actuals").insert(values).execute()
+    if not res.data:
         raise HTTPException(status_code=500, detail="Could not record actuals.")
 
     stats = _calibration_stats(db, user["id"])
