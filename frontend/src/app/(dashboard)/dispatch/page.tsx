@@ -146,8 +146,6 @@ function BoardScreen() {
               <div className="mt-2 text-[11px]" style={{ color: 'var(--muted)' }}>First load after a deploy can take a moment while the backend wakes up — try Refresh.</div>
             </div>
           </div>
-        ) : data && data.crews.length === 0 ? (
-          <div className="p-10 text-center text-sm" style={{ color: 'var(--muted)' }}>No crews yet. Add a crew to start scheduling.</div>
         ) : data ? (
           <Board data={data} today={today} focusDate={focusDate} onFocusDate={setFocusDate} autoOpenWeather={autoOpenWeather} />
         ) : null}

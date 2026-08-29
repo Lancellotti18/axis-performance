@@ -440,6 +440,24 @@ export default function Board({
           })}
         </div>
 
+        {/* No crews at all: the board still renders, because the only way to add
+            a crew is the Crews button in this component's toolbar. Unmounting
+            the board here is what used to strand you — the empty state asked
+            for a crew while removing the control that creates one. */}
+        {data.crews.length === 0 && (
+          <div className="sticky left-0 flex flex-col items-center gap-3 px-4 py-14 text-center">
+            <div className="text-sm font-semibold">No crews yet</div>
+            <div className="max-w-sm text-[12px]" style={{ color: 'var(--muted)' }}>
+              Crews are the rows of the board — add one to start scheduling jobs against it.
+            </div>
+            <button onClick={() => setCrewMgrOpen(true)}
+              className="rounded-md px-3 py-1.5 text-[12px] font-bold"
+              style={{ background: 'var(--dawn)', color: '#ffffff' }}>
+              Add your first crew
+            </button>
+          </div>
+        )}
+
         {/* Business-unit groups */}
         {data.business_units.map(bu => {
           const crews = idx.crewsByBu.get(bu.id) || []
