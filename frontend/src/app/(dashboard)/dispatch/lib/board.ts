@@ -371,9 +371,26 @@ export async function planIntent(intent: string, start: string, end: string): Pr
 }
 
 // ── M5: weather impact + reschedule ──────────────────────────────────────────
+/** What the forecast says at one job site — enough for the dispatcher to judge
+ *  it themselves, rather than being told a day is simply "risky". */
+export interface WeatherVerdict {
+  band: 'light' | 'steady' | 'heavy' | 'wind'
+  precip_probability: number | null
+  precip_in: number | null
+  wind_mph: number | null
+  wet: boolean
+  windy: boolean
+  summary: string
+}
 export interface WeatherRiskDay {
   date: string; precip_probability: number | null
-  appointments: { appointment_id: string; crew_id: string | null; job_number: number; job_type: string; squares: number | null }[]
+  /** The day's worst site, so heavy rain is never hidden behind a drizzle. */
+  worst?: WeatherVerdict
+  summary?: string
+  appointments: {
+    appointment_id: string; crew_id: string | null; job_number: number; job_type: string
+    squares: number | null; site?: string | null; weather?: WeatherVerdict
+  }[]
 }
 export interface RescheduleSuggestion {
   appointment_id: string; job_number: number | null; job_type: string | null

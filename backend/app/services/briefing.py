@@ -31,12 +31,16 @@ SEVERITY = {"accepted": 1, "new_client": 2, "waiting": 3, "weather": 4, "cold": 
 MAX_ITEMS = 6
 
 # Rain probability at which a roof day is worth moving rather than gambling.
-RAIN_MOVE_THRESHOLD = 60
+# Any rain the forecast is willing to commit to. The briefing does not cancel
+# anything — it tells the dispatcher, who makes the call — so the bar for
+# TELLING someone is deliberately low. A 40% chance they shrug off costs them
+# nothing; a 40% chance nobody mentioned costs them a crew's morning.
+RAIN_MOVE_THRESHOLD = 30
 # Sustained wind at which you can't safely run shingles or keep people on a
 # roof. Roofers lose more days to wind than most weather widgets suggest, and a
 # dry, windy day still costs the crew — so it's a first-class trigger, not a
 # footnote on the rain line.
-WIND_MOVE_THRESHOLD = 25
+WIND_MOVE_THRESHOLD = 20
 
 
 def _item(kind: str, key: str, text: str, href: Optional[str] = None) -> dict:

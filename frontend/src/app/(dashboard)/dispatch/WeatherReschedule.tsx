@@ -36,6 +36,14 @@ export default function WeatherReschedule({
   const resolvable = useMemo(() => (data?.suggestions ?? []).filter(s => s.ok), [data])
   const chosen = useMemo(() => resolvable.filter(s => !skip.has(s.appointment_id)), [resolvable, skip])
 
+  const rank: Record<string, number> = { light: 1, wind: 2, steady: 3, heavy: 4 }
+  const worst = (data?.risk_days ?? [])
+    .map(d => d.worst)
+    .filter(Boolean)
+    .sort((a, b) => (rank[b!.band] ?? 0) - (rank[a!.band] ?? 0))[0]
+  const worstBand = worst?.band
+  const headline = worst?.summary
+
   if (!data || data.at_risk_count === 0) return null
 
   async function apply() {
@@ -70,16 +78,17 @@ export default function WeatherReschedule({
       <button onClick={() => setOpen(true)}
         className="flex w-full items-center gap-3 border-b px-4 py-2 text-left transition-colors hover:bg-[#eeeeed]"
         style={{ borderColor: 'var(--line)', background: 'color-mix(in srgb, var(--tight) 10%, var(--ink))' }}>
-        <span className="text-[15px]">⛈</span>
+        <span className="text-[15px]">{worstBand === 'heavy' ? '⛈' : worstBand === 'wind' ? '💨' : '🌧'}</span>
         <span className="text-[13px] font-semibold">
-          {data.at_risk_count} job{data.at_risk_count === 1 ? '' : 's'} on a rain day
+          {data.at_risk_count} job{data.at_risk_count === 1 ? '' : 's'} facing weather
+          {headline && <span className="ml-2 font-normal" style={{ color: 'var(--muted)' }}>— {headline}</span>}
           <span className="ml-2 font-normal" style={{ color: 'var(--muted)' }}>
             {data.resolvable === data.at_risk_count
-              ? `— ${data.resolvable} can move to a dry slot`
-              : `— ${data.resolvable} movable, ${data.at_risk_count - data.resolvable} need a manual call`}
+              ? `· ${data.resolvable} could move to a clear day`
+              : `· ${data.resolvable} movable, ${data.at_risk_count - data.resolvable} need a manual call`}
           </span>
         </span>
-        <span className="ml-auto rounded-full px-3 py-1 text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#ffffff' }}>Review & reschedule</span>
+        <span className="ml-auto rounded-full px-3 py-1 text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#ffffff' }}>See options</span>
       </button>
 
       {open && (
@@ -88,8 +97,13 @@ export default function WeatherReschedule({
             style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}>
             <div className="flex items-center justify-between border-b px-5 py-3" style={{ borderColor: 'var(--line)' }}>
               <div>
-                <div className="text-[15px] font-bold">Clear the rain days</div>
-                <div className="text-[12px]" style={{ color: 'var(--muted)' }}>{data.risk_days.map(d => `${fmtDate(d.date)} · ${d.precip_probability}%`).join('   ')}</div>
+                <div className="text-[15px] font-bold">Weather on the schedule</div>
+                <div className="text-[12px]" style={{ color: 'var(--muted)' }}>
+                  {data.risk_days.map(d => `${fmtDate(d.date)} · ${d.summary ?? `${d.precip_probability ?? '—'}%`}`).join('   ')}
+                </div>
+                <div className="mt-0.5 text-[11px]" style={{ color: 'var(--muted)' }}>
+                  Forecast at each job&apos;s own address. Nothing moves until you confirm.
+                </div>
               </div>
               <button onClick={() => setOpen(false)} className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]">✕</button>
             </div>

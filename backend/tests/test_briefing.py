@@ -94,8 +94,19 @@ def test_todays_weather_is_never_briefed():
     assert weather_items([_wx(pp=90, date="2026-08-18")], TOMORROW) == []
 
 
-def test_rain_below_threshold_is_not_worth_moving_a_job():
-    assert weather_items([_wx(pp=35)], TOMORROW) == []
+def test_a_real_chance_of_rain_is_briefed():
+    # The bar for TELLING the dispatcher is deliberately low — the briefing
+    # never moves anything, so a mention they shrug off costs nothing, while a
+    # chance nobody raised costs a crew's morning. 35% now speaks up; it used
+    # to be silent under a 60% rule built for deciding rather than informing.
+    items = weather_items([_wx(pp=35)], TOMORROW)
+    assert len(items) == 1
+    assert "35% rain" in items[0]["text"]
+
+
+def test_a_negligible_chance_of_rain_stays_quiet():
+    # Still a floor: a briefing that flags every 10% day gets ignored entirely.
+    assert weather_items([_wx(pp=10)], TOMORROW) == []
 
 
 def test_rain_on_a_day_with_no_work_is_not_a_briefing_line():

@@ -743,26 +743,90 @@ async def create_appointment(body: CreateAppt, user: dict = Depends(require_user
 
 # ── M5: weather impact + one-click reschedule ────────────────────────────────
 
-RISK_THRESHOLD = 60        # precip % that makes a day a weather risk
 RESCHEDULE_HORIZON = 21    # days forward the planner will search for a dry slot
 IDEAL_UTIL = 95.0          # prefer landing at or under this
 MAX_UTIL = 110.0           # never suggest a slot that overbooks past this
 
+# What counts as weather worth telling the dispatcher about. Deliberately
+# sensitive: this flags a day, it does not cancel anything. The dispatcher
+# decides — we only make sure they are never surprised.
+RAIN_ANY_IN = 0.01         # any measurable accumulation in the forecast
+RAIN_ANY_PROB = 30.0       # or a real chance of it
+WIND_ALERT_MPH = 20.0      # crews come off the roof around here
 
-def _date_precip(db, date_str: str) -> Optional[float]:
-    wx = db.table("sched_weather_day").select("*").eq("date", date_str).execute().data or []
-    if not wx:
+# Severity by forecast accumulation, so "drizzle" and "downpour" stop reading
+# the same. Probability answers "will it rain"; inches answer "can we work".
+RAIN_STEADY_IN = 0.10
+RAIN_HEAVY_IN = 0.30
+
+
+def _wx_at(fc: dict, lat, lng, date_str: str) -> Optional[dict]:
+    """That job site's forecast for that day, from a prefetched bundle."""
+    from app.services.scheduling import weather_service as wx
+    if lat is None or lng is None:
         return None
-    wx = sorted(wx, key=lambda w: 0 if w.get("postal_prefix") == "284" else 1)
-    return _f(wx[0].get("precip_probability"))
+    return (fc.get(wx.bucket(_f(lat), _f(lng))) or {}).get(date_str)
 
 
-def _date_is_risky(db, date_str: str) -> bool:
-    p = _date_precip(db, date_str)
-    return p is not None and p >= RISK_THRESHOLD
+def _weather_verdict(w: Optional[dict]) -> Optional[dict]:
+    """Describe a day at one job site, or None when it is fine to work.
+
+    Returns what the dispatcher needs to make the call themselves: how much
+    rain, how hard, how windy, and a sentence they can read at a glance.
+    """
+    if not w:
+        return None
+    prob = _f(w.get("precip_probability"))
+    inches = _f(w.get("precip_in"))
+    wind = _f(w.get("wind_mph"))
+
+    wet = (inches is not None and inches >= RAIN_ANY_IN) or (prob is not None and prob >= RAIN_ANY_PROB)
+    windy = wind is not None and wind >= WIND_ALERT_MPH
+    if not wet and not windy:
+        return None
+
+    if inches is not None and inches >= RAIN_HEAVY_IN:
+        band, phrase = "heavy", "heavy rain expected"
+    elif inches is not None and inches >= RAIN_STEADY_IN:
+        band, phrase = "steady", "steady rain expected"
+    elif wet:
+        band, phrase = "light", "light rain possible"
+    else:
+        band, phrase = "dry", "dry"
+
+    parts = []
+    if wet:
+        bits = []
+        if prob is not None:
+            bits.append(f"{round(prob)}% chance")
+        if inches is not None and inches > 0:
+            bits.append(f"{inches:.2f} in")
+        parts.append(f"{phrase}" + (f" ({', '.join(bits)})" if bits else ""))
+    if windy:
+        parts.append(f"wind {round(wind)} mph")
+
+    return {
+        "band": "wind" if (windy and not wet) else band,
+        "precip_probability": prob,
+        "precip_in": inches,
+        "wind_mph": wind,
+        "windy": windy,
+        "wet": wet,
+        "summary": " · ".join(parts),
+    }
 
 
-def _suggest_moves(db, appt_ids: list, horizon: int = RESCHEDULE_HORIZON) -> list:
+def _day_is_clear(fc: dict, lat, lng, date_str: str) -> bool:
+    """A candidate day is only offered if that job site reads clear.
+
+    No forecast at all counts as clear — beyond Open-Meteo's 16-day horizon we
+    genuinely do not know, and refusing to plan is worse than planning without
+    a forecast the dispatcher can still overrule.
+    """
+    return _weather_verdict(_wx_at(fc, lat, lng, date_str)) is None
+
+
+def _suggest_moves(db, appt_ids: list, fc: dict, loc: dict, horizon: int = RESCHEDULE_HORIZON) -> list:
     """For each rained-out appointment, find the earliest dry crew-day that fits.
     Keeps a running projection of squares it has already re-parked so it spreads
     the day's work across the week instead of stacking it all onto one Tuesday.
@@ -788,10 +852,12 @@ def _suggest_moves(db, appt_ids: list, horizon: int = RESCHEDULE_HORIZON) -> lis
             continue
         sq = _f(job.get("squares")) or 0.0
         d0 = date.fromisoformat(cur_date)
+        lat, lng = loc.get(aid, (None, None))
         ideal = None; fit = None
         for k in range(1, horizon + 1):
             cds = (d0 + timedelta(days=k)).isoformat()
-            if _date_is_risky(db, cds):
+            # Clear at THIS job's site — a dry day across town is not a dry day here.
+            if not _day_is_clear(fc, lat, lng, cds):
                 continue
             ev = _evaluate_move(db, appt, job, crew, cds)
             if any(c["severity"] == "BLOCK" for c in ev["conflicts"]):
@@ -824,13 +890,37 @@ def _suggest_moves(db, appt_ids: list, horizon: int = RESCHEDULE_HORIZON) -> lis
     return out
 
 
-def _compute_weather_impact(db, s: date, e: date) -> dict:
-    """Weather-exposed jobs on high-risk days in [s, e], each with a proposed dry
-    slot. Shared by GET /weather/impact and the Copilot's Morning Brief."""
+async def _compute_weather_impact(db, s: date, e: date) -> dict:
+    """Weather-exposed jobs facing rain or wind in [s, e], each with a proposed
+    clear-day home. Shared by GET /weather/impact and the Copilot's Morning Brief.
+
+    Every judgement is made at the JOB'S OWN LOCATION — the property the crew is
+    assigned to that day — not one regional number. Two crews on the same date
+    can get different answers, which is the truthful result when one is inland
+    and the other is on the coast.
+
+    This flags and proposes. It never moves anything; POST /reschedule does that,
+    and only with the moves the dispatcher confirmed.
+    """
+    from app.services.scheduling import weather_service as wx
+
     appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG)
                   .gte("scheduled_start", s.isoformat()).lte("scheduled_start", (e + timedelta(days=1)).isoformat()).execute())
     appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute()) if a.get("is_primary", True)}
     jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("*").eq("org_id", ORG).execute())}
+    props = {p["id"]: p for p in _rows(db.table("sched_property").select("id,lat,lng,line1,city").eq("org_id", ORG).execute())}
+
+    # Where each appointment actually is, so the forecast is about that roof.
+    loc: dict = {}
+    for a in appts:
+        job = jobs.get(a["job_id"])
+        prop = props.get(job.get("property_id")) if job else None
+        if prop:
+            loc[a["id"]] = (_f(prop.get("lat")), _f(prop.get("lng")))
+
+    # One fetch covers every site and every candidate day in the planning window.
+    points = [pt for pt in loc.values() if pt[0] is not None and pt[1] is not None]
+    fc = await wx.forecasts_for(list(set(points))) if points else {}
 
     risk_dates: dict = {}
     at_risk_ids = []
@@ -844,17 +934,29 @@ def _compute_weather_impact(db, s: date, e: date) -> dict:
         job = jobs.get(a["job_id"])
         if not job or job.get("job_type") == "INSPECTION":  # interior/inspection isn't rained out
             continue
-        if not _date_is_risky(db, ds):
+        lat, lng = loc.get(a["id"], (None, None))
+        verdict = _weather_verdict(_wx_at(fc, lat, lng, ds))
+        if not verdict:
             continue
         at_risk_ids.append(a["id"])
-        bucket = risk_dates.setdefault(ds, {"date": ds, "precip_probability": _date_precip(db, ds), "appointments": []})
+        prop = props.get(job.get("property_id")) if job else None
+        bucket = risk_dates.setdefault(ds, {"date": ds, "appointments": []})
+        # The day's headline is its worst site, so a heavy-rain job is never
+        # hidden behind a drizzle one on the same date.
+        rank = {"light": 1, "wind": 2, "steady": 3, "heavy": 4}
+        if rank.get(verdict["band"], 0) >= rank.get((bucket.get("worst") or {}).get("band", ""), 0):
+            bucket["worst"] = verdict
+            bucket["summary"] = verdict["summary"]
+            bucket["precip_probability"] = verdict["precip_probability"]
         bucket["appointments"].append({
             "appointment_id": a["id"], "crew_id": appt_crew.get(a["id"]),
             "job_number": job.get("job_number"), "job_type": job.get("job_type"),
             "squares": _f(job.get("squares")),
+            "site": (prop or {}).get("city") or (prop or {}).get("line1"),
+            "weather": verdict,
         })
 
-    suggestions = _suggest_moves(db, at_risk_ids)
+    suggestions = _suggest_moves(db, at_risk_ids, fc, loc)
     return {
         "risk_days": [risk_dates[d] for d in sorted(risk_dates)],
         "at_risk_count": len(at_risk_ids),
@@ -868,7 +970,7 @@ async def weather_impact(start: str, end: str, user: dict = Depends(require_user
     """Which scheduled, weather-exposed jobs sit on a high-risk rain day in the
     range — and a proposed dry-day home for each. The apply path is POST /reschedule."""
     db = get_supabase()
-    return _compute_weather_impact(db, _parse_date(start, "start"), _parse_date(end, "end"))
+    return await _compute_weather_impact(db, _parse_date(start, "start"), _parse_date(end, "end"))
 
 
 class Move(BaseModel):
@@ -1094,7 +1196,7 @@ async def ai_brief(start: str, end: str, narrate: bool = True, user: dict = Depe
     gaps = [{"job_id": j["id"], "job_number": j.get("job_number"), "label": _label(j.get("job_type")), "best": None}
             for j in jobs if j["id"] not in scheduled_ids and j.get("status") in ("SOLD", "SCHEDULED")]
 
-    impact = _compute_weather_impact(db, s, e)
+    impact = await _compute_weather_impact(db, s, e)
     weather_risks = [{"date": r["date"], "precip": _f(r["precip_probability"]) or 0.0, "count": len(r["appointments"]),
                       "resolvable": sum(1 for sg in impact["suggestions"] if sg["ok"] and sg["from"]["date"] == r["date"])}
                      for r in impact["risk_days"]]
@@ -1151,7 +1253,7 @@ async def ai_brief(start: str, end: str, narrate: bool = True, user: dict = Depe
 PLAN_OPS = {"REASSIGN", "MOVE_TO_DATE", "MOVE", "SET_STATUS", "UNASSIGN", "RESCHEDULE_WEATHER"}
 
 
-def _plan_snapshot(db, s: date, e: date) -> dict:
+async def _plan_snapshot(db, s: date, e: date) -> dict:
     crews = _rows(db.table("sched_crew").select("*").eq("org_id", ORG).execute())
     appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG)
                   .gte("scheduled_start", s.isoformat()).lte("scheduled_start", (e + timedelta(days=1)).isoformat()).execute())
@@ -1168,7 +1270,7 @@ def _plan_snapshot(db, s: date, e: date) -> dict:
                      "crew_name": crew_name.get(appt_crew.get(a["id"]), ""),
                      "date": sdt.date().isoformat() if sdt else None, "status": a.get("status"),
                      "squares": _f(job.get("squares")) if job else None})
-    impact = _compute_weather_impact(db, s, e)
+    impact = await _compute_weather_impact(db, s, e)
     return {
         "date_range": {"start": s.isoformat(), "end": e.isoformat()},
         "crews": [{"crew_id": c["id"], "name": c["name"]} for c in crews],
@@ -1235,7 +1337,7 @@ async def ai_plan(body: PlanReq, user: dict = Depends(require_user)) -> dict:
     applies the returned plan through the existing /bulk or /reschedule endpoints."""
     db = get_supabase()
     s = _parse_date(body.start, "start"); e = _parse_date(body.end, "end")
-    snapshot = _plan_snapshot(db, s, e)
+    snapshot = await _plan_snapshot(db, s, e)
     try:
         plan = await _compile_intent(body.intent, snapshot)
     except Exception as ex:  # model down / all providers failed
@@ -1248,7 +1350,7 @@ async def ai_plan(body: PlanReq, user: dict = Depends(require_user)) -> dict:
 
     # Weather special-case → the deterministic reschedule plan.
     if op == "RESCHEDULE_WEATHER":
-        impact = _compute_weather_impact(db, s, e)
+        impact = await _compute_weather_impact(db, s, e)
         moves = [{"appointment_id": sg["appointment_id"], "crew_id": sg["to"]["crew_id"], "date": sg["to"]["date"]}
                  for sg in impact["suggestions"] if sg["ok"] and sg.get("to")]
         if not moves:
