@@ -241,7 +241,12 @@ export default function Board({
     return r != null ? r : (idx.wxBy.get(d)?.precip_probability ?? null)
   }
 
-  const cols = `220px repeat(${days.length}, minmax(158px, 1fr))`
+  // The whole week has to fit on one screen. A 158px floor per day plus a fixed
+  // 220px rail needed 1326px before it would render — wider than the content
+  // area of a 1440px laptop once the sidebar is out — so the board always
+  // scrolled sideways. Days now share whatever room is left, and the rail
+  // gives some of its width back on smaller screens.
+  const cols = `minmax(148px, 200px) repeat(${days.length}, minmax(0, 1fr))`
   const rainy = (d: string) => { const p = regionalPrecip(d); return p != null && p >= 60 }
 
   const onDragStart = (e: DragStartEvent) => {
@@ -407,7 +412,7 @@ export default function Board({
           }))}
         </div>
       ) : (
-      <div className="min-w-max pb-12 text-[13px]">
+      <div className="w-full min-w-[760px] pb-12 text-[13px]">
         {/* Day header */}
         <div className="sticky top-0 z-20 grid border-b" style={{ gridTemplateColumns: cols, background: 'var(--ink)', borderColor: 'var(--line)' }}>
           <div className="sticky left-0 z-30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ background: 'var(--ink)', color: 'var(--muted)' }}>Crew</div>
