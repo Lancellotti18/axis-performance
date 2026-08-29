@@ -73,8 +73,13 @@ def _waiting(db, user_id: str, today: date) -> list[dict]:
     return waiting_items(threads, appts)
 
 
-async def _weather(db, tomorrow: date) -> list[dict]:
-    """Tomorrow's forecast at every job site each crew is actually due at.
+# How far ahead the briefing looks for weather. A week covers the run-up a
+# dispatcher actually schedules into, and stays inside Open-Meteo's horizon.
+WEATHER_HORIZON_DAYS = 7
+
+
+async def _weather(db, tomorrow: date, days: int = WEATHER_HORIZON_DAYS) -> list[dict]:
+    """The forecast at every job site each crew is actually due at, days ahead.
 
     Earlier this took only a crew's FIRST stop, which is wrong the moment a crew
     works two towns in a day — a dry morning in Leland told you nothing about a
@@ -89,10 +94,16 @@ async def _weather(db, tomorrow: date) -> list[dict]:
     from app.api.v1.scheduling import ORG, _dt, _f, _rows
     from app.services.scheduling import weather_service as wx
 
+    # Today onward, not tomorrow alone. Scoping this to a single day is what
+    # made the feature invisible: a job booked for today, or for Thursday, was
+    # never mentioned at all.
+    start = tomorrow - timedelta(days=1)          # `tomorrow` is passed as today+1
+    end = start + timedelta(days=max(1, days))
     tstr = tomorrow.isoformat()
+    horizon = {(start + timedelta(days=i)).isoformat() for i in range(max(1, days) + 1)}
     appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG)
-                  .gte("scheduled_start", tstr)
-                  .lt("scheduled_start", (tomorrow + timedelta(days=1)).isoformat()).execute())
+                  .gte("scheduled_start", start.isoformat())
+                  .lt("scheduled_start", end.isoformat()).execute())
     if not appts:
         return []
     # A crew that's been stood down for the day doesn't need a weather call.
@@ -108,16 +119,22 @@ async def _weather(db, tomorrow: date) -> list[dict]:
     jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("id,property_id").eq("org_id", ORG).execute())}
     props = {p["id"]: p for p in _rows(db.table("sched_property").select("id,city,lat,lng").eq("org_id", ORG).execute())}
 
-    # Every located stop per crew, not just the earliest.
-    sites: dict = {}          # crew_id -> [(lat, lng, city), ...]
-    jobs_per_crew: dict = {}
+    # Every located stop, per crew AND per day — a crew's Tuesday says nothing
+    # about its Thursday, so they cannot share one bucket.
+    sites: dict = {}          # (crew_id, date) -> [(lat, lng, city), ...]
+    jobs_per: dict = {}       # (crew_id, date) -> count
     for a in appts:
         if a["id"] not in active:
             continue
         crew_id = appt_crew.get(a["id"])
-        if not crew_id or crew_id not in crews or not _dt(a.get("scheduled_start")):
+        sdt = _dt(a.get("scheduled_start"))
+        if not crew_id or crew_id not in crews or not sdt:
             continue
-        jobs_per_crew[crew_id] = jobs_per_crew.get(crew_id, 0) + 1
+        ds = sdt.date().isoformat()
+        if ds not in horizon:
+            continue
+        key = (crew_id, ds)
+        jobs_per[key] = jobs_per.get(key, 0) + 1
         job = jobs.get(a["job_id"])
         prop = props.get(job["property_id"]) if job else None
         if not prop:
@@ -125,7 +142,7 @@ async def _weather(db, tomorrow: date) -> list[dict]:
         lat, lng = _f(prop.get("lat")), _f(prop.get("lng"))
         if lat is None or lng is None:
             continue
-        sites.setdefault(crew_id, []).append((lat, lng, prop.get("city")))
+        sites.setdefault(key, []).append((lat, lng, prop.get("city")))
 
     if not sites:
         return []
@@ -133,11 +150,11 @@ async def _weather(db, tomorrow: date) -> list[dict]:
     fc = await wx.forecasts_for(points)
 
     rows = []
-    for crew_id, pts in sites.items():
+    for (crew_id, ds), pts in sites.items():
         worst_pp, worst_wind, worst_city = None, None, None
         distinct = {(round(lat, 2), round(lng, 2)) for (lat, lng, _c) in pts}
         for (lat, lng, city) in pts:
-            w = (fc.get(wx.bucket(lat, lng)) or {}).get(tstr) or {}
+            w = (fc.get(wx.bucket(lat, lng)) or {}).get(ds) or {}
             pp, wind = w.get("precip_probability"), w.get("wind_mph")
             # Track the single worst site, and remember where it was.
             if pp is not None and (worst_pp is None or pp > worst_pp):
@@ -147,12 +164,14 @@ async def _weather(db, tomorrow: date) -> list[dict]:
                 if worst_pp is None:
                     worst_city = city
         rows.append({
-            "crew_id": crew_id, "crew_name": crews[crew_id].get("name"), "date": tstr,
+            "crew_id": crew_id, "crew_name": crews[crew_id].get("name"), "date": ds,
             "precip_probability": worst_pp, "wind_mph": worst_wind,
-            "job_count": jobs_per_crew.get(crew_id, 0),
+            "job_count": jobs_per.get((crew_id, ds), 0),
             "location": worst_city, "site_count": len(distinct),
         })
-    return weather_items(rows, tstr)
+    # Soonest first, so today's problem is never below next Thursday's.
+    rows.sort(key=lambda r: r["date"])
+    return weather_items(rows, horizon)
 
 
 def _cold(db, user_id: str, today: date) -> list[dict]:

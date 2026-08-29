@@ -118,12 +118,39 @@ def waiting_items(open_threads: list[dict], unconfirmed_appointments: list[dict]
     return out
 
 
-def weather_items(crew_days: list[dict], tomorrow: str) -> list[dict]:
-    """Jobs worth moving because of tomorrow's forecast at the actual job site.
+def _day_phrase(ds: str, today: Optional[date] = None) -> str:
+    """"today" / "tomorrow" / "on Thursday" — a date alone makes a reader do maths."""
+    if not ds:
+        return ""
+    try:
+        d = date.fromisoformat(ds)
+    except ValueError:
+        return ds
+    t = today or date.today()
+    delta = (d - t).days
+    if delta == 0:
+        return "today"
+    if delta == 1:
+        return "tomorrow"
+    if 2 <= delta <= 6:
+        return f"on {d.strftime('%A')}"
+    return f"on {d.strftime('%b %-d')}"
 
-    Deliberately TOMORROW only. Today's weather is not a decision — the crew is
-    already loading the truck — and putting it here just makes the briefing feel
-    like something that reports problems instead of preventing them.
+
+def weather_items(crew_days: list[dict], horizon: "str | set[str]") -> list[dict]:
+    """Jobs facing rain or wind, at the actual job site, across the days ahead.
+
+    This used to cover TOMORROW alone, on the reasoning that today's weather is
+    not a decision any more. In practice that made the whole feature invisible:
+    a job booked for today, or for Thursday, was never mentioned, and a
+    dispatcher who schedules on a Friday for the following week got nothing at
+    all. A warning you only get for one specific day is one you learn not to
+    rely on.
+
+    So `horizon` is now the set of dates to report on — typically today through
+    the next week — and each line names its day. Today still counts: the crew
+    may be loading the truck, but a downpour is worth saying out loud, and the
+    dispatcher can still call it off.
 
     Each row is expected to carry the WORST conditions across everywhere that
     crew is due to be that day, not the first stop only: a crew with a dry
@@ -131,9 +158,10 @@ def weather_items(crew_days: list[dict], tomorrow: str) -> list[dict]:
     made. `site_count` and `location` let the line name where, which is the
     difference between a warning someone acts on and one they scroll past.
     """
+    dates = {horizon} if isinstance(horizon, str) else set(horizon)
     out = []
     for c in crew_days:
-        if (c.get("date") or "") != tomorrow:
+        if (c.get("date") or "") not in dates:
             continue
         jobs = c.get("job_count") or 0
         if not jobs:
@@ -158,9 +186,10 @@ def weather_items(crew_days: list[dict], tomorrow: str) -> list[dict]:
         else:
             cond = f"{round(wind)} mph wind"
 
+        when = _day_phrase(c.get("date") or "")
         out.append(_item("weather", f"wx:{c.get('crew_id')}:{c.get('date')}",
-                         f"{crew}: {cond} tomorrow{at} on {jobs} job{'' if jobs == 1 else 's'} — "
-                         f"open the board to move {'it' if jobs == 1 else 'them'} to a dry day.",
+                         f"{crew}: {cond} {when}{at} on {jobs} job{'' if jobs == 1 else 's'} — "
+                         f"open the board to move {'it' if jobs == 1 else 'them'} to a clear day.",
                          # Land on the affected day with the dry-day proposals
                          # already open. The reschedule flow has always existed
                          # on the board; the briefing just never pointed at it,

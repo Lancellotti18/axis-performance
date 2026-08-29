@@ -89,9 +89,27 @@ def test_multi_site_day_says_how_many_rather_than_naming_one():
     assert "Hampstead" not in items[0]["text"]
 
 
-def test_todays_weather_is_never_briefed():
-    # The crew is already loading the truck — it isn't a decision any more.
+def test_days_outside_the_horizon_are_not_briefed():
+    # Today IS briefed now — scoping this to tomorrow alone is what made the
+    # whole feature invisible, since a job booked for today never appeared.
+    # What still gets dropped is a day outside the window entirely.
     assert weather_items([_wx(pp=90, date="2026-08-18")], TOMORROW) == []
+
+
+def test_today_is_briefed_and_named():
+    from datetime import date, timedelta
+    today = date.today().isoformat()
+    items = weather_items([_wx(pp=90, date=today)], {today})
+    assert len(items) == 1
+    assert " today" in items[0]["text"], "the line must name the day it means"
+
+
+def test_a_later_day_is_named_by_weekday():
+    from datetime import date, timedelta
+    d = (date.today() + timedelta(days=3))
+    items = weather_items([_wx(pp=90, date=d.isoformat())], {d.isoformat()})
+    assert len(items) == 1
+    assert d.strftime("%A") in items[0]["text"]
 
 
 def test_a_real_chance_of_rain_is_briefed():
