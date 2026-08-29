@@ -416,7 +416,9 @@ def split_crew_work(appointments: List[dict], today: str) -> Tuple[List[dict], i
     for r in appointments:
         starts = (r.get("scheduled_start") or "")[:10]
         released = (r.get("status") or "").strip().upper() in RELEASED_STATUSES
-        past = bool(starts) and starts <= today
+        # Strictly before today. Work scheduled FOR today is live work — the
+        # crew may be on that roof right now — so it still blocks retirement.
+        past = bool(starts) and starts < today
         if released or past:
             finished += 1
         else:
