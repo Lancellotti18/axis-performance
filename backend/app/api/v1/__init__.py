@@ -1,14 +1,20 @@
 from fastapi import APIRouter
-from app.api.v1 import projects, blueprints, analyses, estimates, reports, billing, compliance, materials, permits, contractor_profile, roofing, roofing_v2, exterior, training, crm, photos, model3d, axis, proposals, material_check, visualizer, renders, chat, instant_quote, roof_proposals, client_portal, appointments, notifications, prospecting, project_photos, scheduling, briefing
+from app.api.v1 import projects, blueprints, analyses, estimates, reports, compliance, materials, permits, contractor_profile, roofing, roofing_v2, exterior, training, crm, photos, model3d, axis, proposals, material_check, visualizer, renders, chat, instant_quote, roof_proposals, client_portal, appointments, notifications, prospecting, project_photos, scheduling, briefing
 
 router = APIRouter()
+
+# billing.py is deliberately NOT mounted. It was unfinished scaffolding that no
+# frontend code called, and POST /billing/portal took a Stripe customer_id with
+# no auth at all — anyone could mint a billing-portal URL for any customer. Its
+# price IDs are also placeholders and its redirect URLs point at localhost, so
+# there was nothing working to preserve. Re-mount it only once it has auth, real
+# STRIPE_PRICE_* config, and a signature-verified webhook.
 
 router.include_router(projects.router, prefix="/projects", tags=["projects"])
 router.include_router(blueprints.router, prefix="/blueprints", tags=["blueprints"])
 router.include_router(analyses.router, prefix="/analyses", tags=["analyses"])
 router.include_router(estimates.router, prefix="/estimates", tags=["estimates"])
 router.include_router(reports.router, prefix="/reports", tags=["reports"])
-router.include_router(billing.router, prefix="/billing", tags=["billing"])
 router.include_router(compliance.router, prefix="/compliance", tags=["compliance"])
 router.include_router(materials.router, prefix="/materials", tags=["materials"])
 router.include_router(permits.router, prefix="/permits", tags=["permits"])
