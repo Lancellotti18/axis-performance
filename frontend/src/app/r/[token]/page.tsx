@@ -13,6 +13,8 @@ import { api } from '@/lib/api'
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
+import { readableInkOnBrand } from '@/lib/contrast'
+
 type Report = Awaited<ReturnType<typeof api.instantQuote.report>>
 
 // Instant pricing is now per-contractor: the report shows the estimate range
@@ -72,9 +74,9 @@ function RoofVision({ renders, company, apiBase, token, beforeUrl }: { renders: 
   }
   return (
     <section className="mb-6 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-[0_12px_44px_-16px_rgba(15,40,80,0.28)]">
-      <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 70%, black))' }}>
+      <div className="px-5 py-3" style={{ background: 'linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 70%, black))', color: 'var(--brand-ink)' }}>
         <div className="text-sm font-bold">✨ See your home with a new roof</div>
-        <p className="mt-0.5 text-[11px] text-blue-50/90">Your actual house, rendered in the shingle colors {company} installs — tap a color to preview it.</p>
+        <p className="mt-0.5 text-[11px] opacity-85">Your actual house, rendered in the shingle colors {company} installs — tap a color to preview it.</p>
       </div>
       <div className={`grid ${beforeUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-px bg-slate-200`}>
         {beforeUrl && (
@@ -87,7 +89,7 @@ function RoofVision({ renders, company, apiBase, token, beforeUrl }: { renders: 
         <div className="relative bg-slate-100">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={src(active.image_url)} alt={`Your roof in ${active.name}`} className="block h-full w-full object-cover" />
-          <div className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#1a1a1a]" style={{ background: 'color-mix(in srgb, var(--brand) 90%, transparent)' }}>After</div>
+          <div className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ background: 'color-mix(in srgb, var(--brand) 90%, transparent)', color: 'var(--brand-ink)' }}>After</div>
           <div className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-[#1a1a1a]">{active.name} · {active.tier}</div>
         </div>
       </div>
@@ -149,7 +151,13 @@ export default function ReportPage() {
 
   return (
     <main className="min-h-screen px-4 py-10 text-slate-900 print:bg-white print:py-2 sm:px-8"
-      style={{ background: 'linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)', ['--brand' as string]: brand }}>
+      style={{
+        background: 'linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)',
+        ['--brand' as string]: brand,
+        // Text that sits ON the accent. Chosen from the accent's own contrast,
+        // so a pale brand gets dark ink and a dark brand gets white.
+        ['--brand-ink' as string]: readableInkOnBrand(brand),
+      }}>
       <div className="mx-auto max-w-2xl">
         {/* Header — contractor logo (prominent) + Axis attribution */}
         <header className="mb-6 text-center">
@@ -216,7 +224,7 @@ export default function ReportPage() {
               {r.tiers.map((t, i) => (
                 <div key={t.name} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 ring-1 ${i === 1 ? 'bg-blue-50/60 ring-blue-200' : 'bg-slate-50 ring-slate-100'}`}>
                   <div>
-                    <div className="text-sm font-semibold">{t.name} — {t.headline}{i === 1 && <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1a1a1a]" style={{ background: 'var(--brand)' }}>Popular</span>}</div>
+                    <div className="text-sm font-semibold">{t.name} — {t.headline}{i === 1 && <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>Popular</span>}</div>
                     <div className="text-[11px] text-[#6b7280]">{t.detail}</div>
                   </div>
                   {SHOW_INSTANT_PRICE && <div className="shrink-0 text-right text-sm font-bold text-slate-800">{money(t.price)}</div>}
@@ -356,9 +364,9 @@ export default function ReportPage() {
         {/* Book a free inspection — self-serve, lands on the contractor's calendar.
             id="book" lets the quote funnel's "Schedule an appointment" button deep-link here. */}
         <section id="book" className="mb-5 scroll-mt-4 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm print:hidden">
-          <div className="px-5 py-3 text-white" style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))' }}>
+          <div className="px-5 py-3" style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', color: 'var(--brand-ink)' }}>
             <div className="text-sm font-semibold">📅 Book your free on-site inspection</div>
-            <div className="text-[11px] text-blue-50/90">Pick a day and {r.company_name} will confirm — no charge, no obligation.</div>
+            <div className="text-[11px] opacity-85">Pick a day and {r.company_name} will confirm — no charge, no obligation.</div>
           </div>
           {booked ? (
             <div className="p-5 text-center">
