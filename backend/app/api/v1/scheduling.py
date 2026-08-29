@@ -1389,15 +1389,34 @@ def _measurements_from_run(run: dict) -> dict:
     return patch
 
 
+def _fill_blanks(job: dict, measured: dict) -> tuple[dict, dict]:
+    """Split a run's measurements into what the job is missing vs what it already has.
+
+    Returns (fill, kept). A measurement can always be re-derived from the roof
+    run; a number a dispatcher typed by hand cannot — so the run only fills
+    gaps. These columns carry no DB default, so `is None` is an honest test for
+    "blank", and a deliberate 0 counts as a real value.
+    """
+    fill = {k: v for k, v in measured.items() if job.get(k) is None}
+    kept = {k: job.get(k) for k in measured if job.get(k) is not None}
+    return fill, kept
+
+
 @router.patch("/jobs/{job_id}/link")
 async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(require_user)) -> dict:
-    """Attach a job to a roofing project — and inherit its measurements.
+    """Attach a job to a roofing project — and fill in its missing measurements.
 
-    Linking is the moment the board learns the roof. We copy the latest run's
-    squares/pitch/stories/waste onto the job so capacity math, the crew-days
-    breakdown and the card all reflect the real roof immediately, instead of
-    showing "no measurements" next to a project that has them. The audit event
-    records the before/after, so an unwanted overwrite is visible and reversible.
+    Linking is the moment the board learns the roof. The latest run's
+    squares/pitch/stories/waste fill any field the job has left blank, so
+    capacity math, the crew-days breakdown and the card reflect the real roof
+    immediately instead of showing "no measurements" next to a project that
+    has them.
+
+    Blanks only — a value a dispatcher typed is never overwritten. A
+    measurement can always be re-derived from the roof run; a number someone
+    entered by hand cannot, and silently replacing it loses the more
+    deliberate of the two. The response and the audit event both report what
+    was filled (`inherited`) and what was left alone (`kept`).
     """
     db = get_supabase()
     job = _one(db, "sched_job", job_id)
@@ -1406,11 +1425,13 @@ async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(r
 
     update: dict = {"project_id": body.project_id}
     inherited: dict = {}
+    kept: dict = {}
     if body.project_id:  # verify the project is the caller's before linking
         pr = _rows(db.table("projects").select("id,user_id").eq("id", body.project_id).limit(1).execute())
         if not pr or pr[0].get("user_id") != user.get("id"):
             raise HTTPException(status_code=404, detail="Project not found.")
-        inherited = _measurements_from_run(_latest_run(db, body.project_id))
+        measured = _measurements_from_run(_latest_run(db, body.project_id))
+        inherited, kept = _fill_blanks(job, measured)
         update.update(inherited)
 
     db.table("sched_job").update(update).eq("id", job_id).execute()
@@ -1418,9 +1439,9 @@ async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(r
         "entity_id": job_id, "action": "LINK_PROJECT",
         "before_json": {"project_id": job.get("project_id"),
                         **{k: job.get(k) for k in inherited}},
-        "after_json": {"project_id": body.project_id, **inherited},
+        "after_json": {"project_id": body.project_id, "inherited": inherited, "kept": kept},
         "request_id": str(uuid.uuid4())}).execute()
-    return {"ok": True, "project_id": body.project_id, "inherited": inherited}
+    return {"ok": True, "project_id": body.project_id, "inherited": inherited, "kept": kept}
 
 
 @router.get("/jobs/{job_id}/project")
