@@ -575,7 +575,7 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
         raise HTTPException(status_code=429, detail="Please try again later.")
     if payload.website:
         # Honeypot tripped — swallow silently so the bot thinks it worked.
-        return {"ok": True, "report_url": None, "message": "Thanks! The team will reach out shortly."}
+        return {"ok": True, "report_url": None, "report_token": None, "message": "Thanks! The team will reach out shortly."}
     if not payload.phone and not payload.email:
         raise HTTPException(status_code=422, detail="A phone number or email is required so the contractor can reach you.")
 
@@ -747,6 +747,9 @@ async def capture_lead(widget_key: str, payload: LeadRequest, request: Request) 
     return {
         "ok": True,
         "report_url": f"/r/{report_token}" if report_token else None,
+        # The widget books an inspection inline now, so it needs the token
+        # itself rather than picking it back out of the URL string.
+        "report_token": report_token,
         "message": f"Thanks {payload.name.split(' ')[0]}! {w.get('company_name') or 'The team'} will reach out shortly.",
     }
 
