@@ -11,24 +11,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { api, type QuoteWidget } from '@/lib/api'
+import { contrastRatio, readableInk, readableInkOnBrand } from '@/lib/contrast'
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
-
-/** WCAG relative luminance. */
-function luminance(hex: string): number | null {
-  if (!HEX.test(hex)) return null
-  let h = hex.slice(1)
-  if (h.length === 3) h = h.split('').map(c => c + c).join('')
-  const f = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
-  const [r, g, b] = [0, 2, 4].map(i => f(parseInt(h.slice(i, i + 2), 16) / 255))
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-
-function contrast(a: string, b: string): number | null {
-  const la = luminance(a), lb = luminance(b)
-  if (la == null || lb == null) return null
-  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
-}
 
 const CARD = 'rounded-2xl border border-[#dededc] bg-[#f8f8f7] p-6'
 const INPUT = 'rounded-xl border border-[#dededc] bg-[#f8f8f7] px-3 py-2 text-sm text-[#1a1a1a] placeholder:text-[#6b7280] focus:border-blue-400/50 focus:outline-none'
@@ -87,9 +72,11 @@ export default function QuoteWidgetSettings() {
 
   if (!widget) return null
 
-  const ratio = brand && bg ? contrast(brand, bg) : null
+  const ratio = brand && bg ? contrastRatio(brand, bg) : null
   const lowContrast = ratio != null && ratio < 3
   const hostedUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/q/${widget.widget_key}`
+  const previewBg = HEX.test(bg) ? bg : '#0b1220'
+  const previewBrand = HEX.test(brand) ? brand : '#0056d6'
 
   // Show what a typical roof actually quotes at, so changing a rate is not abstract.
   const lo = parseFloat(priceLow), hi = parseFloat(priceHigh)
@@ -179,10 +166,14 @@ export default function QuoteWidgetSettings() {
           </div>
         )}
 
-        <div className="mt-3 rounded-lg border border-[#dededc] p-3" style={{ background: HEX.test(bg) ? bg : '#0b1220' }}>
-          <div className="text-[10px] uppercase tracking-wide text-[#1a1a1a]/70">Preview</div>
-          <button className="mt-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-[#1a1a1a]"
-            style={{ background: HEX.test(brand) ? brand : '#0056d6' }}>
+        {/* The preview used to hardcode dark ink on both surfaces, so it always
+            looked readable — hiding the exact problem it exists to reveal. It
+            now picks its ink the same way the live pages do. */}
+        <div className="mt-3 rounded-lg border border-[#dededc] p-3"
+          style={{ background: previewBg, color: readableInk(previewBg) }}>
+          <div className="text-[10px] uppercase tracking-wide opacity-70">Preview</div>
+          <button className="mt-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
+            style={{ background: previewBrand, color: readableInkOnBrand(previewBrand) }}>
             Get my free estimate
           </button>
         </div>

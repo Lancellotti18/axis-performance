@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 
 import { api } from '@/lib/api'
+import { readableInkOnBrand } from '@/lib/contrast'
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
@@ -147,6 +148,18 @@ export default function RoofIQPage() {
   const [email, setEmail] = useState('')
   const [smsConsent, setSmsConsent] = useState(true)   // TCPA: explicit, logged consent to be texted
   const [reportUrl, setReportUrl] = useState<string | null>(null)
+  // Booking happens right here now. Sending the homeowner to the report just to
+  // reach a date picker cost a hop at the moment of highest intent, and made
+  // the two buttons below look like they did the same thing — they did.
+  const [reportToken, setReportToken] = useState<string | null>(null)
+  const [bookOpen, setBookOpen] = useState(false)
+  const [bookDate, setBookDate] = useState('')
+  const [bookWindow, setBookWindow] = useState('anytime')
+  const [bookNote, setBookNote] = useState('')
+  const [bookHp, setBookHp] = useState('')          // honeypot
+  const [booking, setBooking] = useState(false)
+  const [booked, setBooked] = useState(false)
+  const [bookErr, setBookErr] = useState('')
   const [website, setWebsite] = useState('')   // honeypot — humans never see or fill this
   const [factorsOpen, setFactorsOpen] = useState(false)
 
@@ -162,6 +175,24 @@ export default function RoofIQPage() {
   }, [widgetKey])
 
   // ---- step 1 → 2: locate ----
+  const submitBooking = useCallback(async () => {
+    if (!reportToken) return
+    if (!bookDate) { setBookErr('Pick a day that works for you.'); return }
+    setBooking(true); setBookErr('')
+    try {
+      await api.instantQuote.bookInspection(reportToken, {
+        preferred_date: bookDate, time_window: bookWindow,
+        note: bookNote || undefined, website: bookHp || undefined,
+      })
+      setBooked(true)
+      track('appointment_booked')
+    } catch (e) {
+      setBookErr(e instanceof Error ? e.message.replace(/\[HTTP \d+\]\s*/, '') : 'Could not book — please call instead.')
+    } finally {
+      setBooking(false)
+    }
+  }, [reportToken, bookDate, bookWindow, bookNote, bookHp, track])
+
   const locate = useCallback(async (geo?: { lat: number; lng: number }) => {
     if (!geo && address.trim().length < 6) { setError('Enter your full address, including the city.'); return }
     setBusy(true); setError(null)
@@ -270,6 +301,7 @@ export default function RoofIQPage() {
         ].filter(Boolean).join(' · '),
       })
       setReportUrl(res.report_url || null)
+      setReportToken(res.report_token || null)
       track('lead_captured')
       setStep('result')
     } catch (e) {
@@ -296,6 +328,9 @@ export default function RoofIQPage() {
           ? `radial-gradient(1100px 420px at 50% -8%, color-mix(in srgb, ${bgColor} 82%, white) 0%, ${bgColor} 62%), ${bgColor}`
           : 'radial-gradient(1100px 420px at 50% -8%, #dcebff 0%, rgba(220,235,255,0) 62%), linear-gradient(170deg, #f8fafc 0%, #eef4fb 55%, #f8fafc 100%)',
         ['--brand' as string]: brandColor || '#2563eb',
+        // Text that sits ON the accent — derived from the accent itself, so a
+        // pale brand gets dark ink instead of invisible white.
+        ['--brand-ink' as string]: readableInkOnBrand(brandColor || '#2563eb'),
       }}
     >
       <div className="w-full max-w-xl">
@@ -337,8 +372,8 @@ export default function RoofIQPage() {
                   className={`min-w-0 flex-1 ${inputCls}`}
                 />
                 <button onClick={() => void locate()} disabled={busy}
-                  className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.02] disabled:opacity-50"
-                  style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
+                  className="shrink-0 rounded-lg px-4 py-3 text-sm font-semibold transition hover:scale-[1.02] disabled:opacity-50"
+                  style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', color: 'var(--brand-ink)', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                 >{busy ? 'Finding…' : 'Continue →'}</button>
               </div>
               <button onClick={useMyLocation} disabled={busy}
@@ -469,8 +504,8 @@ export default function RoofIQPage() {
                   </div>
 
                   <button onClick={() => setQualifyPage(2)}
-                    className="mt-5 w-full rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
-                    style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
+                    className="mt-5 w-full rounded-lg py-3 text-sm font-semibold transition hover:scale-[1.01]"
+                    style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', color: 'var(--brand-ink)', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                   >Continue →</button>
                 </>
               )}
@@ -530,8 +565,8 @@ export default function RoofIQPage() {
                     <button onClick={() => setQualifyPage(1)}
                       className="rounded-lg bg-slate-100 px-4 py-3 text-sm font-semibold text-[#9ca3af] ring-1 ring-slate-200 hover:bg-slate-200">← Back</button>
                     <button onClick={() => void finishQualify()}
-                      className="flex-1 rounded-lg py-3 text-sm font-semibold text-white transition hover:scale-[1.01]"
-                      style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
+                      className="flex-1 rounded-lg py-3 text-sm font-semibold transition hover:scale-[1.01]"
+                      style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', color: 'var(--brand-ink)', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
                     >Measure my roof →</button>
                   </div>
                 </>
@@ -681,18 +716,72 @@ export default function RoofIQPage() {
               </div>
 
               <div className="mt-4 grid gap-2">
-                {/* Primary: self-serve scheduling — deep-links to the booking form on the report */}
-                {reportUrl && (
-                  <a href={`${reportUrl}#book`} target="_blank" rel="noreferrer"
+                {/* Scheduling happens here, not on the report. These two buttons
+                    used to open the same page — one just landed on #book. */}
+                {reportToken && !booked && !bookOpen && (
+                  <button onClick={() => setBookOpen(true)}
                     className="rounded-lg bg-emerald-600 py-3 text-center text-sm font-semibold text-white transition hover:scale-[1.01] hover:bg-emerald-500"
                     style={{ boxShadow: '0 6px 20px rgba(5,150,105,0.35)' }}
-                  >📅 Schedule an appointment</a>
+                  >📅 Schedule an appointment</button>
+                )}
+
+                {reportToken && !booked && bookOpen && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-left">
+                    <div className="text-sm font-semibold text-slate-800">📅 Book your free on-site inspection</div>
+                    <p className="mt-0.5 text-[11px] text-[#6b7280]">
+                      Pick a day and {company || 'the contractor'} will confirm — no charge, no obligation.
+                    </p>
+
+                    <input type="text" value={bookHp} onChange={e => setBookHp(e.target.value)} name="website"
+                      autoComplete="off" tabIndex={-1} aria-hidden="true"
+                      className="absolute -left-[9999px] h-0 w-0 opacity-0" />
+
+                    <label className="mt-3 block text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">Preferred day</label>
+                    <input type="date" value={bookDate} min={new Date().toISOString().slice(0, 10)}
+                      onChange={e => setBookDate(e.target.value)}
+                      className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+
+                    <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">Time that works best</div>
+                    <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+                      {[['anytime', 'Anytime'], ['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening']].map(([k, lbl]) => (
+                        <button key={k} onClick={() => setBookWindow(k)}
+                          className={`rounded-lg border px-2 py-2 text-xs font-medium transition ${bookWindow === k ? 'border-emerald-500 bg-emerald-100 text-emerald-900 shadow-sm' : 'border-slate-200 bg-white text-[#6b7280] hover:border-slate-300'}`}>{lbl}</button>
+                      ))}
+                    </div>
+
+                    <input type="text" value={bookNote} onChange={e => setBookNote(e.target.value)}
+                      placeholder="Anything we should know? (optional)"
+                      className="mt-3 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-[#6b7280] shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+
+                    {bookErr && <p className="mt-2 text-xs text-rose-600">{bookErr}</p>}
+
+                    <div className="mt-3 flex gap-2">
+                      <button onClick={() => setBookOpen(false)}
+                        className="rounded-lg bg-slate-100 px-4 py-2.5 text-sm font-semibold text-[#6b7280] ring-1 ring-slate-200 hover:bg-slate-200">Cancel</button>
+                      <button onClick={() => void submitBooking()} disabled={booking}
+                        className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50">
+                        {booking ? 'Booking…' : 'Confirm my inspection'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {booked && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+                    <div className="text-2xl">✅</div>
+                    <div className="mt-1 text-sm font-semibold text-slate-800">You&apos;re on the schedule!</div>
+                    <p className="mx-auto mt-1 max-w-sm text-xs text-[#6b7280]">
+                      {company || 'The contractor'} has your request for{' '}
+                      <strong>{new Date(bookDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</strong>
+                      {bookWindow !== 'anytime' && <> ({bookWindow})</>} and will reach out to confirm.
+                    </p>
+                  </div>
                 )}
                 {reportUrl && (
                   <a href={reportUrl} target="_blank" rel="noreferrer"
-                    className="rounded-lg py-3 text-center text-sm font-semibold text-white transition hover:scale-[1.01]"
-                    style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
-                  >📄 View my full Roof Intelligence Report</a>
+                    className="rounded-lg py-3 text-center text-sm font-semibold transition hover:scale-[1.01]"
+                    style={{ background: 'linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 72%, black))', color: 'var(--brand-ink)', boxShadow: '0 6px 20px rgba(0,0,0,0.18)' }}
+                  >📄 View my Roof Intelligence Report</a>
                 )}
                 {companyPhone && (
                   <a href={`tel:${companyPhone}`}

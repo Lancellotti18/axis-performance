@@ -13,10 +13,6 @@ import { api, type QuoteWidget } from '@/lib/api'
 export default function RoofIQTools() {
   const [widget, setWidget] = useState<QuoteWidget | null>(null)
   const [analytics, setAnalytics] = useState<{ funnel: Record<string, number>; leads_30d: number; avg_score: number | null } | null>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  // Whether renders are actually being generated. The homeowner-facing picker
-  // has always been interactive; with generation off it simply never appears.
-
   useEffect(() => {
     api.instantQuote.myWidget().then(w => {
       setWidget(w)
@@ -48,9 +44,6 @@ export default function RoofIQTools() {
             Homeowners get an AI roof report from this link; every completion lands in your pipeline below, scored.
           </p>
         </div>
-        <button onClick={() => setSettingsOpen(o => !o)} className="rounded bg-[#eeeeed] px-3 py-1.5 text-xs text-[#1a1a1a] hover:bg-[#e4e4e2]">
-          {settingsOpen ? 'Hide settings' : '⚙ Settings'}
-        </button>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
@@ -59,17 +52,6 @@ export default function RoofIQTools() {
         <button onClick={() => copy(embedCode, 'Embed code')} className="rounded bg-[#e4e4e2] px-2.5 py-1.5 text-[#1a1a1a] hover:bg-[#d4d4d2]">Copy website embed</button>
         <a href={hostedUrl} target="_blank" rel="noreferrer" className="rounded bg-[#e4e4e2] px-2.5 py-1.5 text-[#1a1a1a] hover:bg-[#d4d4d2]">Preview ↗</a>
       </div>
-
-      {/* Pricing, colors and the show-the-estimate toggle used to be duplicated
-          here. They govern what a homeowner is quoted, so they belong in
-          Settings — two copies of the same controls is how they drift. */}
-      {settingsOpen && (
-        <div className="mt-3 rounded-lg border border-[#dededc] bg-[#eeeeed] p-4 text-xs text-[#2d2d2d]">
-          Pricing, page colors and the estimate toggle now live in{' '}
-          <a href="/settings" className="text-blue-300 underline">Settings → Instant quote widget</a>,
-          alongside your company name and logo.
-        </div>
-      )}
 
       {hasFunnel && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#dededc] pt-3 text-xs">

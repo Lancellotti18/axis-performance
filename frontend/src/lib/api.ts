@@ -873,7 +873,7 @@ export const api = {
       sms_consent?: boolean   // TCPA: homeowner's logged consent to be texted
       website?: string   // honeypot
     }) =>
-      apiRequest<{ ok: boolean; message: string; report_url?: string | null }>(`/api/v1/instant-quote/w/${key}/lead`, {
+      apiRequest<{ ok: boolean; message: string; report_url?: string | null; report_token?: string | null }>(`/api/v1/instant-quote/w/${key}/lead`, {
         method: 'POST', body: JSON.stringify(payload),
       }),
     // Contractor
