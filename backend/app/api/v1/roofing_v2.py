@@ -3797,17 +3797,44 @@ async def get_run_report(run_id: str, user: dict = Depends(require_user)):
 
 
 @router.get("/runs/{run_id}/report/url")
-async def get_run_report_url(run_id: str, user: dict = Depends(require_user)) -> dict:
-    """A shareable signed URL for the run's report. Always rebuilds so the report
-    reflects the latest measurements, pitch, and any saved Roof Visualizer render —
-    a cached copy goes stale the moment the project changes."""
+async def get_run_report_url(
+    run_id: str, refresh: bool = False, user: dict = Depends(require_user),
+) -> dict:
+    """A shareable signed URL for the run's report.
+
+    Serves the report that already exists. This used to rebuild on every open —
+    regenerating the whole PDF, re-rendering the diagram and re-uploading it, just
+    to look at a report that was already sitting in storage. Worse, when the
+    rebuild failed (a run whose facets are gone, a transient render error) the
+    endpoint 503'd and the UI told the user to "measure the roof first", while a
+    perfectly good report sat there unopened.
+
+    Rebuild only when there is nothing stored, or when the caller explicitly asks
+    with ?refresh=true — which is what a "Regenerate" action should send after
+    the measurements actually change.
+    """
     require_owned_run(get_supabase(), run_id, user)
-    _, _, url = await _build_and_store_report(run_id)
+
+    if not refresh:
+        existing = _signed_report_url(run_id)
+        if existing:
+            return {"url": existing, "regenerated": False}
+
+    try:
+        _, _, url = await _build_and_store_report(run_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.info("report rebuild failed for run %s: %s", run_id, e)
+        url = None
     if not url:
-        url = _signed_report_url(run_id)  # fall back to a stored copy if re-store failed
+        url = _signed_report_url(run_id)  # a stored copy still beats an error
     if not url:
-        raise HTTPException(status_code=503, detail="Could not prepare a shareable link for this report.")
-    return {"url": url}
+        raise HTTPException(
+            status_code=404,
+            detail="No report exists for this roof yet — trace the roof, then generate the report.",
+        )
+    return {"url": url, "regenerated": True}
 
 
 @router.get("/reports")

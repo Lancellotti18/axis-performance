@@ -266,6 +266,10 @@ export default function ProjectPage() {
   const [roofSatelliteUrl, setRoofSatelliteUrl] = useState<string | null>(null)
   const [beforePhotoUrl, setBeforePhotoUrl] = useState<string | null>(null)
   const [openingReport, setOpeningReport] = useState(false)
+  // The report opens in a viewer here rather than as a link to the raw PDF.
+  // A browser set to "download PDFs instead of opening them" turns every look
+  // at a report into another file in Downloads.
+  const [reportUrl, setReportUrl] = useState<string | null>(null)
   // 3D Model
   // scene3d state removed — floor plan viewer removed
 
@@ -378,9 +382,16 @@ export default function ProjectPage() {
     setOpeningReport(true)
     try {
       const { url } = await api.roofing.v2.getReportShareUrl(roofRunId)
-      window.open(url, '_blank', 'noopener')
+      setReportUrl(url)
     } catch (err) {
-      toast.error('Could not open the report — measure the roof first, then try again.')
+      // Only say "measure the roof" when that is actually the problem. The
+      // backend 404s when no report exists and 5xx's when something broke;
+      // telling someone to re-measure a roof they already measured is how a
+      // transient failure turns into an hour of wasted work.
+      const msg = err instanceof Error ? err.message : ''
+      toast.error(/404/.test(msg)
+        ? 'No report for this roof yet — open the measurement tool and generate one.'
+        : 'Could not open the report. Please try again in a moment.')
     } finally {
       setOpeningReport(false)
     }
@@ -936,7 +947,7 @@ Thank you for your time.`
                   {roofRunId && (
                     <button onClick={openRoofReport} disabled={openingReport}
                       className="rounded-xl border border-[#dededc] bg-[#f8f8f7] px-4 py-2.5 text-sm font-semibold text-[#1a1a1a] transition-colors hover:bg-[#f8f8f7] disabled:opacity-50">
-                      {openingReport ? 'Preparing report…' : 'View report (PDF)'}
+                      {openingReport ? 'Opening report…' : 'View report'}
                     </button>
                   )}
                 </div>
@@ -2618,6 +2629,29 @@ Thank you for your time.`
           </div>
         </div>
       )}
+      {reportUrl && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/70 p-4 sm:p-8"
+          onClick={() => setReportUrl(null)}>
+          <div className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-[#f8f8f7] shadow-2xl"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 border-b border-[#dededc] px-4 py-2.5">
+              <div className="text-sm font-semibold text-[#1a1a1a]">Roof Intelligence Report</div>
+              <div className="flex items-center gap-2">
+                {/* Saving a copy stays available — it just is not the default
+                    any more, so looking at the report costs nothing. */}
+                <a href={reportUrl} download
+                  className="rounded-lg border border-[#dededc] bg-[#f8f8f7] px-3 py-1.5 text-[12px] font-semibold text-[#1a1a1a] hover:bg-[#eeeeed]">
+                  Download
+                </a>
+                <button onClick={() => setReportUrl(null)}
+                  className="rounded-lg px-2.5 py-1.5 text-[13px] font-semibold text-[#6b7280] hover:bg-[#eeeeed]">✕</button>
+              </div>
+            </div>
+            <iframe src={reportUrl} title="Roof Intelligence Report" className="min-h-0 flex-1 w-full border-0" />
+          </div>
+        </div>
+      )}
     </div>
+
   )
 }
