@@ -127,6 +127,13 @@ async def upload_photo(
         ins = db.table("project_photos").insert({
             "project_id": project_id, "user_id": user["id"], "phase": phase,
             "storage_path": path, "caption": (caption or None),
+            # `storage_key` is the legacy column from the table's earlier shape.
+            # 20260822_project_photos_repair deliberately left the legacy columns
+            # in place, but storage_key is NOT NULL with no default and nothing
+            # wrote it — so every insert failed the constraint. It holds the same
+            # value, so anything still reading it resolves to the same object.
+            "storage_key": path,
+            "filename": file.filename or f"{photo_id}.{ext}",
         }).execute()
     except Exception as e:
         # This used to escape as a bare 500. It was a schema mismatch — the
