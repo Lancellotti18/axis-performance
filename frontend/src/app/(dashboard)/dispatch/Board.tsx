@@ -246,7 +246,7 @@ export default function Board({
   // area of a 1440px laptop once the sidebar is out — so the board always
   // scrolled sideways. Days now share whatever room is left, and the rail
   // gives some of its width back on smaller screens.
-  const cols = `minmax(148px, 200px) repeat(${days.length}, minmax(0, 1fr))`
+  const cols = `minmax(120px, 190px) repeat(${days.length}, minmax(0, 1fr))`
   const rainy = (d: string) => { const p = regionalPrecip(d); return p != null && p >= 60 }
 
   const onDragStart = (e: DragStartEvent) => {
@@ -412,10 +412,10 @@ export default function Board({
           }))}
         </div>
       ) : (
-      <div className="w-full min-w-[760px] pb-12 text-[13px]">
+      <div className="w-full pb-12 text-[13px]">
         {/* Day header */}
         <div className="sticky top-0 z-20 grid border-b" style={{ gridTemplateColumns: cols, background: 'var(--ink)', borderColor: 'var(--line)' }}>
-          <div className="sticky left-0 z-30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ background: 'var(--ink)', color: 'var(--muted)' }}>Crew</div>
+          <div className="sticky left-0 z-30 min-w-0 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ background: 'var(--ink)', color: 'var(--muted)' }}>Crew</div>
           {days.map(d => {
             const dt = parseISO(d); const isToday = d === today; const storm = rainy(d)
             const isFocus = d === focusDate
@@ -426,7 +426,7 @@ export default function Board({
               // Clicking a day focuses it, so switching to Day or Map lands on
               // the column you were already reading.
               <button key={d} onClick={() => onFocusDate(d)} title={`Focus ${format(dt, 'EEE, MMM d')}`}
-                className="border-l px-3 py-2 text-left transition-colors hover:bg-[#f8f8f7]"
+                className="min-w-0 overflow-hidden border-l px-3 py-2 text-left transition-colors hover:bg-[#f8f8f7]"
                 style={{
                   borderColor: 'var(--line)',
                   background: storm ? 'rgba(90,169,255,0.05)' : undefined,
@@ -602,7 +602,7 @@ function Cell({ id, rainy, dragging, preview, children }: { id: string; rainy: b
     ring = c; if (isOver) bg = `color-mix(in srgb, ${c} 12%, var(--ink))`
   } else if (dragging && isOver) { ring = 'var(--sky)' }
   return (
-    <div ref={setNodeRef} className="min-h-[128px] border-l p-1.5 transition-colors"
+    <div ref={setNodeRef} className="min-w-0 overflow-hidden min-h-[128px] border-l p-1.5 transition-colors"
       style={{ borderColor: 'var(--line)', background: bg, boxShadow: ring !== 'transparent' ? `inset 0 0 0 2px ${ring}` : undefined, cursor: dragging && preview && preview !== 'loading' && preview.blocked && isOver ? 'not-allowed' : undefined }}>
       {children}
     </div>
@@ -634,7 +634,7 @@ function DraggableCard({
 
 function CrewRail({ crew, lead, members, buColor }: { crew: Crew; lead?: { first_name: string; last_name: string }; members: number; buColor: string }) {
   return (
-    <div className="sticky left-0 z-10 flex flex-col justify-center gap-0.5 px-4 py-2" style={{ background: 'var(--panel)', borderRight: '1px solid var(--line)' }}>
+    <div className="sticky left-0 z-10 flex min-w-0 flex-col justify-center gap-0.5 overflow-hidden px-4 py-2" style={{ background: 'var(--panel)', borderRight: '1px solid var(--line)' }}>
       <div className="flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--balanced)' }} title="Active" />
         <span className="truncate text-[13px] font-semibold">{crew.name}</span>
