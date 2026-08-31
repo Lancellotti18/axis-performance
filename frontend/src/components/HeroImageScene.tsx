@@ -41,11 +41,14 @@ export default function HeroImageScene({
       const rect = track.getBoundingClientRect()
       const trackH = track.offsetHeight - window.innerHeight
       const progress = Math.max(0, Math.min(1, -rect.top / (trackH || 1)))
-      // Slow cinematic push-in + slight rise (Ken Burns). GPU transform only.
+      // Slow cinematic push-in (Ken Burns). GPU transform only.
       const img = imgRef.current
       if (img) {
-        const scale = 1.06 + progress * 0.12
-        const ty = progress * -3
+        const scale = 1.04 + progress * 0.08
+        // Settle DOWN a touch rather than rising. The old -3% rise drifted the
+        // house toward the bottom of the frame and filled the top with empty
+        // sky, which is what made it read as off-centre the further you read.
+        const ty = progress * 1.2
         img.style.transform = `scale(${scale}) translateY(${ty}%)`
       }
       onProgress?.(progress)
@@ -74,8 +77,13 @@ export default function HeroImageScene({
           alt="Modern home at dusk with its roof being measured by a glowing AI digital-twin scan"
           className="absolute inset-0 h-full w-full object-cover will-change-transform"
           style={{
-            transform: 'scale(1.06)',
-            transformOrigin: '50% 42%',
+            transform: 'scale(1.04)',
+            // Both the crop and the zoom origin sit on the HOUSE, not on the
+            // sky above it. The origin used to be 42% — above the roofline —
+            // so every push-in zoomed into empty air and shoved the building
+            // downward out of frame.
+            objectPosition: '50% 62%',
+            transformOrigin: '50% 62%',
             // light, GPU-cheap punch so it reads crisp + premium
             filter: 'contrast(1.05) saturate(1.06)',
           }}
@@ -88,7 +96,7 @@ export default function HeroImageScene({
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              'radial-gradient(ellipse 95% 85% at 50% 45%, transparent 0%, transparent 68%, rgba(2,6,18,0.45) 100%)',
+              'radial-gradient(ellipse 95% 85% at 50% 58%, transparent 0%, transparent 68%, rgba(2,6,18,0.45) 100%)',
           }}
         />
         {/* Edge fades blending into the dark page chrome */}
