@@ -30,6 +30,7 @@ import MapView from './MapView'
 import AuditPanel from './AuditPanel'
 import { useDevice } from '@/lib/useDevice'
 import CrewManager from './CrewManager'
+import QuickJobDialog from './QuickJobDialog'
 
 const BU_COLOR: Record<string, string> = {
   'bu-install': 'var(--sky)', 'bu-service': 'var(--balanced)', 'bu-gutter': 'var(--tight)', 'bu-siding': 'var(--dawn)',
@@ -145,6 +146,7 @@ export default function Board({
   const [view, setView] = useState<'week' | 'day' | 'map'>('week')
   const [auditOpen, setAuditOpen] = useState(false)
   const [crewMgrOpen, setCrewMgrOpen] = useState(false)
+  const [quickJobOpen, setQuickJobOpen] = useState(false)
   const activeRef = useRef<string | null>(null)
   const previewRef = useRef<Record<string, PreviewResult | 'loading'>>({})
 
@@ -366,7 +368,11 @@ export default function Board({
           </div>
         )}
         <span className="ml-auto hidden text-[11px] sm:inline" style={{ color: 'var(--muted)' }}>{view === 'week' ? 'Drag to move · click for detail' : view === 'day' ? 'One day, every crew' : 'Stops by location, routed in order'}</span>
-        <button onClick={() => setCrewMgrOpen(true)} className="ml-auto rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-[#eeeeed] sm:ml-3" style={{ borderColor: 'var(--line)' }}>Crews</button>
+        <button onClick={() => setQuickJobOpen(true)}
+          className="ml-auto rounded-md px-2.5 py-1 text-[12px] font-bold sm:ml-3"
+          style={{ background: 'var(--dawn)', color: '#ffffff' }}
+          title="Send a crew to an address — no project needed">+ New job</button>
+        <button onClick={() => setCrewMgrOpen(true)} className="ml-2 rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>Crews</button>
         <button onClick={() => setAuditOpen(true)} className="rounded-md border px-2.5 py-1 text-[12px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>History</button>
       </div>
 
@@ -577,6 +583,12 @@ export default function Board({
       <JobsTray />
       {auditOpen && <AuditPanel onClose={() => setAuditOpen(false)} />}
       {crewMgrOpen && <CrewManager data={data} onClose={() => setCrewMgrOpen(false)} />}
+      {quickJobOpen && (
+        <QuickJobDialog
+          onClose={() => setQuickJobOpen(false)}
+          onCreated={() => { qc.invalidateQueries({ queryKey: ['tray'] }); qc.invalidateQueries({ queryKey: ['board'] }) }}
+        />
+      )}
     </DndContext>
   )
 }

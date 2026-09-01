@@ -409,6 +409,20 @@ export async function fetchWeatherImpact(start: string, end: string): Promise<We
   return res.json()
 }
 
+/** Create a job straight on the board from an address — no project required. */
+export async function createQuickJob(body: {
+  address: string; customer_name?: string; phone?: string
+  job_type?: string; priority?: string; squares?: number
+}): Promise<{ created: boolean; job_id: string; geocoded: boolean; message: string }> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/jobs/quick`, {
+    method: 'POST', headers: { ...h, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 export async function reschedule(moves: { appointment_id: string; crew_id: string; date: string }[], dryRun: boolean): Promise<BulkResult> {
   const h = await authHeaders()
   const res = await fetch(`${API_BASE}/api/v1/scheduling/reschedule`, {

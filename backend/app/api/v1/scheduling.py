@@ -1956,6 +1956,92 @@ class ProjectToDispatch(BaseModel):
     priority: str = "ROUTINE"
 
 
+class QuickJob(BaseModel):
+    """A job that starts on the board, not in a project."""
+    address: str
+    customer_name: Optional[str] = None
+    phone: Optional[str] = None
+    job_type: Optional[str] = "REROOF"
+    priority: Optional[str] = "ROUTINE"
+    squares: Optional[float] = None
+    notes: Optional[str] = None
+
+
+@router.post("/jobs/quick")
+async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -> dict:
+    """Send a crew to an address without building a project first.
+
+    Until now the only way a job could reach the board was Project → "Add to
+    dispatch board". That is the right flow for a measured re-roof, but it is
+    the wrong amount of ceremony for "there's a leak at 14 Oak St, someone go
+    look" — and it meant a dispatcher could not start work from the place they
+    were already standing.
+
+    The address is geocoded on the way in (same Census lookup the project flow
+    uses) because lat/lng is what makes per-site weather work. The job can be
+    linked to a real project later from the job detail panel; nothing about
+    this shortcut blocks that.
+    """
+    addr = (body.address or "").strip()
+    if not addr:
+        raise HTTPException(status_code=422, detail="An address is required to send a crew somewhere.")
+
+    db = get_supabase()
+    bu = _rows(db.table("sched_business_unit").select("id").eq("org_id", ORG).order("sort_order").limit(1).execute())
+    if not bu:
+        raise HTTPException(status_code=409, detail="No business unit is configured for scheduling yet.")
+
+    lat = lng = None
+    line1, city, state, postal = addr, "", "", ""
+    try:
+        from app.services import location_service
+        res = await location_service.search_address(addr, with_geographies=False)
+        if res.matches:
+            m = res.matches[0]
+            lat, lng = m.lat, m.lng
+            line1 = m.street or m.matched_address or addr
+            city, state, postal = m.city or "", m.state or "", m.zip or ""
+    except Exception as e:
+        logger.info("quick-job geocode failed for %r: %s", addr, e)
+
+    # A job with no coordinates still schedules — it just cannot get job-site
+    # weather. Refusing to create it would be worse than creating it without.
+    full = (body.customer_name or "").strip()
+    first, _, last = full.partition(" ") if full else ("Customer", "", "")
+    cust = (db.table("sched_customer").insert({
+        "org_id": ORG, "first_name": first or "Customer", "last_name": last or "",
+        "phone": body.phone,
+    }).execute().data or [None])[0]
+    prop = (db.table("sched_property").insert({
+        "org_id": ORG, "line1": line1 or addr, "city": city, "state": state,
+        "postal_code": postal, "lat": lat, "lng": lng,
+    }).execute().data or [None])[0]
+    if not cust or not prop:
+        raise HTTPException(status_code=500, detail="Could not stage the job.")
+
+    job = (db.table("sched_job").insert({
+        "org_id": ORG, "business_unit_id": bu[0]["id"], "customer_id": cust["id"],
+        "property_id": prop["id"], "project_id": None,
+        "job_type": body.job_type if body.job_type in VALID_JOB_TYPES else "REROOF",
+        "status": "SOLD",
+        "priority": body.priority if body.priority in ("ROUTINE", "HIGH", "URGENT") else "ROUTINE",
+        "squares": _f(body.squares),
+    }).execute().data or [None])[0]
+    if not job:
+        raise HTTPException(status_code=500, detail="Could not create the job.")
+
+    db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""),
+        "entity_type": "job", "entity_id": job["id"], "action": "CREATE_QUICK", "before_json": None,
+        "after_json": {"address": line1, "geocoded": lat is not None},
+        "request_id": str(uuid.uuid4())}).execute()
+
+    return {
+        "created": True, "job_id": job["id"], "geocoded": lat is not None,
+        "message": ("In the tray — drag it onto a crew day." if lat is not None
+                    else "In the tray, but the address didn't geocode, so this job won't get site weather."),
+    }
+
+
 @router.post("/from-project")
 async def create_job_from_project(body: ProjectToDispatch, user: dict = Depends(require_user)) -> dict:
     """Stage a project onto the dispatch board: creates a linked sched_job (+ its
