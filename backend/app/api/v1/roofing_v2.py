@@ -716,6 +716,12 @@ class PutFacetsRequest(BaseModel):
 
 
 
+# Last Solar lookup per run, so the diagnostic endpoint can explain a default
+# pitch without making the caller re-run a paid lookup. In-process and
+# best-effort — it is a debugging aid, never a source of truth.
+_SOLAR_DIAG: dict[str, dict] = {}
+
+
 async def _solar_pitch_for_polygons(
     run: dict, polygons: list[list], zoom: int,
 ) -> list[Optional[str]]:
@@ -731,32 +737,72 @@ async def _solar_pitch_for_polygons(
     the caller keeps the default.
     """
     out: list[Optional[str]] = [None] * len(polygons)
+    # Every failure below used to return silently, so a facet kept its 6/12
+    # default and nothing anywhere recorded why. That is how 100 facets ended up
+    # on an assumed pitch with the key configured and coverage available — the
+    # lookup was failing invisibly. The diagnosis is now logged and returned.
+    diag: dict = {"reason": None, "segments": 0, "best_coverage": [], "zoom_used": None}
+    _SOLAR_DIAG[str(run.get("id"))] = diag
+
     s_lat, s_lng = run.get("satellite_lat"), run.get("satellite_lng")
     if s_lat is None or s_lng is None or not polygons:
+        diag["reason"] = "run has no satellite coordinates"
         return out
     try:
         from app.services import solar_service
         solar = await solar_service.get_building_insights(float(s_lat), float(s_lng))
         if not solar.get("available"):
+            diag["reason"] = f"solar unavailable: {solar.get('reason') or 'unknown'}"
+            logger.info("solar pitch skipped for run %s — %s", run.get("id"), diag["reason"])
             return out
-        segs = _solar_segments_as_fractions(
-            solar, float(s_lat), float(s_lng), int(zoom or run.get("satellite_zoom") or 20))
+
+        # The zoom the CLIENT sent wins over the zoom the tile was captured at.
+        # If they disagree, every Solar rectangle is projected at the wrong
+        # scale and lands off the building — coverage comes out ~0 for every
+        # facet and the whole lookup fails without erroring.
+        z_client = int(zoom) if zoom else None
+        z_run = int(run.get("satellite_zoom")) if run.get("satellite_zoom") else None
+        z = z_client or z_run or 20
+        diag["zoom_used"] = z
+        if z_client and z_run and z_client != z_run:
+            diag["zoom_mismatch"] = {"client": z_client, "run": z_run}
+            logger.warning(
+                "solar pitch: zoom mismatch on run %s (client=%s, tile=%s) — "
+                "Solar rectangles will be projected at the wrong scale",
+                run.get("id"), z_client, z_run)
+
+        segs = _solar_segments_as_fractions(solar, float(s_lat), float(s_lng), z)
+        diag["segments"] = len(segs)
         if not segs:
+            diag["reason"] = "solar returned no roof segments for this building"
             return out
         rects = [_oriented_positive(sg["rect"]) for sg in segs]
+        matched = 0
         for i, poly in enumerate(polygons):
             best_j, best_cov = None, 0.0
             for j, rect in enumerate(rects):
                 cov = _coverage(poly, rect)
                 if cov > best_cov:
                     best_cov, best_j = cov, j
+            diag["best_coverage"].append(round(best_cov, 3))
             # Same 50% threshold Auto-detect uses, so both paths agree on what
             # counts as "this plane is that Solar plane".
             if best_j is not None and best_cov >= 0.5:
                 pitch = (segs[best_j].get("pitch") or "").strip()
                 if pitch:
                     out[i] = pitch
+                    matched += 1
+        if matched == 0:
+            best = max(diag["best_coverage"] or [0.0])
+            diag["reason"] = (
+                f"no traced facet overlapped a Solar plane by the required 50% "
+                f"(best was {best:.0%} across {len(segs)} segments)")
+            logger.warning("solar pitch matched nothing on run %s — %s",
+                           run.get("id"), diag["reason"])
+        else:
+            diag["reason"] = f"applied to {matched} of {len(polygons)} facets"
     except Exception as e:
+        diag["reason"] = f"lookup error: {e}"
         logger.info("solar pitch lookup failed for run %s: %s", run.get("id"), e)
     return out
 
@@ -3813,6 +3859,69 @@ async def get_run_report(run_id: str, user: dict = Depends(require_user)):
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/runs/{run_id}/solar-diagnostic")
+async def solar_diagnostic(run_id: str, user: dict = Depends(require_user)) -> dict:
+    """Why does this roof have default pitches instead of Google's measured ones?
+
+    Answers the question directly rather than leaving it to be inferred from a
+    facet table full of 6/12. Runs the same lookup the save path runs and
+    reports each step: whether Solar is configured, whether it has coverage
+    here, how many roof planes it returned, and how well each traced facet
+    overlapped one — since a facet only inherits a measured pitch at 50%+.
+    """
+    db = get_supabase()
+    require_owned_run(db, run_id, user)
+    run = db.table("roof_measurement_runs").select(
+        "id, satellite_lat, satellite_lng, satellite_zoom").eq("id", run_id).single().execute()
+    if not run.data:
+        raise HTTPException(status_code=404, detail="Run not found.")
+
+    facets = db.table("roof_facets").select("id, facet_label, polygon, pitch, pitch_source") \
+        .eq("run_id", run_id).execute().data or []
+    polys = [f.get("polygon") for f in facets if f.get("polygon")]
+
+    from app.core.config import settings
+    from app.services import solar_service
+
+    configured = bool(settings.GOOGLE_SOLAR_API_KEY)
+    coverage: dict = {"available": False, "reason": "not checked"}
+    if configured and run.data.get("satellite_lat") is not None:
+        try:
+            insights = await solar_service.get_building_insights(
+                float(run.data["satellite_lat"]), float(run.data["satellite_lng"]))
+            coverage = {
+                "available": bool(insights.get("available")),
+                "reason": insights.get("reason"),
+                "segments": len(insights.get("segments") or []),
+                "imagery_quality": insights.get("imagery_quality"),
+                "imagery_date": insights.get("imagery_date"),
+            }
+        except Exception as e:
+            coverage = {"available": False, "reason": f"lookup error: {e}"}
+
+    pitches = await _solar_pitch_for_polygons(
+        run.data, polys, int(run.data.get("satellite_zoom") or 20))
+    diag = _SOLAR_DIAG.get(str(run_id), {})
+
+    return {
+        "solar_configured": configured,
+        "coverage": coverage,
+        "lookup": diag,
+        "facets": [
+            {
+                "label": f.get("facet_label"),
+                "current_pitch": f.get("pitch"),
+                "current_source": f.get("pitch_source"),
+                "solar_would_give": pitches[i] if i < len(pitches) else None,
+                "best_overlap": (diag.get("best_coverage") or [None] * len(facets))[i]
+                if i < len(diag.get("best_coverage") or []) else None,
+            }
+            for i, f in enumerate(facets)
+        ],
+        "verdict": diag.get("reason") or "no lookup performed",
+    }
 
 
 @router.get("/runs/{run_id}/report/url")
