@@ -354,8 +354,8 @@ export default function DashboardPage() {
                     <div className="text-[#1a1a1a] font-semibold text-sm mb-1 line-clamp-1">{p.name}</div>
                     <div className="text-[#6b7280] text-xs mb-3">{relTime(p.updated_at || p.created_at)}</div>
                     <div className="flex gap-2">
-                      <button onClick={() => handleRestore(p.id)} className="flex-1 text-xs font-semibold text-blue-300 bg-blue-500/15 hover:bg-blue-500/25 py-1.5 rounded-lg transition-colors border border-blue-400/20">Restore</button>
-                      <button onClick={() => handleDelete(p.id)} className="flex-1 text-xs font-semibold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 py-1.5 rounded-lg transition-colors border border-rose-400/20">Delete</button>
+                      <button onClick={() => handleRestore(p.id)} className="flex-1 text-xs font-semibold text-blue-800 bg-blue-50 hover:bg-blue-500/25 py-1.5 rounded-lg transition-colors border border-blue-400/20">Restore</button>
+                      <button onClick={() => handleDelete(p.id)} className="flex-1 text-xs font-semibold text-rose-800 bg-rose-50 hover:bg-rose-500/20 py-1.5 rounded-lg transition-colors border border-rose-400/20">Delete</button>
                     </div>
                   </div>
                 ))}

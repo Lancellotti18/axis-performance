@@ -122,7 +122,7 @@ export default function TrainingDataPage() {
       </header>
 
       {error && (
-        <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-200">
+        <div className="rounded-lg border border-rose-400/30 bg-rose-50 p-3 text-sm text-rose-900">
           {error}
         </div>
       )}

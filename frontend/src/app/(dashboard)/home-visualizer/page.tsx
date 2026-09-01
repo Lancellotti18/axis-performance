@@ -330,7 +330,7 @@ export default function HomeVisualizerPage() {
               {/* Use this render in a project's report */}
               <div className="mt-3 relative">
                 {savedTo ? (
-                  <div className="flex items-center justify-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 py-2.5 text-sm font-semibold text-emerald-300">
+                  <div className="flex items-center justify-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-50 py-2.5 text-sm font-semibold text-emerald-800">
                     ✓ Added to “{savedTo}” — shows at the top of that project’s report
                   </div>
                 ) : (

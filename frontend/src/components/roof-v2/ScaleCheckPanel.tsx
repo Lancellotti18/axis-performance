@@ -100,7 +100,7 @@ export default function ScaleCheckPanel({ runId, imageUrl, imageWidthPx, imageHe
     <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
       <h3 className="text-sm font-semibold text-[#1a1a1a]">Scale check</h3>
       {savedScaleDescription && !saved && (
-        <div className="mt-2 flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+        <div className="mt-2 flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
           <span>✓</span>
           <span>Scale on file from your last visit: <strong>{savedScaleDescription}</strong>. Re-measure below only if the tile changed.</span>
         </div>

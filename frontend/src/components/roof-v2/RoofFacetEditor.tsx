@@ -987,7 +987,7 @@ export function RoofFacetEditor({
           steers to ✨ Auto-label before manual clicking. Session-dismissible;
           disappears on its own once everything is labeled. */}
       {onAutoLabelEdges && facets.length > 0 && unlabeledCount > 0 && !labelNudgeDismissed && mode !== 'label' && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
           <span className="text-sm">🎯</span>
           <span>
             <strong>{unlabeledCount} edge{unlabeledCount === 1 ? '' : 's'} need{unlabeledCount === 1 ? 's' : ''} a label.</strong>{' '}
@@ -1176,7 +1176,7 @@ export function RoofFacetEditor({
                 <div className="text-sm font-semibold text-[#1a1a1a]">How to trace a roof for the best results</div>
                 <button onClick={dismissCoach} className="rounded p-1 text-[#6b7280] hover:bg-[#eeeeed] hover:text-[#1a1a1a]">✕</button>
               </div>
-              <p className="mb-2 rounded bg-blue-500/10 px-2 py-1.5 text-[11px] text-blue-200">
+              <p className="mb-2 rounded bg-blue-50 px-2 py-1.5 text-[11px] text-blue-900">
                 The AI auto-labels your edges (ridge, eave, hip, valley) by reading how the planes fit
                 together — so a <strong>clean, complete trace = far better labels + accuracy</strong>.
               </p>

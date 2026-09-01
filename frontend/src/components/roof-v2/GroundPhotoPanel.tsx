@@ -277,7 +277,7 @@ function PhotoSlot({
           {photos.map(p => (
             <li key={p.id} className="flex gap-2 rounded-md border border-[#dededc] bg-[#f8f8f7] p-1.5">
               {p.isPdf ? (
-                <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded bg-rose-500/15 text-rose-300"><span className="text-sm leading-none">📄</span></div>
+                <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded bg-rose-50 text-rose-800"><span className="text-sm leading-none">📄</span></div>
               ) : p.previewUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={p.previewUrl} alt={p.name} className="h-12 w-12 shrink-0 rounded object-cover" />
@@ -298,7 +298,7 @@ function PhotoSlot({
                 )}
               </div>
               <button onClick={() => onRemove(p.id)} title="Remove"
-                className="h-5 w-5 flex-shrink-0 rounded text-[#6b7280] hover:bg-rose-500/15 hover:text-rose-300">✕</button>
+                className="h-5 w-5 flex-shrink-0 rounded text-[#6b7280] hover:bg-rose-50 hover:text-rose-800">✕</button>
             </li>
           ))}
         </ul>
@@ -380,7 +380,7 @@ function FindingsView({
               >({f.pitch_confidence})</span>
             </span>
             {applied ? (
-              <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 ring-1 ring-emerald-400/30">✓ Applied to all facets — next, review Penetrations &amp; Flashing below</span>
+              <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-400/30">✓ Applied to all facets — next, review Penetrations &amp; Flashing below</span>
             ) : (
               <button onClick={() => { if (onApplyPitch(f.roof_pitch)) setApplied(true) }}
                 className="rounded bg-emerald-700 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-600">Apply to facets</button>
@@ -406,13 +406,13 @@ function FindingsView({
         </div>
       )}
       {f.dormers > 0 && (
-        <div className="rounded bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200/90">
+        <div className="rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-900/90">
           🏠 {f.dormers} dormer(s) → needs step flashing. In the editor, label each dormer&apos;s
           side (&quot;cheek&quot;) edges as <strong>wall intersection</strong> so flashing picks them up.
         </div>
       )}
       {f.wall_abutment?.present && (
-        <div className="rounded bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200/90">
+        <div className="rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-900/90">
           🧱 Roof meets a taller wall → needs <strong>step/apron flashing</strong>. In the editor,
           label that roof-to-wall edge as <strong>wall intersection</strong> so flashing includes it.
           {f.wall_abutment.note ? <span className="text-amber-200/60"> ({f.wall_abutment.note})</span> : null}

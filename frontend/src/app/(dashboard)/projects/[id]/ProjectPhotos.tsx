@@ -14,10 +14,10 @@ import { api, type ProjectPhoto, type PhotoAnnotation } from '@/lib/api'
 
 export const PHASE_ORDER = ['before', 'progress', 'damage', 'completed'] as const
 export const PHASE_META: Record<string, { label: string; ring: string; chip: string }> = {
-  before:    { label: 'Before',       ring: 'ring-blue-400/30',    chip: 'bg-blue-500/15 text-blue-200' },
-  progress:  { label: 'In-progress',  ring: 'ring-amber-400/30',   chip: 'bg-amber-500/15 text-amber-200' },
-  damage:    { label: 'Damage',       ring: 'ring-rose-400/30',    chip: 'bg-rose-500/15 text-rose-200' },
-  completed: { label: 'Completed',    ring: 'ring-emerald-400/30', chip: 'bg-emerald-500/15 text-emerald-200' },
+  before:    { label: 'Before',       ring: 'ring-blue-400/30',    chip: 'bg-blue-50 text-blue-900' },
+  progress:  { label: 'In-progress',  ring: 'ring-amber-400/30',   chip: 'bg-amber-50 text-amber-900' },
+  damage:    { label: 'Damage',       ring: 'ring-rose-400/30',    chip: 'bg-rose-50 text-rose-900' },
+  completed: { label: 'Completed',    ring: 'ring-emerald-400/30', chip: 'bg-emerald-50 text-emerald-900' },
 }
 
 // iPhone HEIC → JPEG in the browser (native decoder first, heic2any fallback).
@@ -175,7 +175,7 @@ function PhotoAnnotator({ photo, onClose, onSaved, onDeleted }: {
         <div className="flex flex-wrap items-center gap-2">
           <input value={caption} onChange={e => setCaption(e.target.value)} placeholder="Caption / note for the crew…"
             className="min-w-[200px] flex-1 rounded-lg border border-[#dededc] bg-[#f8f8f7] px-3 py-2 text-sm text-[#1a1a1a] placeholder-[#9ca3af] focus:border-blue-400/40 focus:outline-none" />
-          <button onClick={del} className="rounded-lg border border-rose-400/30 px-3 py-2 text-sm font-semibold text-rose-300 hover:bg-rose-500/10">Delete</button>
+          <button onClick={del} className="rounded-lg border border-rose-400/30 px-3 py-2 text-sm font-semibold text-rose-800 hover:bg-rose-50">Delete</button>
           <button onClick={save} disabled={saving}
             className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
         </div>

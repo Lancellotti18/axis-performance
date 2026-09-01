@@ -82,8 +82,8 @@ function LeadImage({ lat, lng }: { lat: number; lng: number }) {
 }
 
 const TIER: Record<string, string> = {
-  Hot: 'bg-rose-500/15 text-rose-300 ring-rose-400/30',
-  Warm: 'bg-amber-500/15 text-amber-300 ring-amber-400/30',
+  Hot: 'bg-rose-50 text-rose-800 ring-rose-400/30',
+  Warm: 'bg-amber-50 text-amber-800 ring-amber-400/30',
   Cool: 'bg-[#9ca3af] text-[#2d2d2d] ring-slate-400/30',
 }
 
@@ -211,9 +211,9 @@ export default function FindRoofsPage() {
                             <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${TIER[p.tier] || TIER.Cool}`}>{p.tier}</span>
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-                            {p.year_built && <span className="rounded bg-blue-500/15 px-1.5 py-0.5 font-medium text-blue-200">Built {p.year_built}</span>}
+                            {p.year_built && <span className="rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-900">Built {p.year_built}</span>}
                             {p.sold_year && <span className="rounded bg-purple-500/15 px-1.5 py-0.5 font-medium text-purple-200">Sold {p.sold_year}</span>}
-                            {p.owner_occupied === true && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300">Owner-occupied</span>}
+                            {p.owner_occupied === true && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">Owner-occupied</span>}
                             {p.owner_occupied === false && <span className="rounded bg-[#9ca3af] px-1.5 py-0.5 text-[#6b7280]">Absentee</span>}
                             <span className={p.confidence === 'low' ? 'text-[#6b7280]' : 'text-[#6b7280]'}>conf: {p.confidence}</span>
                           </div>

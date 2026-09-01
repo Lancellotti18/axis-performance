@@ -13,11 +13,11 @@ import toast from 'react-hot-toast'
 import { api, type Appointment, type AppointmentStatus } from '@/lib/api'
 
 const STATUS_STYLE: Record<AppointmentStatus, { label: string; cls: string }> = {
-  requested: { label: 'Requested', cls: 'bg-amber-500/15 text-amber-300 ring-amber-500/30' },
-  confirmed: { label: 'Confirmed', cls: 'bg-blue-500/15 text-blue-300 ring-blue-500/30' },
-  completed: { label: 'Completed', cls: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30' },
+  requested: { label: 'Requested', cls: 'bg-amber-50 text-amber-800 ring-amber-500/30' },
+  confirmed: { label: 'Confirmed', cls: 'bg-blue-50 text-blue-800 ring-blue-500/30' },
+  completed: { label: 'Completed', cls: 'bg-emerald-50 text-emerald-800 ring-emerald-500/30' },
   cancelled: { label: 'Cancelled', cls: 'bg-[#9ca3af] text-[#6b7280] ring-[#dededc]' },
-  no_show: { label: 'No-show', cls: 'bg-rose-500/15 text-rose-300 ring-rose-500/30' },
+  no_show: { label: 'No-show', cls: 'bg-rose-50 text-rose-800 ring-rose-500/30' },
 }
 const WINDOW_LABEL: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', anytime: 'Anytime' }
 
@@ -127,7 +127,7 @@ export default function InspectionsPanel() {
                   </button>
                 ))}
                 <button onClick={() => removeOne(a)} disabled={busyId === a.id} title="Delete this inspection (customer stays in your CRM)"
-                  className="rounded-lg bg-[#eeeeed] px-2 py-1 text-[11px] font-medium text-[#6b7280] ring-1 ring-[#dededc] transition hover:bg-rose-500/15 hover:text-rose-300 disabled:opacity-40">
+                  className="rounded-lg bg-[#eeeeed] px-2 py-1 text-[11px] font-medium text-[#6b7280] ring-1 ring-[#dededc] transition hover:bg-rose-50 hover:text-rose-800 disabled:opacity-40">
                   ✕
                 </button>
               </div>

@@ -13,11 +13,11 @@ import toast from 'react-hot-toast'
 import { api, type Appointment, type AppointmentStatus } from '@/lib/api'
 
 const STATUS_STYLE: Record<AppointmentStatus, { label: string; dot: string; chip: string }> = {
-  requested: { label: 'Requested', dot: 'bg-amber-400',   chip: 'bg-amber-500/15 text-amber-300 ring-amber-500/30' },
-  confirmed: { label: 'Confirmed', dot: 'bg-blue-400',    chip: 'bg-blue-500/15 text-blue-300 ring-blue-500/30' },
-  completed: { label: 'Completed', dot: 'bg-emerald-400', chip: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30' },
+  requested: { label: 'Requested', dot: 'bg-amber-400',   chip: 'bg-amber-50 text-amber-800 ring-amber-500/30' },
+  confirmed: { label: 'Confirmed', dot: 'bg-blue-400',    chip: 'bg-blue-50 text-blue-800 ring-blue-500/30' },
+  completed: { label: 'Completed', dot: 'bg-emerald-400', chip: 'bg-emerald-50 text-emerald-800 ring-emerald-500/30' },
   cancelled: { label: 'Cancelled', dot: 'bg-[#9ca3af]',   chip: 'bg-[#9ca3af] text-[#6b7280] ring-[#dededc]' },
-  no_show:   { label: 'No-show',   dot: 'bg-rose-400',    chip: 'bg-rose-500/15 text-rose-300 ring-rose-500/30' },
+  no_show:   { label: 'No-show',   dot: 'bg-rose-400',    chip: 'bg-rose-50 text-rose-800 ring-rose-500/30' },
 }
 const WINDOW_LABEL: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', anytime: 'Anytime' }
 const ACTIONS: Record<AppointmentStatus, { to: AppointmentStatus; label: string; tone?: string }[]> = {
@@ -212,7 +212,7 @@ export default function SchedulePage() {
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-bold text-[#1a1a1a]">{a.homeowner_name || 'Homeowner'}</span>
                               {L?.lead_score != null && (
-                                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${L.lead_score >= 70 ? 'bg-orange-500/15 text-orange-300' : L.lead_score >= 40 ? 'bg-amber-500/15 text-amber-300' : 'bg-[#eeeeed] text-[#6b7280]'}`}>
+                                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${L.lead_score >= 70 ? 'bg-orange-500/15 text-orange-300' : L.lead_score >= 40 ? 'bg-amber-50 text-amber-800' : 'bg-[#eeeeed] text-[#6b7280]'}`}>
                                   {L.lead_score >= 70 ? '🔥 ' : ''}{L.lead_score}
                                 </span>
                               )}
@@ -227,12 +227,12 @@ export default function SchedulePage() {
                           <div className="mt-2.5 rounded-lg bg-black/20 p-2.5">
                             <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6b7280]">What the homeowner told us</div>
                             <div className="flex flex-wrap gap-1.5">
-                              {L.work_type && <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[11px] text-blue-200">{WORK_LABEL[L.work_type] || L.work_type}</span>}
-                              {L.condition && <span className={`rounded-full px-2 py-0.5 text-[11px] ${L.condition === 'visible_damage' ? 'bg-rose-500/15 text-rose-300' : 'bg-[#eeeeed] text-[#2d2d2d]'}`}>{COND_LABEL[L.condition] || L.condition}</span>}
+                              {L.work_type && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-900">{WORK_LABEL[L.work_type] || L.work_type}</span>}
+                              {L.condition && <span className={`rounded-full px-2 py-0.5 text-[11px] ${L.condition === 'visible_damage' ? 'bg-rose-50 text-rose-800' : 'bg-[#eeeeed] text-[#2d2d2d]'}`}>{COND_LABEL[L.condition] || L.condition}</span>}
                               {L.roof_age && <span className="rounded-full bg-[#eeeeed] px-2 py-0.5 text-[11px] text-[#2d2d2d]">Age: {L.roof_age} yrs</span>}
                               {L.stories != null && <span className="rounded-full bg-[#eeeeed] px-2 py-0.5 text-[11px] text-[#2d2d2d]">{L.stories} stor{L.stories === 1 ? 'y' : 'ies'}</span>}
                               {(L.issues || []).map(i => (
-                                <span key={i} className={`rounded-full px-2 py-0.5 text-[11px] ${i === 'leak' || i === 'storm_damage' ? 'bg-rose-500/15 text-rose-300' : 'bg-[#eeeeed] text-[#2d2d2d]'}`}>{ISSUE_LABEL[i] || i}</span>
+                                <span key={i} className={`rounded-full px-2 py-0.5 text-[11px] ${i === 'leak' || i === 'storm_damage' ? 'bg-rose-50 text-rose-800' : 'bg-[#eeeeed] text-[#2d2d2d]'}`}>{ISSUE_LABEL[i] || i}</span>
                               ))}
                               {L.chimney_skylights && <span className="rounded-full bg-[#eeeeed] px-2 py-0.5 text-[11px] text-[#2d2d2d]">🧱 Chimney/skylights</span>}
                             </div>
@@ -248,7 +248,7 @@ export default function SchedulePage() {
                         {/* Actions */}
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                           {a.homeowner_phone && (
-                            <a href={`tel:${a.homeowner_phone}`} className="rounded-lg bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25">Call</a>
+                            <a href={`tel:${a.homeowner_phone}`} className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-800 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25">Call</a>
                           )}
                           {(L?.report_token || a.report_token) && (
                             <a href={`/r/${L?.report_token || a.report_token}`} target="_blank" rel="noreferrer" className="rounded-lg bg-[#eeeeed] px-2.5 py-1 text-[11px] font-medium text-[#2d2d2d] ring-1 ring-[#dededc] hover:bg-[#eeeeed]">Report</a>

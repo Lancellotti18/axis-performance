@@ -328,7 +328,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
   return (
     <div className="space-y-4">
       {hasNoData && (
-        <div className="space-y-2 rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+        <div className="space-y-2 rounded-lg border border-amber-400/40 bg-amber-50 p-3 text-sm text-amber-900">
           <div>
             <strong>No facets saved to the database yet.</strong>
             {' '}
@@ -477,7 +477,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                       <div className="flex flex-wrap items-center gap-2">
                         <span>{line.item_name}</span>
                         <button onClick={() => toggleVendors(line.sku, line.item_name, line.category, line.unit_cost)}
-                          className="inline-flex items-center gap-1 rounded-full border border-blue-400/30 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-300 hover:bg-blue-500/20"
+                          className="inline-flex items-center gap-1 rounded-full border border-blue-400/30 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800 hover:bg-blue-500/20"
                           title="Find where to buy this + compare local prices">
                           🛒 Buy / compare {vendors[line.sku]?.open ? '▴' : '▾'}
                         </button>

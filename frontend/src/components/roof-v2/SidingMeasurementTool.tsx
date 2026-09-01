@@ -277,7 +277,7 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
             (not a satellite measurement) — labeled that way on the report.
           </p>
         </div>
-        <span className="shrink-0 rounded border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300">
+        <span className="shrink-0 rounded border border-amber-400/30 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
           manual
         </span>
       </div>
@@ -348,7 +348,7 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
               </p>
               {scaleEndpoints.length === 2 && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-emerald-500/15 px-2 py-1 text-emerald-300">
+                  <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-800">
                     Scale: {refInches}″ ÷ {scalePixelH.toFixed(0)}px = {scaleInPerPx.toFixed(3)} in/px
                   </span>
                   <button onClick={() => setScaleEndpoints([])} className="rounded bg-[#e4e4e2] px-2 py-1 text-[#1a1a1a] hover:bg-[#d4d4d2]">Redo</button>

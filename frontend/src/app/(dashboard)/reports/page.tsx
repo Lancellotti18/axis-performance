@@ -293,7 +293,7 @@ export default function ReportsPage() {
                       </div>
                     </div>
                     <button onClick={() => openRoofReport(rep)} disabled={busyOpen}
-                      className="text-xs font-medium text-blue-200 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/25 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                      className="text-xs font-medium text-blue-900 bg-blue-50 hover:bg-blue-500/25 border border-blue-400/25 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
                       {busyOpen ? '…' : 'Open'}
                     </button>
                     <button onClick={() => api.roofing.v2.downloadReport(rep.run_id).catch(() => toast.error('Download failed'))}

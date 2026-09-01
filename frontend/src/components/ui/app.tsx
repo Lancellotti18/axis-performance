@@ -38,7 +38,7 @@ const VARIANTS: Record<AppVariant, string> = {
   primary: 'text-white hover:brightness-110',
   glass: 'text-[#1a1a1a] bg-[#f8f8f7] border border-[#dededc] hover:bg-[#eeeeed] hover:border-[#dededc]',
   ghost: 'text-[#2d2d2d] hover:text-[#1a1a1a] hover:bg-[#f8f8f7]',
-  danger: 'text-rose-300 bg-rose-500/10 border border-rose-400/25 hover:bg-rose-500/20',
+  danger: 'text-rose-800 bg-rose-50 border border-rose-400/25 hover:bg-rose-500/20',
 }
 const PRIMARY_STYLE: React.CSSProperties = {
   background: '#007fff',
@@ -74,10 +74,10 @@ export function ButtonLink({ variant = 'glass', size = 'md', leftIcon, className
 // ── StatusBadge (dark) — electric-blue palette, rose only for failures ───────
 export function StatusBadge({ status, className = '' }: { status: string; className?: string }) {
   const map: Record<string, { cls: string; dot: string; label: string }> = {
-    complete:   { cls: 'bg-blue-500/15 text-blue-200 border-blue-400/30', dot: 'bg-blue-400', label: 'Complete' },
+    complete:   { cls: 'bg-blue-50 text-blue-900 border-blue-400/30', dot: 'bg-blue-400', label: 'Complete' },
     processing: { cls: 'bg-[#f8f8f7] text-[#2d2d2d] border-[#dededc]', dot: 'bg-blue-400 animate-pulse', label: 'In progress' },
     pending:    { cls: 'bg-[#f8f8f7] text-[#2d2d2d] border-[#dededc]', dot: 'bg-blue-400 animate-pulse', label: 'In progress' },
-    failed:     { cls: 'bg-rose-500/15 text-rose-300 border-rose-400/30', dot: 'bg-rose-400', label: 'Failed' },
+    failed:     { cls: 'bg-rose-50 text-rose-800 border-rose-400/30', dot: 'bg-rose-400', label: 'Failed' },
   }
   const s = map[status] || { cls: 'bg-[#f8f8f7] text-[#6b7280] border-[#dededc]', dot: 'bg-[#9ca3af]', label: status }
   return (

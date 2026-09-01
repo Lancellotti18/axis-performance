@@ -213,7 +213,7 @@ export default function ExteriorPage() {
       </header>
 
       {error && (
-        <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>
+        <div className="rounded-lg border border-rose-400/30 bg-rose-50 p-3 text-sm text-rose-900">{error}</div>
       )}
 
       {/* Project picker */}
@@ -362,7 +362,7 @@ export default function ExteriorPage() {
           )}
 
           {!photogrammetryAvailable && (
-            <div className="rounded border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+            <div className="rounded border border-amber-400/30 bg-amber-50 p-3 text-xs text-amber-900">
               <strong>Photogrammetry not yet enabled.</strong> The COLMAP/OpenSfM RunPod endpoint is unconfigured.
               Set <code>RUNPOD_PHOTOGRAMMETRY_ENDPOINT_ID</code> on the backend once the worker is deployed.
               Until then, all measurements come from your manual traces above — which is the honest workflow either way.

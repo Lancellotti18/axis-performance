@@ -126,7 +126,7 @@ export default function ClientPortalPanel({ projectId }: Props) {
             <button
               key={s.key}
               onClick={() => setStage(s.key)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${ active ? 'border-blue-400/60 bg-blue-500/20 font-semibold text-blue-200' : done ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300' : 'border-[#dededc] bg-[#eeeeed] text-[#6b7280] hover:text-white' }`}
+              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${ active ? 'border-blue-400/60 bg-blue-500/20 font-semibold text-blue-900' : done ? 'border-emerald-400/40 bg-emerald-50 text-emerald-800' : 'border-[#dededc] bg-[#eeeeed] text-[#6b7280] hover:text-white' }`}
               title="Set the job to this stage"
             >{done ? '✓ ' : ''}{s.label}</button>
           )

@@ -117,7 +117,7 @@ export default function ProposalPanel({ runId, projectId }: Props) {
         >{creating ? 'Creating…' : '+ Create proposal'}</button>
       </div>
 
-      {error && <p className="mt-2 rounded border border-rose-400/30 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-300">{error}</p>}
+      {error && <p className="mt-2 rounded border border-rose-400/30 bg-rose-50 px-2 py-1.5 text-xs text-rose-800">{error}</p>}
 
       {proposals.length > 0 && (
         <ul className="mt-3 space-y-2">

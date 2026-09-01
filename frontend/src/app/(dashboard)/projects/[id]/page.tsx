@@ -69,7 +69,7 @@ function CompleteToggle({ projectId, status, onChanged }: {
       onClick={toggle}
       disabled={busy}
       title={done ? 'Reopen this job' : 'Mark this job complete'}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${ done ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' : 'border-[#dededc] bg-[#f8f8f7] text-[#1a1a1a] hover:bg-[#f8f8f7]' }`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${ done ? 'border-emerald-400/30 bg-emerald-50 text-emerald-800 hover:bg-emerald-500/25' : 'border-[#dededc] bg-[#f8f8f7] text-[#1a1a1a] hover:bg-[#f8f8f7]' }`}
     >
       {done ? '✓ Complete' : 'Mark complete'}
     </button>

@@ -158,7 +158,7 @@ export default function QuoteWidgetSettings() {
         {/* A pair that fails contrast makes the buttons sink into the page —
             exactly what you cannot see when you chose both colors yourself. */}
         {ratio != null && (
-          <div className={`mt-3 rounded-lg border px-3 py-2 text-[11px] ${ lowContrast ? 'border-amber-400/40 bg-amber-500/10 text-amber-100' : 'border-emerald-400/25 bg-emerald-500/10 text-emerald-100'}`}>
+          <div className={`mt-3 rounded-lg border px-3 py-2 text-[11px] ${ lowContrast ? 'border-amber-400/40 bg-amber-50 text-amber-900' : 'border-emerald-400/25 bg-emerald-50 text-emerald-900'}`}>
             {lowContrast ? '⚠ ' : '✓ '}Accent against background is <strong>{ratio.toFixed(2)}:1</strong>
             {lowContrast
               ? ' — under the 3:1 minimum, so your buttons will be hard to pick out. Lighten the accent or darken the page.'

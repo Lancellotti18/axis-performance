@@ -125,7 +125,7 @@ export default function NewProjectPage() {
               )}
 
               {selected && (
-                <div className="mt-2 flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                   <span>✓</span>
                   <span>
                     {[selected.city, selected.county && `${selected.county} County`, selected.state, selected.zip].filter(Boolean).join(' · ')}
@@ -151,7 +151,7 @@ export default function NewProjectPage() {
           </div>
 
           {error && (
-            <div className="bg-rose-500/10 border border-rose-400/30 rounded-xl px-4 py-3 text-rose-300 text-sm">{error}</div>
+            <div className="bg-rose-50 border border-rose-400/30 rounded-xl px-4 py-3 text-rose-800 text-sm">{error}</div>
           )}
 
           <button type="submit" disabled={submitting || !name.trim() || !selected}

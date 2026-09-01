@@ -90,7 +90,7 @@ export default function MorningBriefing() {
         <div className="flex items-center gap-2">
           <span className="text-base leading-none">☀</span>
           <h2 className="text-sm font-bold text-[#1a1a1a]">{greeting}</h2>
-          <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-300">
+          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-800">
             Briefing
           </span>
         </div>

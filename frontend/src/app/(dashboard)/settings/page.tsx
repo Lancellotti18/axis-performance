@@ -161,7 +161,7 @@ export default function SettingsPage() {
           <div className={card}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-[#1a1a1a] font-semibold text-sm">Subscription</h2>
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-200 border border-blue-400/30">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-900 border border-blue-400/30">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
                 Pro Plan
               </span>

@@ -460,12 +460,12 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
                 <div className="rounded-xl bg-black/20 p-3">
                   <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6b7280]">What the homeowner told us</div>
                   <div className="flex flex-wrap gap-1.5">
-                    {rept.details?.work_type && <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[11px] text-blue-200">{ROOFIQ_WORK[rept.details.work_type] || rept.details.work_type}</span>}
-                    {rept.details?.condition && <span className={`rounded-full px-2 py-0.5 text-[11px] ${rept.details.condition === 'visible_damage' ? 'bg-rose-500/15 text-rose-300' : 'bg-[#eeeeed] text-[#2d2d2d]'}`}>{ROOFIQ_COND[rept.details.condition] || rept.details.condition}</span>}
+                    {rept.details?.work_type && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-900">{ROOFIQ_WORK[rept.details.work_type] || rept.details.work_type}</span>}
+                    {rept.details?.condition && <span className={`rounded-full px-2 py-0.5 text-[11px] ${rept.details.condition === 'visible_damage' ? 'bg-rose-50 text-rose-800' : 'bg-[#eeeeed] text-[#2d2d2d]'}`}>{ROOFIQ_COND[rept.details.condition] || rept.details.condition}</span>}
                     {rept.roof_age && <span className="rounded-full bg-[#eeeeed] px-2 py-0.5 text-[11px] text-[#2d2d2d]">Age: {rept.roof_age} yrs</span>}
                     {rept.stories != null && <span className="rounded-full bg-[#eeeeed] px-2 py-0.5 text-[11px] text-[#2d2d2d]">{rept.stories} stor{rept.stories === 1 ? 'y' : 'ies'}</span>}
                     {(rept.issues || []).map(i => (
-                      <span key={i} className={`rounded-full px-2 py-0.5 text-[11px] ${i === 'leak' || i === 'storm_damage' ? 'bg-rose-500/15 text-rose-300' : 'bg-[#eeeeed] text-[#2d2d2d]'}`}>{ROOFIQ_ISSUE[i] || i}</span>
+                      <span key={i} className={`rounded-full px-2 py-0.5 text-[11px] ${i === 'leak' || i === 'storm_damage' ? 'bg-rose-50 text-rose-800' : 'bg-[#eeeeed] text-[#2d2d2d]'}`}>{ROOFIQ_ISSUE[i] || i}</span>
                     ))}
                     {rept.details?.chimney_skylights && <span className="rounded-full bg-[#eeeeed] px-2 py-0.5 text-[11px] text-[#2d2d2d]">🧱 Chimney/skylights</span>}
                     {(rept.details?.rooftop_items || []).filter(x => x !== 'nothing' && x !== 'unsure').map(x => (

@@ -260,7 +260,39 @@ export function invalidateApiCache(substr: string): void {
   }
 }
 
-export async function apiRequest<T>(
+export /**
+ * Turn a FastAPI `detail` into something a person can act on.
+ *
+ * Structured errors carry a headline plus a list of specific failures. Rendered
+ * as prose they tell you what to fix; JSON.stringify'd they just look broken.
+ */
+function formatDetail(detail: unknown): string {
+  if (detail == null) return ''
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    // FastAPI validation errors: [{loc, msg, type}, ...]
+    const msgs = detail
+      .map(d => (d && typeof d === 'object' && 'msg' in d ? String((d as { msg: unknown }).msg) : ''))
+      .filter(Boolean)
+    return msgs.length ? msgs.join('. ') : ''
+  }
+  if (typeof detail === 'object') {
+    const o = detail as { message?: unknown; failures?: unknown; detail?: unknown }
+    const head = typeof o.message === 'string' ? o.message : ''
+    const items = Array.isArray(o.failures)
+      ? o.failures
+          .map(f => (f && typeof f === 'object' && 'message' in f
+            ? String((f as { message: unknown }).message) : String(f)))
+          .filter(Boolean)
+      : []
+    if (head && items.length) return `${head}\n${items.map(m => `• ${m}`).join('\n')}`
+    if (head) return head
+    if (items.length) return items.join('\n')
+  }
+  return ''
+}
+
+async function apiRequest<T>(
   path: string,
   options?: RequestInit,
   timeoutMs = 90000,  // 90s — Render free tier cold starts can take 75s
@@ -345,11 +377,14 @@ async function _doRequest<T>(
 
   if (!res!.ok) {
     const text = await res!.text()
-    // FastAPI returns {"detail":"..."} — extract just the message
+    // FastAPI returns {"detail": ...} — a string for simple errors, an object
+    // for structured ones. The object used to be JSON.stringify'd straight at
+    // the user, so a report that failed validation showed them
+    //   {"message":"...","failures":[{"code":"no_eaves","message":"..."}]}
+    // which reads like a crash rather than the specific, fixable problem it is.
     try {
       const json = JSON.parse(text)
-      const detail = typeof json.detail === 'string' ? json.detail : JSON.stringify(json.detail)
-      throw new Error(`[HTTP ${res!.status}] ${detail}`)
+      throw new Error(`[HTTP ${res!.status}] ${formatDetail(json.detail) || text}`)
     } catch (parseErr: unknown) {
       if (parseErr instanceof Error && parseErr.message.startsWith('[HTTP')) throw parseErr
     }
@@ -1581,8 +1616,13 @@ export const api = {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
         if (!res.ok) {
-          const msg = await res.text().catch(() => '')
-          throw new Error(msg || `Report failed (${res.status})`)
+          // This path does its own fetch (it needs the blob), so it has to do
+          // its own error formatting too — otherwise a structured 422 arrives
+          // as raw JSON in front of the user.
+          const raw = await res.text().catch(() => '')
+          let msg = ''
+          try { msg = formatDetail(JSON.parse(raw).detail) } catch { msg = '' }
+          throw new Error(msg || raw || `Report failed (${res.status})`)
         }
         const blob = await res.blob()
         const url = URL.createObjectURL(blob)

@@ -21,10 +21,10 @@ function relTime(s?: string): string {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { cls: string; dot: string; label: string }> = {
-    complete:   { cls: 'bg-blue-500/15 text-blue-200 border-blue-400/30', dot: 'bg-blue-400', label: 'Complete' },
+    complete:   { cls: 'bg-blue-50 text-blue-900 border-blue-400/30', dot: 'bg-blue-400', label: 'Complete' },
     processing: { cls: 'bg-[#f8f8f7] text-[#2d2d2d] border-[#dededc]', dot: 'bg-blue-400 animate-pulse', label: 'In progress' },
     pending:    { cls: 'bg-[#f8f8f7] text-[#2d2d2d] border-[#dededc]', dot: 'bg-blue-400 animate-pulse', label: 'In progress' },
-    failed:     { cls: 'bg-rose-500/15 text-rose-300 border-rose-400/30', dot: 'bg-rose-400', label: 'Failed' },
+    failed:     { cls: 'bg-rose-50 text-rose-800 border-rose-400/30', dot: 'bg-rose-400', label: 'Failed' },
   }
   const s = map[status] || { cls: 'bg-[#f8f8f7] text-[#6b7280] border-[#dededc]', dot: 'bg-[#9ca3af]', label: status }
   return (
@@ -203,7 +203,7 @@ export default function ProjectsPage() {
                     <td className="px-5 py-4"><StatusBadge status={p.status} /></td>
                     <td className="px-5 py-4 text-[#6b7280] text-xs">{relTime(p.updated_at || p.created_at)}</td>
                     <td className="px-5 py-4 text-right">
-                      <Link href={`/projects/${p.id}`} className="text-xs text-blue-300 hover:text-blue-200 font-medium px-2.5 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/20 transition-all">Open</Link>
+                      <Link href={`/projects/${p.id}`} className="text-xs text-blue-800 hover:text-blue-900 font-medium px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-500/25 border border-blue-400/20 transition-all">Open</Link>
                     </td>
                   </tr>
                 ))}

@@ -626,8 +626,20 @@ export default function RoofV2Page() {
       })()}
 
       {error && (
-        <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-200">
+        // text-rose-900 on bg-rose-50 was left over from the dark theme —
+        // pale text on a near-white panel, which read as invisible. Dark ink on
+        // a light rose panel, and whitespace-pre-line so a multi-line
+        // validation failure keeps its bullets instead of running together.
+        <div role="alert"
+          className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm font-medium text-rose-900 whitespace-pre-line">
           {error}
+          {/* A blocked report is a fixable state, not a crash — say what to do. */}
+          {/eave|perimeter|outline/i.test(error) && (
+            <div className="mt-2 text-[12px] font-normal text-rose-800">
+              Go back to <strong>Edges</strong> and confirm the perimeter edges around the
+              roof — every sloped roof needs at least one eave before a report can be built.
+            </div>
+          )}
         </div>
       )}
 

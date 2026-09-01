@@ -244,7 +244,7 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
   // ---- Render ----
   if (!selectedPhoto) {
     return (
-      <div className="rounded border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+      <div className="rounded border border-amber-400/30 bg-amber-50 p-4 text-sm text-amber-900">
         Upload at least one photo before tracing measurements.
       </div>
     )
@@ -338,7 +338,7 @@ export function MeasurementTraceTool({ jobId, photos, defaultElevation = 'front'
             <span className="text-[#6b7280]">Click TOP then BOTTOM of the reference object.</span>
           </div>
           {scaleEndpoints.length === 2 && (
-            <div className="rounded bg-emerald-500/15 px-2 py-1 text-emerald-300">
+            <div className="rounded bg-emerald-50 px-2 py-1 text-emerald-800">
               Scale: {refInches}" over {scalePixelH.toFixed(0)} px = {scaleInPerPx.toFixed(3)} in/px
             </div>
           )}

@@ -114,7 +114,7 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
         {calibration && calibration.jobs >= 5
           && calibration.mean_abs_pct_error != null
           && calibration.mean_abs_pct_error <= 10 && (
-          <span className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-200">
+          <span className="rounded-md border border-emerald-400/30 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-900">
             ✓ Measuring within <strong>{calibration.mean_abs_pct_error.toFixed(1)}%</strong> across {calibration.jobs} verified jobs
           </span>
         )}
