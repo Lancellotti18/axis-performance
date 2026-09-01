@@ -90,10 +90,20 @@ def validate_report_inputs(
     #    can never exceed the ground perimeter. If they do, shared edges were double
     #    counted. This is a hard runtime guard behind the dedup fix.
     if perimeter > 0 and (ridges + hips) > perimeter * (1.0 + _TOL):
+        # The message used to assert double counting as THE cause. It is only
+        # one of three, and on a real run that tripped this the dedup had
+        # already removed every duplicate — the actual fault was 27 edges
+        # labelled "ridge" on a 12-facet roof. Naming one cause sends the
+        # contractor to fix the wrong thing, so state the contradiction and
+        # list what actually produces it.
         issues.append(ValidationIssue(
             "ridge_exceeds_perimeter",
             f"Ridge+hip ({ridges + hips:.1f} ft) exceeds the roof perimeter "
-            f"({perimeter:.1f} ft) — shared edges were double counted. Re-confirm edge labels.",
+            f"({perimeter:.1f} ft), which no roof can do. Usual causes, in order: "
+            "edges mislabelled as ridge that are really rakes or valleys; a partial "
+            "outline where interior lines were traced but the perimeter eaves were "
+            "not; or a shared line counted from both facets. Check the ridge labels "
+            "first, then that the outer edge of the roof is fully traced.",
             "block",
         ))
 
