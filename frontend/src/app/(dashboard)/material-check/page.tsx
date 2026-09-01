@@ -4,6 +4,7 @@ import { useRef, useState, useCallback } from 'react'
 import { api } from '@/lib/api'
 import { STATES, COUNTIES, CITIES } from '@/lib/jurisdictions'
 import { CitationInline, CitationBibliography, ComplianceLimitations } from '@/components/MaterialComplianceCitations'
+import ShoppingList from '@/components/ShoppingList'
 
 const PROJECT_TYPES = [
   { value: 'residential', label: 'Residential' },
@@ -204,6 +205,11 @@ function ComplianceResults({ result }: { result: any }) {
             </table>
           </div>
         </details>
+      )}
+
+      {/* Where to buy it — the question that always follows "is it compliant?" */}
+      {result.parsed_materials && result.parsed_materials.length > 0 && (
+        <ShoppingList materials={result.parsed_materials} city={result.location?.city || ''} />
       )}
 
       {/* Per-material checklist */}

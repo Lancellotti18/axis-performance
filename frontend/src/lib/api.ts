@@ -15,6 +15,25 @@ import type {
   VendorOption,
 } from '@/types'
 
+export interface ShoppingRow {
+  item_name: string
+  quantity: number | null
+  unit: string
+  options: VendorOption[]
+  best: VendorOption | null
+  line_total: number | null
+  priced: boolean
+}
+export interface ShoppingList {
+  items: ShoppingRow[]
+  priced_count: number
+  unpriced_count: number
+  subtotal: number
+  subtotal_note: string
+  tavily_configured: boolean
+}
+
+
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
 // Project-photo markup shapes (fractional 0–1 coords so they scale with the image).
@@ -1962,6 +1981,15 @@ export const api = {
       apiRequest<Record<string, unknown>>('/api/v1/material-check/text', {
         method: 'POST',
         body: JSON.stringify({ raw_text: rawText, city, state, county, project_type: projectType }),
+      }, 240000),
+    /** Price a parsed material list: real product links + the cheapest verified price. */
+    shoppingList: (
+      items: { item_name: string; quantity?: number | null; unit?: string | null }[],
+      city?: string,
+    ) =>
+      apiRequest<ShoppingList>('/api/v1/material-check/shopping-list', {
+        method: 'POST',
+        body: JSON.stringify({ items, city: city || '' }),
       }, 240000),
   },
   axis: {

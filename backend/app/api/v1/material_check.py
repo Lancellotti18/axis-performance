@@ -341,3 +341,99 @@ async def check_text_material_list(body: TextCheckRequest, user: dict = Depends(
 
     result["parsed_materials"] = materials
     return result
+
+
+# ── Shopping list ────────────────────────────────────────────────────────────
+#
+# A compliance check tells a contractor whether their list is *allowed*. The
+# next question is always "fine, where do I buy it and what does it cost" — and
+# that answer already existed for project materials (pricing_service) while the
+# uploaded list had no route to it. This closes that gap: the same parsed list
+# that was checked can be priced, with real product links, in one step.
+
+
+class ShoppingItem(BaseModel):
+    item_name: str
+    quantity: Optional[float] = None
+    unit: Optional[str] = "each"
+
+
+class ShoppingListRequest(BaseModel):
+    items: list[ShoppingItem]
+    city: Optional[str] = ""
+
+
+@router.post("/shopping-list")
+async def build_shopping_list(body: ShoppingListRequest, user: dict = Depends(require_user)) -> dict:
+    """Price a parsed material list and return somewhere to buy each line.
+
+    Each row carries every vendor option found, the cheapest real price, and a
+    line total when a quantity is known. Quote-only trade distributors (ABC,
+    Beacon, SRS) come back too — they have no scrapeable price, but they are
+    usually where a roofer actually buys, so hiding them would be worse than
+    showing them without a number.
+
+    Prices are never invented. An item with no verifiable product page returns
+    an empty options list and is reported as unpriced rather than guessed at —
+    a made-up number on a material order costs real money.
+    """
+    # Each run fans out to a vendor search per line, so the budget is tighter
+    # than the compliance check's.
+    if not rate_ok(f"shoplist-{user['id']}", max_per_hour=12):
+        raise HTTPException(status_code=429, detail="Too many pricing runs — try again in a few minutes.")
+
+    items = [i for i in body.items if (i.item_name or "").strip()][:40]
+    if not items:
+        raise HTTPException(status_code=422, detail="No material lines to price.")
+
+    from app.core.config import settings
+    from app.services.pricing_service import search_vendor_options
+
+    client = None
+    if settings.TAVILY_API_KEY:
+        try:
+            from tavily import TavilyClient
+            client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        except Exception as e:
+            log.info("tavily unavailable for shopping list: %s", e)
+
+    import asyncio
+
+    async def price(it: ShoppingItem) -> dict:
+        name = it.item_name.strip()
+        try:
+            options = await asyncio.to_thread(search_vendor_options, client, name, body.city or "")
+        except Exception as e:
+            log.info("pricing failed for %r: %s", name, e)
+            options = []
+        priced = [o for o in options if o.get("price") is not None]
+        best = min(priced, key=lambda o: o["price"]) if priced else None
+        qty = it.quantity if (it.quantity or 0) > 0 else None
+        return {
+            "item_name": name,
+            "quantity": qty,
+            "unit": it.unit or "each",
+            "options": options,
+            "best": best,
+            # Only a real price and a real quantity produce a line total.
+            "line_total": round(best["price"] * qty, 2) if (best and qty) else None,
+            "priced": best is not None,
+        }
+
+    rows = await asyncio.gather(*(price(i) for i in items))
+
+    priced_rows = [r for r in rows if r["priced"]]
+    subtotal = round(sum(r["line_total"] for r in rows if r["line_total"] is not None), 2)
+    return {
+        "items": rows,
+        "priced_count": len(priced_rows),
+        "unpriced_count": len(rows) - len(priced_rows),
+        # Stated plainly so the number is never mistaken for a full quote.
+        "subtotal": subtotal,
+        "subtotal_note": (
+            "Covers only the lines with both a verified price and a quantity."
+            if len(priced_rows) < len(rows) or any(r["line_total"] is None for r in rows)
+            else "Covers every line."
+        ),
+        "tavily_configured": client is not None,
+    }
