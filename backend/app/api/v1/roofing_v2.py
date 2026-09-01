@@ -1118,7 +1118,26 @@ def _aggregate_run(run_id: str) -> dict:
         "confidence": round(geo.normalize_confidence(conf), 3),
     }
 
-    db.table("roof_measurement_runs").update(aggregates).eq("id", run_id).execute()
+    # Physical plausibility outranks input completeness. The composite above
+    # asks "were the inputs filled in", which a roof can pass while being
+    # impossible — this run measured 449.5 ft of ridge inside a 304.7 ft
+    # perimeter and still reported High (82%), because every edge was labelled
+    # and the pitch was set. A number that confident on geometry the report
+    # itself refuses to print is the most damaging thing the app could say.
+    try:
+        from app.services.report_validators import validate_report_inputs, blocking
+        blockers = blocking(validate_report_inputs(aggregates, confirmed_penetration_count=0))
+        if blockers:
+            aggregates["confidence"] = min(aggregates["confidence"], 0.25)
+            aggregates["blocking_issues"] = [b.code for b in blockers]
+        else:
+            aggregates["blocking_issues"] = []
+    except Exception as e:
+        logger.info("confidence plausibility check skipped for %s: %s", run_id, e)
+
+    db.table("roof_measurement_runs").update(
+        {k: v for k, v in aggregates.items() if k != "blocking_issues"}
+    ).eq("id", run_id).execute()
     return {
         **aggregates,
         "wall_intersection_ft": wall_int_ft,

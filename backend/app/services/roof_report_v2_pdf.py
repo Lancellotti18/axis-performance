@@ -256,6 +256,202 @@ def _render_facet_diagram(facets: list[dict]) -> bytes | None:
         return None
 
 
+# Edge colours match the roof-line table so the diagram and the numbers are
+# obviously the same data seen two ways.
+_EDGE_COLORS = {
+    "eave":              (37, 99, 235),
+    "rake":              (168, 85, 247),
+    "ridge":             (220, 38, 38),
+    "hip":               (234, 88, 12),
+    "valley":            (5, 150, 105),
+    "wall_intersection": (100, 116, 139),
+    "unlabeled":         (156, 163, 175),
+}
+
+
+def _facet_frame(facets: list[dict], long_edge: int = 2100, margin: int = 110):
+    """Projection + a canvas shaped like the roof itself.
+
+    A fixed canvas wastes most of the page on a long diagonal building: the fit
+    is driven by one dimension and the other fills with white, so the diagram
+    lands small in the middle of an empty sheet. Sizing the canvas to the
+    footprint's own aspect means the drawing fills the page whatever shape the
+    roof is.
+
+    Returns (polys, project, W, H). Both diagrams call this, so the building
+    sits identically on every page — flipping between them must not move it.
+    """
+    polys = [f for f in facets if f.get("polygon") and len(f.get("polygon") or []) >= 3]
+    if not polys:
+        return None
+    xs = [p[0] for f in polys for p in f["polygon"]]
+    ys = [p[1] for f in polys for p in f["polygon"]]
+    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+    spanx, spany = (maxx - minx) or 1e-6, (maxy - miny) or 1e-6
+    pad = 0.06
+    minx -= spanx * pad; maxx += spanx * pad
+    miny -= spany * pad; maxy += spany * pad
+    spanx, spany = maxx - minx, maxy - miny
+
+    # Canvas takes the footprint's aspect, clamped so an extreme ratio stays
+    # readable on a portrait page.
+    aspect = max(0.55, min(1.7, spanx / spany))
+    if aspect >= 1.0:
+        W, H = long_edge, int(long_edge / aspect)
+    else:
+        H, W = long_edge, int(long_edge * aspect)
+
+    scale = min((W - 2 * margin) / spanx, (H - 2 * margin) / spany)
+    offx = (W - spanx * scale) / 2 - minx * scale
+    offy = (H - spany * scale) / 2 - miny * scale
+    return polys, (lambda p: (offx + p[0] * scale, offy + p[1] * scale)), W, H
+
+
+def _render_length_diagram(facets: list[dict], edges: list[dict]) -> bytes | None:
+    """The length diagram: every traced edge, drawn and labelled with its own
+    measured length.
+
+    Lengths come from roof_edges.slope_adjusted_ft (falling back to
+    plan_length_ft) — the same stored numbers the roof-line table totals. None
+    are recomputed here, so the diagram cannot disagree with the table.
+
+    A shared edge is stored once per adjoining facet. Both rows describe the
+    same physical line, so the label is drawn once, keyed on the midpoint —
+    otherwise a ridge reads twice and looks like double the roof.
+    """
+    try:
+        from PIL import Image, ImageDraw
+        frame = _facet_frame(facets)
+        if not frame:
+            return None
+        polys, topx, W, H = frame
+        by_id = {f.get("id"): f for f in polys}
+
+        img = Image.new("RGB", (W, H), (255, 255, 255))
+        d = ImageDraw.Draw(img, "RGBA")
+        font, fontb = _load_font(False, 30), _load_font(True, 32)
+
+        for f in polys:
+            pts = [topx(p) for p in f["polygon"]]
+            d.polygon(pts, fill=(241, 245, 249, 255))
+
+        seen: set = set()
+        drawn = 0
+        for e in edges:
+            f = by_id.get(e.get("facet_id"))
+            if not f:
+                continue
+            poly = f.get("polygon") or []
+            i, j = e.get("vertex_index_start"), e.get("vertex_index_end")
+            if i is None or j is None or i >= len(poly) or j >= len(poly):
+                continue
+            a, b = topx(poly[i]), topx(poly[j])
+            mid = (round((a[0] + b[0]) / 2, 1), round((a[1] + b[1]) / 2, 1))
+            etype = (e.get("edge_type") or "unlabeled")
+            colour = _EDGE_COLORS.get(etype, _EDGE_COLORS["unlabeled"])
+            d.line([a, b], fill=colour, width=7)
+            if mid in seen:          # shared edge — already labelled from the other facet
+                continue
+            seen.add(mid)
+            length = e.get("slope_adjusted_ft") or e.get("plan_length_ft")
+            if length is None:
+                continue
+            _centered_lines(d, mid[0], mid[1], [f"{float(length):.1f}'"], font, fontb)
+            drawn += 1
+
+        if drawn == 0:
+            return None
+
+        # Legend — only the edge types actually present on this roof.
+        present = []
+        for e in edges:
+            t = e.get("edge_type") or "unlabeled"
+            if t not in present and by_id.get(e.get("facet_id")):
+                present.append(t)
+        x, y = 60, 40
+        for t in present:
+            c = _EDGE_COLORS.get(t, _EDGE_COLORS["unlabeled"])
+            d.rectangle([x, y, x + 46, y + 14], fill=c)
+            d.text((x + 58, y - 6), t.replace("_", " ").title(), fill=(30, 41, 59), font=fontb)
+            y += 44
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception as e:
+        logger.warning("length diagram render failed: %s", e)
+        return None
+
+
+def _render_pitch_diagram(facets: list[dict]) -> bytes | None:
+    """The pitch diagram: each facet shaded by steepness and labelled with its
+    own pitch, area, and where that pitch came from.
+
+    Shading is ordered by pitch so the steep planes are visually obvious. A
+    facet whose pitch was never confirmed is drawn hatched and labelled
+    "unverified" rather than shaded like measured data — a default guess must
+    never look like a measurement.
+    """
+    try:
+        from PIL import Image, ImageDraw
+        frame = _facet_frame(facets)
+        if not frame:
+            return None
+        polys, topx, W, H = frame
+
+        img = Image.new("RGB", (W, H), (255, 255, 255))
+        d = ImageDraw.Draw(img, "RGBA")
+        font, fontb = _load_font(False, 30), _load_font(True, 38)
+
+        degs = [f.get("pitch_degrees") for f in polys if f.get("pitch_degrees") is not None]
+        lo, hi = (min(degs), max(degs)) if degs else (0.0, 1.0)
+        span = (hi - lo) or 1.0
+
+        for i, f in enumerate(polys):
+            pts = [topx(p) for p in f["polygon"]]
+            deg = f.get("pitch_degrees")
+            src = (f.get("pitch_source") or "").lower()
+            unverified = src in ("", "default") or not f.get("pitch")
+            if unverified:
+                fill = (203, 213, 225, 90)
+            else:
+                # cool (shallow) -> warm (steep)
+                t = ((deg - lo) / span) if deg is not None else 0.0
+                fill = (int(59 + t * 190), int(130 - t * 60), int(246 - t * 200), 110)
+            d.polygon(pts, fill=fill)
+            d.line(pts + [pts[0]], fill=(30, 41, 59, 255), width=5)
+
+            cx = sum(x for x, _ in pts) / len(pts)
+            cy = sum(y for _, y in pts) / len(pts)
+            label = f.get("facet_label") or f"RF-{i + 1}"
+            pitch = f.get("pitch") or "unverified"
+            area = f.get("true_area_sqft") or f.get("plan_area_sqft") or 0
+
+            # A four-line caption on a narrow dormer spills over its neighbours
+            # and makes the whole plan harder to read than no label at all.
+            # Drop detail as the plane gets smaller; the facet table carries the
+            # full numbers for every plane regardless.
+            px = [x for x, _ in pts]; py = [y for _, y in pts]
+            box = (max(px) - min(px)) * (max(py) - min(py))
+            room = box / float(W * H)
+            if room >= 0.045:
+                lines = [str(label), str(pitch), f"{round(float(area))} ft²"]
+                if unverified:
+                    lines.append("pitch unverified")
+                _centered_lines(d, cx, cy, lines, font, fontb)
+            elif room >= 0.012:
+                _centered_lines(d, cx, cy, [str(label), str(pitch)], font, fontb)
+            else:
+                _centered_lines(d, cx, cy, [str(label)], font, fontb)
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception as e:
+        logger.warning("pitch diagram render failed: %s", e)
+        return None
+
+
 def _section_header(text: str, n: int, styles: dict) -> Paragraph:
     return Paragraph(f"<font color='#1e40af'><b>Section {n}.</b></font> &nbsp; {text}", styles["h2"])
 
@@ -800,15 +996,23 @@ def _section_6_materials(
     ))
 
     rows = [["SKU", "Item", "Base qty", f"Qty @ {default_waste}%", "Unit", "Unit $", "Subtotal"]]
+    unpriced = 0
     for l in material_lines:
+        # A missing catalog price arrives here as 0.0. Printing that as "$0.00"
+        # states a price we do not have, and it silently drops out of the grand
+        # total — so the total would look complete while being short. Show the
+        # gap instead, and say how many lines it covers underneath.
+        has_price = (l.unit_cost or 0) > 0
+        if not has_price:
+            unpriced += 1
         rows.append([
             l.sku,
             l.item_name,
             f"{l.base_quantity:.2f}",
             str(l.waste_quantities.get(default_waste, 0)),
             l.unit,
-            _currency(l.unit_cost),
-            _currency(l.waste_quantities.get(default_waste, 0) * l.unit_cost),
+            _currency(l.unit_cost) if has_price else "—",
+            _currency(l.waste_quantities.get(default_waste, 0) * l.unit_cost) if has_price else "—",
         ])
     rows.append(["", "Grand total", "", "", "", "",
                  _currency(grand_total(material_lines, default_waste))])
@@ -819,6 +1023,12 @@ def _section_6_materials(
     style.add("LINEABOVE", (0, -1), (-1, -1), 1.0, BRAND_DARK)
     t.setStyle(style)
     flow.append(t)
+    if unpriced:
+        flow.append(Paragraph(
+            f"{unpriced} of {len(material_lines)} line{'' if unpriced == 1 else 's'} "
+            f"{'has' if unpriced == 1 else 'have'} no catalog price yet and {'is' if unpriced == 1 else 'are'} "
+            "shown as \u2014. The grand total covers only the priced lines.",
+            styles["muted"]))
 
     flow.append(Spacer(1, 6))
     flow.append(Paragraph(
@@ -1068,6 +1278,152 @@ def _section_project_photos(project_photos: list[dict], styles: dict) -> list:
     return flow if any_rendered else []
 
 
+def _page_furniture(address: str, project_name: str):
+    """Header drawn on every page after the cover.
+
+    Axis mark top-left with the property address beneath it, and
+    "Report: <project>" on the right — so a page separated from the rest still
+    says what it is and which property it belongs to.
+    """
+    def draw(canvas, doc):
+        canvas.saveState()
+        w, h = letter
+        y = h - 0.42 * inch
+        canvas.setFillColor(BRAND)
+        canvas.setFont("Helvetica-Bold", 11)
+        canvas.drawString(0.6 * inch, y, "Axis")
+        wid = canvas.stringWidth("Axis", "Helvetica-Bold", 11)
+        canvas.setFillColor(MUTED)
+        canvas.setFont("Helvetica", 11)
+        canvas.drawString(0.6 * inch + wid + 3, y, "Performance")
+        if address:
+            canvas.setFont("Helvetica", 7.5)
+            canvas.drawString(0.6 * inch, y - 11, address[:78])
+        if project_name:
+            canvas.setFont("Helvetica-Bold", 8)
+            canvas.drawRightString(w - 0.6 * inch, y, f"Report: {project_name[:44]}")
+        canvas.setStrokeColor(BORDER)
+        canvas.setLineWidth(0.5)
+        canvas.line(0.6 * inch, y - 18, w - 0.6 * inch, y - 18)
+        canvas.setFillColor(MUTED)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.drawCentredString(w / 2, 0.38 * inch, f"Page {canvas.getPageNumber()}")
+        canvas.restoreState()
+    return draw
+
+
+def _full_page_figure(title: str, caption: str, png: bytes | None, styles: dict,
+                      note: str | None = None) -> list:
+    """One diagram, centred, filling the page — the way a roofer reads a plan.
+
+    Returns [] when the image could not be built, so the report never prints a
+    heading over an empty frame.
+    """
+    if not png:
+        return []
+    flow: list = [Spacer(1, 26), Paragraph(title, styles["subtitle"])]
+    if caption:
+        flow.append(Paragraph(caption, styles["muted"]))
+    flow.append(Spacer(1, 12))
+    img = Image(io.BytesIO(png))
+    avail_w, avail_h = 7.0 * inch, 7.6 * inch
+    ratio = img.imageWidth / max(1, img.imageHeight)
+    w = min(avail_w, avail_h * ratio)
+    img.drawWidth, img.drawHeight = w, w / ratio
+    img.hAlign = "CENTER"
+    flow.append(img)
+    if note:
+        flow.append(Spacer(1, 10))
+        flow.append(Paragraph(note, styles["muted"]))
+    return flow
+
+
+def _cover_page(project: dict, run: dict, aggregates: dict, contractor: dict | None,
+                toc_entries: list[tuple[str, str]], styles: dict) -> list:
+    """Cover: who produced it, which property, when, how confident, what's inside."""
+    from reportlab.lib.styles import ParagraphStyle
+    c = contractor or {}
+    company = c.get("company_name") or "Axis Roofing Performance"
+    address = _normalize_address(project.get("address"), project.get("city"),
+                                 project.get("state"), project.get("zip")) or "Property"
+    brand_hex = f"#{BRAND.hexval()[2:]}"
+    muted_hex = f"#{MUTED.hexval()[2:]}"
+
+    left = ParagraphStyle("CoverLeft", parent=styles["muted"], alignment=0)
+    flow: list = []
+
+    # Axis mark, upper LEFT, as the producing platform.
+    flow.append(Paragraph(
+        f"<para align='left'><font size=17 color='{brand_hex}'><b>Axis</b></font>"
+        f"<font size=17 color='{muted_hex}'> Performance</font><br/>"
+        f"<font size=7.5 color='{muted_hex}'>SATELLITE ROOF INTELLIGENCE</font></para>", left))
+    flow.append(Spacer(1, 34))
+
+    if c.get("logo_bytes"):
+        try:
+            img = Image(io.BytesIO(c["logo_bytes"]))
+            ratio = img.imageWidth / max(1, img.imageHeight)
+            img.drawHeight = 1.25 * inch
+            img.drawWidth = min(4.0 * inch, 1.25 * inch * ratio)
+            img.hAlign = "CENTER"
+            flow.append(img)
+            flow.append(Spacer(1, 10))
+        except Exception:
+            pass
+
+    flow.append(Paragraph(company, styles["title"]))
+    flow.append(Spacer(1, 4))
+    flow.append(Paragraph("Roof Measurement Report", styles["subtitle"]))
+    flow.append(Spacer(1, 22))
+
+    prepared = datetime.now().strftime("%B %-d, %Y") if hasattr(datetime.now(), "strftime") else ""
+    conf_label, conf_color = _confidence_bucket(run.get("confidence") or 0)
+    meta = [
+        ["Project", project.get("name") or "—"],
+        ["Property address", address],
+        ["Report date", prepared],
+        ["Measurement confidence", conf_label],
+    ]
+    t = Table(meta, colWidths=[2.1 * inch, 4.8 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), SURFACE),
+        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+        ("TEXTCOLOR", (1, 3), (1, 3), conf_color),
+    ]))
+    flow.append(t)
+    # Confidence is input completeness, not an accuracy guarantee. Saying that
+    # beside the number — not only in the methodology nine pages later — is the
+    # difference between an honest report and one that reads as a promise.
+    flow.append(Spacer(1, 5))
+    flow.append(Paragraph(
+        "Confidence measures how complete and well-grounded the measurement inputs are "
+        "(edges labelled, pitch confirmed, scale source). It is not a guarantee of "
+        "absolute accuracy — verify on site before ordering material.", styles["muted"]))
+    flow.append(Spacer(1, 24))
+
+    flow.append(Paragraph("Contents", styles["subtitle"]))
+    flow.append(Spacer(1, 6))
+    rows = [[Paragraph(f"<b>{n}</b>", styles["body"]), Paragraph(t_, styles["body"])]
+            for n, t_ in toc_entries]
+    toc = Table(rows, colWidths=[0.5 * inch, 6.4 * inch])
+    toc.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.25, BORDER),
+    ]))
+    flow.append(toc)
+    flow.append(PageBreak())
+    return flow
+
+
 def generate_v2_report(
     project: dict,
     run: dict,
@@ -1102,7 +1458,55 @@ def generate_v2_report(
     styles = _styles()
     default_waste = int(run.get("waste_pct_default") or aggregates.get("waste_pct_default") or 12)
 
+    address = _normalize_address(project.get("address"), project.get("city"),
+                                 project.get("state"), project.get("zip")) or (project.get("name") or "")
+    project_name = project.get("name") or address or "Roof Report"
+
+    # Build the three plan pages first: a page that could not be rendered must
+    # not appear in the contents, so the table never promises a missing page.
+    sat_png = None
+    if run.get("satellite_image_url"):
+        try:
+            raw = _fetch_satellite_image(run["satellite_image_url"])
+            sat_png = _crop_image_to_facets(raw, facets, subject_point=run.get("subject_point")) or raw
+        except Exception as e:
+            logger.info("cover satellite fetch failed: %s", e)
+    length_png = _render_length_diagram(facets, edges)
+    pitch_png = _render_pitch_diagram(facets)
+
+    plan_pages = [
+        ("Aerial View", sat_png,
+         "The imagery this measurement was traced over, cropped to the roof.",
+         "Satellite imagery, cropped to the traced roof. Nothing on this page is drawn by Axis."),
+        ("Length Diagram", length_png,
+         "Every traced roof line, labelled with its measured length.",
+         "Lengths are the stored per-edge measurements that the Roof Line table totals — "
+         "a shared line is labelled once, from one side only."),
+        ("Pitch Diagram", pitch_png,
+         "Each roof plane, shaded by steepness and labelled with its pitch.",
+         "Shading runs shallow to steep across this roof only. A plane whose pitch was never "
+         "confirmed is drawn grey and marked unverified."),
+    ]
+    available = [(t, png, cap, note) for (t, png, cap, note) in plan_pages if png]
+
+    toc: list[tuple[str, str]] = []
+    n = 2
+    for (t, _png, _cap, _note) in available:
+        toc.append((str(n), t)); n += 1
+    for label in ["Executive Summary", "Roof Summary", "Roof Line Measurements"] + \
+                 (["Flashing Report"] if include_flashing else []) + \
+                 ["Roof Penetrations", "Field Observations", "Material Ordering Summary"] + \
+                 (["Exterior Measurements"] if include_siding else []) + \
+                 ["Methodology & Confidence", "Property Photos"]:
+        toc.append(("", label))
+
     story: list = []
+    story.extend(_cover_page(project, run, aggregates, contractor, toc, styles))
+
+    for (t, png, cap, note) in available:
+        story.extend(_full_page_figure(t, cap, png, styles, note))
+        story.append(PageBreak())
+
     story.extend(_section_1_executive(project, run, aggregates, len(facets), styles, facets, contractor))
     story.append(Spacer(1, 12))
     # §4.4: surface non-blocking notices so an assumed value (e.g. zero penetrations)
@@ -1136,5 +1540,7 @@ def generate_v2_report(
         story.append(PageBreak())
         story.extend(project_photo_flow)
 
-    doc.build(story)
+    furniture = _page_furniture(address, project_name)
+    # The cover carries its own branding, so the running header starts on page 2.
+    doc.build(story, onFirstPage=lambda c, d: None, onLaterPages=furniture)
     return buf.getvalue()
