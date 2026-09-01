@@ -116,3 +116,55 @@ h1 { letter-spacing: -0.021em; }
 @media (prefers-reduced-motion: no-preference) {
   a, button, [role="button"] { transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease; }
 }
+
+/* ──────────────────────────────────────────────────────────────────
+   Touch devices only.
+
+   Everything below is inside @media (pointer: coarse), so a mouse never
+   matches it and the desktop layout is byte-for-byte unchanged. A contractor
+   on a driveway with a phone is a real user; a 24px button and a hover-only
+   tooltip are unusable to them.
+   ────────────────────────────────────────────────────────────────── */
+@media (pointer: coarse) {
+  /* Apple and Google both put the comfortable minimum around 44px. Buttons
+     keep their visual size — the tap area grows underneath them, so nothing
+     in the layout shifts. */
+  button, [role="button"], a[href], select, summary {
+    min-height: 44px;
+  }
+  /* Small icon-only controls are the worst offenders: give them a real target
+     without stretching the icon itself. */
+  button:not(:has(> span)):not(:has(> div)) {
+    min-width: 44px;
+  }
+
+  /* iOS zooms the page when a focused input's font is under 16px. That zoom is
+     never undone, which is the "everything went huge and I can't get back"
+     effect on mobile forms. */
+  input, select, textarea {
+    font-size: max(16px, 1em);
+  }
+
+  /* Tap highlight is a grey box on iOS by default — distracting on a dense UI. */
+  * { -webkit-tap-highlight-color: rgba(0, 127, 255, 0.12); }
+
+  /* Momentum scrolling inside panels that scroll independently. */
+  .overflow-auto, .overflow-y-auto, .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* A device that cannot hover must not hide anything behind hover alone.
+   Group-hover reveals stay visible instead of being unreachable. */
+@media (hover: none) {
+  .group:hover .group-hover\:opacity-100,
+  .group .group-hover\:opacity-100 { opacity: 1; }
+}
+
+/* Respect notches / home indicators when the viewport is edge-to-edge. */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}

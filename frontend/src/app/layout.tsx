@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import './globals.css'
@@ -19,6 +19,22 @@ export const metadata: Metadata = {
     description: 'Instant satellite roof quotes → scored, exclusive leads → your CRM. Stop buying leads. Start owning them.',
     type: 'website',
   },
+}
+
+/**
+ * Without this, mobile Safari renders the page at a virtual ~980px and scales
+ * it down — which is why everything looked tiny and awkward on a phone. There
+ * was no viewport tag at all.
+ *
+ * Desktop is unaffected: this meta is only consulted by mobile browsers.
+ * `maximumScale` is deliberately NOT set — capping zoom stops someone pinching
+ * into a roof trace on site, and it is an accessibility failure besides.
+ */
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',   // respect notches/safe areas on modern phones
+  themeColor: '#02060f',
 }
 
 export default function RootLayout({

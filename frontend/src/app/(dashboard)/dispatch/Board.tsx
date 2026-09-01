@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { shiftISODate } from './lib/today'
 
 import {
-  DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable,
+  DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, useDraggable, useDroppable,
   useSensor, useSensors, type DragEndEvent, type DragOverEvent, type DragStartEvent,
 } from '@dnd-kit/core'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -28,6 +28,7 @@ import WeatherReschedule from './WeatherReschedule'
 import Copilot from './Copilot'
 import MapView from './MapView'
 import AuditPanel from './AuditPanel'
+import { useDevice } from '@/lib/useDevice'
 import CrewManager from './CrewManager'
 
 const BU_COLOR: Record<string, string> = {
@@ -156,7 +157,21 @@ export default function Board({
   const sel = useSelection()
   const selCount = sel.selected.size
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor))
+  // Mouse and finger need different activation rules, and mixing them breaks
+  // both. A mouse should drag after 5px of travel — instant and precise. A
+  // finger must NOT, because the same gesture is how you scroll the board; it
+  // needs a short press-and-hold first, with a little tolerance for the wobble
+  // of a real hand.
+  //
+  // Desktop behaviour is unchanged: without a coarse pointer this resolves to
+  // exactly the PointerSensor + KeyboardSensor pair it always used.
+  const device = useDevice()
+  const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } })
+  const keyboardSensor = useSensor(KeyboardSensor)
+  const sensors = useSensors(
+    ...(device.isTouch ? [touchSensor, keyboardSensor] : [pointerSensor, keyboardSensor]),
+  )
 
   const setPreview = (cid: string, v: PreviewResult | 'loading') => {
     previewRef.current = { ...previewRef.current, [cid]: v }; setPreviewMap(m => ({ ...m, [cid]: v }))
