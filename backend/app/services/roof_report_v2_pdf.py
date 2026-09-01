@@ -411,7 +411,16 @@ def _render_pitch_diagram(facets: list[dict]) -> bytes | None:
             pts = [topx(p) for p in f["polygon"]]
             deg = f.get("pitch_degrees")
             src = (f.get("pitch_source") or "").lower()
-            unverified = src in ("", "default") or not f.get("pitch")
+            # Provenance has three honest states, not two.
+            #
+            # `pitch_source` is inferred rather than recorded — a pitch is
+            # stored as "default" whenever it equals 6/12, so a contractor who
+            # deliberately CHOSE 6/12 is indistinguishable from one who never
+            # touched it. Calling that "unverified" would brand a real decision
+            # as a guess. user_confirmed is the signal that separates them.
+            measured = src in ("solar_measured", "lidar_measured", "ground_photo")
+            contractor_set = src == "manual" or (bool(f.get("user_confirmed")) and bool(f.get("pitch")))
+            unverified = not measured and not contractor_set
             if unverified:
                 fill = (203, 213, 225, 90)
             else:
@@ -436,8 +445,8 @@ def _render_pitch_diagram(facets: list[dict]) -> bytes | None:
             room = box / float(W * H)
             if room >= 0.045:
                 lines = [str(label), str(pitch), f"{round(float(area))} ft²"]
-                if unverified:
-                    lines.append("pitch unverified")
+                lines.append("measured" if measured else
+                             ("set by contractor" if contractor_set else "pitch unverified"))
                 _centered_lines(d, cx, cy, lines, font, fontb)
             elif room >= 0.012:
                 _centered_lines(d, cx, cy, [str(label), str(pitch)], font, fontb)

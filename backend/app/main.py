@@ -121,6 +121,11 @@ async def health():
         )),
         "groq_configured": bool(settings.GROQ_API_KEY),
         "anthropic_configured": bool(settings.ANTHROPIC_API_KEY),
+        # Whether Google Solar can be consulted at all. Without it every traced
+        # facet keeps the bare 6/12 default, and there was no way to tell that
+        # from the outside — the pitch simply looked measured when it was not.
+        "solar_configured": bool(settings.GOOGLE_SOLAR_API_KEY),
+        "tavily_configured": bool(settings.TAVILY_API_KEY),
     }
 
 

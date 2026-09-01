@@ -33,10 +33,60 @@ def _f(aggregates: dict, key: str) -> float:
         return 0.0
 
 
+# ── Partial outlines ─────────────────────────────────────────────────────────
+#
+# Not every roof gets fully outlined, and that is a legitimate way to work — a
+# contractor may trace only the section being replaced. The system had no
+# concept of it, so a partial trace either passed silently (reporting a part as
+# though it were the whole roof) or hard-blocked with a message about double
+# counting that had nothing to do with the real cause.
+#
+# These signals do not prove a trace is partial. They say it looks that way, so
+# the contractor can confirm or dismiss it — the person who traced the roof
+# knows, and asking beats guessing.
+
+def partial_outline_signals(aggregates: dict) -> list[str]:
+    """Human-readable reasons this trace looks like part of a roof, not all of one."""
+    eaves = _f(aggregates, "eaves_ft")
+    rakes = _f(aggregates, "rakes_ft")
+    ridges = _f(aggregates, "ridges_ft")
+    hips = _f(aggregates, "hips_ft")
+    area = _f(aggregates, "total_roof_sqft")
+    perimeter = _f(aggregates, "perimeter_ft") or (eaves + rakes)
+
+    out: list[str] = []
+
+    # Ridge lines with no perimeter to belong to: the classic signature of
+    # tracing the interior planes and stopping before the outer edge.
+    if perimeter > 0 and (ridges + hips) > perimeter * (1.0 + _TOL):
+        out.append(
+            f"Ridge and hip ({ridges + hips:.0f} ft) run longer than the traced perimeter "
+            f"({perimeter:.0f} ft) — the outer edge of the roof may not be traced yet."
+        )
+
+    # No eaves at all — every complete sloped roof has at least one.
+    if eaves <= 0 and area > 0:
+        out.append("No eaves are labelled, so the roof outline has not been closed.")
+
+    # A closed shape of area A cannot have a perimeter much under 4·sqrt(A) —
+    # that is the square, the most efficient case. Real roofs are far less
+    # efficient, so materially under it means edges are missing rather than
+    # that the building is unusually compact.
+    if area > 0 and perimeter > 0:
+        minimum_possible = 4.0 * (area ** 0.5)
+        if perimeter < minimum_possible * 0.62:
+            out.append(
+                f"The traced perimeter ({perimeter:.0f} ft) is short for {area:.0f} sq ft of roof — "
+                "some edges are probably not labelled."
+            )
+    return out
+
+
 def validate_report_inputs(
     aggregates: dict,
     *,
     confirmed_penetration_count: int,
+    partial: bool = False,
 ) -> list[ValidationIssue]:
     """Return all validation issues for a run's aggregates. Callers must abort
     generation if any issue has severity == 'block'."""
