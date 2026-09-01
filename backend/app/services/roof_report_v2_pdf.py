@@ -1390,6 +1390,29 @@ def _cover_page(project: dict, run: dict, aggregates: dict, contractor: dict | N
     flow.append(Paragraph(company, styles["title"]))
     flow.append(Spacer(1, 4))
     flow.append(Paragraph("Roof Measurement Report", styles["subtitle"]))
+
+    # A partial measurement has to announce itself on the FIRST thing anyone
+    # reads. Buried on page nine it becomes a technicality someone quotes back
+    # after ordering material for a roof this report never covered.
+    if (run.get("measurement_scope") or "full") == "partial":
+        note = (run.get("scope_note") or "").strip()
+        banner = Table([[Paragraph(
+            "<b>PARTIAL MEASUREMENT</b> — this report covers only the traced section of "
+            "the roof, not the whole building. Areas, lengths and any quantities below "
+            "describe that section alone."
+            + (f"<br/><i>{note}</i>" if note else ""),
+            styles["body"])]], colWidths=[6.9 * inch])
+        banner.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FEF3C7")),
+            ("BOX", (0, 0), (-1, -1), 1.0, colors.HexColor("#D97706")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 12),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+            ("TOPPADDING", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        flow.append(Spacer(1, 14))
+        flow.append(banner)
+
     flow.append(Spacer(1, 22))
 
     prepared = datetime.now().strftime("%B %-d, %Y") if hasattr(datetime.now(), "strftime") else ""
@@ -1542,7 +1565,20 @@ def generate_v2_report(
     story.append(Spacer(1, 10))
     story.extend(_section_field_observations(run, styles))
     story.append(Spacer(1, 10))
-    story.extend(_section_6_materials(material_lines, default_waste, styles))
+    # A material order from a partial trace is the one output that can cost
+    # real money: it looks like a complete bill of materials for a roof it
+    # never measured. Replace it with what it actually is.
+    if (run.get("measurement_scope") or "full") == "partial":
+        story.append(_section_header("Material Ordering Summary", 7, styles))
+        story.append(Paragraph(
+            "<b>No material order is produced for a partial measurement.</b> These "
+            "quantities would describe only the traced section, and a partial order "
+            "read as a whole-roof order is how a job comes up short on site. Complete "
+            "the outline to generate an order, or price the traced section by hand "
+            "from the roof-line measurements above.",
+            styles["body"]))
+    else:
+        story.extend(_section_6_materials(material_lines, default_waste, styles))
     story.append(PageBreak())
     if include_siding:
         story.extend(_section_7_exterior(siding_measurements, styles))

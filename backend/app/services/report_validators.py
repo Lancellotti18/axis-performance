@@ -129,17 +129,37 @@ def validate_report_inputs(
 
     # 4. Every sloped roof has at least one eave. Zero eaves means the outline
     #    never closed — the report would understate drip edge, gutter, and ice&water.
-    if eaves <= 0:
+    if eaves <= 0 and partial:
+        # A section of roof traced away from the building edge legitimately has
+        # no eave. Say what is therefore missing rather than refusing.
+        issues.append(ValidationIssue(
+            "partial_no_eaves",
+            "No eaves in the traced section, so drip edge, gutter and ice-and-water "
+            "are not included in these quantities.",
+            "warn",
+        ))
+    elif eaves <= 0:
         issues.append(ValidationIssue(
             "no_eaves",
             "Roof has no eaves — the outline is incomplete. Confirm the perimeter edges before generating.",
             "block",
         ))
 
-    # 5. THE invariant (DEFECT-02/03): ridge + hip run along the top of the roof and
-    #    can never exceed the ground perimeter. If they do, shared edges were double
-    #    counted. This is a hard runtime guard behind the dedup fix.
-    if perimeter > 0 and (ridges + hips) > perimeter * (1.0 + _TOL):
+    # 5. THE invariant (DEFECT-02/03): ridge + hip run along the top of the roof
+    #    and cannot exceed the ground perimeter — UNLESS the contractor has said
+    #    this is a partial measurement, where tracing the interior planes and
+    #    stopping before the outer edge produces exactly this contradiction.
+    #    Blocking someone for telling us the truth is the wrong response, so a
+    #    declared partial drops to a warning the report then carries visibly.
+    if partial and perimeter > 0 and (ridges + hips) > perimeter * (1.0 + _TOL):
+        issues.append(ValidationIssue(
+            "partial_outline_ridge",
+            f"Ridge and hip ({ridges + hips:.0f} ft) exceed the traced perimeter "
+            f"({perimeter:.0f} ft), as expected for a partial measurement. These totals "
+            "cover only the traced section.",
+            "warn",
+        ))
+    elif perimeter > 0 and (ridges + hips) > perimeter * (1.0 + _TOL):
         # The message used to assert double counting as THE cause. It is only
         # one of three, and on a real run that tripped this the dedup had
         # already removed every duplicate — the actual fault was 27 edges

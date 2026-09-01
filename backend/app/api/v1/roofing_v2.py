@@ -650,6 +650,11 @@ async def get_run(run_id: str, user: dict = Depends(require_user)) -> dict:
 class UpdateRunRequest(BaseModel):
     confirmed: Optional[bool] = None
     notes: Optional[str] = None
+    # The contractor's own statement about what they traced. 'partial' is a
+    # legitimate way to work — only the section being replaced — and saying so
+    # is what stops a part being reported as though it were the whole roof.
+    measurement_scope: Optional[str] = None
+    scope_note: Optional[str] = None
     waste_pct_default: Optional[float] = None
     stories: Optional[int] = None
     roof_type: Optional[str] = None
@@ -671,7 +676,23 @@ async def update_run(run_id: str, req: UpdateRunRequest, user: dict = Depends(re
         from datetime import datetime, timezone
         updates["confirmed_at"] = datetime.now(timezone.utc).isoformat()
         updates["measurement_unverified"] = False
-    res = db.table("roof_measurement_runs").update(updates).eq("id", run_id).execute()
+    if updates.get("measurement_scope") not in (None, "full", "partial"):
+        raise HTTPException(status_code=422, detail="measurement_scope must be 'full' or 'partial'.")
+    try:
+        res = db.table("roof_measurement_runs").update(updates).eq("id", run_id).execute()
+    except Exception as e:
+        # 20260901_roof_run_measurement_scope may not have been run yet. Save
+        # everything else rather than failing the whole edit over one column.
+        if "measurement_scope" in str(e) or "scope_note" in str(e):
+            logger.info("scope columns missing (migration not run): %s", e)
+            trimmed = {k: v for k, v in updates.items() if k not in ("measurement_scope", "scope_note")}
+            if not trimmed:
+                raise HTTPException(status_code=503, detail=(
+                    "Partial-measurement support needs migration "
+                    "20260901_roof_run_measurement_scope.sql to be run."))
+            res = db.table("roof_measurement_runs").update(trimmed).eq("id", run_id).execute()
+        else:
+            raise
     if not res.data:
         raise HTTPException(status_code=404, detail="Run not found.")
     return res.data[0]
@@ -1171,8 +1192,25 @@ def _aggregate_run(run_id: str) -> dict:
     # and the pitch was set. A number that confident on geometry the report
     # itself refuses to print is the most damaging thing the app could say.
     try:
-        from app.services.report_validators import validate_report_inputs, blocking
-        blockers = blocking(validate_report_inputs(aggregates, confirmed_penetration_count=0))
+        from app.services.report_validators import (
+            validate_report_inputs, blocking, partial_outline_signals,
+        )
+        # Detection (B): does this LOOK like part of a roof? Surfaced so the
+        # contractor can confirm or dismiss it — they know, and asking beats
+        # guessing. It never sets the flag itself.
+        signals = partial_outline_signals(aggregates)
+        aggregates["partial_signals"] = signals
+
+        declared_partial = False
+        try:
+            row = db.table("roof_measurement_runs").select("measurement_scope") \
+                .eq("id", run_id).single().execute()
+            declared_partial = ((row.data or {}).get("measurement_scope") or "full") == "partial"
+        except Exception:
+            pass   # column not migrated yet — treat as full
+
+        blockers = blocking(validate_report_inputs(
+            aggregates, confirmed_penetration_count=0, partial=declared_partial))
         if blockers:
             aggregates["confidence"] = min(aggregates["confidence"], 0.25)
             aggregates["blocking_issues"] = [b.code for b in blockers]
@@ -1182,7 +1220,8 @@ def _aggregate_run(run_id: str) -> dict:
         logger.info("confidence plausibility check skipped for %s: %s", run_id, e)
 
     db.table("roof_measurement_runs").update(
-        {k: v for k, v in aggregates.items() if k != "blocking_issues"}
+        {k: v for k, v in aggregates.items()
+         if k not in ("blocking_issues", "partial_signals")}
     ).eq("id", run_id).execute()
     return {
         **aggregates,
@@ -3805,7 +3844,9 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
     # surfaced in the report so a zero is never presented as reviewed fact.
     from app.services.report_validators import validate_report_inputs, blocking
     confirmed_pens = len(pens_res.data or [])
-    issues = validate_report_inputs(aggregates, confirmed_penetration_count=confirmed_pens)
+    is_partial = (run.get("measurement_scope") or "full") == "partial"
+    issues = validate_report_inputs(
+        aggregates, confirmed_penetration_count=confirmed_pens, partial=is_partial)
     blockers = blocking(issues)
     if blockers:
         raise HTTPException(
