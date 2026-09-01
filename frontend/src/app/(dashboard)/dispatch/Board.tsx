@@ -617,7 +617,10 @@ function Cell({ id, rainy, dragging, preview, children }: { id: string; rainy: b
     ring = c; if (isOver) bg = `color-mix(in srgb, ${c} 12%, var(--ink))`
   } else if (dragging && isOver) { ring = 'var(--sky)' }
   return (
-    <div ref={setNodeRef} className="min-w-0 overflow-hidden min-h-[128px] border-l p-1.5 transition-colors"
+    // min-w-0 lets the column shrink; overflow-hidden must NOT be here — the
+    // "＋ add job" picker is a popover rendered inside this cell, and clipping
+    // the cell cut the menu off so a job could not be assigned at all.
+    <div ref={setNodeRef} className="min-w-0 min-h-[128px] border-l p-1.5 transition-colors"
       style={{ borderColor: 'var(--line)', background: bg, boxShadow: ring !== 'transparent' ? `inset 0 0 0 2px ${ring}` : undefined, cursor: dragging && preview && preview !== 'loading' && preview.blocked && isOver ? 'not-allowed' : undefined }}>
       {children}
     </div>
