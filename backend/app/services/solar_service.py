@@ -115,11 +115,33 @@ async def get_building_insights(lat: float, lng: float) -> dict:
     except httpx.HTTPStatusError as e:
         msg = ""
         try:
-            msg = e.response.text[:200]
+            body = e.response.json()
+            msg = (body.get("error") or {}).get("message") or ""
         except Exception:
-            pass
+            try:
+                msg = e.response.text[:300]
+            except Exception:
+                pass
         logger.info("solar API http error: %s | %s", e, msg)
-        return {"available": False, "reason": f"Solar API error {e.response.status_code}."}
+        # Google's own message names the cause — API not enabled, billing not
+        # set up, key restricted to the wrong APIs or to HTTP referrers. It was
+        # logged and then dropped, so callers saw a bare "403" and had to guess.
+        # A 403 is the difference between "wrong config" (fixable in a minute)
+        # and "no coverage" (not fixable at all), so it must reach the caller.
+        detail = f" {msg}" if msg else ""
+        hint = ""
+        if e.response.status_code == 403:
+            low = msg.lower()
+            if "has not been used" in low or "disabled" in low:
+                hint = " → enable the Solar API in Google Cloud → APIs & Services → Library."
+            elif "billing" in low:
+                hint = " → attach a billing account to the Google Cloud project."
+            elif "referer" in low or "referrer" in low or "restrict" in low:
+                hint = " → the API key is restricted; server calls need IP or no application restriction."
+            else:
+                hint = " → check the Solar API is enabled, billing is attached, and the key is not restricted."
+        return {"available": False,
+                "reason": f"Solar API error {e.response.status_code}.{detail}{hint}"}
     except Exception as e:
         logger.info("solar API call failed: %s", e)
         return {"available": False, "reason": f"Solar API unreachable: {str(e)[:120]}"}
