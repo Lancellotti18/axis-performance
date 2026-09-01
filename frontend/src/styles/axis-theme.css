@@ -534,9 +534,18 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   Precision Mode — dark gunmetal steel. Same plate structure
-   (bevel + screws + drop shadow) but anthracite tones with brighter
-   baby-blue accents. Toggled via [data-mode="precision"] on <html>.
+   Precision Mode — INERT. Nothing sets [data-mode="precision"] any more.
+
+   The toggle that set it was removed because it changed nothing visible: this
+   block only restyles .axis-surface / .axis-tab / .axis-btn and the --steel-*
+   variables, and those live solely in FloatingTabs, AxisButton and
+   SurfacePanel — none of which are rendered anywhere in the app. Nothing
+   consumes --steel-* either.
+
+   Kept as the reference palette for a real dark mode. That is a much larger
+   job: the light theme was applied as ~1,786 hardcoded hex values across 85
+   files, so a working dark mode needs a global token layer first, not a
+   toggle. Do not re-add a toggle for this block alone — it will look broken.
    ────────────────────────────────────────────────────────────────── */
 html[data-mode="precision"] {
   --steel-bench-1: #2A323D;

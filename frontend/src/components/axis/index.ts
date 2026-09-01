@@ -10,4 +10,3 @@ export type { FloatingTab, FloatingTabsProps } from './FloatingTabs'
 export { DataPulse } from './DataPulse'
 export type { DataPulseProps } from './DataPulse'
 
-export { PrecisionToggle } from './PrecisionToggle'

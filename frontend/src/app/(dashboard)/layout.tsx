@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { getUser, signOut } from '@/lib/auth'
-import { PrecisionToggle } from '@/components/axis'
 import { ChatContextProvider } from '@/lib/chat-context'
 import { AppQueryProvider, clearAppQueryCache } from '@/lib/app-query'
 import AxisChat from '@/components/AxisChat'
@@ -380,7 +379,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="border-t p-3" style={{ borderColor: 'var(--color-surface-border)' }}>
           {!collapsed && (
             <div className="px-1 pb-3">
-              <PrecisionToggle />
             </div>
           )}
           <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
