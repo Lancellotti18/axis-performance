@@ -1097,10 +1097,14 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
     method_descriptions = {
         "aerial_outline": (
             "Contractor traced each roof facet as a polygon over a Web "
-            "Mercator satellite tile. Areas and edge lengths derive "
-            "deterministically from the polygon vertices, the latitude-"
-            "corrected metres-per-pixel of the imagery, and the per-facet "
-            "pitch the contractor supplied."
+            "Mercator satellite tile. Every length in this report — eaves, "
+            "rakes, ridges, hips and valleys — and every facet area derive "
+            "deterministically from those traced vertices and the latitude-"
+            "corrected metres-per-pixel of the imagery. Pitch is the one input "
+            "that does not come from the trace, and its source is stated per "
+            "facet: a measured pitch (Google Solar or LiDAR) where one is "
+            "available for that plane, otherwise the value the contractor set, "
+            "otherwise an unverified default."
         ),
         "blueprint": (
             "Roof measurements were extracted from an uploaded blueprint "
@@ -1108,9 +1112,12 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
             "the dimension scale on the drawing."
         ),
         "aerial_solar": (
-            "Roof segments and pitches came from Google Solar API's "
-            "buildingInsights endpoint, which uses high-resolution oblique "
-            "imagery analyzed by Google's models."
+            "Roof planes and pitches came from Google Solar API's "
+            "buildingInsights endpoint, which analyses high-resolution oblique "
+            "imagery. Google returns each plane's pitch, orientation, area and "
+            "a bounding box — it does NOT return roof edges, so any ridge, hip, "
+            "valley, eave or rake length in this report was measured from the "
+            "traced outline, not supplied by Google."
         ),
         "manual": (
             "All measurements were entered by the contractor without AI "
