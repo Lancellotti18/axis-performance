@@ -2,7 +2,13 @@
 
 /**
  * Crew & time-off management (M7) — the admin the board was missing: add / edit /
- * remove crews (capacity, pitch/story limits, business unit, lead) and manage
+ * remove crews (capacity, pitch/story limits, business unit) and manage
+ *
+ * The Lead picker was removed: it could only ever offer the four seeded demo
+ * foremen, because nothing in the app creates people, and a crew's lead_id is
+ * purely cosmetic — it prints a name on the crew rail and drives no logic. The
+ * column and the rail display stay, so a crew that already has a lead keeps it
+ * and the field is ready if person management is ever built.
  * each crew's time off. New crews get regular shifts generated so they're
  * immediately schedulable. Changes invalidate the board so the grid reflects them.
  */
@@ -124,12 +130,6 @@ function CrewForm({ data, initial, isNew, onSubmit, onCancel }: {
           <select className={inputCls} style={inputStyle} value={f.business_unit_id} onChange={e => set('business_unit_id', e.target.value)}>
             <option value="">Select…</option>
             {data.business_units.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        </CrewField>
-        <CrewField label="Lead (optional)">
-          <select className={inputCls} style={inputStyle} value={f.lead_id || ''} onChange={e => set('lead_id', e.target.value || null)}>
-            <option value="">None</option>
-            {data.persons.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
           </select>
         </CrewField>
         <CrewField label="Squares / day"><input type="number" className={inputCls} style={inputStyle} value={f.squares_per_day} onChange={e => set('squares_per_day', parseFloat(e.target.value) || 0)} /></CrewField>
