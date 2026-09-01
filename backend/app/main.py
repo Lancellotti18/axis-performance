@@ -108,7 +108,12 @@ async def health():
     # Booleans/counts only — never key material, not even suffixes (they let
     # an outsider fingerprint which keys rotate). Detailed per-key probing
     # lives behind auth at /diag/gemini.
-    if settings.SUPABASE_JWT_SECRET:
+    # Reflect the key source that will ACTUALLY be used. Reporting on the
+    # shared secret alone said "strict" for a project whose tokens no secret
+    # could ever verify — the config looked correct while every request 401'd.
+    from app.core.auth import auth_key_source
+    key_source = auth_key_source()
+    if key_source != "none":
         auth_mode = "strict" if settings.AUTH_ENFORCE_SIGNATURE else "shadow"
     else:
         auth_mode = "legacy"
@@ -116,6 +121,7 @@ async def health():
         "status": "ok",
         "version": "0.2.0",
         "auth_mode": auth_mode,
+        "auth_key_source": key_source,   # "jwks" | "secret" | "none"
         "gemini_keys_loaded": sum(bool(k) for k in (
             settings.GEMINI_API_KEY, settings.GEMINI_API_KEY_2, settings.GEMINI_API_KEY_3,
         )),
