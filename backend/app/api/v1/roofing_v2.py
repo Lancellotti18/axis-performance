@@ -792,8 +792,85 @@ async def _solar_pitch_for_polygons(
                 "Solar rectangles will be projected at the wrong scale",
                 run.get("id"), z_client, z_run)
 
-        segs = _solar_segments_as_fractions(solar, float(s_lat), float(s_lng), z)
+        # WHERE the building sits in this image. The tile is not reliably
+        # centred on the house, so projecting Solar around the frame centre put
+        # every plane tens of metres from the traced roof and produced 0%
+        # overlap on every facet. Anchor on the roof we can actually see.
+        #
+        # Preference order, most trustworthy first:
+        #   1. the polygons themselves — their centroid IS the roof, in the very
+        #      coordinate space the overlap test uses
+        #   2. subject_point — the house the contractor confirmed via HousePicker
+        #   3. frame centre — the old assumption, kept only as a last resort
+        anchor = None
+        anchor_src = "frame centre (assumed)"
+        pts = [pt for poly in polygons for pt in (poly or [])]
+        if pts:
+            anchor = (sum(p[0] for p in pts) / len(pts),
+                      sum(p[1] for p in pts) / len(pts))
+            anchor_src = "traced roof centroid"
+        elif isinstance(run.get("subject_point"), dict):
+            sp = run["subject_point"]
+            if sp.get("x") is not None and sp.get("y") is not None:
+                anchor = (float(sp["x"]), float(sp["y"]))
+                anchor_src = "subject_point"
+
+        # Google's own centre of the building it found — the geographic point
+        # that the anchor above locates in the image.
+        b_ctr = (solar.get("center") or {})
+        anchor_at = None
+        if b_ctr.get("lat") is not None and b_ctr.get("lng") is not None:
+            anchor_at = (float(b_ctr["lat"]), float(b_ctr["lng"]))
+        # SANITY GATE. Anchoring on the traced centroid aligns the two
+        # coordinate systems — but it aligns them whether or not they describe
+        # the same building. If the trace covers a small part of a much larger
+        # roof, forcing alignment would confidently stamp a neighbouring
+        # plane's pitch onto it. A wrong measured pitch is worse than an
+        # honest default, because it looks verified.
+        #
+        # Google reports the whole building's roof area. Compare it with what
+        # was traced: comparable areas mean the same building and the offset is
+        # an imagery/centring artefact (anchor is safe). A trace far smaller
+        # than the building means we are looking at a fragment, and its
+        # centroid is not the building's centre (anchor is NOT safe).
+        google_area = _f(solar.get("whole_roof_area_sqft"))
+        traced_area = 0.0
+        try:
+            traced_area = sum(
+                geo.polygon_plan_area_sqft(poly, float(s_lat), z, 2048, 1366)
+                for poly in polygons if poly)
+        except Exception:
+            pass
+        ratio = (traced_area / google_area) if (google_area and traced_area) else None
+        anchor_safe = ratio is not None and 0.55 <= ratio <= 1.8
+        if not anchor_safe and anchor is not None:
+            diag["anchor_rejected"] = (
+                f"traced {traced_area:.0f} sq ft vs Google's whole roof "
+                f"{google_area:.0f} sq ft"
+                + (f" (ratio {ratio:.2f})" if ratio else " (unknown)")
+                + " — too different to assume the same building centre")
+            anchor, anchor_at = None, None
+            anchor_src = "frame centre (anchor rejected)"
+
+        diag["anchor"] = {"at": anchor, "source": anchor_src,
+                          "building_centre": anchor_at is not None,
+                          "traced_sqft": round(traced_area, 1),
+                          "google_whole_roof_sqft": google_area,
+                          "area_ratio": round(ratio, 2) if ratio else None}
+
+        segs = _solar_segments_as_fractions(
+            solar, float(s_lat), float(s_lng), z, anchor=anchor, anchor_at=anchor_at)
         diag["segments"] = len(segs)
+        # Where the planes actually landed, so a future mismatch is visible
+        # rather than being inferred from a 0% overlap.
+        diag["segment_boxes"] = [
+            {"x": [round(min(p[0] for p in sg["rect"]), 3),
+                   round(max(p[0] for p in sg["rect"]), 3)],
+             "y": [round(min(p[1] for p in sg["rect"]), 3),
+                   round(max(p[1] for p in sg["rect"]), 3)],
+             "pitch": sg.get("pitch")}
+            for sg in segs[:6]
+        ]
         if not segs:
             diag["reason"] = "solar returned no roof segments for this building"
             return out
@@ -2124,28 +2201,54 @@ def _resolve_pitch(
 
 
 def _geo_to_frac(lat: float, lng: float, c_lat: float, c_lng: float, mpp: float,
-                 w_px: int = 2048, h_px: int = 1366) -> list[float]:
+                 w_px: int = 2048, h_px: int = 1366,
+                 anchor: tuple[float, float] = (0.5, 0.5)) -> list[float]:
     """Geographic point → image fraction, in the SAME basis the measurement
-    pipeline uses (tile center + metres_per_pixel × logical dims). Mirrors the
-    frontend SolarAssistPanel.geoToFrac so Solar rectangles land where the panel
-    draws them."""
+    pipeline uses (metres_per_pixel × logical dims).
+
+    `anchor` is where the reference coordinate (c_lat, c_lng) actually SITS in
+    the image. It defaulted to dead centre, which assumes the tile is centred
+    on the building — and that assumption is why Solar pitch never once reached
+    a facet. On a real run the traced roof sat at fraction (0.44, 0.29) while
+    every Solar rectangle was projected around (0.50, 0.50): roughly 36 m apart,
+    so overlap computed as exactly 0% across all 13 planes and every facet kept
+    its 6/12 default. The tile is not reliably centred on the house — which is
+    precisely why HousePicker and `subject_point` exist.
+
+    Values are deliberately NOT clamped to [0,1] any more. Clamping squashed a
+    plane that ran off the frame into a distorted rectangle along the edge,
+    which corrupts the overlap test it feeds. A plane genuinely outside the
+    frame should simply score no overlap.
+    """
     ground_w = (w_px * mpp) or 1.0
     ground_h = (h_px * mpp) or 1.0
     east_m = (lng - c_lng) * 111320.0 * math.cos(math.radians(c_lat))
     north_m = (lat - c_lat) * 111320.0
-    fx = 0.5 + east_m / ground_w
-    fy = 0.5 - north_m / ground_h           # north (higher lat) = up
-    return [max(0.0, min(1.0, fx)), max(0.0, min(1.0, fy))]
+    fx = anchor[0] + east_m / ground_w
+    fy = anchor[1] - north_m / ground_h     # north (higher lat) = up
+    return [fx, fy]
 
 
 def _solar_segments_as_fractions(
     solar: dict, c_lat: float, c_lng: float, zoom: int,
+    anchor: tuple[float, float] | None = None,
+    anchor_at: tuple[float, float] | None = None,
 ) -> list[dict]:
     """Convert Google Solar segments into image-fraction rectangles + centers so
-    they can be matched against AI-traced polygons. Returns [] on any problem."""
+    they can be matched against traced polygons. Returns [] on any problem.
+
+    `anchor_at` is the geographic point that `anchor` locates in the image. Pass
+    Google's own building centre together with where the roof actually sits in
+    the picture and the two coordinate systems line up, whatever the tile is
+    centred on. Without it this projects around the frame centre, which is only
+    correct when the imagery happens to be centred on the house — and it usually
+    is not.
+    """
     segs = solar.get("segments") or []
     if not segs:
         return []
+    a = anchor or (0.5, 0.5)
+    ref_lat, ref_lng = anchor_at or (c_lat, c_lng)
     mpp = geo.metres_per_pixel(c_lat, zoom)
     out: list[dict] = []
     for s in segs:
@@ -2155,12 +2258,14 @@ def _solar_segments_as_fractions(
         if not sw or not ne:
             continue
         try:
-            nw_f = _geo_to_frac(ne["lat"], sw["lng"], c_lat, c_lng, mpp)
-            ne_f = _geo_to_frac(ne["lat"], ne["lng"], c_lat, c_lng, mpp)
-            se_f = _geo_to_frac(sw["lat"], ne["lng"], c_lat, c_lng, mpp)
-            sw_f = _geo_to_frac(sw["lat"], sw["lng"], c_lat, c_lng, mpp)
+            def f(la, ln):
+                return _geo_to_frac(la, ln, ref_lat, ref_lng, mpp, anchor=a)
+            nw_f = f(ne["lat"], sw["lng"])
+            ne_f = f(ne["lat"], ne["lng"])
+            se_f = f(sw["lat"], ne["lng"])
+            sw_f = f(sw["lat"], sw["lng"])
             cx = (ctr.get("lng"), ctr.get("lat"))
-            center_f = (_geo_to_frac(cx[1], cx[0], c_lat, c_lng, mpp)
+            center_f = (f(cx[1], cx[0])
                         if cx[0] is not None and cx[1] is not None
                         else [(nw_f[0] + se_f[0]) / 2, (nw_f[1] + se_f[1]) / 2])
         except (KeyError, TypeError, ValueError):
