@@ -145,6 +145,25 @@ new domain risks the sending domain's deliverability.
 - **Not a franchise** (no autonomy to buy software)
 - **Licensed and real** — NC licensing board is a clean source
 
+### The prospect filter — a script, not an agent
+
+The one genuinely automatable piece, and the highest-signal qualifier we have:
+
+- [ ] **Find contractors with a website but NO instant-quote tool on it.**
+      Fetch each homepage (and any /quote, /estimate, /contact page), look for
+      the signatures of an existing tool — embedded quote widgets, "instant
+      estimate" copy, third-party iframes from known providers — and classify:
+        * no site            -> not a prospect (no widget, no wedge)
+        * site, no quote tool -> **the target list**
+        * site with a quote tool -> deprioritise (already solved, harder sell)
+
+      Why this is the wedge qualifier: a contractor with a plain "contact us"
+      form is already paying for traffic and losing it. That is a specific,
+      true, checkable observation about THEIR business — which is exactly what
+      makes an email read as written rather than merged.
+
+      Keep it a ~50-line script over the hand-built list. Not an agent.
+
 ### Draft rules
 - Reference something **specific and true** about that contractor. A template
   with a merge field reads as a template; contractors get five a week.
