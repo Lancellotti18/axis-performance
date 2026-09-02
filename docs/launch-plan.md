@@ -33,7 +33,11 @@ for report generation.
 
 ## 1. Legal & entity — REQUIRED, not optional
 
-- [ ] **Form the LLC.**
+- [x] **Form the LLC.** ✅ FILED 2026-09-02 with NC Secretary of State (form
+      L-01, $125, effective upon filing). Entity: **RW AI Infrastructure LLC**.
+      NC quotes 10–15 business days for entity creation, so expect approval
+      around mid-to-late September. Axis Performance is the product brand
+      operating under it.
 - [ ] **Register for an EIN** (Employer Identification Number) with the IRS.
       Free, applied for directly at irs.gov — do not pay a third party for it.
       Comes AFTER the LLC exists (the application asks for the entity), and is
