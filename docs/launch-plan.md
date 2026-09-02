@@ -10,8 +10,8 @@ Decisions move to DECIDED only once we have stopped arguing with them.
 Several items are upstream of others in ways that are easy to miss:
 
 ```
-LLC ──┬── Stripe/billing ── master dashboard (revenue half)
-      └── Terms of Service + Privacy Policy ── public launch
+LLC ── EIN ── business bank account ── Stripe ── master dashboard (revenue half)
+  └────────── Terms of Service + Privacy Policy ── public launch
 
 Google Solar fix ── accurate measurement ── selling measurement at all
 
@@ -33,7 +33,12 @@ for report generation.
 
 ## 1. Legal & entity — REQUIRED, not optional
 
-- [ ] **Form the LLC.** Upstream of billing (Stripe needs an entity + business
+- [ ] **Form the LLC.**
+- [ ] **Register for an EIN** (Employer Identification Number) with the IRS.
+      Free, applied for directly at irs.gov — do not pay a third party for it.
+      Comes AFTER the LLC exists (the application asks for the entity), and is
+      needed BEFORE the business bank account, which is needed before Stripe
+      payouts. So the real order is: LLC → EIN → business bank account → Stripe. Upstream of billing (Stripe needs an entity + business
       bank account) and of the legal docs (they must name an operating entity).
       Structure and tax election → ask a lawyer/accountant, not Claude.
 - [ ] **Terms of Service.**
