@@ -24,6 +24,13 @@ for report generation.
 
 ---
 
+## 0b. Triggered reminders
+
+- **At 12 paying customers → move billing to a business bank account.** Google Cloud
+  (and any other vendor) is on a personal card as of 2026-09-02. This is the same
+  cluster of work as the LLC and Stripe payouts — entity, business account, card
+  migration. Do them together rather than three times.
+
 ## 1. Legal & entity — REQUIRED, not optional
 
 - [ ] **Form the LLC.** Upstream of billing (Stripe needs an entity + business
