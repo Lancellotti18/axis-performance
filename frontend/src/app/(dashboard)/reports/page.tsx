@@ -149,12 +149,33 @@ export default function ReportsPage() {
 
   async function openRoofReport(rep: { run_id: string; pdf_url: string | null }) {
     if (rep.pdf_url) { window.open(rep.pdf_url, '_blank'); return }
+
+    // Open the tab NOW, on the click, before any await.
+    //
+    // Chrome only permits window.open inside the user-gesture window a click
+    // creates. Awaiting the signed-URL call first — which can take 60s+ against
+    // a cold Render instance — spends that window, so the popup was silently
+    // blocked: no tab, no error, nothing. That is the "report just won't open"
+    // report. Claiming the tab first and navigating it afterwards keeps the
+    // gesture intact.
+    const tab = window.open('', '_blank')
+    if (tab) {
+      tab.document.write(
+        '<title>Preparing your roof report…</title>' +
+        '<body style="font:15px system-ui;padding:40px;color:#1a1a1a">Preparing your roof report…</body>')
+    }
     setRoofBusy(rep.run_id + ':open')
     try {
       const { url } = await api.roofing.v2.getReportShareUrl(rep.run_id)
-      window.open(url, '_blank')
       cacheReportUrl(rep.run_id, url)
-    } catch { try { await api.roofing.v2.downloadReport(rep.run_id) } catch {} }
+      if (tab && !tab.closed) tab.location.href = url
+      else window.open(url, '_blank')   // popup blocked entirely — try anyway
+    } catch {
+      // Fall back to a download, and close the placeholder so it is not left
+      // sitting on "Preparing…" forever.
+      if (tab && !tab.closed) tab.close()
+      try { await api.roofing.v2.downloadReport(rep.run_id) } catch {}
+    }
     finally { setRoofBusy('') }
   }
   async function shareRoofReport(rep: { run_id: string; pdf_url: string | null }) {
