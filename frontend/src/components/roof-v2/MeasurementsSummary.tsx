@@ -65,6 +65,10 @@ interface MaterialsResponse {
 interface Props {
   runId: string
   geometryStamp: number       // bump to trigger a recompute (debounced)
+  /** True while the caller is persisting new edges. The numbers here describe
+   *  the PREVIOUS geometry until the refetch lands, so they are dimmed rather
+   *  than left looking current. */
+  busy?: boolean
   onConfidenceChange?: (c: number) => void
   /** Why confidence is capped, and whether the trace looks partial — both are
    *  already computed by the backend and were being thrown away here. */
@@ -167,7 +171,7 @@ function EdgeWorkRemaining({ unlabeled, unconfirmed }: { unlabeled: number; unco
   return <>{parts.join(' · ')}.</>
 }
 
-export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onIssuesChange, onForceSave, unlabeledCount = 0, unconfirmedCount = 0, runConfirmed = false, zip, city }: Props) {
+export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConfidenceChange, onIssuesChange, onForceSave, unlabeledCount = 0, unconfirmedCount = 0, runConfirmed = false, zip, city }: Props) {
   // Anything still standing between the contractor and final numbers.
   const pendingCount = unlabeledCount + unconfirmedCount
   const [aggregates, setAggregates] = useState<Aggregates | null>(null)
@@ -331,7 +335,11 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
   }
 
   return (
-    <div className="space-y-4">
+    // While new edges are being saved, everything below still describes the
+    // PREVIOUS geometry. Dimming it and blocking interaction is more honest
+    // than letting stale squares and prices look current for a second or two.
+    <div className={`space-y-4 transition-opacity ${busy || loading ? 'pointer-events-none opacity-50' : ''}`}
+      aria-busy={busy || loading}>
       {hasNoData && (
         <div className="space-y-2 rounded-lg border border-amber-400/40 bg-amber-50 p-3 text-sm text-amber-900">
           <div>

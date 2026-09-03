@@ -651,14 +651,9 @@ def _pitch_source_label(source) -> str:
 def _section_2_roof_summary(aggregates: dict, facets: list[dict], styles: dict) -> list:
     flow = [_section_header("Roof Summary", 2, styles)]
 
-    # Roof diagram — facets drawn to scale + labeled (area / pitch).
-    diagram = _render_facet_diagram(facets)
-    if diagram:
-        flow.append(Image(io.BytesIO(diagram), width=7.0 * inch, height=4.73 * inch))
-        flow.append(Paragraph(
-            "Roof facets drawn to scale, labeled with area and pitch. Built from your traced polygons.",
-            styles.get("small") or styles["muted"]))
-        flow.append(Spacer(1, 10))
+    # The outline is NOT redrawn here. It has a full page of its own earlier —
+    # the Length Diagram and the Pitch Diagram — each larger and carrying more
+    # than this thumbnail ever did. A third copy read as padding.
 
     rows = [
         ["Metric", "Value", "Method"],
@@ -1004,7 +999,21 @@ def _section_6_materials(
         styles["body"],
     ))
 
-    rows = [["SKU", "Item", "Base qty", f"Qty @ {default_waste}%", "Unit", "Unit $", "Subtotal"]]
+    # Cells hold raw strings, so a long SKU or item name cannot wrap — it runs
+    # straight over the next column and the rows read as overlapping mush.
+    # Wrapping each cell in a Paragraph lets reportlab break the line inside its
+    # own column, which is the whole fix.
+    from reportlab.lib.styles import ParagraphStyle
+    cell = ParagraphStyle("Cell", parent=styles["body"], fontSize=7.5, leading=9.5)
+    cell_r = ParagraphStyle("CellR", parent=cell, alignment=2)      # numbers right-align
+    head = ParagraphStyle("CellH", parent=cell, textColor=colors.white,
+                          fontName="Helvetica-Bold")
+
+    def c(v, right=False):
+        return Paragraph(str(v), cell_r if right else cell)
+
+    rows = [[Paragraph(h, head) for h in
+             ["SKU", "Item", "Base qty", f"Qty @ {default_waste}%", "Unit", "Unit $", "Subtotal"]]]
     unpriced = 0
     for l in material_lines:
         # A missing catalog price arrives here as 0.0. Printing that as "$0.00"
@@ -1015,18 +1024,26 @@ def _section_6_materials(
         if not has_price:
             unpriced += 1
         rows.append([
-            l.sku,
-            l.item_name,
-            f"{l.base_quantity:.2f}",
-            str(l.waste_quantities.get(default_waste, 0)),
-            l.unit,
-            _currency(l.unit_cost) if has_price else "—",
-            _currency(l.waste_quantities.get(default_waste, 0) * l.unit_cost) if has_price else "—",
+            c(l.sku),
+            c(l.item_name),
+            c(f"{l.base_quantity:.2f}", right=True),
+            c(l.waste_quantities.get(default_waste, 0), right=True),
+            c(l.unit),
+            c(_currency(l.unit_cost) if has_price else "—", right=True),
+            c(_currency(l.waste_quantities.get(default_waste, 0) * l.unit_cost)
+              if has_price else "—", right=True),
         ])
-    rows.append(["", "Grand total", "", "", "", "",
-                 _currency(grand_total(material_lines, default_waste))])
-    t = Table(rows, colWidths=[0.85 * inch, 2.3 * inch, 0.7 * inch, 0.85 * inch, 0.7 * inch, 0.7 * inch, 0.9 * inch])
+    rows.append([c(""), c("Grand total"), c(""), c(""), c(""), c(""),
+                 c(_currency(grand_total(material_lines, default_waste)), right=True)])
+    t = Table(
+        rows,
+        colWidths=[0.8 * inch, 2.5 * inch, 0.62 * inch, 0.78 * inch, 0.5 * inch, 0.68 * inch, 0.82 * inch],
+        repeatRows=1,          # the header follows the table onto a second page
+    )
     style = _table_style(header_color=ACCENT)
+    style.add("VALIGN", (0, 0), (-1, -1), "MIDDLE")
+    style.add("TOPPADDING", (0, 0), (-1, -1), 4)
+    style.add("BOTTOMPADDING", (0, 0), (-1, -1), 4)
     style.add("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold")
     style.add("BACKGROUND", (0, -1), (-1, -1), SURFACE)
     style.add("LINEABOVE", (0, -1), (-1, -1), 1.0, BRAND_DARK)
@@ -1184,8 +1201,8 @@ def _section_photos(run: dict, styles: dict) -> list:
 
     flow = [_section_header("Property Photos", 10, styles)]
     items: list[tuple[str, str]] = []
-    if run.get("satellite_image_url"):
-        items.append(("Aerial (satellite)", run["satellite_image_url"]))
+    # The aerial is page 2, full size. Repeating it here as a thumbnail added
+    # nothing except a second look at the same picture.
     for i, u in enumerate(run.get("ground_photo_urls") or []):
         # Entries are {url, slot} now; legacy rows may be plain URL strings.
         url = u.get("url") if isinstance(u, dict) else u
@@ -1563,7 +1580,10 @@ def generate_v2_report(
     story.append(PageBreak())
     story.extend(_section_5_penetrations(penetrations, styles))
     story.append(Spacer(1, 10))
-    story.extend(_section_field_observations(run, styles))
+    # Field Observations is omitted while nothing populates it: ground photos are
+    # analysed in memory and never persisted, so the section could only ever
+    # print its own heading over an empty space. Restore it when ground photos
+    # are stored.
     story.append(Spacer(1, 10))
     # A material order from a partial trace is the one output that can cost
     # real money: it looks like a complete bill of materials for a roof it

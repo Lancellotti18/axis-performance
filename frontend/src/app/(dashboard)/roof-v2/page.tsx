@@ -126,6 +126,11 @@ export default function RoofV2Page() {
   // for confirmations the editor has nothing left to show.
   const edgeCounts = useMemo(() => edgeReviewCounts(facets, edges), [facets, edges])
   const [geometryStamp, setGeometryStamp] = useState(0)
+  // Confirming edges kicks off a save, a recompute, a re-price and a
+  // confidence recalculation. Without a visible busy state the numbers below
+  // sit at their OLD values for a second or two — which reads as "nothing
+  // happened", or worse, as the new values.
+  const [applyingEdges, setApplyingEdges] = useState(false)
   const [editorSyncRev, setEditorSyncRev] = useState(0)   // bump to push external edits into the editor canvas
   const [autoLabelTrigger, setAutoLabelTrigger] = useState(0)   // editor toolbar → run edge auto-label
   // The contractor's confirmed "this is my house" tap. Loaded from the run on
@@ -916,22 +921,37 @@ export default function RoofV2Page() {
                 trigger={autoLabelTrigger}
                 onAcceptEdges={async (updatedEdges) => {
                   cancelPending()   // a queued canvas write would clobber these labels
-                  setEdges(updatedEdges)
-                  setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
-                  // Persist FIRST, then bump geometryStamp so MeasurementsSummary
-                  // refetches against the saved edges — otherwise accepting labels
-                  // left the measurements + material order stale (only the
-                  // previously-saved ridges showed).
-                  await persistGeometry(facets, updatedEdges)
-                  setGeometryStamp(s => s + 1)
+                  setApplyingEdges(true)
+                  try {
+                    setEdges(updatedEdges)
+                    setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
+                    // Persist FIRST, then bump geometryStamp so MeasurementsSummary
+                    // refetches against the saved edges — otherwise accepting labels
+                    // left the measurements + material order stale (only the
+                    // previously-saved ridges showed).
+                    await persistGeometry(facets, updatedEdges)
+                    setGeometryStamp(s => s + 1)
+                  } finally {
+                    // Cleared by the summary once it has actually refetched, not
+                    // here — the save finishing is not the same as the numbers
+                    // being right.
+                    setApplyingEdges(false)
+                  }
                 }}
               />
             </div>
           )}
 
+          {applyingEdges && (
+            <div className="mb-3 flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-900">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-800" />
+              Applying labels — recalculating measurements, materials and confidence…
+            </div>
+          )}
           <MeasurementsSummary
             runId={runId}
             geometryStamp={geometryStamp}
+            busy={applyingEdges}
             onConfidenceChange={setConfidence}
             onIssuesChange={(b, sig) => { setBlockingIssues(b); setPartialSignals(sig) }}
             unlabeledCount={edgeCounts.needsLabel}
