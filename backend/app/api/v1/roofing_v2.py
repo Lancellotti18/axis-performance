@@ -792,77 +792,57 @@ async def _solar_pitch_for_polygons(
                 "Solar rectangles will be projected at the wrong scale",
                 run.get("id"), z_client, z_run)
 
-        # WHERE the building sits in this image. The tile is not reliably
-        # centred on the house, so projecting Solar around the frame centre put
-        # every plane tens of metres from the traced roof and produced 0%
-        # overlap on every facet. Anchor on the roof we can actually see.
+        # WHERE the building sits in this image. The tile is not centred on the
+        # house — on this account it sits about 33 m north of the tile centre —
+        # so projecting Solar around the frame centre put every plane tens of
+        # metres from the roof and produced 0% overlap on every facet.
         #
-        # Preference order, most trustworthy first:
-        #   1. the polygons themselves — their centroid IS the roof, in the very
-        #      coordinate space the overlap test uses
-        #   2. subject_point — the house the contractor confirmed via HousePicker
-        #   3. frame centre — the old assumption, kept only as a last resort
-        anchor = None
+        # subject_point is the right anchor and the ONLY one that survives a
+        # partial trace. HousePicker stores both halves of the pair: where the
+        # house is in the image (x, y) AND what that point is geographically
+        # (lat, lng). Because the contractor tapped the house — not the roof
+        # they happened to trace — it is unaffected by tracing half a roof,
+        # which is a legitimate thing to do when only half is damaged.
+        anchor = anchor_at = None
         anchor_src = "frame centre (assumed)"
-        pts = [pt for poly in polygons for pt in (poly or [])]
-        if pts:
-            anchor = (sum(p[0] for p in pts) / len(pts),
-                      sum(p[1] for p in pts) / len(pts))
-            anchor_src = "traced roof centroid"
-        elif isinstance(run.get("subject_point"), dict):
-            sp = run["subject_point"]
-            if sp.get("x") is not None and sp.get("y") is not None:
-                anchor = (float(sp["x"]), float(sp["y"]))
-                anchor_src = "subject_point"
-
-        # Google's own centre of the building it found — the geographic point
-        # that the anchor above locates in the image.
-        b_ctr = (solar.get("center") or {})
-        anchor_at = None
-        if b_ctr.get("lat") is not None and b_ctr.get("lng") is not None:
-            anchor_at = (float(b_ctr["lat"]), float(b_ctr["lng"]))
-        # SANITY GATE. Anchoring on the traced centroid aligns the two
-        # coordinate systems — but it aligns them whether or not they describe
-        # the same building. If the trace covers a small part of a much larger
-        # roof, forcing alignment would confidently stamp a neighbouring
-        # plane's pitch onto it. A wrong measured pitch is worse than an
-        # honest default, because it looks verified.
-        #
-        # Google reports the whole building's roof area. Compare it with what
-        # was traced: comparable areas mean the same building and the offset is
-        # an imagery/centring artefact (anchor is safe). A trace far smaller
-        # than the building means we are looking at a fragment, and its
-        # centroid is not the building's centre (anchor is NOT safe).
-        # `_f` lives in scheduling.py, not here — using it made the whole lookup
-        # raise and swallow itself as "lookup error", which is exactly the kind
-        # of silent failure this diagnostic exists to prevent.
-        try:
-            google_area = float(solar.get("whole_roof_area_sqft") or 0.0)
-        except (TypeError, ValueError):
-            google_area = 0.0
-        traced_area = 0.0
-        try:
-            traced_area = sum(
-                geo.polygon_plan_area_sqft(poly, float(s_lat), z, 2048, 1366)
-                for poly in polygons if poly)
-        except Exception:
-            pass
-        ratio = (traced_area / google_area) if (google_area and traced_area) else None
-        anchor_safe = ratio is not None and 0.55 <= ratio <= 1.8
-        if not anchor_safe and anchor is not None:
-            diag["anchor_rejected"] = (
-                f"traced {traced_area:.0f} sq ft vs Google's whole roof "
-                f"{google_area:.0f} sq ft"
-                + (f" (ratio {ratio:.2f})" if ratio else " (unknown)")
-                + " — too different to assume the same building centre")
-            anchor, anchor_at = None, None
-            anchor_src = "frame centre (anchor rejected)"
+        sp = run.get("subject_point")
+        if isinstance(sp, dict) and all(sp.get(k) is not None for k in ("x", "y", "lat", "lng")):
+            anchor = (float(sp["x"]), float(sp["y"]))
+            anchor_at = (float(sp["lat"]), float(sp["lng"]))
+            anchor_src = "subject_point (tapped house)"
+        else:
+            # No tapped house. Fall back to the traced roof's centroid paired
+            # with Google's building centre — but ONLY when the trace plausibly
+            # covers the whole building, because a fragment's centroid is not
+            # the building's centre and anchoring on it would slide every plane
+            # onto the wrong part of the roof.
+            pts = [pt for poly in polygons for pt in (poly or [])]
+            b_ctr = solar.get("center") or {}
+            try:
+                google_area = float(solar.get("whole_roof_area_sqft") or 0.0)
+            except (TypeError, ValueError):
+                google_area = 0.0
+            traced_area = 0.0
+            try:
+                traced_area = sum(
+                    geo.polygon_plan_area_sqft(poly, float(s_lat), z, 2048, 1366)
+                    for poly in polygons if poly)
+            except Exception:
+                pass
+            ratio = (traced_area / google_area) if (google_area and traced_area) else None
+            if pts and b_ctr.get("lat") is not None and ratio is not None and 0.55 <= ratio <= 1.8:
+                anchor = (sum(p[0] for p in pts) / len(pts),
+                          sum(p[1] for p in pts) / len(pts))
+                anchor_at = (float(b_ctr["lat"]), float(b_ctr["lng"]))
+                anchor_src = "traced roof centroid"
+            elif ratio is not None:
+                diag["anchor_rejected"] = (
+                    f"no tapped house, and the trace covers {ratio:.0%} of the building Google "
+                    f"found ({traced_area:.0f} of {google_area:.0f} sq ft) — too partial to infer "
+                    "the building centre from. Tap the house to fix this.")
 
         diag["anchor"] = {"at": anchor, "source": anchor_src,
-                          "building_centre": anchor_at is not None,
-                          "traced_sqft": round(traced_area, 1),
-                          "google_whole_roof_sqft": google_area,
-                          "area_ratio": round(ratio, 2) if ratio else None}
+                          "geo": anchor_at is not None}
 
         segs = _solar_segments_as_fractions(
             solar, float(s_lat), float(s_lng), z, anchor=anchor, anchor_at=anchor_at)
