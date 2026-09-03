@@ -66,6 +66,9 @@ interface Props {
   runId: string
   geometryStamp: number       // bump to trigger a recompute (debounced)
   onConfidenceChange?: (c: number) => void
+  /** Why confidence is capped, and whether the trace looks partial — both are
+   *  already computed by the backend and were being thrown away here. */
+  onIssuesChange?: (blocking: string[], partialSignals: string[]) => void
   /** Roof lines with no type yet. While > 0 the confidence badge shows a neutral
    *  'Labeling…' state — a mid-workflow 40% is accurate but reads as failure.
    *  Counted in distinct lines (see `edgeGeometry.ts`), not stored edge rows. */
@@ -164,7 +167,7 @@ function EdgeWorkRemaining({ unlabeled, unconfirmed }: { unlabeled: number; unco
   return <>{parts.join(' · ')}.</>
 }
 
-export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onForceSave, unlabeledCount = 0, unconfirmedCount = 0, runConfirmed = false, zip, city }: Props) {
+export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, onIssuesChange, onForceSave, unlabeledCount = 0, unconfirmedCount = 0, runConfirmed = false, zip, city }: Props) {
   // Anything still standing between the contractor and final numbers.
   const pendingCount = unlabeledCount + unconfirmedCount
   const [aggregates, setAggregates] = useState<Aggregates | null>(null)
@@ -226,6 +229,8 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
       setAggregates(agg as Aggregates)
       const conf = (agg as Aggregates).confidence
       if (conf !== undefined) onConfidenceChange?.(conf)
+      const a = agg as unknown as { blocking_issues?: string[]; partial_signals?: string[] }
+      onIssuesChange?.(a.blocking_issues ?? [], a.partial_signals ?? [])
       try {
         const mats = await api.roofing.v2.getMaterials(runId, waste)
         setMaterials(mats as MaterialsResponse)
@@ -238,7 +243,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
     } finally {
       setLoading(false)
     }
-  }, [runId, onConfidenceChange])
+  }, [runId, onConfidenceChange, onIssuesChange])
 
   useEffect(() => { fetchAllRef.current = () => fetchAll(wastePct) }, [fetchAll, wastePct])
 

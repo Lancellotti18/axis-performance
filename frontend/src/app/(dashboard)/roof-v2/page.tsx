@@ -140,6 +140,11 @@ export default function RoofV2Page() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confidence, setConfidence] = useState<number>(0)
+  // The backend caps confidence at 25% when the geometry is physically
+  // impossible, and reports WHY. Showing the number without the reason leaves
+  // the contractor to guess at a figure that is trying to warn them.
+  const [blockingIssues, setBlockingIssues] = useState<string[]>([])
+  const [partialSignals, setPartialSignals] = useState<string[]>([])
 
   // Load projects on mount
   useEffect(() => {
@@ -928,6 +933,7 @@ export default function RoofV2Page() {
             runId={runId}
             geometryStamp={geometryStamp}
             onConfidenceChange={setConfidence}
+            onIssuesChange={(b, sig) => { setBlockingIssues(b); setPartialSignals(sig) }}
             unlabeledCount={edgeCounts.needsLabel}
             unconfirmedCount={edgeCounts.needsConfirm}
             runConfirmed={runConfirmed}
@@ -1126,9 +1132,28 @@ export default function RoofV2Page() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Stat label="Facets" value={facets.length.toString()} />
               <Stat label="Edges labeled" value={edges.filter(e => e.edgeType !== 'unlabeled').length.toString()} />
-              <Stat label="Confidence" value={edges.some(e => e.edgeType === 'unlabeled') ? '…' : `${Math.round(confidence * 100)}%`} />
+              <Stat label="Confidence"
+                value={edges.some(e => e.edgeType === 'unlabeled') ? '…' : `${Math.round(confidence * 100)}%`}
+                color={blockingIssues.length ? 'text-rose-800' : undefined} />
               <Stat label="Imagery" value={`${Math.round((imagery?.health_score ?? 0) * 100)}%`} />
             </div>
+            {blockingIssues.length > 0 && (
+              <div role="alert" className="mt-3 rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900">
+                <strong>Confidence is capped because this roof&apos;s measurements don&apos;t add up.</strong>
+                <ul className="mt-1.5 list-disc space-y-1 pl-5">
+                  {blockingIssues.map(c => <li key={c}>{ISSUE_TEXT[c] ?? c}</li>)}
+                </ul>
+                <div className="mt-1.5">A report can&apos;t be generated until this is resolved.</div>
+              </div>
+            )}
+            {blockingIssues.length === 0 && partialSignals.length > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                <strong>This looks like part of a roof rather than all of one.</strong>
+                <ul className="mt-1.5 list-disc space-y-1 pl-5">
+                  {partialSignals.map((t, i) => <li key={i}>{t}</li>)}
+                </ul>
+              </div>
+            )}
             <p className="mt-3 text-xs text-[#6b7280]">
               Generates the contractor-grade PDF — cover, <strong>to-scale roof diagram</strong>, roof
               summary &amp; per-facet table, roof-line lengths, flashing &amp; penetrations, materials
@@ -1147,6 +1172,20 @@ export default function RoofV2Page() {
       )}
     </div>
   )
+}
+
+// The validator codes, said the way a roofer would say them.
+const ISSUE_TEXT: Record<string, string> = {
+  ridge_exceeds_perimeter:
+    'Ridge and hip run longer than the traced perimeter, which no roof can do. Usually some edges labelled ridge are really rakes or hips — or the outer edge of the roof is not traced yet.',
+  no_eaves:
+    'No eaves are labelled, so the outline has not been closed. Drip edge, gutter and ice-and-water depend on them.',
+  squares_area_mismatch:
+    'Squares and roof area disagree by more than 2%.',
+  negative_length:
+    'An edge has a negative length.',
+  missing_pitch:
+    'No pitch is set on any facet. Pitch drives area and every material quantity.',
 }
 
 function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
