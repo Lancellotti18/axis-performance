@@ -128,28 +128,128 @@ size — several items cannot start until the LLC clears (~mid/late September).
   cluster of work as the LLC and Stripe payouts — entity, business account, card
   migration. Do them together rather than three times.
 
-## 1. Legal & entity — REQUIRED, not optional
+## 1. Legal, entity & IP — REQUIRED, not optional
 
-- [x] **Form the LLC.** ✅ FILED 2026-09-02 with NC Secretary of State (form
-      L-01, $125, effective upon filing). Entity: **RW AI Infrastructure LLC**.
-      NC quotes 10–15 business days for entity creation, so expect approval
-      around mid-to-late September. Axis Performance is the product brand
-      operating under it.
-- [ ] **Register for an EIN** (Employer Identification Number) with the IRS.
-      Free, applied for directly at irs.gov — do not pay a third party for it.
-      Comes AFTER the LLC exists (the application asks for the entity), and is
-      needed BEFORE the business bank account, which is needed before Stripe
-      payouts. So the real order is: LLC → EIN → business bank account → Stripe. Upstream of billing (Stripe needs an entity + business
-      bank account) and of the legal docs (they must name an operating entity).
-      Structure and tax election → ask a lawyer/accountant, not Claude.
-- [ ] **Terms of Service.**
-- [ ] **Privacy Policy.** Non-trivial here: Axis stores homeowner addresses,
-      property imagery, contact details and photos. The public quote widget
-      collects homeowner data **on the contractor's own site**, so the policy
-      must be explicit about who is the data controller for widget leads and
-      what the contractor is agreeing to on their visitors' behalf.
-- [ ] Decide data retention: how long are homeowner leads, photos and reports
-      kept, and what happens to them when a contractor cancels.
+Everything legal in one place. **None of this is legal advice** — the items marked
+⚖️ are questions for an NC attorney, and several are worth a single billable hour
+covering all of them together.
+
+### 1a. Entity chain — strictly ordered, each needs the previous
+
+    LLC → EIN → business bank account → Stripe payouts
+      └────────→ Terms of Service + Privacy Policy (must name the entity)
+
+- [x] **LLC formed.** ✅ Filed 2026-09-02, NC Secretary of State, form L-01,
+      $125, effective on filing. Entity: **RW AI Infrastructure LLC**. NC quotes
+      10–15 business days, so approval ~mid/late September. "Axis Performance"
+      is a product brand operating under it; they do not need to match.
+- [ ] **EIN** — free, direct at irs.gov. Do NOT pay a third party. Needs the LLC
+      to exist first; the bank account needs the EIN.
+- [ ] **Business bank account**, then Stripe.
+- [ ] **Operating Agreement.** NC does not require one. Banks usually ask, and it
+      is what actually establishes ownership — the state filing does not say who
+      owns the LLC. A single-member agreement is short.
+- [ ] Entity structure and tax election → accountant, not Claude.
+
+### 1b. ⚖️ NC G.S. 89C — engineering & land surveying (THE sharp one)
+
+The statutory definition of land surveying is broad enough to describe the
+mechanics of the Axis report. §89C-3(7) covers services relative to the "location,
+size, shape, or physical features of… **improvements on the earth**", gathered "by
+**aerial photography**, by global positioning via satellites", developed "into an
+orderly survey map, plan, **report**" — and explicitly includes "(5) Determining the
+configuration or contour of the earth's surface or the position of fixed objects…
+by measuring lines and angles and applying the principles of mathematics or
+**photogrammetry**".
+
+**Why it is probably fine:** §89C-25(1) exempts "contracting as defined in…
+Chapter 87", and what the statute actually polices is boundary and property-line
+work. Axis locates no property lines, easements or lot dimensions, and offers
+nothing as a survey. EagleView, Hover and Roofr all operate in NC.
+
+**Note the gap though:** the contracting exemption attaches to the CONTRACTOR, not
+obviously to a software vendor selling measurements to contractors.
+
+- [x] **Report disclaimer shipped** (2026-09-03, commit c18137b). Closing block on
+      the final page: not a land survey, not a boundary determination, locates no
+      property line or easement, not under the responsible charge of a licensed
+      surveyor, not for conveyance/permitting/legal description, quantities are
+      estimates. On the PDF deliberately — the report is the artefact that travels
+      to homeowners, adjusters and lenders who never saw a terms page.
+- [x] Verified: the word "survey" appears nowhere customer-facing. **Keep it that
+      way** — treat it as a rule, not a preference.
+- [ ] ⚖️ **One attorney hour on 89C** before the first paying contractor. The NC
+      Board also issues advisory opinions — a written one is cheap certainty.
+
+### 1c. Terms of Service + Privacy Policy
+
+- [ ] **Terms of Service.** Must name the LLC, so gated on approval.
+- [ ] **Privacy Policy.** Non-trivial: Axis stores homeowner addresses, property
+      imagery, contact details and photos. The quote widget collects homeowner
+      data **on the contractor's own site**, so the policy must state who is the
+      data controller for widget leads and what the contractor is agreeing to on
+      their visitors' behalf.
+- [ ] **⚠️ AI TRAINING RIGHTS — needed before the first CUSTOMER trace, not
+      before launch.** `training_examples` already holds 500+ rows captured by
+      Postgres triggers since 2026-06-07 (confirmed facets/edges, AI corrections,
+      rejections as hard negatives). All internal test data today, so no exposure
+      — but the first contractor trace is captured the same way, with no
+      agreement granting the right. Must cover:
+      * an explicit licence to train on submitted traces and labels;
+      * plain disclosure, not a buried clause;
+      * the split between contractor WORK PRODUCT and HOMEOWNER personal data;
+      * de-identification — train on geometry, not identifiable property/person;
+      * whether opt-out exists, and on which tiers;
+      * what happens to training data derived from a customer who cancels.
+      The training flywheel is the intended moat. A moat built on data we had no
+      right to collect is not a moat, and it is the first clause a larger
+      customer's counsel reads.
+- [ ] **Data retention periods** — homeowner leads, photos, reports; and what is
+      deleted when a contractor cancels.
+
+### 1d. Tax registration
+
+- [ ] Federal **EIN** (above).
+- [ ] **NC withholding** — only once there are employees. Not yet.
+- [ ] ⚖️ **NC sales & use tax — ASK NCDOR DIRECTLY.** Whether a hosted software
+      subscription is taxable in NC, and whether per-report charges are treated
+      differently from the subscription, is exactly the kind of thing that varies
+      and changes. Getting it wrong accrues silently and is owed later with
+      interest. Ask about the real model: subscription + metered reports.
+- [ ] **Economic nexus** in other states once there are customers outside NC.
+
+### 1e. IP — trademark, patent, copyright
+
+**Trademark — NOT needed yet. DECIDED: defer.**
+Common-law rights already exist from using the name in commerce. There are zero
+customers to protect, the money is better spent elsewhere, and the name may still
+change. "Axis Roofing Performance" is only somewhat stronger than "Axis" alone —
+examiners disclaim descriptive words, so "Roofing" and "Performance" carry little
+weight and the protectable core is still **"Axis"**, which is heavily crowded. A
+LOGO mark would register more cleanly.
+- [ ] Free now: search `tmsearch.uspto.gov` for "Axis" in **Class 42** (SaaS).
+      Better to find a roofing-software conflict before printing anything.
+- [ ] File when: paying customers exist, the name is settled, expanding beyond one
+      market — or someone in roofing starts using something similar.
+
+**Patents — probably not worth it.**
+Post-*Alice*, software patents are frequently rejected as abstract. Axis's clever
+parts are integration (Solar pitch fused with a hand trace, provenance tracking,
+plausibility validation) and every ingredient is public — combining known
+components is where applications die. Prior art is thick: EagleView and Hover have
+patented aerial roof measurement for over a decade. Five figures and years, no
+guarantee.
+
+**What actually protects Axis:**
+- **Trade secret** — free, immediate. The matching logic, thresholds and fusion
+  rules are not public. Keep them that way.
+- **Copyright** — automatic on the code. Registration at copyright.gov is cheap
+  and adds the right to sue plus statutory damages; software can be registered
+  with trade-secret portions redacted.
+- **The data flywheel** — confirmed facets and edges nobody else has for this
+  market. A patent protects one method for 20 years; a data advantage compounds
+  and cannot be designed around. This is the real moat, which is exactly why 1c
+  above has to be right.
 
 ---
 
