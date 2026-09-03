@@ -1480,6 +1480,50 @@ def _cover_page(project: dict, run: dict, aggregates: dict, contractor: dict | N
     return flow
 
 
+def _section_legal_notice(styles: dict) -> list:
+    """Closing notice — what this report is, and what it deliberately is not.
+
+    NC G.S. 89C defines the practice of land surveying broadly enough to cover
+    measurements of "improvements on the earth" gathered "by aerial photography"
+    using "photogrammetry" and presented in a report — which describes the
+    mechanics of this document. What the statute actually polices is boundary
+    and property-line work, and Axis does none of it: no property lines, no
+    easements, no lot dimensions, nothing offered as a survey.
+
+    Saying so on the document itself matters more than saying it in a contract
+    nobody reads, because the report is the artefact that travels — it gets
+    forwarded to homeowners, adjusters and lenders, none of whom saw the terms.
+    """
+    flow = [Spacer(1, 16)]
+    flow.append(Paragraph(
+        "<b>About this report</b>", styles["body"]))
+    flow.append(Spacer(1, 4))
+    flow.append(Paragraph(
+        "This is a roof measurement report prepared for construction estimating and "
+        "material ordering. Measurements are derived from aerial imagery and the roof "
+        "outline traced by the contractor, together with pitch data where a measured "
+        "source is available.",
+        styles["muted"]))
+    flow.append(Spacer(1, 5))
+    flow.append(Paragraph(
+        "<b>It is not a land survey.</b> It is not a boundary determination and must not "
+        "be relied on as one. It does not locate, establish or retrace any property line, "
+        "easement, lot dimension or right of way, and it is not prepared by, or under the "
+        "responsible charge of, a licensed professional land surveyor or engineer. It is "
+        "not suitable for conveyance, permitting, legal description of land, or any "
+        "purpose requiring a survey performed under N.C. Gen. Stat. Chapter 89C or the "
+        "equivalent law of another state.",
+        styles["muted"]))
+    flow.append(Spacer(1, 5))
+    flow.append(Paragraph(
+        "Quantities are estimates. Verify conditions on site before ordering material or "
+        "committing to a price. Where a pitch is shown as unverified or defaulted, it has "
+        "not been independently measured and every quantity that depends on it should be "
+        "confirmed.",
+        styles["muted"]))
+    return flow
+
+
 def generate_v2_report(
     project: dict,
     run: dict,
@@ -1611,6 +1655,9 @@ def generate_v2_report(
     if project_photo_flow:
         story.append(PageBreak())
         story.extend(project_photo_flow)
+
+    # Last thing in the document, on whatever page the report ends.
+    story.extend(_section_legal_notice(styles))
 
     furniture = _page_furniture(address, project_name)
     # The cover carries its own branding, so the running header starts on page 2.
