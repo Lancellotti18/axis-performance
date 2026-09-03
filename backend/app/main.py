@@ -36,6 +36,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     # @app.exception_handler(Exception) runs inside ServerErrorMiddleware, which is
     # OUTSIDE CORSMiddleware — so CORS headers are never added automatically here.
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    # Make it visible somewhere other than a console nobody is watching.
+    from app.core.errors import record
+    record(exc, path=request.url.path, method=request.method,
+           context={"query": str(request.url.query)[:200]})
     origin = request.headers.get("origin", "")
     allowed = origin if origin in settings.allowed_origins_list else ""
     detail = str(exc) if settings.ENVIRONMENT != "production" else "Internal server error"
@@ -48,11 +52,30 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.include_router(api_router, prefix="/api/v1")
 
-if _IS_PROD and not settings.SUPABASE_JWT_SECRET:
-    logger.critical(
-        "SUPABASE_JWT_SECRET is not set in production — JWTs are NOT being "
-        "verified (legacy mode). Set it in Render immediately."
-    )
+# This used to fire whenever SUPABASE_JWT_SECRET was unset — which is now the
+# NORMAL, correct configuration, because tokens are verified against the
+# project's published keys instead. Warn on the real condition: no usable key
+# source at all.
+if _IS_PROD:
+    from app.core.auth import auth_key_source
+    if auth_key_source() == "none":
+        logger.critical(
+            "No JWT key source available in production — tokens are NOT being "
+            "verified. Set SUPABASE_URL (for published keys) or "
+            "SUPABASE_JWT_SECRET, and AUTH_ENFORCE_SIGNATURE=true."
+        )
+
+
+@app.get("/diag/errors")
+async def diag_errors(limit: int = 25, user: dict = Depends(require_user)):
+    """Recent unhandled failures, newest first, with a summary.
+
+    Authenticated because tracebacks leak internals. In-memory, so it resets on
+    deploy — this answers "what is breaking right now", not "what broke last
+    week". Set SENTRY_DSN for durable history; no code change needed.
+    """
+    from app.core.errors import recent, summary
+    return {"summary": summary(), "errors": recent(min(limit, 100))}
 
 
 @app.get("/diag/gemini")

@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     # Paid (optional fallback — only used if free keys not set)
     ANTHROPIC_API_KEY: str = ""
     TAVILY_API_KEY: str = ""
+    # Optional. Set it and errors forward to Sentry — no code change required.
+    SENTRY_DSN: str = ""
     REPLICATE_API_KEY: str = ""
     GOOGLE_SOLAR_API_KEY: str = ""
 
