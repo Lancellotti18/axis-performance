@@ -24,6 +24,83 @@ for report generation.
 
 ---
 
+## 0. THE BACKLOG — everything open, by what gates it
+
+Captured 2026-09-03. Nothing here is done. Ordered by what blocks what, not by
+size — several items cannot start until the LLC clears (~mid/late September).
+
+### A. Blocks any customer touching it
+- [ ] **Verify accuracy against a physical measurement.** Zero verified data
+      exists; every `roof_actuals` row is a rushed-trace artefact. Solar now
+      reaches facets (run `fd1b3168`: 4/12 and 5/12 measured where 6/12 was
+      always assumed). One roof with a tape closes this. See
+      [[project_axis_accuracy_verification]].
+- [ ] **Cold starts.** ~75s on the free Render instance. That is a contractor's
+      first impression, and the cheapest thing here to fix.
+- [ ] **Report generation blocks the API** — synchronous PIL + PDF in the single
+      web process. Two concurrent reports queue. Needs a background worker.
+
+### B. Blocks taking money (chained — each needs the previous)
+- [ ] LLC approval (filed 2026-09-02) -> EIN -> business bank account -> Stripe
+- [ ] **Wire Stripe properly**: real `STRIPE_PRICE_*` config, signature-verified
+      webhook, subscription state on the user, correct redirect URLs. The router
+      is currently unmounted because it was placeholder code with an
+      unauthenticated endpoint handing out Stripe portal links.
+- [ ] **Terms of Service + Privacy Policy.** Not paperwork to defer: Axis stores
+      homeowner addresses, imagery and contact details, and the widget collects
+      homeowner data ON THE CONTRACTOR'S OWN SITE — so the terms must define what
+      the contractor is agreeing to on their visitors' behalf, and who is the
+      data controller for widget leads. Must name the LLC, so it is gated on
+      approval. Also needs stated data-retention periods.
+
+### C. Dispatch — known bugs
+- [ ] **Quick-job geocoded to the wrong STATE** (a Wilmington-area job resolved
+      to Swatara Township, Pennsylvania). `POST /scheduling/jobs/quick` takes the
+      FIRST geocoder match with no confirmation and no regional bias. A wrong
+      location silently means wrong job-site weather.
+- [ ] **Tray vs grid is undiscoverable.** A new job lands unassigned in the Jobs
+      Tray; the grid only shows jobs with an appointment. Correct behaviour,
+      but nothing says so, so a created job looks like it vanished.
+- [ ] Quick jobs have no squares, so they contribute no capacity until measured
+      or linked to a project.
+- [ ] Broader dispatch pass — Lance: "will need a decent amount of work".
+
+### D. Measurement quality
+- [ ] **Bounding-box matching risk.** Google returns a BOX per plane, not the
+      plane's shape. On a cut-up hip-and-valley roof a facet can match the wrong
+      neighbouring plane and inherit a confidently WRONG pitch — worse than a
+      default, because it looks measured.
+- [ ] **Tune the 50% overlap threshold.** On run `fd1b3168` facet C missed at
+      46% and kept its default. Right call or too strict? Needs more roofs.
+- [ ] Re-saving old runs would adopt Solar pitch (it only applies on save).
+
+### E. Mobile
+- [ ] Foundation is in (viewport meta, touch sensors, 44px targets, `useDevice`)
+      but no screen has had a real mobile pass. Priority order for a contractor
+      in the field: roof-v2 tracing, project detail, dispatch, CRM.
+- [ ] Dispatch on a phone likely needs a single-crew day view rather than a
+      squeezed 7-column week.
+
+### F. Operations
+- [ ] **Daily automated health check** (Playwright) exercising each feature and
+      alerting with the specific failure. Needs a dedicated TEST ACCOUNT and
+      cleanup, or it pollutes production and bills a Solar call every morning.
+      Tier it: cheap checks daily (health, auth_key_source, load
+      projects/dispatch/CRM, open a STORED report), expensive end-to-end
+      (generate a report, run a quote) weekly. Build AFTER the product settles.
+- [ ] Set `SENTRY_DSN` for durable error history — the hook already exists,
+      `/diag/errors` is in-memory only and resets on deploy.
+- [ ] Verify Supabase backup policy on the current tier.
+- [ ] Shrink stored reports further (already 3.4 MB -> ~225 KB by removing a
+      duplicate page).
+
+### G. AI providers
+- [ ] **Add more AI sources / fallbacks.** Three Gemini keys are already being
+      rotated at a volume of one user — that is quota circumvention, not
+      capacity. Move to paid quota on one key and add genuine provider
+      fallbacks. Decide per task which model actually suits it rather than
+      defaulting everything to one.
+
 ## 0a. NEXT SESSION — verify accuracy before anything else
 
 - [ ] **Check a measured pitch against a tape / gable photo.** Solar now reaches
