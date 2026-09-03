@@ -833,7 +833,13 @@ async def _solar_pitch_for_polygons(
         # an imagery/centring artefact (anchor is safe). A trace far smaller
         # than the building means we are looking at a fragment, and its
         # centroid is not the building's centre (anchor is NOT safe).
-        google_area = _f(solar.get("whole_roof_area_sqft"))
+        # `_f` lives in scheduling.py, not here — using it made the whole lookup
+        # raise and swallow itself as "lookup error", which is exactly the kind
+        # of silent failure this diagnostic exists to prevent.
+        try:
+            google_area = float(solar.get("whole_roof_area_sqft") or 0.0)
+        except (TypeError, ValueError):
+            google_area = 0.0
         traced_area = 0.0
         try:
             traced_area = sum(
