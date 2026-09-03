@@ -24,6 +24,14 @@ for report generation.
 
 ---
 
+## 0a. NEXT SESSION — verify accuracy before anything else
+
+- [ ] **Check a measured pitch against a tape / gable photo.** Solar now reaches
+      facets end to end (first success 2026-09-03, run fd1b3168: 4/12 and 5/12
+      measured where 6/12 was always assumed). Axis has still never been verified
+      against physical reality — every calibration row is a test artefact — so the
+      core product claim has no evidence behind it. One roof closes that.
+
 ## 0b. Triggered reminders
 
 - **At 12 paying customers → move billing to a business bank account.** Google Cloud
