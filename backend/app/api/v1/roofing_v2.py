@@ -771,7 +771,23 @@ async def _solar_pitch_for_polygons(
         return out
     try:
         from app.services import solar_service
-        solar = await solar_service.get_building_insights(float(s_lat), float(s_lng))
+        # ASK ABOUT THE RIGHT BUILDING. The endpoint is buildingInsights:
+        # findClosest — Google returns whichever building is nearest the
+        # coordinates given. Passing the tile centre meant asking about
+        # whatever sits in the middle of the picture, which is not necessarily
+        # the house: here the tapped house is ~33 m north of the tile centre,
+        # and Google was describing a building ~55 m east of it. Anchoring
+        # could never fix that, because the data was about a different roof.
+        #
+        # subject_point carries the tapped house's real coordinates. Use them.
+        q_lat, q_lng = float(s_lat), float(s_lng)
+        sp0 = run.get("subject_point")
+        if isinstance(sp0, dict) and sp0.get("lat") is not None and sp0.get("lng") is not None:
+            q_lat, q_lng = float(sp0["lat"]), float(sp0["lng"])
+            diag["queried"] = "subject_point (tapped house)"
+        else:
+            diag["queried"] = "tile centre (no tapped house)"
+        solar = await solar_service.get_building_insights(q_lat, q_lng)
         if not solar.get("available"):
             diag["reason"] = f"solar unavailable: {solar.get('reason') or 'unknown'}"
             logger.info("solar pitch skipped for run %s — %s", run.get("id"), diag["reason"])
