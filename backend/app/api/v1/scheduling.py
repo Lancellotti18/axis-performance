@@ -1547,6 +1547,25 @@ async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(r
         # than an overwritten address.
         proj = pr[0]
         p_lat, p_lng = _f(proj.get("lat")), _f(proj.get("lng"))
+        # Projects frequently have NO coordinates — "701 ripwood rd" has
+        # lat/lng null while its roof run carries the real satellite centre.
+        # Requiring project coords meant this fix silently never fired on
+        # exactly the jobs that needed it. Fall back through everything that
+        # actually knows where the building is.
+        if p_lat is None or p_lng is None:
+            run_row = _latest_run(db, body.project_id, "satellite_lat,satellite_lng,created_at")
+            p_lat, p_lng = _f(run_row.get("satellite_lat")), _f(run_row.get("satellite_lng"))
+        if p_lat is None or p_lng is None:
+            addr = ", ".join(x for x in [proj.get("address"), proj.get("city"),
+                                         proj.get("state"), proj.get("zip_code")] if x)
+            if addr:
+                try:
+                    from app.services import location_service
+                    res = await location_service.search_address(addr, with_geographies=False)
+                    if res.matches:
+                        p_lat, p_lng = res.matches[0].lat, res.matches[0].lng
+                except Exception as e:
+                    logger.info("link geocode fallback failed: %s", e)
         if p_lat is not None and p_lng is not None and job.get("property_id"):
             addr_patch = {
                 "line1": proj.get("address") or proj.get("name") or "Address TBD",
