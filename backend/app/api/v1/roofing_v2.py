@@ -947,7 +947,11 @@ async def put_facets(
     # Pull the tile anchor too — the Solar pitch lookup below needs it. Selecting
     # only "id" here silently starved that lookup of coordinates.
     run = (db.table("roof_measurement_runs")
-           .select("id, satellite_lat, satellite_lng, satellite_zoom")
+           # subject_point is REQUIRED here: it is the tapped-house anchor that
+           # lines Solar's planes up with the traced roof. Omitting it from the
+           # select made the lookup report "no tapped house" on every run that
+           # had one, and fall back to the frame centre — which is the whole bug.
+           .select("id, satellite_lat, satellite_lng, satellite_zoom, subject_point")
            .eq("id", run_id).single().execute())
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
@@ -4006,7 +4010,8 @@ async def solar_diagnostic(run_id: str, user: dict = Depends(require_user)) -> d
     db = get_supabase()
     require_owned_run(db, run_id, user)
     run = db.table("roof_measurement_runs").select(
-        "id, satellite_lat, satellite_lng, satellite_zoom").eq("id", run_id).single().execute()
+        "id, satellite_lat, satellite_lng, satellite_zoom, subject_point"
+    ).eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
 
