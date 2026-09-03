@@ -46,6 +46,18 @@ size — several items cannot start until the LLC clears (~mid/late September).
       webhook, subscription state on the user, correct redirect URLs. The router
       is currently unmounted because it was placeholder code with an
       unauthenticated endpoint handing out Stripe portal links.
+- [ ] **AI TRAINING RIGHTS — must be in the ToS before the first customer trace.**
+      `training_examples` already holds 500+ rows captured by Postgres triggers
+      since 2026-06-07 (confirmed facets/edges, AI corrections, rejections as
+      hard negatives). All Lance's own data today, so no exposure — but the
+      first contractor trace would be collected with no agreement granting the
+      right. Must cover: an explicit licence to train on submitted work; plain
+      disclosure rather than a buried clause; the split between contractor work
+      product and HOMEOWNER data captured by the widget on the contractor's own
+      site; de-identification commitments; whether opt-out exists and on which
+      tiers; and what happens to training data derived from a customer who
+      cancels. The training flywheel is the intended moat — a moat built on data
+      we had no right to collect is not a moat.
 - [ ] **Terms of Service + Privacy Policy.** Not paperwork to defer: Axis stores
       homeowner addresses, imagery and contact details, and the widget collects
       homeowner data ON THE CONTRACTOR'S OWN SITE — so the terms must define what
