@@ -238,7 +238,7 @@ export function LocationPicker({ initialQuery = '', onSelected }: Props) {
 
       <div className="flex items-center justify-between text-xs text-[#6b7280]">
         <span>Powered by US Census Bureau + FCC Area API (free, authoritative)</span>
-        <button onClick={() => setManual(true)} className="text-blue-400 hover:text-blue-300">Enter manually →</button>
+        <button onClick={() => setManual(true)} className="text-blue-400 hover:text-blue-800">Enter manually →</button>
       </div>
     </div>
   )

@@ -85,7 +85,7 @@ export default function PreReportChecklist({ runId, facets, edges }: Props) {
           <li key={i} className="flex items-start gap-2 text-xs">
             <span className={c.ok ? 'text-emerald-400' : 'text-amber-400'}>{c.ok ? '✓' : '⚠'}</span>
             <div>
-              <span className={c.ok ? 'text-[#1a1a1a]' : 'text-amber-200'}>{c.label}</span>
+              <span className={c.ok ? 'text-[#1a1a1a]' : 'text-amber-900'}>{c.label}</span>
               <span className="text-[#6b7280]"> — {c.detail}</span>
             </div>
           </li>

@@ -159,7 +159,7 @@ export default function AdjusterModePanel({ runId }: { runId: string }) {
               <tbody className="divide-y divide-white/5 text-[#1a1a1a]">
                 {lines.map((l, i) => (
                   <tr key={i} title={l.trace}>
-                    <td className="px-3 py-2 font-mono text-sky-300">{l.code}</td>
+                    <td className="px-3 py-2 font-mono text-sky-800">{l.code}</td>
                     <td className="px-3 py-2">{l.description}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{l.quantity.toFixed(2)}</td>
                     <td className="px-3 py-2 text-[#6b7280]">{l.unit}</td>

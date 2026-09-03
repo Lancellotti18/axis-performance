@@ -146,7 +146,7 @@ export default function ClientPortalPanel({ projectId }: Props) {
               <div key={m.id} className={`flex ${m.sender === 'contractor' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-xs ${ m.sender === 'contractor' ? 'rounded-br-md bg-blue-600 text-white' : 'rounded-bl-md bg-[#e4e4e2] text-[#1a1a1a]' }`}>
                   <div className="whitespace-pre-wrap break-words">{m.body}</div>
-                  <div className={`mt-0.5 text-[9px] ${m.sender === 'contractor' ? 'text-blue-200' : 'text-[#6b7280]'}`}>
+                  <div className={`mt-0.5 text-[9px] ${m.sender === 'contractor' ? 'text-blue-900' : 'text-[#6b7280]'}`}>
                     {m.sender === 'contractor' ? 'You' : (m.sender_name || 'Homeowner')}
                     {' · '}{new Date(m.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                   </div>

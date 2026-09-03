@@ -101,19 +101,19 @@ export default function HousePicker({
     <section className="rounded-lg border border-emerald-400/30 bg-emerald-500/[0.07] p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-emerald-100">📍 Tap your house</h3>
+          <h3 className="text-sm font-semibold text-emerald-900">📍 Tap your house</h3>
           <p className="text-xs text-[#6b7280]">
             Tap the <strong>center of YOUR roof</strong> so auto-detect locks onto the right building —
             not a neighbor or a shed. The marker starts on the address; re-tap to adjust.
           </p>
           {address && (
-            <p className="mt-1 text-[11px] text-emerald-200/80">
-              Property: <span className="font-medium text-emerald-100">{address}</span>
+            <p className="mt-1 text-[11px] text-emerald-900/80">
+              Property: <span className="font-medium text-emerald-900">{address}</span>
             </p>
           )}
         </div>
         {confirmed && (
-          <span className="shrink-0 rounded-full bg-emerald-500/20 px-2.5 py-1 text-[10px] font-semibold text-emerald-300">
+          <span className="shrink-0 rounded-full bg-emerald-500/20 px-2.5 py-1 text-[10px] font-semibold text-emerald-800">
             Locked ✓
           </span>
         )}

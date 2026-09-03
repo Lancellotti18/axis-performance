@@ -902,7 +902,7 @@ export function RoofFacetEditor({
         <button
           onClick={() => setShowCoach(true)}
           title="How to trace the roof for the best auto-label results"
-          className="rounded-md bg-[#eeeeed] px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-[#e4e4e2]"
+          className="rounded-md bg-[#eeeeed] px-3 py-1.5 text-xs font-medium text-blue-800 hover:bg-[#e4e4e2]"
         >? How to trace</button>
         {onAutoLabelEdges && (
           <button
@@ -949,13 +949,13 @@ export function RoofFacetEditor({
               )}
             </label>
             <span
-              className={`rounded px-2 py-0.5 text-[10px] ${ shiftHeld ? 'bg-blue-500/30 text-blue-200' : 'bg-[#eeeeed] text-[#6b7280]' }`}
+              className={`rounded px-2 py-0.5 text-[10px] ${ shiftHeld ? 'bg-blue-500/30 text-blue-900' : 'bg-[#eeeeed] text-[#6b7280]' }`}
               title="Hold Shift while clicking to constrain new vertex to 45° angles from the previous one"
             >
               ⇧ {shiftHeld ? 'ortho ON' : 'ortho (hold ⇧)'}
             </span>
             <span
-              className={`rounded px-2 py-0.5 text-[10px] ${ altHeld ? 'bg-emerald-500/30 text-emerald-200' : 'bg-[#eeeeed] text-[#6b7280]' }`}
+              className={`rounded px-2 py-0.5 text-[10px] ${ altHeld ? 'bg-emerald-500/30 text-emerald-900' : 'bg-[#eeeeed] text-[#6b7280]' }`}
               title="Hold Alt/Option while clicking to place the vertex exactly under the cursor, bypassing snap"
             >
               ⌥ {altHeld ? 'exact ON' : 'exact (hold ⌥)'}
@@ -963,7 +963,7 @@ export function RoofFacetEditor({
           </>
         )}
         {mode === 'draw' && drawingPoly.length > 0 && (
-          <span className="rounded bg-amber-500/20 px-2 py-1 text-xs text-amber-200">
+          <span className="rounded bg-amber-500/20 px-2 py-1 text-xs text-amber-900">
             Drawing — {drawingPoly.length} vertex{drawingPoly.length === 1 ? '' : 'es'}. Click first dot or press Enter to close.
           </span>
         )}
@@ -1005,7 +1005,7 @@ export function RoofFacetEditor({
             >I&apos;ll label by hand</button>
             <button
               onClick={() => setLabelNudgeDismissed(true)}
-              className="rounded p-1 text-emerald-200/60 hover:text-[#1a1a1a]"
+              className="rounded p-1 text-emerald-900/60 hover:text-[#1a1a1a]"
               aria-label="Dismiss"
             >✕</button>
           </div>
@@ -1199,7 +1199,7 @@ export function RoofFacetEditor({
                 </li>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white">5</span>
-                  <span>Hit <strong className="text-emerald-300">✨ Auto-label edges</strong>, then review — accept the good ones, fix any single edge by hand. The measurements lock in once you confirm.</span>
+                  <span>Hit <strong className="text-emerald-800">✨ Auto-label edges</strong>, then review — accept the good ones, fix any single edge by hand. The measurements lock in once you confirm.</span>
                 </li>
               </ol>
               <div className="mt-2 rounded bg-[#eeeeed] px-2 py-1.5 text-[10px] text-[#6b7280]">
@@ -1321,7 +1321,7 @@ export function RoofFacetEditor({
                     <strong className="text-[#1a1a1a]">Facet {f.label}</strong>
                     <button
                       onClick={(ev) => { ev.stopPropagation(); deleteFacet(i) }}
-                      className="text-xs text-rose-400 hover:text-rose-300"
+                      className="text-xs text-rose-400 hover:text-rose-800"
                     >Remove</button>
                   </div>
                   <div className="mb-1 flex items-center gap-2 text-xs text-[#2d2d2d]">

@@ -139,7 +139,7 @@ export default function JobVerificationPanel({ runId, userId, predictedSquares }
           className="rounded bg-blue-600 px-3 py-1.5 font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
         >{saving ? 'Saving…' : 'Record'}</button>
       </div>
-      {result && <p className="mt-2 text-xs text-emerald-300">{result}</p>}
+      {result && <p className="mt-2 text-xs text-emerald-800">{result}</p>}
       {calibration && calibration.jobs > 0 && calibration.jobs < 3 && (
         <p className="mt-2 text-[11px] text-[#6b7280]">
           {calibration.jobs} verified job{calibration.jobs === 1 ? '' : 's'} so far — your accuracy stat appears on reports after 3.

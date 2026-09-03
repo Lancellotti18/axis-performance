@@ -271,8 +271,8 @@ export default function AutoAnalyzePanel({
   const icon = (s: StepStatus) =>
     s === 'done' ? '✓' : s === 'running' ? '…' : s === 'failed' ? '✕' : s === 'skipped' ? '↷' : '·'
   const tone = (s: StepStatus) =>
-    s === 'done' ? 'text-emerald-300' : s === 'running' ? 'text-blue-300'
-      : s === 'failed' ? 'text-rose-300' : s === 'skipped' ? 'text-[#6b7280]' : 'text-[#9ca3af]'
+    s === 'done' ? 'text-emerald-800' : s === 'running' ? 'text-blue-800'
+      : s === 'failed' ? 'text-rose-800' : s === 'skipped' ? 'text-[#6b7280]' : 'text-[#9ca3af]'
 
   return (
     <section className={`rounded-lg border p-4 text-sm ${ facetCount === 0 ? 'border-blue-400/40 bg-blue-500/10' : 'border-[#dededc] bg-[#f8f8f7]' }`}>
@@ -281,7 +281,7 @@ export default function AutoAnalyzePanel({
           <h3 className="text-sm font-semibold text-[#1a1a1a]">⚡ Auto-analyze this roof</h3>
           <p className="text-xs text-[#6b7280]">
             {awaitingHouse
-              ? <>⬆ <strong className="text-blue-200">Confirm your house above first.</strong> Analysis starts automatically the moment you lock it in — that tap is what guarantees we measure YOUR roof, not the neighbor&apos;s.</>
+              ? <>⬆ <strong className="text-blue-900">Confirm your house above first.</strong> Analysis starts automatically the moment you lock it in — that tap is what guarantees we measure YOUR roof, not the neighbor&apos;s.</>
               : running
                 ? 'Drawing the roof for you — planes snapped to the building edge, pitch from solar data…'
                 : 'AI draws the roof (Solar planes clipped to the real building outline) and labels every edge — you just verify and nudge.'}
@@ -300,7 +300,7 @@ export default function AutoAnalyzePanel({
           {steps.map(s => (
             <li key={s.id} className="flex items-center gap-2">
               <span className={`w-4 text-center font-bold ${tone(s.status)}`}>{icon(s.status)}</span>
-              <span className={s.status === 'running' ? 'text-blue-200' : 'text-[#2d2d2d]'}>{s.label}</span>
+              <span className={s.status === 'running' ? 'text-blue-900' : 'text-[#2d2d2d]'}>{s.label}</span>
               {s.detail && <span className="text-[#6b7280]">— {s.detail}</span>}
               {s.status === 'running' && <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />}
             </li>

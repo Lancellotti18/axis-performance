@@ -39,7 +39,7 @@ interface Suggestion {
 function pitchSourceMeta(src?: string): { label: string; color: string } {
   switch (src) {
     case 'solar_measured': return { label: 'measured by Google Solar ✓', color: 'text-emerald-400' }
-    case 'solar_direction': return { label: 'Solar pitch (same-facing plane)', color: 'text-emerald-300/80' }
+    case 'solar_direction': return { label: 'Solar pitch (same-facing plane)', color: 'text-emerald-800/80' }
     case 'ground_photo': return { label: 'from ground photo ✓', color: 'text-emerald-400' }
     case 'ai_satellite': return { label: 'AI from satellite — verify', color: 'text-[#6b7280]' }
     default: return { label: 'default — set this!', color: 'text-amber-400' }
@@ -71,9 +71,9 @@ function prettyFacetType(t?: string): string {
 // showing "90% confident" makes contractors trust a guess that may be on the
 // neighbor's roof. Present it as a qualitative band that always says "verify".
 function confidenceBand(c: number): { label: string; color: string } {
-  if (c >= 0.75) return { label: 'AI: looks clear — verify', color: 'text-emerald-300' }
-  if (c >= 0.5) return { label: 'AI: likely — verify', color: 'text-amber-300' }
-  return { label: 'AI: unsure — check carefully', color: 'text-rose-300' }
+  if (c >= 0.75) return { label: 'AI: looks clear — verify', color: 'text-emerald-800' }
+  if (c >= 0.5) return { label: 'AI: likely — verify', color: 'text-amber-800' }
+  return { label: 'AI: unsure — check carefully', color: 'text-rose-800' }
 }
 
 interface Props {
@@ -224,12 +224,12 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
 
       {/* Loading state with elapsed timer + cold-start hint */}
       {loading && (
-        <div className="mt-3 flex items-center gap-3 rounded-md border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-200">
+        <div className="mt-3 flex items-center gap-3 rounded-md border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-900">
           <RoofScanSpinner size={30} className="flex-shrink-0" />
           <div>
             <div>Analyzing the satellite tile with AI vision… {elapsed}s</div>
             {elapsed >= 8 && (
-              <div className="mt-0.5 text-[10px] text-blue-300/80">
+              <div className="mt-0.5 text-[10px] text-blue-800/80">
                 First request after the server idles can take up to ~60s (cold start). Hang tight.
               </div>
             )}
@@ -239,15 +239,15 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
 
       {/* Cross-check vs the ground photo's read of the roof shape. */}
       {countCheck && !loading && !error && (
-        <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 text-[11px] text-amber-200">
+        <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 text-[11px] text-amber-900">
           🔎 <strong>Count check:</strong> {countCheck.note}
         </div>
       )}
 
       {error && !loading && (
-        <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/5 p-3 text-xs text-rose-300">
+        <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/5 p-3 text-xs text-rose-800">
           <div className="font-semibold">Auto-detect failed</div>
-          <div className="mt-1 text-rose-200/90">{error}</div>
+          <div className="mt-1 text-rose-900/90">{error}</div>
           <button onClick={runDetect} className="mt-2 rounded bg-rose-700 px-2.5 py-1 text-xs text-white hover:bg-rose-600">
             Try again
           </button>
@@ -258,10 +258,10 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
           plus concrete next steps. */}
       {ran && !loading && !error && suggestions.length === 0 && (
         <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
-          <div className="font-semibold text-amber-200">AI didn&apos;t find facets it was confident about</div>
+          <div className="font-semibold text-amber-900">AI didn&apos;t find facets it was confident about</div>
           {reason && (
-            <div className="mt-1 text-amber-100/90">
-              <span className="text-amber-300/80">What the AI saw: </span>{reason}
+            <div className="mt-1 text-amber-900/90">
+              <span className="text-amber-800/80">What the AI saw: </span>{reason}
             </div>
           )}
           {message && <div className="mt-1 text-[#2d2d2d]">{message}</div>}
@@ -283,7 +283,7 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
       {suggestions.length > 0 && (
         <div className="mt-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-wide text-amber-300">
+            <span className="text-[10px] uppercase tracking-wide text-amber-800">
               {suggestions.length} facet{suggestions.length === 1 ? '' : 's'} suggested · click thumbnail to enlarge
             </span>
             <div className="flex items-center gap-2">
@@ -327,12 +327,12 @@ export function FacetSuggestions({ runId, imageUrl, existingFacets, onAccept }: 
                       </span>
                       {s.solar_confirmed ? (
                         <span
-                          className="rounded bg-emerald-600/25 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300"
+                          className="rounded bg-emerald-600/25 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800"
                           title="Google Solar confirms a real roof plane here, with measured pitch. This is a trustworthy facet."
                         >✓ Google Solar</span>
                       ) : solarUsed ? (
                         <span
-                          className="rounded bg-amber-600/25 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300"
+                          className="rounded bg-amber-600/25 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
                           title="Google Solar did NOT find a roof plane here — this AI guess may be a neighbor, shadow, or the ground. Check it carefully."
                         >⚠ not in Solar</span>
                       ) : null}

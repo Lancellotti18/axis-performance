@@ -75,7 +75,7 @@ export default function ScaleCheckPanel({ runId, imageUrl, imageWidthPx, imageHe
   const areaErrPct = (Math.pow(1 + discrepancyPct / 100, 2) - 1) * 100
 
   const verdict = Math.abs(discrepancyPct) < 3 ? 'good' : Math.abs(discrepancyPct) < 8 ? 'minor' : 'significant'
-  const verdictTone = verdict === 'good' ? 'text-emerald-300' : verdict === 'minor' ? 'text-amber-300' : 'text-rose-300'
+  const verdictTone = verdict === 'good' ? 'text-emerald-800' : verdict === 'minor' ? 'text-amber-800' : 'text-rose-800'
 
   const saveReference = useCallback(async () => {
     if (refPpf <= 0) return

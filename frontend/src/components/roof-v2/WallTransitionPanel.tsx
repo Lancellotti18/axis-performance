@@ -167,7 +167,7 @@ export default function WallTransitionPanel({
           the contractor confirms with one tap. */}
       {(photoWall || photoDormers > 0) && (
         <div className="mt-3 rounded-md border border-emerald-400/30 bg-emerald-500/5 p-2.5 text-[11px]">
-          <div className="text-emerald-200">
+          <div className="text-emerald-900">
             📷 Your ground photo detected{' '}
             {photoWall && <strong>a roof-to-wall abutment</strong>}
             {photoWall && photoDormers > 0 && ' and '}

@@ -224,7 +224,7 @@ export function EdgeLabelSuggestions({
         <div>
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-[#1a1a1a]">
             ✨ Auto-label edges
-            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">recommended</span>
+            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-800">recommended</span>
             <button
               onClick={() => setShowHowTo(v => !v)}
               className="flex h-4 w-4 items-center justify-center rounded-full border border-[#dededc] text-[10px] text-[#6b7280] hover:bg-[#eeeeed] hover:text-[#1a1a1a]"
@@ -261,7 +261,7 @@ export function EdgeLabelSuggestions({
       {showHowTo && (
         <div className="mt-3 rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-3 text-xs">
           <div className="mb-2 flex items-center justify-between">
-            <span className="font-semibold text-emerald-200">How auto-labeling works</span>
+            <span className="font-semibold text-emerald-900">How auto-labeling works</span>
             <button onClick={dismissHowTo} className="rounded p-0.5 text-[#6b7280] hover:bg-[#eeeeed] hover:text-[#1a1a1a]" aria-label="Dismiss">✕</button>
           </div>
           <ol className="space-y-1.5 text-[#2d2d2d]">
@@ -297,8 +297,10 @@ export function EdgeLabelSuggestions({
         ) : unconfirmedLabeled.length > 0 ? (
           // Every edge has a type, but some are still the machine's opinion.
           // This is the one place that can clear them, so it says so plainly.
-          <div className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/5 p-3">
-            <p className="text-xs text-amber-100/90">
+          // amber-100 on a 5%-opacity amber panel was a dark-theme leftover:
+          // over a white page that is pale ink on near-white, i.e. unreadable.
+          <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+            <p className="text-xs text-amber-900">
               Every edge has a label, but <strong>{counts.needsConfirm} roof line{counts.needsConfirm === 1 ? '' : 's'}</strong>{' '}
               {counts.needsConfirm === 1 ? 'is' : 'are'} still unconfirmed — labels applied automatically that nobody has
               signed off on. The measurements stay provisional until you do.
@@ -328,7 +330,7 @@ export function EdgeLabelSuggestions({
       {suggestions.length > 0 && (
         <div className="mt-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-wide text-amber-300">
+            <span className="text-[10px] uppercase tracking-wide text-amber-800">
               {suggestions.length} label{suggestions.length === 1 ? '' : 's'} suggested
             </span>
             <div className="flex gap-2">
@@ -350,9 +352,9 @@ export function EdgeLabelSuggestions({
                 <ul className="space-y-1">
                   {sugList.map((s) => {
                     const confColor =
-                      s.confidence >= 0.7 ? 'text-emerald-300'
-                      : s.confidence >= 0.5 ? 'text-amber-300'
-                      : 'text-rose-300'
+                      s.confidence >= 0.7 ? 'text-emerald-800'
+                      : s.confidence >= 0.5 ? 'text-amber-800'
+                      : 'text-rose-800'
                     const color = EDGE_COLORS[s.suggested_edge_type] || EDGE_COLORS.unlabeled
                     return (
                       <li

@@ -132,7 +132,7 @@ export default function SolarAssistPanel({
         <section className="rounded-lg border border-blue-400/30 bg-blue-500/5 p-4 text-sm">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h3 className="text-sm font-semibold text-blue-200">Auto-draw: building outline</h3>
+              <h3 className="text-sm font-semibold text-blue-900">Auto-draw: building outline</h3>
               <p className="text-xs text-[#6b7280]">
                 No Google Solar data here, but we found this building&apos;s outline (OpenStreetMap).
                 Drop it on the tile, then split it into roof planes and set pitch.
@@ -159,7 +159,7 @@ export default function SolarAssistPanel({
   return (
     <section className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-4 text-sm">
       <div>
-        <h3 className="text-sm font-semibold text-emerald-200">Google Solar roof data ✓</h3>
+        <h3 className="text-sm font-semibold text-emerald-900">Google Solar roof data ✓</h3>
         <p className="text-xs text-[#6b7280]">
           Google pre-segmented this roof into <strong>{data.segment_count}</strong> plane{data.segment_count === 1 ? '' : 's'}
           {data.whole_roof_area_sqft ? <> · ~{Math.round(data.whole_roof_area_sqft).toLocaleString()} ft² total</> : null}

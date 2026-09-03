@@ -648,7 +648,7 @@ export default function RoofV2Page() {
         <section className="space-y-4">
           {/* Quick start: create a new roofing project right here */}
           <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-4">
-            <h2 className="mb-2 text-sm font-semibold text-emerald-200">Quick start — new project</h2>
+            <h2 className="mb-2 text-sm font-semibold text-emerald-900">Quick start — new project</h2>
             <p className="mb-3 text-xs text-[#6b7280]">
               Skip the Projects page. Just name your job (the property address or anything memorable)
               and start measuring. We'll create the project record automatically.
@@ -681,7 +681,7 @@ export default function RoofV2Page() {
                     <button
                       onClick={() => void deleteProject(p.id, p.name)}
                       title="Delete project"
-                      className="absolute right-2 top-2 rounded px-1.5 py-0.5 text-xs text-[#6b7280] opacity-0 transition hover:bg-rose-600/30 hover:text-rose-300 group-hover:opacity-100"
+                      className="absolute right-2 top-2 rounded px-1.5 py-0.5 text-xs text-[#6b7280] opacity-0 transition hover:bg-rose-600/30 hover:text-rose-800 group-hover:opacity-100"
                     >✕</button>
                     <div onClick={() => void pickProject(p.id)} className="cursor-pointer pr-5">
                       <div className="font-medium">{p.name}</div>
@@ -690,7 +690,7 @@ export default function RoofV2Page() {
                           {[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}
                         </div>
                       )}
-                      <div className="mt-1 text-[10px] text-blue-300/70">Click to open / resume →</div>
+                      <div className="mt-1 text-[10px] text-blue-800/70">Click to open / resume →</div>
                     </div>
                   </li>
                 ))}
@@ -731,24 +731,24 @@ export default function RoofV2Page() {
                   value={imagery.zoom != null
                     ? (imagery.zoom >= 22 ? `z${imagery.zoom}` : `z${imagery.zoom} (max here)`)
                     : '—'}
-                  color={imagery.zoom != null && imagery.zoom >= 22 ? 'text-emerald-300' : imagery.zoom != null && imagery.zoom < 22 ? 'text-amber-300' : undefined}
+                  color={imagery.zoom != null && imagery.zoom >= 22 ? 'text-emerald-800' : imagery.zoom != null && imagery.zoom < 22 ? 'text-amber-800' : undefined}
                 />
                 <Stat label="Status" value={imagery.status} color={
-                  imagery.status === 'ok' ? 'text-emerald-300'
-                  : imagery.status === 'degraded' ? 'text-amber-300'
-                  : 'text-rose-300'
+                  imagery.status === 'ok' ? 'text-emerald-800'
+                  : imagery.status === 'degraded' ? 'text-amber-800'
+                  : 'text-rose-800'
                 }/>
                 <Stat label="Provider" value={imagery.provider ?? '—'} />
                 <Stat label="Health" value={`${Math.round((imagery.health_score ?? 0) * 100)}%`} />
                 <Stat
                   label="Resolution"
                   value={`${imagery.feet_per_pixel?.toFixed(3) ?? '?'} ft/px`}
-                  color={(imagery.warnings || []).some(w => w.includes('sharpened')) ? 'text-emerald-300' : undefined}
+                  color={(imagery.warnings || []).some(w => w.includes('sharpened')) ? 'text-emerald-800' : undefined}
                 />
               </div>
               {imagery.warnings.length > 0 && (
-                <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-300">
-                  {imagery.warnings.map((w, i) => <li key={i} className={w.includes('sharpened') ? 'text-emerald-300' : ''}>{w}</li>)}
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-800">
+                  {imagery.warnings.map((w, i) => <li key={i} className={w.includes('sharpened') ? 'text-emerald-800' : ''}>{w}</li>)}
                 </ul>
               )}
 
@@ -779,7 +779,7 @@ export default function RoofV2Page() {
                 </div>
               )}
               {imagery.status === 'unavailable' && (
-                <div className="mt-3 text-xs text-rose-300">
+                <div className="mt-3 text-xs text-rose-800">
                   All satellite providers failed. Configure MAPBOX_ACCESS_TOKEN or MAPTILER_API_KEY on the backend, or use manual measurement via blueprint upload.
                 </div>
               )}
@@ -797,13 +797,13 @@ export default function RoofV2Page() {
               {imagery.provider} · z{imagery.zoom} · {imagery.feet_per_pixel?.toFixed(3)} ft/px
             </span>
             {(imagery.warnings || []).some(w => w.includes('sharpened')) && (
-              <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-emerald-300">
+              <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-emerald-800">
                 ✨ AI-sharpened
               </span>
             )}
             {(imagery.warnings || []).filter(w => w.includes('sharpest of')).map(w => (
               <span key={w} title="All satellite sources were compared for this address and the crispest tile won"
-                className="rounded bg-blue-500/20 px-2 py-0.5 text-blue-300">
+                className="rounded bg-blue-500/20 px-2 py-0.5 text-blue-800">
                 🎯 {w}
               </span>
             ))}
@@ -958,7 +958,7 @@ export default function RoofV2Page() {
           flows into the PDF report (it's read from the saved run data). */}
       {step === 'details' && runId && (
         <section className="space-y-4">
-          <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3 text-xs text-blue-200">
+          <div className="rounded-lg border border-blue-400/20 bg-blue-500/5 p-3 text-xs text-blue-900">
             <strong>Details</strong> — fine-tune pitch from ground photos and add chimneys/skylights.
             Optional but recommended; everything here lands in your report.
           </div>
@@ -1033,7 +1033,7 @@ export default function RoofV2Page() {
           that need a site visit, so they belong together and nowhere else. */}
       {SHOW_SIDING && step === 'siding' && (
         <section className="space-y-4">
-          <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/[0.06] p-3 text-xs text-emerald-100/90">
+          <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/[0.06] p-3 text-xs text-emerald-900/90">
             <span className="mr-2 rounded-full bg-emerald-600/80 px-2 py-0.5 text-[10px] font-semibold text-white">Optional — needs a site visit</span>
             Your report is already complete without this. If you happen to be at the property, these two
             tools sharpen it: ground photos confirm the <strong>real pitch</strong> and catch penetrations the
@@ -1231,8 +1231,8 @@ function SaveIndicator({
   if (state === 'error') {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2">
-        <span className="text-xs font-semibold text-rose-200">⚠ Your roof isn&apos;t saved</span>
-        <span className="text-[11px] text-rose-200/70">The last change didn&apos;t reach the server.</span>
+        <span className="text-xs font-semibold text-rose-900">⚠ Your roof isn&apos;t saved</span>
+        <span className="text-[11px] text-rose-900/70">The last change didn&apos;t reach the server.</span>
         <button
           onClick={onRetry}
           className="ml-auto rounded bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-rose-500"

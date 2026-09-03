@@ -243,8 +243,8 @@ export default function EdgeReviewModal({
               </div>
             )}
 
-            <div className="mt-3 rounded-lg border border-amber-400/25 bg-amber-500/[0.07] p-2">
-              <div className="text-[11px] font-semibold text-amber-200">
+            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-2">
+              <div className="text-[11px] font-semibold text-amber-900">
                 👆 Wrong? Tap the correct type — it fixes instantly
               </div>
               <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -263,7 +263,7 @@ export default function EdgeReviewModal({
                     >
                       <span className="inline-block h-3 w-3 rounded-full" style={{ background: t.color }} />
                       {t.label}
-                      {isCorrection && <span className="ml-auto text-[9px] font-bold text-amber-300">FIX</span>}
+                      {isCorrection && <span className="ml-auto text-[9px] font-bold text-amber-800">FIX</span>}
                     </button>
                   )
                 })}
@@ -308,8 +308,10 @@ function Backdrop({ children, onClose }: { children: React.ReactNode; onClose: (
 }
 
 function ConfidencePill({ v }: { v: number }) {
-  const tone = v >= 0.75 ? 'bg-emerald-900/50 text-emerald-300'
-    : v >= 0.5 ? 'bg-amber-900/50 text-amber-300'
-    : 'bg-rose-900/50 text-rose-300'
+  // Dark translucent pills with pale text read as muddy smears on a light
+  // page — and these carry the confidence number, which has to be legible.
+  const tone = v >= 0.75 ? 'bg-emerald-100 text-emerald-900'
+    : v >= 0.5 ? 'bg-amber-100 text-amber-900'
+    : 'bg-rose-100 text-rose-900'
   return <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${tone}`}>{Math.round(v * 100)}%</span>
 }

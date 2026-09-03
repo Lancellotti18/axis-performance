@@ -162,7 +162,7 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
       {/* AI suggestions awaiting confirmation */}
       {suggestions.length > 0 && (
         <div className="mt-4">
-          <div className="mb-2 text-[10px] uppercase tracking-wide text-amber-300">
+          <div className="mb-2 text-[10px] uppercase tracking-wide text-amber-800">
             AI suggestions — needs your verification
           </div>
           <ul className="space-y-2">
@@ -212,7 +212,7 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
       {/* Confirmed list */}
       {confirmed.length > 0 && (
         <div className="mt-4">
-          <div className="mb-2 text-[10px] uppercase tracking-wide text-emerald-300">
+          <div className="mb-2 text-[10px] uppercase tracking-wide text-emerald-800">
             Confirmed ({confirmed.length})
           </div>
           <ul className="space-y-1">
@@ -228,7 +228,7 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
                 </span>
                 <button
                   onClick={() => removeConfirmed(p.id)}
-                  className="text-rose-400 hover:text-rose-300"
+                  className="text-rose-400 hover:text-rose-800"
                 >Remove</button>
               </li>
             ))}

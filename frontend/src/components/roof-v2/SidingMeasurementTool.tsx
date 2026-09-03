@@ -362,7 +362,7 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
             <div className="space-y-2 rounded border border-[#dededc] bg-[#eeeeed] p-3 text-xs">
               <p className="text-[#6b7280]">
                 Click around the siding region — each click drops a point. <strong>Drag any point to adjust.</strong>
-                {tracePoly.length >= 3 && <> Click the <span className="text-emerald-300">first point</span> to close.</>}
+                {tracePoly.length >= 3 && <> Click the <span className="text-emerald-800">first point</span> to close.</>}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => setTracePoly(prev => prev.slice(0, -1))} disabled={!tracePoly.length}
@@ -372,7 +372,7 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
                 {tracePoly.length >= 3 && (
                   <>
                     <button onClick={() => setPhase('review')} className="rounded bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-500">Finish ({tracePoly.length}) →</button>
-                    <span className="text-emerald-300">Live: <strong>{liveAreaSqft.toLocaleString()} ft²</strong></span>
+                    <span className="text-emerald-800">Live: <strong>{liveAreaSqft.toLocaleString()} ft²</strong></span>
                   </>
                 )}
               </div>
@@ -381,7 +381,7 @@ export function SidingMeasurementTool({ projectId, onSaved }: Props) {
 
           {phase === 'review' && (
             <div className="space-y-2 rounded border border-emerald-400/30 bg-emerald-500/10 p-3 text-xs">
-              <div className="text-emerald-200">
+              <div className="text-emerald-900">
                 Siding area: <strong>{liveAreaSqft.toLocaleString()} ft²</strong> @ {scaleInPerPx.toFixed(3)} in/px.
                 {' '}<button onClick={() => setPhase('trace')} className="underline hover:text-[#1a1a1a]">edit shape</button>
               </div>
@@ -496,7 +496,7 @@ function SidingGuide() {
   return (
     <div className="rounded-md border border-blue-400/20 bg-blue-500/5">
       <button onClick={() => setOpen(o => !o)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs">
-        <span className="font-semibold text-blue-200">📐 How siding measurement works — read first</span>
+        <span className="font-semibold text-blue-900">📐 How siding measurement works — read first</span>
         <span className="text-[#6b7280]">{open ? 'Hide' : 'Show'}</span>
       </button>
       {open && (
@@ -512,7 +512,7 @@ function SidingGuide() {
             <li><strong className="text-[#1a1a1a]">3 · Trace</strong> the siding area — click around the wall; trace <strong>around big windows/garage doors</strong> to leave them out. Drag any point to adjust.</li>
             <li><strong className="text-[#1a1a1a]">4 · Review &amp; save</strong> — set the elevation + material, check the ft², and save. Then upload the next wall.</li>
           </ol>
-          <div className="rounded border border-amber-400/20 bg-amber-500/5 p-2 text-amber-200/90">
+          <div className="rounded border border-amber-400/20 bg-amber-500/5 p-2 text-amber-900/90">
             <strong>For the best accuracy:</strong> stand back and square-on (not at an angle), shoot in daylight,
             and pick the <em>biggest</em> reference object in frame (a garage door beats a window) — bigger reference = less scale error.
           </div>
@@ -532,7 +532,7 @@ function SidingStepHint({ phase }: { phase: Phase }) {
       : ''
   if (!hint) return null
   return (
-    <div className="rounded-md border border-blue-400/20 bg-blue-500/5 px-3 py-1.5 text-[11px] font-medium text-blue-200">
+    <div className="rounded-md border border-blue-400/20 bg-blue-500/5 px-3 py-1.5 text-[11px] font-medium text-blue-900">
       {hint}
     </div>
   )

@@ -17,9 +17,9 @@ interface Props {
 
 const STATUS_TONE: Record<string, string> = {
   draft: 'bg-[#d4d4d2] text-[#2d2d2d] border-slate-500/40',
-  sent: 'bg-blue-500/20 text-blue-300 border-blue-400/40',
-  accepted: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40',
-  declined: 'bg-rose-500/20 text-rose-300 border-rose-400/40',
+  sent: 'bg-blue-500/20 text-blue-800 border-blue-400/40',
+  accepted: 'bg-emerald-500/20 text-emerald-800 border-emerald-400/40',
+  declined: 'bg-rose-500/20 text-rose-800 border-rose-400/40',
   expired: 'bg-[#d4d4d2] text-[#6b7280] border-slate-500/40',
 }
 
@@ -133,7 +133,7 @@ export default function ProposalPanel({ runId, projectId }: Props) {
                     <span className="text-[#2d2d2d]">{p.address || 'Proposal'}</span>
                     <span className="text-[#6b7280]">· {p.squares ?? '—'} sq</span>
                     {p.status === 'accepted' && p.accepted_tier && (
-                      <span className="font-semibold text-emerald-300">
+                      <span className="font-semibold text-emerald-800">
                         ✓ {p.accepted_by_name} accepted “{p.accepted_tier}”
                       </span>
                     )}

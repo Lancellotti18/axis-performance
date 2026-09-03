@@ -255,7 +255,7 @@ function PhotoSlot({
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-[#1a1a1a]">
             <span>{slot.emoji}</span><span>{slot.label}</span>
-            {slot.star && <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">Best for pitch</span>}
+            {slot.star && <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-800">Best for pitch</span>}
             {done && <span className="text-emerald-400">✓</span>}
           </div>
           <div className="mt-0.5 text-[11px] leading-snug text-[#6b7280]">{slot.hint}</div>
@@ -285,7 +285,7 @@ function PhotoSlot({
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-[#eeeeed] text-[10px] text-[#6b7280]">…</div>
               )}
               <div className="min-w-0 flex-1">
-                {p.status === 'analyzing' && <div className="flex items-center gap-1.5 text-[11px] text-blue-300"><span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Analyzing…</div>}
+                {p.status === 'analyzing' && <div className="flex items-center gap-1.5 text-[11px] text-blue-800"><span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Analyzing…</div>}
                 {p.status === 'error' && <div className="text-[11px] text-rose-400">{p.error}</div>}
                 {p.status === 'done' && p.results && p.results.some(r => r.findings) ? (
                   <div className="space-y-1">
@@ -313,19 +313,19 @@ function PhotoGuide() {
   return (
     <div className="mt-2 rounded-md border border-blue-400/20 bg-blue-500/5">
       <button onClick={() => setOpen(o => !o)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs">
-        <span className="font-semibold text-blue-200">📸 Photo playbook — exactly what to shoot for an accurate estimate</span>
+        <span className="font-semibold text-blue-900">📸 Photo playbook — exactly what to shoot for an accurate estimate</span>
         <span className="text-[#6b7280]">{open ? 'Hide' : 'Show'}</span>
       </button>
       {open && (
         <div className="space-y-3 border-t border-blue-400/10 px-3 py-2.5 text-[11px] text-[#2d2d2d]">
           <div className="rounded bg-[#f8f8f7] p-2">
-            <div className="font-semibold text-blue-200">The 30-second walk-around (6–8 photos)</div>
+            <div className="font-semibold text-blue-900">The 30-second walk-around (6–8 photos)</div>
             <p className="mt-0.5 text-[#6b7280]">Walk the perimeter once. Shoot in daylight, hold the phone level (landscape), and stand back far enough that the <em>whole</em> feature is in frame. More clear photos = more accurate — but a few good ones beat a dozen blurry ones.</p>
           </div>
 
           <ol className="space-y-2">
             <li>
-              <div className="font-semibold text-[#1a1a1a]">1 · Gable end — square-on <span className="text-emerald-300">(most important — 1–2 shots)</span></div>
+              <div className="font-semibold text-[#1a1a1a]">1 · Gable end — square-on <span className="text-emerald-800">(most important — 1–2 shots)</span></div>
               <div className="text-[#6b7280]">Face the <strong>triangular end wall</strong> dead-on, not at an angle. This is the single best shot for <strong>pitch</strong>, which drives roof area, squares, and flashing. If the house has gable ends at both ends, shoot both.</div>
             </li>
             <li>
@@ -337,7 +337,7 @@ function PhotoGuide() {
               <div className="text-[#6b7280]">Get the <strong>full height</strong> and the line <strong>where it meets the roof</strong>. → one-tap chimney + cricket flashing.</div>
             </li>
             <li>
-              <div className="font-semibold text-[#1a1a1a]">4 · Skylights, dormers, and roof-to-wall spots <span className="text-amber-300">(as needed)</span></div>
+              <div className="font-semibold text-[#1a1a1a]">4 · Skylights, dormers, and roof-to-wall spots <span className="text-amber-800">(as needed)</span></div>
               <div className="text-[#6b7280]">Any <strong>dormer</strong>, <strong>skylight</strong>, or place a <strong>lower roof runs into a taller wall</strong> (porch/garage meeting a 2-story wall). → these become your step-flashing edges to confirm.</div>
             </li>
             <li>
@@ -346,7 +346,7 @@ function PhotoGuide() {
             </li>
           </ol>
 
-          <div className="rounded border border-amber-400/20 bg-amber-500/5 p-2 text-amber-200/90">
+          <div className="rounded border border-amber-400/20 bg-amber-500/5 p-2 text-amber-900/90">
             <div className="font-semibold">Angle cheatsheet</div>
             <ul className="mt-0.5 list-disc space-y-0.5 pl-4">
               <li><strong>Pitch</strong> → shoot the gable end perfectly side-on (you should see the roof slope as a clean triangle).</li>
@@ -365,7 +365,7 @@ function PhotoGuide() {
 function FindingsView({
   f, onApplyPitch, onAddChimney, onAddSkylight,
 }: { f: Findings; onApplyPitch: (p: string) => boolean; onAddChimney: (n: number) => void; onAddSkylight: (n: number) => void }) {
-  const confColor = f.pitch_confidence === 'high' ? 'text-emerald-300' : f.pitch_confidence === 'medium' ? 'text-amber-300' : 'text-rose-300'
+  const confColor = f.pitch_confidence === 'high' ? 'text-emerald-800' : f.pitch_confidence === 'medium' ? 'text-amber-800' : 'text-rose-800'
   const [applied, setApplied] = useState(false)
   return (
     <div className="mt-1 space-y-1">
@@ -389,7 +389,7 @@ function FindingsView({
               <span className="text-[10px] text-[#6b7280]">↳ for &quot;high&quot;, shoot the gable end square-on</span>
             )}
           </>
-        ) : <span className="text-amber-300/80">No clear roof slope here — for pitch, shoot a <strong>gable end</strong> (the triangular end wall) square-on.</span>}
+        ) : <span className="text-amber-800/80">No clear roof slope here — for pitch, shoot a <strong>gable end</strong> (the triangular end wall) square-on.</span>}
       </div>
       {f.chimney.present && (
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#2d2d2d]">
@@ -415,7 +415,7 @@ function FindingsView({
         <div className="rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-900/90">
           🧱 Roof meets a taller wall → needs <strong>step/apron flashing</strong>. In the editor,
           label that roof-to-wall edge as <strong>wall intersection</strong> so flashing includes it.
-          {f.wall_abutment.note ? <span className="text-amber-200/60"> ({f.wall_abutment.note})</span> : null}
+          {f.wall_abutment.note ? <span className="text-amber-900/60"> ({f.wall_abutment.note})</span> : null}
         </div>
       )}
       <div className="text-[10px] text-[#6b7280]">

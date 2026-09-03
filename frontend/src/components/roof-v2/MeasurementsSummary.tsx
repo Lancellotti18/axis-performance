@@ -144,9 +144,9 @@ function buyUrl(itemName: string, retailer: 'hd' | 'lowes'): string {
 
 function confidenceTag(c: number | undefined) {
   const v = (c ?? 0) * 100
-  if (v >= 80) return { label: 'High', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40' }
-  if (v >= 55) return { label: 'Moderate', cls: 'bg-amber-500/20 text-amber-300 border-amber-400/40' }
-  return { label: 'Low', cls: 'bg-rose-500/20 text-rose-300 border-rose-400/40' }
+  if (v >= 80) return { label: 'High', cls: 'bg-emerald-500/20 text-emerald-800 border-emerald-400/40' }
+  if (v >= 55) return { label: 'Moderate', cls: 'bg-amber-500/20 text-amber-800 border-amber-400/40' }
+  return { label: 'Low', cls: 'bg-rose-500/20 text-rose-800 border-rose-400/40' }
 }
 
 /**
@@ -313,11 +313,11 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
         <div className="flex items-center gap-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4">
           <RoofScanSpinner size={46} className="flex-shrink-0" />
           <div>
-            <div className="text-sm font-semibold text-amber-200">Confirm your edges to unlock the numbers</div>
-            <p className="mt-0.5 text-xs leading-relaxed text-amber-100/80">
+            <div className="text-sm font-semibold text-amber-900">Confirm your edges to unlock the numbers</div>
+            <p className="mt-0.5 text-xs leading-relaxed text-amber-900/80">
               Measurements, roof-line lengths, and the material list stay hidden until every edge is
               confirmed. Trace each plane, hit <strong>✨ Auto-label edges</strong>, then accept or fix each one.
-              <span className="mt-1 block text-amber-300/90"><EdgeWorkRemaining unlabeled={unlabeledCount} unconfirmed={unconfirmedCount} /></span>
+              <span className="mt-1 block text-amber-800/90"><EdgeWorkRemaining unlabeled={unlabeledCount} unconfirmed={unconfirmedCount} /></span>
             </p>
           </div>
         </div>
@@ -361,20 +361,20 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
           <RoofScanSpinner size={46} className="flex-shrink-0" />
           {loading ? (
             <div>
-              <div className="text-sm font-semibold text-amber-200">Crunching the latest measurements…</div>
-              <p className="mt-0.5 text-xs leading-relaxed text-amber-100/80">
+              <div className="text-sm font-semibold text-amber-900">Crunching the latest measurements…</div>
+              <p className="mt-0.5 text-xs leading-relaxed text-amber-900/80">
                 Roof area, roof-line lengths, confidence, and the material list are updating from your last edit.
                 Hang tight — the numbers below settle the moment this finishes.
               </p>
             </div>
           ) : (
             <div>
-              <div className="text-sm font-semibold text-amber-200">These numbers aren&apos;t final yet</div>
-              <p className="mt-0.5 text-xs leading-relaxed text-amber-100/80">
+              <div className="text-sm font-semibold text-amber-900">These numbers aren&apos;t final yet</div>
+              <p className="mt-0.5 text-xs leading-relaxed text-amber-900/80">
                 Roof-line lengths, true roof area, confidence, and the material list stay <strong>provisional</strong> until
                 you confirm the edges. Trace every plane, then hit <strong>✨ Auto-label edges</strong> and accept or fix
                 each one — the totals lock in the moment you do.
-                <span className="mt-1 block text-amber-300/90"><EdgeWorkRemaining unlabeled={unlabeledCount} unconfirmed={unconfirmedCount} /></span>
+                <span className="mt-1 block text-amber-800/90"><EdgeWorkRemaining unlabeled={unlabeledCount} unconfirmed={unconfirmedCount} /></span>
               </p>
             </div>
           )}
@@ -441,7 +441,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                 className="rounded bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-500"
               >⬇ Supplier CSV</button>
             )}
-            <span className="text-sm font-semibold text-emerald-300">{fmt$(materials?.grand_total_at_selected_waste)}</span>
+            <span className="text-sm font-semibold text-emerald-800">{fmt$(materials?.grand_total_at_selected_waste)}</span>
           </div>
         </div>
         {materials && materials.lines.length > 0 && (
@@ -507,7 +507,7 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                           title={materials.my_prices?.[line.sku] != null
                             ? 'Your price (from your price book) — click to change, clear to reset'
                             : 'National average — click to set YOUR dealer price'}
-                          className="group/price inline-flex items-center gap-1 hover:text-blue-300"
+                          className="group/price inline-flex items-center gap-1 hover:text-blue-800"
                         >
                           {materials.my_prices?.[line.sku] != null && (
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="Your price" />
@@ -530,8 +530,8 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                         ) : (vendors[line.sku]?.options?.length ?? 0) === 0 ? (
                           <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#6b7280]">
                             <span>No product pages found. Try the big-box search:</span>
-                            <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer" className="font-semibold text-orange-300 hover:underline">Home Depot ↗</a>
-                            <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer" className="font-semibold text-blue-300 hover:underline">Lowe&apos;s ↗</a>
+                            <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer" className="font-semibold text-orange-800 hover:underline">Home Depot ↗</a>
+                            <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer" className="font-semibold text-blue-800 hover:underline">Lowe&apos;s ↗</a>
                           </div>
                         ) : (
                           <div>
@@ -543,11 +543,11 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                                 <a key={i} href={o.url} target="_blank" rel="noreferrer"
                                   className="flex items-center justify-between gap-2 rounded-lg border border-[#dededc] bg-[#eeeeed] px-2.5 py-1.5 hover:border-blue-400/40 hover:bg-[#eeeeed]">
                                   <span className="flex min-w-0 items-center gap-1.5">
-                                    {o.is_local && <span className="rounded bg-emerald-500/20 px-1 py-0.5 text-[9px] font-semibold text-emerald-300">LOCAL</span>}
+                                    {o.is_local && <span className="rounded bg-emerald-500/20 px-1 py-0.5 text-[9px] font-semibold text-emerald-800">LOCAL</span>}
                                     <span className="truncate text-[11px] text-[#1a1a1a]">{o.vendor}</span>
                                   </span>
                                   <span className="shrink-0 text-[11px] font-semibold text-[#1a1a1a]">
-                                    {o.quote_only || o.price == null ? <span className="text-blue-300">Get quote ↗</span> : <>{fmt$(o.price)} ↗</>}
+                                    {o.quote_only || o.price == null ? <span className="text-blue-800">Get quote ↗</span> : <>{fmt$(o.price)} ↗</>}
                                   </span>
                                 </a>
                               ))}
@@ -558,8 +558,8 @@ export function MeasurementsSummary({ runId, geometryStamp, onConfidenceChange, 
                             even when a live product page wasn't matched. */}
                         <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-[#dededc] pt-2 text-[11px] text-[#6b7280]">
                           <span>Search directly:</span>
-                          <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer" className="font-semibold text-orange-300 hover:underline">Home Depot ↗</a>
-                          <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer" className="font-semibold text-blue-300 hover:underline">Lowe&apos;s ↗</a>
+                          <a href={buyUrl(line.item_name, 'hd')} target="_blank" rel="noreferrer" className="font-semibold text-orange-800 hover:underline">Home Depot ↗</a>
+                          <a href={buyUrl(line.item_name, 'lowes')} target="_blank" rel="noreferrer" className="font-semibold text-blue-800 hover:underline">Lowe&apos;s ↗</a>
                         </div>
                       </td>
                     </tr>
