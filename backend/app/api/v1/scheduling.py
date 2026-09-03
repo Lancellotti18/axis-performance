@@ -1528,6 +1528,7 @@ async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(r
     update: dict = {"project_id": body.project_id}
     inherited: dict = {}
     kept: dict = {}
+    relocated: dict | None = None
     if body.project_id:  # verify the project is the caller's before linking
         pr = _rows(db.table("projects").select("id,user_id").eq("id", body.project_id).limit(1).execute())
         if not pr or pr[0].get("user_id") != user.get("id"):
@@ -1536,14 +1537,39 @@ async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(r
         inherited, kept = _fill_blanks(job, measured)
         update.update(inherited)
 
+        # The project's address is authoritative — take it, even over a location
+        # the job already had. Measurements are fill-blanks-only because a
+        # dispatcher may have typed them deliberately; a LOCATION is different.
+        # A job created from a typed address can geocode to the wrong place
+        # entirely (one resolved to Pennsylvania for a Wilmington job), and the
+        # job then pulls that place's weather forever, because linking a project
+        # never touched the property. Silent wrong-location weather is worse
+        # than an overwritten address.
+        proj = pr[0]
+        p_lat, p_lng = _f(proj.get("lat")), _f(proj.get("lng"))
+        if p_lat is not None and p_lng is not None and job.get("property_id"):
+            addr_patch = {
+                "line1": proj.get("address") or proj.get("name") or "Address TBD",
+                "city": proj.get("city") or "", "state": proj.get("state") or "",
+                "postal_code": proj.get("zip_code") or "",
+                "lat": p_lat, "lng": p_lng,
+            }
+            try:
+                db.table("sched_property").update(addr_patch).eq("id", job["property_id"]).execute()
+                relocated = {"to": addr_patch["line1"], "lat": p_lat, "lng": p_lng}
+            except Exception as e:
+                logger.info("could not adopt project location on link: %s", e)
+
     db.table("sched_job").update(update).eq("id", job_id).execute()
     db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "job",
         "entity_id": job_id, "action": "LINK_PROJECT",
         "before_json": {"project_id": job.get("project_id"),
                         **{k: job.get(k) for k in inherited}},
-        "after_json": {"project_id": body.project_id, "inherited": inherited, "kept": kept},
+        "after_json": {"project_id": body.project_id, "inherited": inherited,
+                       "kept": kept, "relocated": relocated},
         "request_id": str(uuid.uuid4())}).execute()
-    return {"ok": True, "project_id": body.project_id, "inherited": inherited, "kept": kept}
+    return {"ok": True, "project_id": body.project_id, "inherited": inherited,
+            "kept": kept, "relocated": relocated}
 
 
 @router.get("/jobs/{job_id}/project")

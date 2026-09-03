@@ -1,8 +1,14 @@
 from fastapi import APIRouter
-from app.api.v1 import projects, blueprints, analyses, estimates, reports, compliance, materials, permits, contractor_profile, roofing, roofing_v2, exterior, training, crm, photos, model3d, axis, proposals, material_check, visualizer, renders, chat, instant_quote, roof_proposals, client_portal, appointments, notifications, prospecting, project_photos, scheduling, briefing
+from app.api.v1 import projects, blueprints, analyses, estimates, reports, compliance, materials, permits, contractor_profile, roofing, roofing_v2, exterior, training, crm, photos, model3d, axis, proposals, material_check, visualizer, renders, chat, instant_quote, roof_proposals, appointments, notifications, prospecting, project_photos, scheduling, briefing
 
 router = APIRouter()
 
+# client_portal.py is PARKED, not deleted. A homeowner-facing portal with its own
+# message thread duplicated what the report share link already does, added three
+# public unauthenticated endpoints to the attack surface, and had never been used
+# — its tables do not even exist. Contractors talk to homeowners by phone. Restore
+# it by re-adding the import and this include_router if the demand ever appears.
+#
 # billing.py is deliberately NOT mounted. It was unfinished scaffolding that no
 # frontend code called, and POST /billing/portal took a Stripe customer_id with
 # no auth at all — anyone could mint a billing-portal URL for any customer. Its
@@ -34,7 +40,6 @@ router.include_router(renders.router, prefix="/renders", tags=["renders"])
 router.include_router(chat.router, prefix="/chat", tags=["chat"])
 router.include_router(instant_quote.router, prefix="/instant-quote", tags=["instant-quote"])
 router.include_router(roof_proposals.router, prefix="/roof-proposals", tags=["roof-proposals"])
-router.include_router(client_portal.router, prefix="/client-portal", tags=["client-portal"])
 router.include_router(appointments.router, prefix="/appointments", tags=["appointments"])
 router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 router.include_router(prospecting.router, prefix="/prospecting", tags=["prospecting"])

@@ -23,10 +23,6 @@ from app.core.auth import get_current_user, require_user
 PUBLIC = {
     # A homeowner books from the report link they were emailed.
     ("POST", "/api/v1/appointments/book/{report_token}"),
-    # Client portal — the customer's own share link.
-    ("GET", "/api/v1/client-portal/public/{token}"),
-    ("GET", "/api/v1/client-portal/public/{token}/messages"),
-    ("POST", "/api/v1/client-portal/public/{token}/messages"),
     # Instant-quote widget, embedded on the contractor's public site.
     ("GET", "/api/v1/instant-quote/w/{widget_key}"),
     ("POST", "/api/v1/instant-quote/w/{widget_key}/locate"),
