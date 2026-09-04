@@ -139,10 +139,11 @@ covering all of them together.
     LLC → EIN → business bank account → Stripe payouts
       └────────→ Terms of Service + Privacy Policy (must name the entity)
 
-- [x] **LLC formed.** ✅ Filed 2026-09-02, NC Secretary of State, form L-01,
-      $125, effective on filing. Entity: **RW AI Infrastructure LLC**. NC quotes
-      10–15 business days, so approval ~mid/late September. "Axis Performance"
-      is a product brand operating under it; they do not need to match.
+- [x] **LLC APPROVED.** ✅ Filed 2026-09-02, **approved 2026-09-04** — far
+      faster than the 10–15 business days NC quotes. Entity:
+      **RW AI Infrastructure LLC** (NC, form L-01, $125). "Axis Performance" is
+      a product brand operating under it; they do not need to match.
+      **This unblocks everything below it.**
 - [ ] **EIN** — free, direct at irs.gov. Do NOT pay a third party. Needs the LLC
       to exist first; the bank account needs the EIN.
 - [ ] **Business bank account**, then Stripe.
