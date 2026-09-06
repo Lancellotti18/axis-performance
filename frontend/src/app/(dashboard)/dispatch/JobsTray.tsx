@@ -6,7 +6,7 @@
  * conflicts, and cancellations. Unassigned rows are draggable straight onto a
  * crew-day (drops call POST /appointments). Collapsed to a handle by default.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useDraggable } from '@dnd-kit/core'
 import { fetchTray, type TrayRow } from './lib/board'
@@ -21,9 +21,20 @@ const TABS: { key: TabKey; label: string; draggable: boolean }[] = [
   { key: 'canceled', label: 'Canceled', draggable: false },
 ]
 
-export default function JobsTray() {
+/**
+ * `revealUnassigned` is a counter, not a boolean: creating a second job while the
+ * tray is already open still needs to snap it back to the Unassigned tab, and a
+ * boolean that's already `true` fires no effect.
+ */
+export default function JobsTray({ revealUnassigned = 0 }: { revealUnassigned?: number }) {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<TabKey>('unassigned')
+
+  // A new job lands in the tray — which is collapsed by default, so without this
+  // the confirmation names a place the user cannot see and the job looks lost.
+  useEffect(() => {
+    if (revealUnassigned > 0) { setOpen(true); setTab('unassigned') }
+  }, [revealUnassigned])
   const { data } = useQuery({ queryKey: ['tray'], queryFn: fetchTray, staleTime: 30_000 })
 
   const counts = useMemo(() => ({

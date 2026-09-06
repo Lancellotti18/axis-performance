@@ -147,6 +147,7 @@ export default function Board({
   const [auditOpen, setAuditOpen] = useState(false)
   const [crewMgrOpen, setCrewMgrOpen] = useState(false)
   const [quickJobOpen, setQuickJobOpen] = useState(false)
+  const [trayReveal, setTrayReveal] = useState(0)
   const activeRef = useRef<string | null>(null)
   const previewRef = useRef<Record<string, PreviewResult | 'loading'>>({})
 
@@ -580,13 +581,16 @@ export default function Board({
         <BulkBar ids={Array.from(sel.selected)} crews={data.crews} tags={data.tags}
           onApplied={applyAffected} onClear={() => sel.clear()} onTrayInvalidate={() => qc.invalidateQueries({ queryKey: ['tray'] })} />
       )}
-      <JobsTray />
+      <JobsTray revealUnassigned={trayReveal} />
       {auditOpen && <AuditPanel onClose={() => setAuditOpen(false)} />}
       {crewMgrOpen && <CrewManager data={data} onClose={() => setCrewMgrOpen(false)} />}
       {quickJobOpen && (
         <QuickJobDialog
           onClose={() => setQuickJobOpen(false)}
-          onCreated={() => { qc.invalidateQueries({ queryKey: ['tray'] }); qc.invalidateQueries({ queryKey: ['board'] }) }}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: ['tray'] }); qc.invalidateQueries({ queryKey: ['board'] })
+            setTrayReveal(n => n + 1)     // open the tray so the new job is visible
+          }}
         />
       )}
     </DndContext>

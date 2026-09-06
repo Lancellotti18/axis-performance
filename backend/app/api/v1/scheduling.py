@@ -7,6 +7,7 @@ drops in later without a rewrite. Reads sched_* tables only; touches nothing els
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -482,16 +483,32 @@ def _tray_row(job, appt, customers, properties, tags_by_job, tag_map, today):
 async def get_tray(user: dict = Depends(require_user)) -> dict:
     db = get_supabase()
     today = date.today()
-    jobs = _rows(db.table("sched_job").select("*").eq("org_id", ORG).execute())
-    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG).execute())
+
+    # These eight tables are independent of each other, but the Supabase client is
+    # synchronous — run sequentially they cost eight round trips back to back, and
+    # each one also blocks the event loop for every other request on the worker.
+    # Fanning them out over threads makes the endpoint cost roughly one round trip
+    # instead of eight. This is the tray's dominant latency; it is why opening the
+    # tray felt like it was "updating" for a while.
+    def _all(table: str):
+        return lambda: _rows(db.table(table).select("*").eq("org_id", ORG).execute())
+
+    (jobs, appts, customer_rows, property_rows, tag_rows,
+     tag_links, crew_rows, assignment_rows) = await asyncio.gather(*(
+        asyncio.to_thread(_all(t)) for t in (
+            "sched_job", "sched_appointment", "sched_customer", "sched_property",
+            "sched_job_tag", "sched_job_tag_link", "sched_crew", "sched_assignment",
+        )
+    ))
+
     appts_by_job = defaultdict(list)
     for a in appts:
         appts_by_job[a["job_id"]].append(a)
-    customers = {c["id"]: c for c in _rows(db.table("sched_customer").select("*").eq("org_id", ORG).execute())}
-    properties = {p["id"]: p for p in _rows(db.table("sched_property").select("*").eq("org_id", ORG).execute())}
-    tag_map = {t["id"]: t for t in _rows(db.table("sched_job_tag").select("*").eq("org_id", ORG).execute())}
+    customers = {c["id"]: c for c in customer_rows}
+    properties = {p["id"]: p for p in property_rows}
+    tag_map = {t["id"]: t for t in tag_rows}
     tags_by_job = defaultdict(list)
-    for l in _rows(db.table("sched_job_tag_link").select("*").eq("org_id", ORG).execute()):
+    for l in tag_links:
         tags_by_job[l["job_id"]].append(l["tag_id"])
 
     def row(job, appt=None):
@@ -511,8 +528,8 @@ async def get_tray(user: dict = Depends(require_user)) -> dict:
                 unassigned.append(row(j))
 
     conflicts = []
-    crews = {c["id"]: c for c in _rows(db.table("sched_crew").select("*").eq("org_id", ORG).execute())}
-    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute()) if a.get("is_primary", True)}
+    crews = {c["id"]: c for c in crew_rows}
+    appt_crew = {a["appointment_id"]: a["crew_id"] for a in assignment_rows if a.get("is_primary", True)}
     jobs_by_id = {j["id"]: j for j in jobs}
     for a in appts:
         if a["status"] in ("DONE", "CANCELED"):
@@ -2082,8 +2099,11 @@ async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -
 
     return {
         "created": True, "job_id": job["id"], "geocoded": lat is not None,
-        "message": ("In the tray — drag it onto a crew day." if lat is not None
-                    else "In the tray, but the address didn't geocode, so this job won't get site weather."),
+        # Name where it went and what to do next. "In the tray" meant nothing to
+        # a first-time dispatcher, and the tray is collapsed by default.
+        "message": ("Job created — it's in the Unassigned tray below. Drag it onto a crew's day to schedule it."
+                    if lat is not None
+                    else "Job created and it's in the Unassigned tray below, but the address didn't geocode — this job won't get site weather until the address is fixed."),
     }
 
 
