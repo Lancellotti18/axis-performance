@@ -42,6 +42,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import time
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -471,6 +472,26 @@ x0,y0 is the top-left corner of the building's bounding box; x1,y1 the bottom-ri
     }
 
 
+# Street View costs two billed calls per lookup — a metadata probe plus the image
+# — and the picker refetches on every open. Solar caches per address for exactly
+# this reason; this had no equivalent, so re-opening the same house re-billed both
+# calls every time.
+#
+# Keyed on the address to ~11 m, which is finer than any two houses are apart, so
+# neighbours never share an entry. A "no coverage" answer is cached too: a rural
+# address without Street View would otherwise re-probe forever, and Google bills
+# the metadata request regardless of the answer.
+_SV_TTL_SECONDS = 7 * 24 * 3600      # imagery changes on the order of years
+_SV_CACHE: dict[str, tuple[float, dict]] = {}
+# Each entry holds a base64 640x400 JPEG (~80 KB), so 200 is ~16 MB — bounded
+# comfortably inside Render's 512 MB free tier. Raise this only alongside the plan.
+_SV_MAX = 200
+
+
+def _sv_key(lat: float, lng: float) -> str:
+    return f"{lat:.4f},{lng:.4f}"
+
+
 @router.get("/streetview")
 async def street_view(
     lat: float = Query(...),
@@ -490,6 +511,20 @@ async def street_view(
     key = _settings.GOOGLE_SOLAR_API_KEY
     if not key:
         return {"available": False}
+
+    ck = _sv_key(lat, lng)
+    hit = _SV_CACHE.get(ck)
+    if hit and (time.time() - hit[0]) < _SV_TTL_SECONDS:
+        return {**hit[1], "cached": True}
+
+    def _remember(result: dict) -> dict:
+        # Evict oldest first so the cache cannot grow without bound.
+        if len(_SV_CACHE) >= _SV_MAX:
+            for k in sorted(_SV_CACHE, key=lambda k: _SV_CACHE[k][0])[:40]:
+                _SV_CACHE.pop(k, None)
+        _SV_CACHE[ck] = (time.time(), result)
+        return result
+
     try:
         async with _httpx.AsyncClient(timeout=10) as client:
             meta = await client.get(
@@ -498,7 +533,9 @@ async def street_view(
             )
             md = meta.json() or {}
             if md.get("status") != "OK":
-                return {"available": False}
+                # Cache the miss. Google bills the metadata call whatever it says,
+                # and a rural address would otherwise re-probe on every open.
+                return _remember({"available": False})
             # Aim the camera from the panorama toward the actual address.
             heading: Optional[float] = None
             ploc = md.get("location") or {}
@@ -518,8 +555,10 @@ async def street_view(
             img.raise_for_status()
             ct = img.headers.get("content-type", "image/jpeg").split(";")[0]
             b64 = base64.b64encode(img.content).decode()
-            return {"available": True, "image": f"data:{ct};base64,{b64}"}
+            return _remember({"available": True, "image": f"data:{ct};base64,{b64}"})
     except Exception as e:
+        # Deliberately NOT cached: a timeout or a transient 5xx would otherwise
+        # poison a perfectly good address for a week.
         logger.info("street view lookup failed: %s", e)
         return {"available": False}
 
