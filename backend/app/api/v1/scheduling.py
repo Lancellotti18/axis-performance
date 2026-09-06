@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta
@@ -1570,10 +1571,24 @@ async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(r
         # exactly the jobs that needed it. Fall back through everything that
         # actually knows where the building is.
         if p_lat is None or p_lng is None:
-            run_row = _latest_run(db, body.project_id, "satellite_lat,satellite_lng,created_at")
-            p_lat, p_lng = _f(run_row.get("satellite_lat")), _f(run_row.get("satellite_lng"))
+            run_row = _latest_run(db, body.project_id,
+                                  "subject_point,satellite_lat,satellite_lng,created_at")
+            # subject_point is the house the user TAPPED; satellite_lat/lng is the
+            # tile centre, which can sit tens of metres off — far enough to pull a
+            # neighbouring town's weather. Prefer the tapped house.
+            sp = run_row.get("subject_point")
+            if isinstance(sp, dict):
+                p_lat, p_lng = _f(sp.get("lat")), _f(sp.get("lng"))
+            if p_lat is None or p_lng is None:
+                p_lat, p_lng = _f(run_row.get("satellite_lat")), _f(run_row.get("satellite_lng"))
         if p_lat is None or p_lng is None:
-            addr = ", ".join(x for x in [proj.get("address"), proj.get("city"),
+            # projects.address is very often null while the street address sits in
+            # projects.name ("701 ripwood rd"). Without this the fallback geocoded
+            # bare ", WILMINGTON" and landed on the city centre, miles from the job.
+            name = (proj.get("name") or "").strip()
+            street = (proj.get("address") or "").strip() or (
+                name if re.match(r"^\s*\d+\s+\S", name) else "")
+            addr = ", ".join(x for x in [street, proj.get("city"),
                                          proj.get("state"), proj.get("zip_code")] if x)
             if addr:
                 try:
