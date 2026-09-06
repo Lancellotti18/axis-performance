@@ -37,6 +37,10 @@ export default function HousePicker({
   const [confirmed, setConfirmed] = useState<boolean>(!!initialPoint)
   const [saving, setSaving] = useState(false)
   const [streetView, setStreetView] = useState<string | null>(null)
+  // 'loading' until the lookup answers; a reason string when there's no photo, so
+  // a switched-off API is visible instead of silently showing nothing.
+  const [svState, setSvState] = useState<'loading' | 'ok' | 'no_coverage' | 'unavailable'>('loading')
+  const [svZoom, setSvZoom] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
 
   // On project resume the saved house point arrives asynchronously (after this
@@ -54,9 +58,15 @@ export default function HousePicker({
   useEffect(() => {
     if (lat == null || lng == null || (lat === 0 && lng === 0)) return
     let cancelled = false
+    setSvState('loading')
     api.roofing.v2.getStreetView(lat, lng)
-      .then(r => { if (!cancelled && r.available && r.image) setStreetView(r.image) })
-      .catch(() => { /* best-effort */ })
+      .then(r => {
+        if (cancelled) return
+        if (r.available && r.image) { setStreetView(r.image); setSvState('ok'); return }
+        setStreetView(null)
+        setSvState(r.reason === 'no_coverage' ? 'no_coverage' : 'unavailable')
+      })
+      .catch(() => { if (!cancelled) { setStreetView(null); setSvState('unavailable') } })
     return () => { cancelled = true }
   }, [lat, lng])
 
@@ -121,20 +131,70 @@ export default function HousePicker({
 
       {/* Street-level reference: the view people actually recognize. Find THIS
           house on the satellite below, then tap its roof. */}
+      {/* Street-level reference. This is the fastest way to know you're about to
+          tap the right roof, so it gets real estate — a thumbnail is too small to
+          recognize a house from. Click to enlarge. */}
       {streetView && (
-        <div className="mt-3 flex gap-3 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={streetView}
-            alt="Street view of the address"
-            className="h-24 w-36 shrink-0 rounded-md border border-[#dededc] object-cover"
-            draggable={false}
-          />
-          <div className="text-[11px] leading-relaxed text-[#6b7280]">
-            <span className="font-semibold text-[#1a1a1a]">Don&apos;t recognize it from above?</span>{' '}
-            This is the address from the street. Find <em>this same house</em> on the satellite
-            image below — it&apos;s the building at the center — and tap its roof.
+        <div className="mt-3 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2.5">
+          <div className="flex gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={streetView}
+              alt="Street view of the address"
+              onClick={() => setSvZoom(true)}
+              className="h-36 w-56 shrink-0 cursor-zoom-in rounded-md border border-[#dededc] object-cover transition hover:brightness-95"
+              draggable={false}
+            />
+            <div className="text-[11px] leading-relaxed text-[#6b7280]">
+              <span className="font-semibold text-[#1a1a1a]">Don&apos;t recognize it from above?</span>{' '}
+              This is the address from the street. Find <em>this same house</em> on the satellite
+              image below — it&apos;s the building at the center — and tap its roof.
+              <button
+                type="button"
+                onClick={() => setSvZoom(true)}
+                className="mt-1.5 block rounded border border-[#dededc] bg-white px-2 py-1 text-[11px] font-medium text-[#1a1a1a] hover:bg-[#f2f2f0]"
+              >
+                Enlarge photo
+              </button>
+            </div>
           </div>
+        </div>
+      )}
+
+      {svState === 'loading' && (
+        <div className="mt-3 flex items-center gap-3 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2.5">
+          <div className="h-36 w-56 shrink-0 animate-pulse rounded-md bg-[#e8e8e6]" />
+          <p className="text-[11px] text-[#6b7280]">Loading a street-level photo of this address…</p>
+        </div>
+      )}
+
+      {/* Say why there's no photo. Silence here is what let a disabled Street View
+          API go unnoticed, and it leaves the user wondering what they missed. */}
+      {(svState === 'no_coverage' || svState === 'unavailable') && (
+        <div className="mt-3 rounded-lg border border-[#dededc] bg-[#f8f8f7] px-3 py-2 text-[11px] text-[#6b7280]">
+          {svState === 'no_coverage'
+            ? 'No street-level photo exists for this address — Google has no coverage on this road. Use the satellite image below.'
+            : "Street-level photo isn't available right now. Use the satellite image below."}
+        </div>
+      )}
+
+      {svZoom && streetView && (
+        <div
+          role="dialog"
+          aria-label="Street view photo"
+          onClick={() => setSvZoom(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={streetView} alt="Street view of the address, enlarged"
+               className="max-h-full max-w-full rounded-lg shadow-2xl" draggable={false} />
+          <button
+            type="button"
+            onClick={() => setSvZoom(false)}
+            className="absolute right-4 top-4 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-[#1a1a1a]"
+          >
+            Close
+          </button>
         </div>
       )}
 

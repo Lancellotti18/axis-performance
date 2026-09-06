@@ -1171,7 +1171,9 @@ export const api = {
       // Street-level photo of the address, so users who don't recognize the house
       // from above can match it and tap the right roof. Best-effort.
       getStreetView: (lat: number, lng: number) =>
-        apiRequest<{ available: boolean; image?: string }>(
+        apiRequest<{ available: boolean; image?: string; cached?: boolean
+                     reason?: 'no_key' | 'no_coverage' | 'api_rejected' | 'error'
+                     detail?: string }>(
           `/api/v1/roofing/v2/streetview?lat=${lat}&lng=${lng}`),
       locationSearch: (q: string, withGeographies = false) =>
         apiRequest<{

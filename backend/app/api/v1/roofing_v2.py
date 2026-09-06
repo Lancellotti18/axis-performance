@@ -510,7 +510,7 @@ async def street_view(
     import httpx as _httpx
     key = _settings.GOOGLE_SOLAR_API_KEY
     if not key:
-        return {"available": False}
+        return {"available": False, "reason": "no_key"}
 
     ck = _sv_key(lat, lng)
     hit = _SV_CACHE.get(ck)
@@ -532,10 +532,24 @@ async def street_view(
                 params={"location": f"{lat},{lng}", "key": key},
             )
             md = meta.json() or {}
-            if md.get("status") != "OK":
-                # Cache the miss. Google bills the metadata call whatever it says,
-                # and a rural address would otherwise re-probe on every open.
-                return _remember({"available": False})
+            status = md.get("status")
+            if status != "OK":
+                # ZERO_RESULTS is a real answer: no panorama near this address.
+                # Anything else means the request itself was rejected — almost
+                # always because Street View Static API is not enabled on the
+                # project, or the key's API restrictions exclude it. That used to
+                # look identical to "no coverage" from the outside, which is how
+                # it went unnoticed for weeks. Log it loudly and never cache it,
+                # so flipping the API on takes effect immediately.
+                if status == "ZERO_RESULTS":
+                    return _remember({"available": False, "reason": "no_coverage"})
+                logger.warning(
+                    "Street View unavailable (status=%s): %s — check the Street View "
+                    "Static API is enabled and the key allows it",
+                    status, md.get("error_message") or "no detail",
+                )
+                return {"available": False, "reason": "api_rejected",
+                        "detail": md.get("error_message") or status}
             # Aim the camera from the panorama toward the actual address.
             heading: Optional[float] = None
             ploc = md.get("location") or {}
@@ -559,8 +573,8 @@ async def street_view(
     except Exception as e:
         # Deliberately NOT cached: a timeout or a transient 5xx would otherwise
         # poison a perfectly good address for a week.
-        logger.info("street view lookup failed: %s", e)
-        return {"available": False}
+        logger.warning("street view lookup failed: %s", e)
+        return {"available": False, "reason": "error"}
 
 
 # ----------------------------------------------------------------------------
