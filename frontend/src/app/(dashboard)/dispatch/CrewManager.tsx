@@ -33,7 +33,13 @@ export default function CrewManager({ data, onClose }: { data: BoardData; onClos
   const [addOpen, setAddOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [timeoffId, setTimeoffId] = useState<string | null>(null)
+  // Rows mid-delete. The board refetch can take a cold start (~75s) to come back,
+  // and until it did the row you just confirmed sat there looking untouched. Hide
+  // it immediately; restore it if the server refuses.
+  const [removing, setRemoving] = useState<Set<string>>(new Set())
   const buName = (id: string) => data.business_units.find(b => b.id === id)?.name ?? '—'
+  // What's actually on screen — excludes rows mid-delete, so the count matches.
+  const shown = data.crews.filter(c => !removing.has(c.id))
   const refresh = () => qc.invalidateQueries({ queryKey: ['board'] })
 
   return (
@@ -43,7 +49,7 @@ export default function CrewManager({ data, onClose }: { data: BoardData; onClos
         <div className="sticky top-0 z-10 flex items-center justify-between border-b px-5 py-3" style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}>
           <div>
             <div className="text-[15px] font-bold">Crews</div>
-            <div className="text-[12px]" style={{ color: 'var(--muted)' }}>{data.crews.length} crew{data.crews.length === 1 ? '' : 's'} · capacity, limits, and time off</div>
+            <div className="text-[12px]" style={{ color: 'var(--muted)' }}>{shown.length} crew{shown.length === 1 ? '' : 's'} · capacity, limits, and time off</div>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => { setAddOpen(o => !o); setEditingId(null) }} className="rounded-md px-3 py-1.5 text-[12px] font-bold" style={{ background: 'var(--dawn)', color: '#ffffff' }}>{addOpen ? 'Cancel' : '＋ Add crew'}</button>
@@ -57,7 +63,7 @@ export default function CrewManager({ data, onClose }: { data: BoardData; onClos
               onSubmit={async (body) => { await createCrew(body); toast.success('Crew added'); setAddOpen(false); refresh() }} />
           )}
 
-          {data.crews.map(crew => editingId === crew.id ? (
+          {shown.map(crew => editingId === crew.id ? (
             <CrewForm key={crew.id} data={data} initial={crewToInput(crew)} onCancel={() => setEditingId(null)}
               onSubmit={async (body) => { await updateCrew(crew.id, body); toast.success('Crew updated'); setEditingId(null); refresh() }} />
           ) : (
@@ -74,6 +80,7 @@ export default function CrewManager({ data, onClose }: { data: BoardData; onClos
                   <button onClick={() => { setEditingId(crew.id); setAddOpen(false) }} className="rounded-md border px-2 py-1 text-[11px] font-semibold hover:bg-[#eeeeed]" style={{ borderColor: 'var(--line)' }}>Edit</button>
                   <button onClick={async () => {
                     if (!confirm(`Remove ${crew.name}? This clears its shifts and time off. Finished jobs keep their history.`)) return
+                    setRemoving(s => new Set(s).add(crew.id))
                     try {
                       const res = await deleteCrew(crew.id)
                       // A crew with completed work is archived, not deleted, so
@@ -83,7 +90,12 @@ export default function CrewManager({ data, onClose }: { data: BoardData; onClos
                         ? `${crew.name} archived — off the board, ${res.completed_jobs} completed job${res.completed_jobs === 1 ? '' : 's'} keep their history`
                         : 'Crew removed')
                       refresh()
-                    } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not remove crew') }
+                    } catch (e) {
+                      // Put it back — it is still on the board, and pretending
+                      // otherwise would be worse than the wait.
+                      setRemoving(s => { const n = new Set(s); n.delete(crew.id); return n })
+                      toast.error(e instanceof Error ? e.message : 'Could not remove crew')
+                    }
                   }} className="rounded-md px-2 py-1 text-[11px]" style={{ color: 'var(--over)' }}>Delete</button>
                 </div>
               </div>
