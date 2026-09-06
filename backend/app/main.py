@@ -1,3 +1,4 @@
+import os
 import logging
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -143,6 +144,11 @@ async def health():
     return {
         "status": "ok",
         "version": "0.2.0",
+        # Render injects RENDER_GIT_COMMIT on every deploy. Without it there is no
+        # way to tell a freshly-deployed container from a stale one still serving
+        # old code — /health returned 200 either way, which has already caused a
+        # deploy to be reported as live when it was not.
+        "commit": (os.getenv("RENDER_GIT_COMMIT") or "unknown")[:7],
         "auth_mode": auth_mode,
         "auth_key_source": key_source,   # "jwks" | "secret" | "none"
         "gemini_keys_loaded": sum(bool(k) for k in (
