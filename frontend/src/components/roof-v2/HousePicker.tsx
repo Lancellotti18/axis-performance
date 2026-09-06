@@ -56,7 +56,9 @@ export default function HousePicker({
   // Pull a street-level photo of the address so users who don't recognize the
   // house from the top-down view can match it. Best-effort — hidden if missing.
   useEffect(() => {
-    if (lat == null || lng == null || (lat === 0 && lng === 0)) return
+    // No usable coordinates — there is nothing to look up. Say so instead of
+    // leaving the skeleton pulsing forever, which reads as a hung request.
+    if (lat == null || lng == null || (lat === 0 && lng === 0)) { setSvState('unavailable'); return }
     let cancelled = false
     setSvState('loading')
     api.roofing.v2.getStreetView(lat, lng)
