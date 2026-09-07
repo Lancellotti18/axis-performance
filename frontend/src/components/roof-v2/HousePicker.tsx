@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { api, invalidateApiCache } from '@/lib/api'
-import { fracToGeo } from './SolarAssistPanel'
+import { fracToGeo, geoToFrac } from './SolarAssistPanel'
 
 interface Props {
   runId: string
@@ -41,6 +41,19 @@ export default function HousePicker({
   // a switched-off API is visible instead of silently showing nothing.
   const [svState, setSvState] = useState<'loading' | 'ok' | 'no_coverage' | 'unavailable'>('loading')
   const [svZoom, setSvZoom] = useState(false)
+
+  // Two stages, in the order a person actually identifies a house:
+  //   'street'    — recognise it from the road, where houses are recognisable
+  //   'satellite' — confirm the building we picked out for you from above
+  // Resuming a saved run skips straight to 'satellite'; so does a missing photo,
+  // because there is nothing to recognise it from.
+  const [stage, setStage] = useState<'street' | 'satellite'>(initialPoint ? 'satellite' : 'street')
+  // The building OSM has at this address, as image fractions on the tile.
+  const [outline, setOutline] = useState<{ x: number; y: number }[] | null>(null)
+  const [autoPicked, setAutoPicked] = useState(false)
+  // Set when the user says the street photo is NOT their house: the geocode is
+  // wrong, so the footprint at that geocode is wrong too and must not be trusted.
+  const [geocodeRejected, setGeocodeRejected] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
 
   // On project resume the saved house point arrives asynchronously (after this
@@ -58,7 +71,9 @@ export default function HousePicker({
   useEffect(() => {
     // No usable coordinates — there is nothing to look up. Say so instead of
     // leaving the skeleton pulsing forever, which reads as a hung request.
-    if (lat == null || lng == null || (lat === 0 && lng === 0)) { setSvState('unavailable'); return }
+    if (lat == null || lng == null || (lat === 0 && lng === 0)) {
+      setSvState('unavailable'); setStage('satellite'); return
+    }
     let cancelled = false
     setSvState('loading')
     api.roofing.v2.getStreetView(lat, lng)
@@ -67,10 +82,45 @@ export default function HousePicker({
         if (r.available && r.image) { setStreetView(r.image); setSvState('ok'); return }
         setStreetView(null)
         setSvState(r.reason === 'no_coverage' ? 'no_coverage' : 'unavailable')
+        setStage(st => (st === 'street' ? 'satellite' : st))
       })
-      .catch(() => { if (!cancelled) { setStreetView(null); setSvState('unavailable') } })
+      .catch(() => {
+        if (cancelled) return
+        setStreetView(null); setSvState('unavailable')
+        setStage(st => (st === 'street' ? 'satellite' : st))
+      })
     return () => { cancelled = true }
   }, [lat, lng])
+
+  // Project the building's OSM outline onto the tile. This is what lets us pick
+  // the house out for the user instead of asking them to find it. Needs real tile
+  // scale — without feetPerPixel the projection is meaningless, so skip it.
+  useEffect(() => {
+    if (lat == null || lng == null || !imageWidthPx || !imageHeightPx || !feetPerPixel) return
+    let cancelled = false
+    api.roofing.v2.getFootprint(runId)
+      .then(fp => {
+        if (cancelled || !fp.available || !fp.ring?.length) return
+        const pts = fp.ring.map(p => {
+          const [x, y] = geoToFrac(p.lat, p.lng, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel)
+          return { x, y }
+        })
+        setOutline(pts)
+      })
+      .catch(() => { /* best-effort — the manual tap still works */ })
+    return () => { cancelled = true }
+  }, [runId, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel])
+
+  // Drop the marker in the middle of that building once we have it — but never
+  // over a point the user placed themselves, and never when they've told us the
+  // address is wrong.
+  useEffect(() => {
+    if (!outline || autoPicked || confirmed || geocodeRejected) return
+    const cx = outline.reduce((a, p) => a + p.x, 0) / outline.length
+    const cy = outline.reduce((a, p) => a + p.y, 0) / outline.length
+    setPoint({ x: cx, y: cy })
+    setAutoPicked(true)
+  }, [outline, autoPicked, confirmed, geocodeRejected])
 
   const place = useCallback((clientX: number, clientY: number) => {
     const el = imgRef.current
@@ -80,6 +130,7 @@ export default function HousePicker({
     const y = Math.max(0, Math.min(1, (clientY - r.top) / r.height))
     setPoint({ x, y })
     setConfirmed(false)
+    setAutoPicked(false)      // their tap wins over our guess
   }, [])
 
   const confirm = useCallback(async () => {
@@ -113,10 +164,15 @@ export default function HousePicker({
     <section className="rounded-lg border border-emerald-400/30 bg-emerald-500/[0.07] p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-emerald-900">📍 Tap your house</h3>
+          <h3 className="text-sm font-semibold text-emerald-900">
+            {stage === 'street' ? '🏠 Is this the house?' : '📍 Confirm the roof'}
+          </h3>
           <p className="text-xs text-[#6b7280]">
-            Tap the <strong>center of YOUR roof</strong> so auto-detect locks onto the right building —
-            not a neighbor or a shed. The marker starts on the address; re-tap to adjust.
+            {stage === 'street'
+              ? 'Houses are far easier to recognise from the road than from above. Check this is the right one, and we\u2019ll pick it out on the satellite for you.'
+              : autoPicked
+                ? 'We found this building at the address and highlighted it. Check the outline sits on YOUR roof \u2014 tap elsewhere if it\u2019s wrong.'
+                : 'Tap the center of YOUR roof so auto-detect locks onto the right building \u2014 not a neighbor or a shed.'}
           </p>
           {address && (
             <p className="mt-1 text-[11px] text-emerald-900/80">
@@ -131,34 +187,66 @@ export default function HousePicker({
         )}
       </div>
 
-      {/* Street-level reference: the view people actually recognize. Find THIS
-          house on the satellite below, then tap its roof. */}
-      {/* Street-level reference. This is the fastest way to know you're about to
-          tap the right roof, so it gets real estate — a thumbnail is too small to
-          recognize a house from. Click to enlarge. */}
+      {/* The street photo. In stage 1 it is the subject of the question, so it
+          gets the full width; afterwards it stays as a small reference. */}
       {streetView && (
         <div className="mt-3 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2.5">
-          <div className="flex gap-3">
+          <div className={stage === 'street' ? '' : 'flex gap-3'}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={streetView}
               alt="Street view of the address"
               onClick={() => setSvZoom(true)}
-              className="h-36 w-56 shrink-0 cursor-zoom-in rounded-md border border-[#dededc] object-cover transition hover:brightness-95"
+              className={stage === 'street'
+                ? 'w-full cursor-zoom-in rounded-md border border-[#dededc] object-cover transition hover:brightness-95'
+                : 'h-28 w-44 shrink-0 cursor-zoom-in rounded-md border border-[#dededc] object-cover transition hover:brightness-95'}
               draggable={false}
             />
-            <div className="text-[11px] leading-relaxed text-[#6b7280]">
-              <span className="font-semibold text-[#1a1a1a]">Don&apos;t recognize it from above?</span>{' '}
-              This is the address from the street. Find <em>this same house</em> on the satellite
-              image below — it&apos;s the building at the center — and tap its roof.
-              <button
-                type="button"
-                onClick={() => setSvZoom(true)}
-                className="mt-1.5 block rounded border border-[#dededc] bg-white px-2 py-1 text-[11px] font-medium text-[#1a1a1a] hover:bg-[#f2f2f0]"
-              >
-                Enlarge photo
-              </button>
-            </div>
+            {stage === 'street' ? (
+              <div className="mt-2.5">
+                <p className="text-[11px] leading-relaxed text-[#6b7280]">
+                  This is <span className="font-medium text-[#1a1a1a]">{address || 'the address'}</span> from
+                  the street. Click the photo to enlarge it.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStage('satellite')}
+                    className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                  >
+                    Yes — that&apos;s the house
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // The photo is of the geocoded address. If that's the wrong
+                      // house, the geocode is wrong, so the footprint sitting at
+                      // that same geocode is wrong too — drop it rather than
+                      // highlight a building we now know we can't trust.
+                      setGeocodeRejected(true)
+                      setOutline(null)
+                      setAutoPicked(false)
+                      setStage('satellite')
+                    }}
+                    className="rounded-md border border-[#dededc] bg-white px-4 py-2 text-sm font-medium text-[#1a1a1a] hover:bg-[#f2f2f0]"
+                  >
+                    No — that&apos;s not it
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[11px] leading-relaxed text-[#6b7280]">
+                <span className="font-semibold text-[#1a1a1a]">Street reference.</span>{' '}
+                The same house, from the road. Click to enlarge.
+                <button
+                  type="button"
+                  onClick={() => setStage('street')}
+                  className="mt-1.5 block rounded border border-[#dededc] bg-white px-2 py-1 text-[11px] font-medium text-[#1a1a1a] hover:bg-[#f2f2f0]"
+                >
+                  Not the right house?
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -200,7 +288,15 @@ export default function HousePicker({
         </div>
       )}
 
-      <div className="mt-3 overflow-hidden rounded-lg border border-[#dededc] bg-black">
+      {stage === 'satellite' && geocodeRejected && (
+        <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+          <span className="font-semibold">The address may be off.</span> Since the street photo isn&apos;t
+          your house, we haven&apos;t guessed a building — find your roof on the satellite below and tap it.
+          Everything downstream measures the roof you tap, so this is the one thing worth getting right.
+        </div>
+      )}
+
+      <div className={`mt-3 overflow-hidden rounded-lg border border-[#dededc] bg-black ${stage === 'street' ? 'hidden' : ''}`}>
         <div className="relative">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -211,6 +307,25 @@ export default function HousePicker({
             onClick={e => place(e.clientX, e.clientY)}
             className="block w-full cursor-crosshair select-none"
           />
+          {/* The building we picked out, drawn over the tile. This is what turns
+              "find your house among six rooftops" into a yes/no. It is drawn
+              under the marker and never intercepts taps. */}
+          {outline && outline.length > 2 && (
+            <svg
+              className="pointer-events-none absolute inset-0 h-full w-full"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <polygon
+                points={outline.map(p => `${p.x * 100},${p.y * 100}`).join(' ')}
+                fill="rgba(16,185,129,0.22)"
+                stroke="rgb(16,185,129)"
+                strokeWidth="0.5"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+          )}
           {/* Pulsing marker at the chosen point */}
           <div
             className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
@@ -229,18 +344,24 @@ export default function HousePicker({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          onClick={confirm}
-          disabled={saving}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : confirmed ? 'Saved ✓ — re-tap to change' : 'Confirm this is my house'}
-        </button>
-        <span className="text-[11px] text-[#6b7280]">
-          {confirmed ? 'Locked in. Now run Auto-detect below.' : 'Tap the roof, then confirm — takes 2 seconds.'}
-        </span>
-      </div>
+      {stage === 'satellite' && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            onClick={confirm}
+            disabled={saving}
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : confirmed ? 'Saved ✓ — re-tap to change' : 'Confirm this is my roof'}
+          </button>
+          <span className="text-[11px] text-[#6b7280]">
+            {confirmed
+              ? 'Locked in. Now run Auto-detect below.'
+              : autoPicked
+                ? 'Check the highlight is on your roof, then confirm.'
+                : 'Tap the roof, then confirm — takes 2 seconds.'}
+          </span>
+        </div>
+      )}
     </section>
   )
 }
