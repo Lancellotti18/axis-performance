@@ -24,6 +24,13 @@ const SUGGESTED_PROMPTS: Record<ChatSection, string[]> = {
     'Explain my material cost breakdown',
     'Did the blueprint analysis catch everything?',
   ],
+  // These two are the exact questions the dashboard greeting promises the
+  // assistant can answer, so they are offered as one-tap prompts here.
+  'aerial-report': [
+    'Why is this pitch flagged?',
+    'What\'s missing from this report?',
+    'What is capping my confidence?',
+  ],
   'compliance': [
     'Which compliance items are blocking me?',
     'How do I fix the failures?',

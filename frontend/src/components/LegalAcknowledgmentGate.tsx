@@ -97,13 +97,7 @@ export default function LegalAcknowledgmentGate() {
 
         {/* Body */}
         <div className="px-6 py-5">
-          <p className="text-[14px] leading-relaxed text-[#374151]">
-            Two things worth knowing up front: Axis measurements are AI-assisted estimates that
-            you verify on site, and the roof work you do here trains the models that make those
-            estimates better. Both documents explain this in full.
-          </p>
-
-          <div className="mt-5 space-y-3">
+          <div className="space-y-3">
             <AgreementRow
               checked={tos}
               onChange={setTos}
