@@ -483,9 +483,10 @@ x0,y0 is the top-left corner of the building's bounding box; x1,y1 the bottom-ri
 # the metadata request regardless of the answer.
 _SV_TTL_SECONDS = 7 * 24 * 3600      # imagery changes on the order of years
 _SV_CACHE: dict[str, tuple[float, dict]] = {}
-# Each entry holds a base64 640x400 JPEG (~80 KB), so 200 is ~16 MB — bounded
-# comfortably inside Render's 512 MB free tier. Raise this only alongside the plan.
-_SV_MAX = 200
+# Each entry holds a base64 640x400 JPEG (~80 KB). Render has already OOM-killed
+# this service once, so keep this modest: 60 entries is ~5 MB. Raise it only if
+# the instance gets more memory.
+_SV_MAX = 60
 
 
 def _sv_key(lat: float, lng: float) -> str:
@@ -550,7 +551,7 @@ async def street_view(
     def _remember(result: dict) -> dict:
         # Evict oldest first so the cache cannot grow without bound.
         if len(_SV_CACHE) >= _SV_MAX:
-            for k in sorted(_SV_CACHE, key=lambda k: _SV_CACHE[k][0])[:40]:
+            for k in sorted(_SV_CACHE, key=lambda k: _SV_CACHE[k][0])[:12]:
                 _SV_CACHE.pop(k, None)
         _SV_CACHE[ck] = (time.time(), result)
         return result
@@ -3071,6 +3072,12 @@ class EdgeLabelSuggestRequest(BaseModel):
     unlabeled_edges: list[dict]   # [{facet_label, vertex_index_start, vertex_index_end}]
 
 
+# Auto-label makes two vision passes. The browser aborts the request at 120 s, so
+# each pass gets a slice well inside that — a pass that overruns is work nobody is
+# still waiting for, and the geometric suggestions are already a usable answer.
+_EDGE_VISION_BUDGET_S = 45.0
+
+
 @router.post("/runs/{run_id}/edges/suggest-labels")
 async def suggest_edge_labels(
     run_id: str,
@@ -3159,7 +3166,8 @@ async def suggest_edge_labels(
                     "{\n  \"labels\": [\n    {\"facet_label\": \"A\", \"vertex_index_start\": 0, \"edge_type\": \"eave\", \"confidence\": 0.8, \"reason\": \"gutter visible below\"},\n    ...\n  ]\n}\n"
                     "Be honest — confidence < 0.5 if you genuinely cannot tell."
                 )
-                parsed = _loads_tolerant(await llm_vision(img_bytes, mt, prompt, max_tokens=1200))
+                parsed = _loads_tolerant(await llm_vision(img_bytes, mt, prompt, max_tokens=1200,
+                                                          budget_s=_EDGE_VISION_BUDGET_S))
                 if parsed is not None:
                     for v in parsed.get("labels") or []:
                         key = (v.get("facet_label"), int(v.get("vertex_index_start") or -1))
@@ -3201,7 +3209,8 @@ async def suggest_edge_labels(
                     "{\n  \"labels\": [\n    {\"facet_label\": \"A\", \"vertex_index_start\": 0, \"edge_type\": \"valley\", \"confidence\": 0.7, \"reason\": \"dark recessed line, water channels in\"}\n  ]\n}\n"
                     "confidence < 0.5 if you truly cannot tell from the image."
                 )
-                parsed = _loads_tolerant(await llm_vision(img_bytes, mt, prompt, max_tokens=1000))
+                parsed = _loads_tolerant(await llm_vision(img_bytes, mt, prompt, max_tokens=1000,
+                                                          budget_s=_EDGE_VISION_BUDGET_S))
                 if parsed is not None:
                     for v in parsed.get("labels") or []:
                         et = v.get("edge_type")

@@ -13,6 +13,7 @@ Usage:
     result = await llm_vision(image_bytes, "image/jpeg", "Analyze this blueprint")
 """
 import asyncio
+import time
 import base64
 import json
 import logging
@@ -104,6 +105,7 @@ async def llm_vision(
     system: Optional[str] = None,
     max_tokens: int = 8192,
     reference_images: Optional[list] = None,
+    budget_s: Optional[float] = None,
 ) -> str:
     """
     Analyze an image with a text prompt. Tries providers in priority order with automatic fallback.
@@ -114,24 +116,37 @@ async def llm_vision(
     them (multi-image); fallbacks ignore them.
     """
     errors = []
+    # budget_s bounds the WHOLE call, retry matrix included. Without it the Gemini
+    # path alone walks 2 passes x 3 keys x 4 models, each with its own 130 s
+    # timeout — up to ~52 minutes for a request no client waits past 120 s for.
+    # Any caller with a user watching should pass a budget.
+    deadline = (time.monotonic() + budget_s) if budget_s else None
+
+    def _left() -> Optional[float]:
+        return None if deadline is None else max(0.0, deadline - time.monotonic())
 
     if settings.GEMINI_API_KEY:
         try:
             from google import genai  # noqa: F401
-            return await _gemini_vision(image_bytes, media_type, prompt, system, max_tokens, reference_images)
+            return await _gemini_vision(image_bytes, media_type, prompt, system, max_tokens,
+                                        reference_images, deadline=deadline)
         except Exception as e:
             errors.append(f"Gemini: {e}")
 
-    if settings.GROQ_API_KEY:
+    if settings.GROQ_API_KEY and (_left() is None or _left() > 3):
         try:
             import groq  # noqa: F401
-            return await _groq_vision(image_bytes, media_type, prompt, system, max_tokens)
+            return await asyncio.wait_for(
+                _groq_vision(image_bytes, media_type, prompt, system, max_tokens),
+                timeout=_left())
         except Exception as e:
             errors.append(f"Groq: {e}")
 
-    if settings.ANTHROPIC_API_KEY:
+    if settings.ANTHROPIC_API_KEY and (_left() is None or _left() > 3):
         try:
-            return await _anthropic_vision(image_bytes, media_type, prompt, system, max_tokens)
+            return await asyncio.wait_for(
+                _anthropic_vision(image_bytes, media_type, prompt, system, max_tokens),
+                timeout=_left())
         except Exception as e:
             errors.append(f"Anthropic: {e}")
 
@@ -297,6 +312,7 @@ async def _gemini_vision(
     system: Optional[str],
     max_tokens: int,
     reference_images: Optional[list] = None,
+    deadline: Optional[float] = None,
 ) -> str:
     from google import genai
     from google.genai import types
@@ -337,8 +353,18 @@ async def _gemini_vision(
     for pass_idx in range(2):
         for key in keys:
             for model in models:
+                # Never start an attempt that cannot finish inside the budget, and
+                # never let a single attempt consume all of it.
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 2:
+                        raise last_err
+                    attempt_timeout = min(130.0, remaining)
+                else:
+                    attempt_timeout = 130.0
                 try:
-                    return await asyncio.wait_for(asyncio.to_thread(_run, key, model), timeout=130)
+                    return await asyncio.wait_for(asyncio.to_thread(_run, key, model),
+                                                  timeout=attempt_timeout)
                 except Exception as e:
                     last_err = e
                     # An empty candidate (model thought itself out of budget, or

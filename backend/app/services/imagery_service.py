@@ -91,12 +91,28 @@ def _cache_get(key: str) -> Optional[_CacheEntry]:
     return entry
 
 
+# This cache holds RAW TILE BYTES, so a count-based bound says nothing about the
+# memory it uses. A 2048x1366 Esri PNG measures ~1.8 MB, which made the old cap of
+# 256 entries worth ~469 MB — on a 512 MB instance, i.e. an out-of-memory kill
+# waiting for a busy afternoon. Bound the bytes instead; the entry count then
+# takes care of itself.
+_CACHE_MAX_BYTES = 48 * 1024 * 1024      # ~26 tiles at 1.8 MB
+_CACHE_MAX_ENTRIES = 64                  # belt and braces for tiny tiles
+
+
+def _cache_bytes() -> int:
+    return sum(len(e.bytes) for e in _CACHE.values())
+
+
 def _cache_put(key: str, entry: _CacheEntry) -> None:
     _CACHE[key] = entry
-    # Crude eviction: cap to 256 entries
-    if len(_CACHE) > 256:
-        oldest = min(_CACHE.items(), key=lambda kv: kv[1].fetched_at)
-        _CACHE.pop(oldest[0], None)
+    # Evict oldest-first until BOTH bounds are satisfied. The old code evicted a
+    # single entry per insert, so a burst could never claw memory back.
+    if len(_CACHE) > _CACHE_MAX_ENTRIES or _cache_bytes() > _CACHE_MAX_BYTES:
+        for k in sorted(_CACHE, key=lambda k: _CACHE[k].fetched_at):
+            if len(_CACHE) <= _CACHE_MAX_ENTRIES and _cache_bytes() <= _CACHE_MAX_BYTES:
+                break
+            _CACHE.pop(k, None)
 
 
 # ----------------------------------------------------------------------------
