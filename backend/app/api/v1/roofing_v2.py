@@ -846,8 +846,13 @@ _SOLAR_DIAG: dict[str, dict] = {}
 
 async def _solar_pitch_for_polygons(
     run: dict, polygons: list[list], zoom: int,
-) -> list[Optional[str]]:
-    """Google Solar's MEASURED pitch for each traced polygon, or None.
+) -> list[Optional[tuple[str, str]]]:
+    """(pitch, source) from Google Solar for each traced polygon, or None.
+
+    source is 'solar_measured' when a Solar plane overlapped THIS facet by 50%+,
+    or 'solar_building' when the facet matched nothing and inherited the
+    building's dominant measured pitch. The two are never conflated: one is a
+    measurement of this plane, the other is an inference from the same roof.
 
     Solar pitch used to reach facets only through Auto-detect, because that is
     where `_layer_with_solar` runs. A contractor who traced the roof by hand —
@@ -858,7 +863,7 @@ async def _solar_pitch_for_polygons(
     Best-effort throughout: no coverage, no key, or any failure yields None and
     the caller keeps the default.
     """
-    out: list[Optional[str]] = [None] * len(polygons)
+    out: list[Optional[tuple[str, str]]] = [None] * len(polygons)
     # Every failure below used to return silently, so a facet kept its 6/12
     # default and nothing anywhere recorded why. That is how 100 facets ended up
     # on an assumed pitch with the key configured and coverage available — the
@@ -991,9 +996,27 @@ async def _solar_pitch_for_polygons(
             if best_j is not None and best_cov >= 0.5:
                 pitch = (segs[best_j].get("pitch") or "").strip()
                 if pitch:
-                    out[i] = pitch
+                    out[i] = (pitch, "solar_measured")
                     matched += 1
-        if matched == 0:
+
+        # Facets that matched no plane used to fall straight back to a blind
+        # 6/12. That is the worst available answer: Google has just measured
+        # THIS BUILDING, and roofs are overwhelmingly a single pitch, so the
+        # building's area-weighted dominant pitch beats a global constant by a
+        # wide margin. It is recorded as 'solar_building' rather than
+        # 'solar_measured' — measured on this roof, but not on this facet — so
+        # the report never claims more precision than was actually obtained.
+        dominant = _dominant_solar_pitch(segs)
+        inferred = 0
+        if dominant:
+            for i in range(len(polygons)):
+                if out[i] is None:
+                    out[i] = (dominant, "solar_building")
+                    inferred += 1
+        diag["dominant_pitch"] = dominant
+        diag["inferred_from_building"] = inferred
+
+        if matched == 0 and inferred == 0:
             best = max(diag["best_coverage"] or [0.0])
             diag["reason"] = (
                 f"no traced facet overlapped a Solar plane by the required 50% "
@@ -1001,7 +1024,10 @@ async def _solar_pitch_for_polygons(
             logger.warning("solar pitch matched nothing on run %s — %s",
                            run.get("id"), diag["reason"])
         else:
-            diag["reason"] = f"applied to {matched} of {len(polygons)} facets"
+            diag["reason"] = (
+                f"measured {matched} of {len(polygons)} facets directly"
+                + (f"; {inferred} took this building's dominant {dominant} "
+                   f"(no plane overlapped them by 50%)" if inferred else ""))
     except Exception as e:
         diag["reason"] = f"lookup error: {e}"
         logger.info("solar pitch lookup failed for run %s: %s", run.get("id"), e)
@@ -1096,11 +1122,14 @@ async def put_facets(
         # A facet still sitting on the bare default gets Google's measured pitch
         # when Solar covers that plane. Anything the contractor set by hand, or
         # that already came from Solar/a ground photo, is left alone.
-        if pitch_source == "default" and solar_pitches[len(rows)]:
-            f_pitch = solar_pitches[len(rows)]
+        solar_hit = solar_pitches[len(rows)] if len(rows) < len(solar_pitches) else None
+        if pitch_source == "default" and solar_hit:
+            # solar_hit is (pitch, source): 'solar_measured' when a plane
+            # overlapped THIS facet, 'solar_building' when it inherited the
+            # building's dominant measured pitch. Carry the distinction through.
+            f_pitch, pitch_source = solar_hit
             mult = geo.slope_multiplier(f_pitch)
             deg = geo.pitch_string_to_degrees(f_pitch)
-            pitch_source = "solar_measured"
         else:
             f_pitch = f.pitch
         rows.append({
@@ -4176,7 +4205,10 @@ async def solar_diagnostic(run_id: str, user: dict = Depends(require_user)) -> d
                 "label": f.get("facet_label"),
                 "current_pitch": f.get("pitch"),
                 "current_source": f.get("pitch_source"),
-                "solar_would_give": pitches[i] if i < len(pitches) else None,
+                "solar_would_give": (pitches[i][0] if pitches[i] else None)
+                if i < len(pitches) else None,
+                "solar_would_give_source": (pitches[i][1] if pitches[i] else None)
+                if i < len(pitches) else None,
                 "best_overlap": (diag.get("best_coverage") or [None] * len(facets))[i]
                 if i < len(diag.get("best_coverage") or []) else None,
             }
