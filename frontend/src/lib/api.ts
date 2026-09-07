@@ -1351,6 +1351,25 @@ export const api = {
         }>(`/api/v1/roofing/v2/runs/${runId}/ground-findings`),
       // Building footprint (OpenStreetMap) — free, nationwide rural fallback
       // when Google Solar has no coverage. Returns the building outline ring.
+      /** Why Solar did or didn't measure each traced facet. Answers "3 of my 4
+       *  facets say 6/12 default — why?" from the product instead of the DB. */
+      getSolarDiagnostic: (runId: string) =>
+        apiRequest<{
+          solar_configured: boolean
+          coverage: { available: boolean; reason?: string | null; segments?: number
+                      imagery_quality?: string | null; imagery_date?: string | null }
+          lookup: { queried?: string; anchor?: string; zoom_used?: number
+                    zoom_mismatch?: { client: number; run: number }
+                    best_coverage?: number[]; reason?: string }
+          facets: Array<{
+            label?: string | null
+            current_pitch?: string | null
+            current_source?: string | null
+            solar_would_give?: string | null
+            best_overlap?: number | null
+          }>
+          verdict: string
+        }>(`/api/v1/roofing/v2/runs/${runId}/solar-diagnostic`, undefined, 90000),
       getFootprint: (runId: string) =>
         apiRequest<{
           available: boolean

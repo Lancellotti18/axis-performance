@@ -76,6 +76,19 @@ export default function SolarAssistPanel({
   const [data, setData] = useState<Solar | null>(null)
   const [footprint, setFootprint] = useState<Footprint | null>(null)
   const [loading, setLoading] = useState(true)
+  // Why Solar did or didn't measure each traced facet. Until now this existed
+  // only in a server log: a run could show "6/12 default" on three of four
+  // facets with nothing in the product explaining it.
+  const [diag, setDiag] = useState<Awaited<ReturnType<typeof api.roofing.v2.getSolarDiagnostic>> | null>(null)
+  const [diagOpen, setDiagOpen] = useState(false)
+  const [diagBusy, setDiagBusy] = useState(false)
+
+  const loadDiag = async () => {
+    setDiagBusy(true); setDiagOpen(true)
+    try { setDiag(await api.roofing.v2.getSolarDiagnostic(runId)) }
+    catch { setDiag(null) }
+    finally { setDiagBusy(false) }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -167,6 +180,63 @@ export default function SolarAssistPanel({
           Pitch is <strong>measured</strong>, not guessed — these planes are folded in automatically when you click <strong>Auto-detect roof</strong> below.
         </p>
       </div>
+
+      {/* The measured-vs-assumed breakdown. "Pitch is measured, not guessed"
+          above is only true for the facets Solar actually matched — this says
+          which, and why the rest missed. */}
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={() => (diagOpen ? setDiagOpen(false) : loadDiag())}
+          className="rounded border border-[#dededc] bg-white px-2 py-1 text-[11px] font-medium text-[#1a1a1a] hover:bg-[#f2f2f0]"
+        >
+          {diagOpen ? 'Hide' : 'Which of my facets did Solar measure?'}
+        </button>
+      </div>
+
+      {diagOpen && (
+        <div className="mt-2 rounded-lg border border-[#dededc] bg-white p-2.5 text-[11px] text-[#2d2d2d]">
+          {diagBusy && <p className="text-[#6b7280]">Checking each traced facet…</p>}
+          {!diagBusy && !diag && <p className="text-[#6b7280]">Couldn&apos;t load the breakdown.</p>}
+          {!diagBusy && diag && (
+            <>
+              <p className="font-medium text-[#1a1a1a]">{diag.verdict}</p>
+              {diag.lookup?.zoom_mismatch && (
+                <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-amber-900">
+                  Zoom mismatch (tile {diag.lookup.zoom_mismatch.run}, request{' '}
+                  {diag.lookup.zoom_mismatch.client}) — Solar planes are projected at the
+                  wrong scale, so overlaps will read low across the board.
+                </p>
+              )}
+              <ul className="mt-1.5 space-y-1">
+                {diag.facets.map((f, i) => {
+                  const measured = f.current_source === 'solar_measured'
+                  const pct = f.best_overlap == null ? null : Math.round(f.best_overlap * 100)
+                  return (
+                    <li key={i} className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium">{f.label || `Facet ${i + 1}`}</span>
+                      <span>· {f.current_pitch}</span>
+                      <span className={measured ? 'text-emerald-700' : 'text-amber-700'}>
+                        {measured ? 'measured by Solar' : `assumed (${f.current_source || 'default'})`}
+                      </span>
+                      {!measured && pct != null && (
+                        <span className="text-[#6b7280]">
+                          — best overlap {pct}%, needs 50%
+                          {f.solar_would_give ? ` (Solar had ${f.solar_would_give})` : ''}
+                        </span>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="mt-1.5 text-[#6b7280]">
+                An assumed pitch still drives the area calculation. If a facet is really
+                steeper than the assumption, its area is under-measured.
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {segs.length > 0 && (
         <ul className="mt-2 grid grid-cols-2 gap-1 text-[11px] md:grid-cols-3">
