@@ -434,6 +434,18 @@ export async function apiRequestText(
 }
 
 // Projects
+/** Whether the signed-in contractor still owes acceptance of the current
+ *  Terms of Service / Privacy Policy. `storage_ready: false` means the
+ *  migration has not been run and the gate is inert — not that consent
+ *  was given. */
+export type LegalAcknowledgmentStatus = {
+  required: boolean
+  storage_ready: boolean
+  tos_version: string
+  privacy_version: string
+  accepted_at: string | null
+}
+
 export const api = {
   projects: {
     list: (userId: string) =>
@@ -749,6 +761,17 @@ export const api = {
       apiRequest<{ ok: boolean }>(`/api/v1/notifications/${id}/read`, { method: 'POST' }),
     markAllRead: () =>
       apiRequest<{ ok: boolean }>(`/api/v1/notifications/read-all`, { method: 'POST' }),
+  },
+  // ── Terms of Service / Privacy Policy acceptance ─────────────────────────
+  // The server owns the version numbers; the client only asserts consent.
+  legal: {
+    status: () =>
+      apiRequest<LegalAcknowledgmentStatus>(`/api/v1/legal/acknowledgment`),
+    accept: () =>
+      apiRequest<{ ok: boolean; tos_version: string; privacy_version: string }>(
+        `/api/v1/legal/acknowledgment`,
+        { method: 'POST', body: JSON.stringify({ accept_tos: true, accept_privacy: true }) },
+      ),
   },
   // ── Find Roofs (prospecting) ─────────────────────────────────────────────
   prospecting: {

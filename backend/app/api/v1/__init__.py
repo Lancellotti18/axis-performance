@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import projects, blueprints, analyses, estimates, reports, compliance, materials, permits, contractor_profile, roofing, roofing_v2, exterior, training, crm, photos, model3d, axis, proposals, material_check, visualizer, renders, chat, instant_quote, roof_proposals, appointments, notifications, prospecting, project_photos, scheduling, briefing
+from app.api.v1 import projects, blueprints, analyses, estimates, reports, compliance, materials, permits, contractor_profile, roofing, roofing_v2, exterior, training, crm, photos, model3d, axis, proposals, material_check, visualizer, renders, chat, instant_quote, roof_proposals, appointments, notifications, prospecting, project_photos, scheduling, briefing, legal
 
 router = APIRouter()
 
@@ -46,3 +46,4 @@ router.include_router(prospecting.router, prefix="/prospecting", tags=["prospect
 router.include_router(project_photos.router, prefix="/project-photos", tags=["project-photos"])
 router.include_router(briefing.router, prefix="/briefing", tags=["briefing"])
 router.include_router(scheduling.router, prefix="/scheduling", tags=["scheduling"])
+router.include_router(legal.router, prefix="/legal", tags=["legal"])
