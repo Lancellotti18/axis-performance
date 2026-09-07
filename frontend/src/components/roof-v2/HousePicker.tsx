@@ -54,6 +54,9 @@ export default function HousePicker({
   // Set when the user says the street photo is NOT their house: the geocode is
   // wrong, so the footprint at that geocode is wrong too and must not be trusted.
   const [geocodeRejected, setGeocodeRejected] = useState(false)
+  // Why there is (or isn't) a highlighted building. Silence here is precisely
+  // what made a missing highlight look like a mis-placed one.
+  const [fpState, setFpState] = useState<'off' | 'loading' | 'found' | 'guess' | 'none' | 'error'>('loading')
   const imgRef = useRef<HTMLImageElement>(null)
 
   // On project resume the saved house point arrives asynchronously (after this
@@ -96,18 +99,26 @@ export default function HousePicker({
   // the house out for the user instead of asking them to find it. Needs real tile
   // scale — without feetPerPixel the projection is meaningless, so skip it.
   useEffect(() => {
-    if (lat == null || lng == null || !imageWidthPx || !imageHeightPx || !feetPerPixel) return
+    if (lat == null || lng == null || !imageWidthPx || !imageHeightPx || !feetPerPixel) {
+      setFpState('off'); return
+    }
     let cancelled = false
+    setFpState('loading')
     api.roofing.v2.getFootprint(runId)
       .then(fp => {
-        if (cancelled || !fp.available || !fp.ring?.length) return
+        if (cancelled) return
+        if (!fp.available || !fp.ring?.length) { setFpState('none'); return }
         const pts = fp.ring.map(p => {
           const [x, y] = geoToFrac(p.lat, p.lng, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel)
           return { x, y }
         })
         setOutline(pts)
+        // A 'nearest' match means the address landed outside every building, so
+        // this is the closest neighbour rather than a known answer. Show it, but
+        // never let it masquerade as a confident pick.
+        setFpState(fp.confident ? 'found' : 'guess')
       })
-      .catch(() => { /* best-effort — the manual tap still works */ })
+      .catch(() => { if (!cancelled) setFpState('error') })
     return () => { cancelled = true }
   }, [runId, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel])
 
@@ -158,6 +169,11 @@ export default function HousePicker({
     }
   }, [runId, point, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel, onConfirmed])
 
+  // The marker means something only when we picked a building out or the user
+  // tapped. At (0.5, 0.5) with neither, it is a default, not a selection.
+  const userTapped = point.x !== 0.5 || point.y !== 0.5
+  const placed = autoPicked || confirmed || userTapped
+
   if (!imageUrl) return null
 
   return (
@@ -171,7 +187,9 @@ export default function HousePicker({
             {stage === 'street'
               ? 'Houses are far easier to recognise from the road than from above. Check this is the right one, and we\u2019ll pick it out on the satellite for you.'
               : autoPicked
-                ? 'We found this building at the address and highlighted it. Check the outline sits on YOUR roof \u2014 tap elsewhere if it\u2019s wrong.'
+                ? (fpState === 'guess'
+                    ? 'This is our best guess at the building \u2014 check the outline is on YOUR roof before confirming.'
+                    : 'We found this building at the address and highlighted it. Check the outline sits on YOUR roof \u2014 tap elsewhere if it\u2019s wrong.')
                 : 'Tap the center of YOUR roof so auto-detect locks onto the right building \u2014 not a neighbor or a shed.'}
           </p>
           {address && (
@@ -226,6 +244,7 @@ export default function HousePicker({
                       setGeocodeRejected(true)
                       setOutline(null)
                       setAutoPicked(false)
+                      setFpState('none')
                       setStage('satellite')
                     }}
                     className="rounded-md border border-[#dededc] bg-white px-4 py-2 text-sm font-medium text-[#1a1a1a] hover:bg-[#f2f2f0]"
@@ -288,6 +307,27 @@ export default function HousePicker({
         </div>
       )}
 
+      {stage === 'satellite' && !geocodeRejected && fpState !== 'loading' && !placed && (
+        <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+          <span className="font-semibold">We couldn&apos;t pick the building out for you.</span>{' '}
+          {fpState === 'none'
+            ? 'No building outline is mapped at this address.'
+            : fpState === 'off'
+              ? 'This tile has no scale information, so the outline can\u2019t be placed on it.'
+              : 'The building lookup didn\u2019t answer.'}{' '}
+          Tap your roof on the image below — the marker is sitting at the middle of the
+          tile, which is <em>not</em> a selection.
+        </div>
+      )}
+
+      {stage === 'satellite' && fpState === 'guess' && !confirmed && (
+        <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+          <span className="font-semibold">Check this one carefully.</span> The address didn&apos;t land
+          inside any mapped building, so this is the <em>closest</em> one rather than a confirmed match.
+          If the outline isn&apos;t on your roof, tap the right one.
+        </div>
+      )}
+
       {stage === 'satellite' && geocodeRejected && (
         <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
           <span className="font-semibold">The address may be off.</span> Since the street photo isn&apos;t
@@ -319,20 +359,30 @@ export default function HousePicker({
             >
               <polygon
                 points={outline.map(p => `${p.x * 100},${p.y * 100}`).join(' ')}
-                fill="rgba(16,185,129,0.22)"
-                stroke="rgb(16,185,129)"
+                fill={fpState === 'guess' ? 'rgba(245,158,11,0.20)' : 'rgba(16,185,129,0.22)'}
+                stroke={fpState === 'guess' ? 'rgb(245,158,11)' : 'rgb(16,185,129)'}
                 strokeWidth="0.5"
                 vectorEffect="non-scaling-stroke"
               />
             </svg>
           )}
           {/* Pulsing marker at the chosen point */}
+          {/* Green ONLY when the marker means something — a building we picked
+              out, or a spot the user chose. Otherwise it is just sitting at the
+              middle of the tile, and dressing that up as a selection is what
+              made a missing highlight look like a wrong one. */}
           <div
             className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
             style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
           >
-            <span className="absolute inset-0 -m-3 block animate-ping rounded-full bg-emerald-400/40" style={{ width: 24, height: 24 }} />
-            <span className="relative block h-4 w-4 rounded-full border-2 border-white bg-emerald-500 shadow-lg ring-4 ring-emerald-400/30" />
+            {placed ? (
+              <>
+                <span className="absolute inset-0 -m-3 block animate-ping rounded-full bg-emerald-400/40" style={{ width: 24, height: 24 }} />
+                <span className="relative block h-4 w-4 rounded-full border-2 border-white bg-emerald-500 shadow-lg ring-4 ring-emerald-400/30" />
+              </>
+            ) : (
+              <span className="relative block h-4 w-4 rounded-full border-2 border-dashed border-white/90 bg-amber-400/60 shadow-lg" />
+            )}
           </div>
           {/* subtle crosshair guides */}
           <div className="pointer-events-none absolute inset-x-0" style={{ top: `${point.y * 100}%` }}>

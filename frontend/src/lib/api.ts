@@ -1354,6 +1354,12 @@ export const api = {
           reason?: string
           source?: string
           ring?: Array<{ lat: number; lng: number }>
+          /** 'contained' = the query point is inside this outline (reliable);
+           *  'nearest'   = the closest building to a geocode that fell outside
+           *                every building — a guess, not a finding. */
+          match?: 'contained' | 'nearest'
+          confident?: boolean
+          candidates?: number
           cached?: boolean
         }>(`/api/v1/roofing/v2/runs/${runId}/footprint`, undefined, 60000, 1800000),
       // Ground-photo exterior intelligence — Gemini reads pitch/chimney/gable/

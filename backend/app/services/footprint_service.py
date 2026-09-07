@@ -154,13 +154,23 @@ async def get_building_footprint(lat: float, lng: float) -> dict:
     containing = [r for r in candidates if _point_in_ring(lat, lng, r)]
     if containing:
         chosen = min(containing, key=lambda r: _ring_area_deg2(r))
+        match = "contained"
     else:
         def _dist(r: list[dict]) -> float:
             cy, cx = _centroid(r)
             return math.hypot(cy - lat, cx - lng)
         chosen = min(candidates, key=_dist)
+        match = "nearest"
 
-    result = {"available": True, "source": "openstreetmap", "ring": chosen}
+    # How the building was chosen matters to the caller. "contained" means the
+    # query point is inside this outline — as certain as this gets. "nearest" is
+    # a guess: an address geocode routinely lands on the street or the parcel
+    # rather than the roof, and then the closest centroid among several
+    # neighbours is close to a coin flip. Callers that pre-select a building for
+    # the user must not present a guess as a finding.
+    result = {"available": True, "source": "openstreetmap", "ring": chosen,
+              "match": match, "confident": match == "contained",
+              "candidates": len(candidates)}
     _cache[key] = (time.time(), result)
     return result
 
