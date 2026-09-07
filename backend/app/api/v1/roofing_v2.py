@@ -492,6 +492,36 @@ def _sv_key(lat: float, lng: float) -> str:
     return f"{lat:.4f},{lng:.4f}"
 
 
+def _bearing(from_lat: float, from_lng: float, to_lat: float, to_lng: float) -> float:
+    """Compass bearing in degrees from one point to another."""
+    dlng = math.radians(to_lng - from_lng)
+    y = math.sin(dlng) * math.cos(math.radians(to_lat))
+    x = (math.cos(math.radians(from_lat)) * math.sin(math.radians(to_lat))
+         - math.sin(math.radians(from_lat)) * math.cos(math.radians(to_lat)) * math.cos(dlng))
+    return (math.degrees(math.atan2(y, x)) + 360) % 360
+
+
+def _metres(a_lat: float, a_lng: float, b_lat: float, b_lng: float) -> float:
+    dy = (b_lat - a_lat) * 111320.0
+    dx = (b_lng - a_lng) * 111320.0 * math.cos(math.radians(a_lat))
+    return math.hypot(dx, dy)
+
+
+def _frame_fov(distance_m: float, building_width_m: float = 16.0) -> float:
+    """Field of view that frames a house of roughly this width at this distance.
+
+    A fixed 75 degrees crops a house you're standing close to and leaves one set
+    far back as a speck. Solve for the angle the building actually subtends and
+    leave ~70% margin for the yard and roofline.
+    """
+    if distance_m <= 1:
+        return 90.0
+    subtended = 2 * math.degrees(math.atan((building_width_m / 2.0) / distance_m))
+    # Cap the wide end: past ~100 degrees Street View gets noticeably
+    # fisheyed, which makes a house harder to recognise, not easier.
+    return max(30.0, min(100.0, subtended * 1.7))
+
+
 @router.get("/streetview")
 async def street_view(
     lat: float = Query(...),
@@ -550,18 +580,34 @@ async def street_view(
                 )
                 return {"available": False, "reason": "api_rejected",
                         "detail": md.get("error_message") or status}
-            # Aim the camera from the panorama toward the actual address.
+            # Aim at the BUILDING, not the address point. A geocode routinely
+            # lands on the street or the parcel edge — and the panorama is on
+            # that same street, so aiming at it points the camera straight down
+            # the road and yields an oblique side view of the house. Aiming at
+            # the building's centroid turns that into a head-on shot.
+            target_lat, target_lng, aimed_at = lat, lng, "address"
+            try:
+                from app.services import footprint_service
+                fp = await footprint_service.get_building_footprint(lat, lng)
+                ring = fp.get("ring") if fp.get("available") else None
+                if ring:
+                    target_lat = sum(p["lat"] for p in ring) / len(ring)
+                    target_lng = sum(p["lng"] for p in ring) / len(ring)
+                    aimed_at = "building" if fp.get("confident") else "nearest building"
+            except Exception as e:
+                logger.info("street view footprint aim unavailable: %s", e)
+
             heading: Optional[float] = None
+            fov = 75.0
             ploc = md.get("location") or {}
             plat, plng = ploc.get("lat"), ploc.get("lng")
             if plat is not None and plng is not None:
-                dlng = math.radians(lng - float(plng))
-                y = math.sin(dlng) * math.cos(math.radians(lat))
-                x = (math.cos(math.radians(float(plat))) * math.sin(math.radians(lat))
-                     - math.sin(math.radians(float(plat))) * math.cos(math.radians(lat)) * math.cos(dlng))
-                heading = (math.degrees(math.atan2(y, x)) + 360) % 360
-            params = {"size": "640x400", "location": f"{lat},{lng}", "fov": "75",
-                      "source": "outdoor", "key": key}
+                heading = _bearing(float(plat), float(plng), target_lat, target_lng)
+                fov = _frame_fov(_metres(float(plat), float(plng), target_lat, target_lng))
+
+            # location= places the camera; heading/fov decide what it looks at.
+            params = {"size": "640x400", "location": f"{lat},{lng}",
+                      "fov": f"{fov:.0f}", "source": "outdoor", "key": key}
             if heading is not None:
                 params["heading"] = f"{heading:.0f}"
             img = await client.get(
@@ -569,7 +615,8 @@ async def street_view(
             img.raise_for_status()
             ct = img.headers.get("content-type", "image/jpeg").split(";")[0]
             b64 = base64.b64encode(img.content).decode()
-            return _remember({"available": True, "image": f"data:{ct};base64,{b64}"})
+            return _remember({"available": True, "image": f"data:{ct};base64,{b64}",
+                              "aimed_at": aimed_at})
     except Exception as e:
         # Deliberately NOT cached: a timeout or a transient 5xx would otherwise
         # poison a perfectly good address for a week.

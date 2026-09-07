@@ -1172,6 +1172,9 @@ export const api = {
       // from above can match it and tap the right roof. Best-effort.
       getStreetView: (lat: number, lng: number) =>
         apiRequest<{ available: boolean; image?: string; cached?: boolean
+                     /** What the camera was pointed at: the mapped building when
+                      *  we could find one, otherwise the raw address point. */
+                     aimed_at?: 'building' | 'nearest building' | 'address'
                      reason?: 'no_key' | 'no_coverage' | 'api_rejected' | 'error'
                      detail?: string }>(
           `/api/v1/roofing/v2/streetview?lat=${lat}&lng=${lng}`),
