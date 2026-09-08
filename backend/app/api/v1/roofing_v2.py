@@ -3947,7 +3947,7 @@ async def get_calibration(user: dict = Depends(require_user)) -> dict:
     return stats or {"jobs": 0}
 
 
-async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str]]:
+async def _build_and_store_report(run_id: str, user_id: Optional[str] = None) -> tuple[bytes, str, Optional[str]]:
     """Build the v2 roof-report PDF, persist it to storage (so it can be reopened /
     re-downloaded / shared from the Reports tab), and return (bytes, filename, url).
     url is a long-lived signed URL, or None if storage failed (download still works)."""
@@ -4136,6 +4136,14 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
     except Exception as e:
         logger.info("report storage failed for run %s: %s", run_id, e)
 
+    # The billing record. Reports live in object storage with no database row,
+    # so without this nothing knows who generated how many — which is both the
+    # plan allowance and the cost attribution.
+    if user_id:
+        from app.services import llm_usage
+        kind = "rebuild" if llm_usage.already_generated(db, run_id) else "generate"
+        llm_usage.record_report(user_id, run_id, kind, len(pdf_bytes))
+
     return pdf_bytes, filename, url
 
 
@@ -4143,7 +4151,9 @@ async def _build_and_store_report(run_id: str) -> tuple[bytes, str, Optional[str
 async def get_run_report(run_id: str, user: dict = Depends(require_user)):
     """Redesigned 8-section roof report PDF (also stored for the Reports tab)."""
     require_owned_run(get_supabase(), run_id, user)
-    pdf_bytes, filename, _ = await _build_and_store_report(run_id)
+    from app.services.llm_usage import attribute_to
+    with attribute_to(user["id"], run_id):
+        pdf_bytes, filename, _ = await _build_and_store_report(run_id, user["id"])
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -4243,7 +4253,9 @@ async def get_run_report_url(
             return {"url": existing, "regenerated": False}
 
     try:
-        _, _, url = await _build_and_store_report(run_id)
+        from app.services.llm_usage import attribute_to
+        with attribute_to(user["id"], run_id):
+            _, _, url = await _build_and_store_report(run_id, user["id"])
     except HTTPException:
         raise
     except Exception as e:
