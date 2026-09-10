@@ -108,6 +108,15 @@ class Settings(BaseSettings):
                 origins.append(origin)
         return origins
 
+    # Shared secret for GET /health/deep — the probe that actually exercises
+    # the AI providers and the report renderer. Unset means the endpoint is
+    # disabled entirely rather than open; see main.py.
+    HEALTH_CHECK_SECRET: str = ""
+    # A real, finished roof run the deep check re-renders every morning to
+    # prove the report generator still works. Same run every time, so nothing
+    # is created and nothing needs cleaning up.
+    HEALTH_CHECK_RUN_ID: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True

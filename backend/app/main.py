@@ -127,6 +127,157 @@ async def diag_gemini(user: dict = Depends(require_user)):
     }
 
 
+@app.get("/health/deep")
+async def health_deep(request: Request):
+    """Does Axis actually still WORK? Not: is it configured.
+
+    /health counts non-empty environment variables. That is useful for spotting
+    a missing key, and useless for the failure that has actually bitten Axis:
+    Google retiring a model. The model names in llm.py are hardcoded, two of the
+    four fallbacks are 2.0-generation, and on the day they are retired /health
+    still reports status: ok and gemini_keys_loaded: 3 while every roof
+    detection fails. This endpoint calls the providers and renders a real PDF,
+    so it fails when the product fails.
+
+    Auth is a shared secret rather than a user token, so the morning routine
+    needs no test account and no stored password. Unset secret = disabled, not
+    open: this endpoint spends real tokens and burns CPU, so an unconfigured
+    deploy must not leave it callable by anyone.
+    """
+    import asyncio as _asyncio
+    import secrets as _secrets
+
+    expected = settings.HEALTH_CHECK_SECRET
+    if not expected:
+        raise HTTPException(status_code=503, detail="Deep health check is not configured.")
+    provided = request.headers.get("x-health-secret") or ""
+    # Constant-time: a plain == leaks the secret one character at a time to
+    # anyone willing to measure the response.
+    if not _secrets.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Bad or missing health secret.")
+
+    problems: list[str] = []
+    checks: dict = {}
+
+    # ── 1. Gemini: every key against every model we actually call ──────────
+    from app.services.llm import GEMINI_FALLBACKS, GEMINI_MODEL, _gemini_keys
+
+    def _probe_gemini(api_key: str, model: str) -> dict:
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=api_key)
+            resp = client.models.generate_content(
+                model=model, contents="Reply with the single word: ok",
+                config=types.GenerateContentConfig(max_output_tokens=10),
+            )
+            return {"ok": bool((resp.text or "").strip())}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:200]}
+
+    keys = _gemini_keys()
+    models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
+    gem: list[dict] = []
+    for i, key in enumerate(keys):
+        for model in models:
+            r = await _asyncio.to_thread(_probe_gemini, key, model)
+            gem.append({"key_index": i, "model": model, **r})
+    working_models = sorted({g["model"] for g in gem if g["ok"]})
+    checks["gemini"] = {
+        "keys_loaded": len(keys),
+        "models_tried": models,
+        "models_working": working_models,
+        "probes": gem,
+    }
+    if not keys:
+        problems.append("CRITICAL: no Gemini keys loaded.")
+    elif not working_models:
+        problems.append(
+            "CRITICAL: every Gemini key/model pair failed. Axis cannot measure roofs. "
+            "Check whether the models in llm.py have been retired by Google."
+        )
+    else:
+        missing = [m for m in models if m not in working_models]
+        if GEMINI_MODEL not in working_models:
+            problems.append(
+                f"HIGH: the primary model {GEMINI_MODEL} is failing; running on fallbacks only."
+            )
+        if missing:
+            problems.append(
+                f"WARN: these models no longer answer: {', '.join(missing)}. "
+                "Likely retired by Google — replace them in GEMINI_FALLBACKS before the rest go."
+            )
+
+    # ── 2. The fallback floor: Groq and Anthropic ──────────────────────────
+    def _probe_groq() -> dict:
+        if not settings.GROQ_API_KEY:
+            return {"ok": False, "error": "not configured"}
+        try:
+            from groq import Groq
+            Groq(api_key=settings.GROQ_API_KEY).chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": "say ok"}], max_tokens=5)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:200]}
+
+    def _probe_anthropic() -> dict:
+        if not settings.ANTHROPIC_API_KEY:
+            return {"ok": False, "error": "not configured"}
+        try:
+            import anthropic
+            anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY).messages.create(
+                model="claude-haiku-4-5", max_tokens=5,
+                messages=[{"role": "user", "content": "say ok"}])
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:200]}
+
+    checks["groq"] = await _asyncio.to_thread(_probe_groq)
+    checks["anthropic"] = await _asyncio.to_thread(_probe_anthropic)
+    if not checks["groq"]["ok"] and not checks["anthropic"]["ok"]:
+        problems.append(
+            "HIGH: both fallback providers are down, so Gemini has no safety net. "
+            f"groq: {checks['groq'].get('error')} | anthropic: {checks['anthropic'].get('error')}"
+        )
+    elif not checks["anthropic"]["ok"]:
+        problems.append(
+            f"WARN: Anthropic (last fallback) is unavailable — {checks['anthropic'].get('error')}. "
+            "Out-of-credit shows up here."
+        )
+
+    # ── 3. Render a real report from one fixed run ─────────────────────────
+    run_id = settings.HEALTH_CHECK_RUN_ID
+    if not run_id:
+        checks["report_render"] = {"ok": None, "skipped": "HEALTH_CHECK_RUN_ID not set"}
+        problems.append(
+            "WARN: report generation is NOT being checked. Set HEALTH_CHECK_RUN_ID "
+            "to a finished roof run so this proves the renderer still works."
+        )
+    else:
+        try:
+            from app.api.v1.roofing_v2 import _build_and_store_report
+            # user_id omitted on purpose: no billing row for a health probe.
+            pdf, _fn, _url = await _build_and_store_report(run_id)
+            ok = pdf[:4] == b"%PDF" and len(pdf) > 20_000
+            checks["report_render"] = {"ok": ok, "bytes": len(pdf), "run_id": run_id}
+            if not ok:
+                problems.append(
+                    f"CRITICAL: report renderer produced {len(pdf)} bytes that do not look "
+                    "like a PDF. Contractors cannot generate reports."
+                )
+        except Exception as e:
+            checks["report_render"] = {"ok": False, "run_id": run_id, "error": str(e)[:300]}
+            problems.append(f"CRITICAL: report generation raised — {str(e)[:200]}")
+
+    return {
+        "healthy": not problems,
+        "problem_count": len(problems),
+        "problems": problems,
+        "checks": checks,
+    }
+
+
 @app.get("/health")
 async def health():
     # Booleans/counts only — never key material, not even suffixes (they let
