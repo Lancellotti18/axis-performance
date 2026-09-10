@@ -41,4 +41,4 @@ Disallow: /auth/
 Disallow: /home.html
 Disallow: /home-v2.html
 
-Sitemap: https://axisroofingperformance.com/sitemap.xml
+Sitemap: https://www.axisroofingperformance.com/sitemap.xml

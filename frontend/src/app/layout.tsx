@@ -10,7 +10,11 @@ export const metadata: Metadata = {
   // crawlers and social scrapers cannot resolve. Note this covers the React
   // routes only — the landing at "/" is a static file (public/home-v2.html)
   // served by a rewrite, so it carries its own <head> tags.
-  metadataBase: new URL('https://axisroofingperformance.com'),
+  //
+  // www, not the apex: Vercel 308s axisroofingperformance.com -> www, so the
+  // apex is the redirect and www is the canonical target. Pointing canonicals
+  // at the apex would aim every one of them at a redirect.
+  metadataBase: new URL('https://www.axisroofingperformance.com'),
   title: {
     default: 'Axis Roofing Performance — Instant Roof Quotes & Roofing CRM',
     template: '%s · Axis Roofing Performance',
