@@ -6,6 +6,11 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
+  // Without metadataBase, Next emits relative og:image / canonical URLs, which
+  // crawlers and social scrapers cannot resolve. Note this covers the React
+  // routes only — the landing at "/" is a static file (public/home-v2.html)
+  // served by a rewrite, so it carries its own <head> tags.
+  metadataBase: new URL('https://axisroofingperformance.com'),
   title: {
     default: 'Axis Roofing Performance — Instant Roof Quotes & Roofing CRM',
     template: '%s · Axis Roofing Performance',

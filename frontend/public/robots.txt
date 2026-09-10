@@ -1,0 +1,44 @@
+# Axis Roofing Performance
+# Public marketing pages are crawlable. Customer-specific token links and the
+# signed-in app are not: they carry client data, have no search value, and would
+# otherwise leak project URLs into the index.
+
+User-agent: *
+Allow: /$
+Allow: /pricing
+Allow: /legal/
+Allow: /login
+Allow: /register
+
+Disallow: /q/
+Disallow: /r/
+Disallow: /p/
+Disallow: /c/
+Disallow: /crew/
+Disallow: /portal
+Disallow: /dashboard
+Disallow: /projects
+Disallow: /reports
+Disallow: /leads
+Disallow: /crm
+Disallow: /dispatch
+Disallow: /schedule
+Disallow: /settings
+Disallow: /permits
+Disallow: /material-check
+Disallow: /roof-v2
+Disallow: /exterior
+Disallow: /home-visualizer
+Disallow: /storm-report
+Disallow: /training-data
+Disallow: /find-roofs
+Disallow: /notifications
+Disallow: /api/
+Disallow: /auth/
+
+# The previous landing page still ships as a rollback; it must never be indexed
+# alongside the live one or the two compete for the same brand query.
+Disallow: /home.html
+Disallow: /home-v2.html
+
+Sitemap: https://axisroofingperformance.com/sitemap.xml
