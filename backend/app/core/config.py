@@ -88,9 +88,25 @@ class Settings(BaseSettings):
     RUNPOD_PHOTOGRAMMETRY_ENDPOINT_ID: str = ""
     AXIS_OUTPUT_DIR: str = "/tmp/axis_outputs"
 
+    # The production web origins are part of the application, not deployment
+    # trivia. They used to live only in the Render ALLOWED_ORIGINS variable,
+    # which meant the day the custom domain went live every API call from it
+    # was rejected by CORS and surfaced in the browser as a bare "network
+    # error" — nothing in the logs, nothing obviously wrong with the backend.
+    # Keeping them here means the site's own domain cannot be dropped by a
+    # dashboard edit. ALLOWED_ORIGINS still adds preview and local origins.
+    CANONICAL_WEB_ORIGINS: tuple[str, ...] = (
+        "https://www.axisroofingperformance.com",
+        "https://axisroofingperformance.com",
+    )
+
     @property
     def allowed_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+        origins = [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+        for origin in self.CANONICAL_WEB_ORIGINS:
+            if origin not in origins:
+                origins.append(origin)
+        return origins
 
     class Config:
         env_file = ".env"
