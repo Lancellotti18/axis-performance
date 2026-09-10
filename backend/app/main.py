@@ -128,7 +128,7 @@ async def diag_gemini(user: dict = Depends(require_user)):
 
 
 @app.get("/health/deep")
-async def health_deep(request: Request):
+async def health_deep(request: Request, images: int = 1):
     """Does Axis actually still WORK? Not: is it configured.
 
     /health counts non-empty environment variables. That is useful for spotting
@@ -140,7 +140,11 @@ async def health_deep(request: Request):
     so it fails when the product fails.
 
     Auth is a shared secret rather than a user token, so the morning routine
-    needs no test account and no stored password. Unset secret = disabled, not
+    needs no test account and no stored password.
+
+    `?images=0` skips the image-generation probes. They are the only ones that
+    cost real money per run (four billed generations), so the lever exists
+    without needing a code change — e.g. run them weekly rather than daily. Unset secret = disabled, not
     open: this endpoint spends real tokens and burns CPU, so an unconfigured
     deploy must not leave it callable by anyone.
     """
@@ -155,6 +159,9 @@ async def health_deep(request: Request):
     # anyone willing to measure the response.
     if not _secrets.compare_digest(provided, expected):
         raise HTTPException(status_code=401, detail="Bad or missing health secret.")
+
+    # ?images=0 turns off the only probes that cost real money per run.
+    include_images = bool(images)
 
     problems: list[str] = []
     checks: dict = {}
@@ -269,6 +276,78 @@ async def health_deep(request: Request):
         except Exception as e:
             checks["report_render"] = {"ok": False, "run_id": run_id, "error": str(e)[:300]}
             problems.append(f"CRITICAL: report generation raised — {str(e)[:200]}")
+
+    # ── 4. Image generation — FOUR providers on their own keys ────────────
+    # Probed individually, not as a chain. The chain short-circuits on the
+    # first success, so a working fal.ai hides three dead providers behind it
+    # and the failure only surfaces the day fal goes down. This chain also
+    # RAISES when exhausted rather than degrading (see visualizer_service:
+    # "No text-to-image fallback"), so the Roof Visualizer breaks outright.
+    if include_images:
+        from app.services import visualizer_service as vis
+
+        def _swatch() -> bytes:
+            """Smallest image the providers will accept — this is billed per
+            generation, so there is no reason to send a large one."""
+            import io
+            from PIL import Image
+            buf = io.BytesIO()
+            Image.new("RGB", (256, 256), (150, 150, 155)).save(buf, format="PNG")
+            return buf.getvalue()
+
+        img_bytes = _swatch()
+        prompt = "change the roof shingles to dark grey"
+        providers = [
+            ("fal",       vis._fal_key,    lambda: vis._fal_img2img(img_bytes, "image/png", prompt)),
+            ("gemini",    vis._gemini_key, lambda: vis._gemini_img2img(img_bytes, "image/png", prompt)),
+            ("huggingface", vis._hf_key,   lambda: vis._hf_img2img(img_bytes, prompt)),
+            ("replicate", vis._rep_key,    lambda: vis._replicate_img2img(img_bytes, "image/png", prompt)),
+        ]
+        img_results: dict = {}
+        for name, keyfn, call in providers:
+            if not keyfn():
+                img_results[name] = {"ok": False, "error": "no key configured"}
+                continue
+            try:
+                out = await call()
+                img_results[name] = {"ok": bool(out), "returned": bool(out)}
+            except Exception as e:
+                img_results[name] = {"ok": False, "error": str(e)[:200]}
+        checks["image_generation"] = img_results
+        working_img = [n for n, r in img_results.items() if r.get("ok")]
+        if not working_img:
+            problems.append(
+                "CRITICAL: every image provider failed — the Roof Visualizer is down. "
+                "That chain raises rather than falling back, so contractors get an error."
+            )
+        elif len(working_img) == 1:
+            dead = ", ".join(f"{n} ({img_results[n].get('error')})"
+                             for n in img_results if n not in working_img)
+            problems.append(
+                f"HIGH: the Roof Visualizer is running on ONE provider ({working_img[0]}). "
+                f"Down: {dead}. If it fails the visualizer stops entirely."
+            )
+        elif len(working_img) < len(providers):
+            dead = ", ".join(n for n in img_results if n not in working_img)
+            problems.append(f"WARN: image providers unavailable: {dead}.")
+    else:
+        checks["image_generation"] = {"skipped": "images=0"}
+
+    # ── 5. Storm Risk Report — exercises llm_text AND Tavily search ───────
+    try:
+        from app.services.risk_score_service import get_risk_score
+        storm = await get_risk_score("Wilmington", "NC")
+        hazards = storm.get("hazards") or storm.get("scores") or {}
+        ok = bool(hazards)
+        checks["storm_report"] = {"ok": ok, "hazards_returned": len(hazards) if hazards else 0}
+        if not ok:
+            problems.append(
+                "HIGH: the Storm Risk Report returned no hazard scores. Either the "
+                "model call failed or Tavily returned nothing to ground it in."
+            )
+    except Exception as e:
+        checks["storm_report"] = {"ok": False, "error": str(e)[:300]}
+        problems.append(f"HIGH: Storm Risk Report raised — {str(e)[:200]}")
 
     return {
         "healthy": not problems,
