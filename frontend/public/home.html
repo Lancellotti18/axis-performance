@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Axis — From Vision to Reality</title>
+<link rel="preload" as="image" href="/reel-poster.jpg" fetchpriority="high">
 </head>
 <body>
 <style>
@@ -65,7 +66,19 @@ html.reel-snap{scroll-snap-type:y proximity}
   opacity:0;scroll-snap-align:start}
 @media (prefers-reduced-motion:reduce){html.reel-snap{scroll-snap-type:none}}
   .stage{position:sticky;top:0;height:100vh;overflow:hidden;background:#04070c}
-  #reel{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#04070c;transform:scale(1.02)}
+  /* The sharp still sits under the film. It is what paints first (preloaded,
+     full resolution) and what stays on screen if the video errors, is still
+     downloading, or a seek stalls — so the hero is never soft, black or frozen.
+     The old build leaned on the poster attribute for this, at 960x540, which
+     meant the very first thing anyone saw was a 3x upscale. */
+  .still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#04070c;
+    transition:opacity .5s var(--ease);will-change:opacity}
+  /* No transform here. The reel used to carry scale(1.02), which magnified an
+     already-upscaled frame another 2% for no visual gain. */
+  #reel{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:transparent;
+    opacity:0;transition:opacity .5s var(--ease);will-change:opacity}
+  .stage[data-live="1"] #reel{opacity:1}
+  .stage[data-live="1"] .still{opacity:0}
   .grade{position:absolute;inset:0;pointer-events:none;
     background:radial-gradient(130% 100% at 50% 24%,transparent 42%,rgba(3,6,11,.5) 100%),linear-gradient(180deg,rgba(3,6,11,.52) 0%,transparent 24%,transparent 56%,rgba(3,6,11,.86) 100%)}
   .bars{position:absolute;inset:0;pointer-events:none}
@@ -81,13 +94,26 @@ html.reel-snap{scroll-snap-type:y proximity}
   @keyframes breathe{0%,100%{opacity:var(--gl,0)}50%{opacity:calc(var(--gl,0)*1.28)}}
 
   /* opening hero line (logo now lives in the top bar) */
-  .hero{position:absolute;left:0;right:0;top:34%;transform:translateY(-50%);text-align:center;opacity:0;padding:0 22px}
+  .hero{position:absolute;left:0;right:0;top:34%;transform:translateY(-50%);text-align:center;opacity:0;padding:0 22px;
+    isolation:isolate}
+  .hero::before{content:"";position:absolute;left:50%;top:50%;z-index:-1;pointer-events:none;
+    width:min(1180px,124vw);height:280%;transform:translate(-50%,-50%);
+    background:radial-gradient(ellipse 50% 50% at 50% 50%,rgba(3,7,13,.62) 0%,rgba(3,7,13,.44) 44%,transparent 74%)}
   .hero .ey{font-size:clamp(10px,1.2vw,13px);letter-spacing:.42em;text-transform:uppercase;color:var(--cad-bright);margin:0 0 18px}
   .hero h1{font-family:var(--serif);font-weight:400;color:#F3F7FC;font-size:clamp(34px,6.4vw,82px);line-height:1.0;letter-spacing:-.015em;margin:0;text-wrap:balance;text-shadow:0 3px 40px rgba(0,0,0,.5)}
 
   /* sliding marketing beats */
   .mkt{position:absolute;left:0;right:0;bottom:clamp(72px,17vh,168px);display:flex;justify-content:center;padding:0 clamp(20px,6vw,40px)}
-  .beat{position:absolute;bottom:0;max-width:min(760px,90vw);text-align:center;opacity:0;will-change:opacity,transform}
+  .beat{position:absolute;bottom:0;max-width:min(760px,90vw);text-align:center;opacity:0;will-change:opacity,transform;
+    isolation:isolate}
+  /* Feathered scrim under each beat. The reel spends much of its run over a
+     white house in full sun, where 13px body copy on text-shadow alone is not
+     readable. It is a child of .beat so it inherits the beat's opacity and
+     never darkens the frame when no copy is up. isolation forces a stacking
+     context so the negative z-index cannot fall behind the video. */
+  .beat::before{content:"";position:absolute;left:50%;top:50%;z-index:-1;pointer-events:none;
+    width:164%;height:210%;transform:translate(-50%,-50%);
+    background:radial-gradient(ellipse 50% 50% at 50% 50%,rgba(3,7,13,.74) 0%,rgba(3,7,13,.58) 42%,rgba(3,7,13,.28) 63%,transparent 76%)}
   .beat .ey{display:inline-flex;align-items:center;gap:12px;font-size:clamp(10px,1.15vw,12.5px);letter-spacing:.32em;text-transform:uppercase;color:var(--cad-bright);margin:0 0 16px}
   .beat .ey::before,.beat .ey::after{content:"";width:26px;height:1px;background:linear-gradient(90deg,transparent,var(--cad),transparent)}
   .beat h2{font-family:var(--serif);font-weight:400;color:#F1F6FC;font-size:clamp(28px,4.7vw,56px);line-height:1.05;letter-spacing:-.012em;margin:0;text-wrap:balance;text-shadow:0 2px 30px rgba(0,0,0,.5)}
@@ -95,15 +121,19 @@ html.reel-snap{scroll-snap-type:y proximity}
   .beat p b{color:#fff;font-weight:600}
 
   /* payoff */
-  .payoff{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;opacity:0;padding:0 24px}
+  .payoff{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;opacity:0;padding:0 24px;
+    isolation:isolate}
+  .payoff::before{content:"";position:absolute;left:50%;top:50%;z-index:-1;pointer-events:none;
+    width:min(1100px,120vw);height:min(700px,86vh);transform:translate(-50%,-50%);
+    background:radial-gradient(ellipse 50% 50% at 50% 50%,rgba(3,7,13,.70) 0%,rgba(3,7,13,.5) 44%,transparent 74%)}
   .payoff .line{font-family:var(--serif);font-weight:400;color:#F2F6FB;font-size:clamp(36px,6.2vw,78px);line-height:1.02;letter-spacing:-.015em;margin:0;text-wrap:balance}
   .payoff .sub{margin:20px 0 0;font-size:clamp(13.5px,1.7vw,16.5px);color:var(--haze);max-width:42ch}
   .cta{margin-top:34px;display:flex;flex-direction:column;align-items:center;gap:16px}
   .btn{appearance:none;border:0;cursor:pointer;font-family:var(--sans);font-weight:600;font-size:15px;color:#0A0F16;background:var(--paper);padding:15px 34px;border-radius:999px;box-shadow:0 10px 40px -8px rgba(150,195,255,.4),inset 0 1px 0 rgba(255,255,255,.6);transition:transform .3s var(--ease),box-shadow .3s var(--ease)}
   .btn:hover{transform:translateY(-2px);box-shadow:0 16px 52px -6px rgba(150,195,255,.55),inset 0 1px 0 rgba(255,255,255,.7)}
   .btn:focus-visible{outline:2px solid var(--cad-bright);outline-offset:3px}
-  .ghost{background:none;border:0;cursor:pointer;color:var(--mute);font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;transition:color .3s}
-  .ghost:hover{color:var(--haze)}
+  .ghost{background:none;border:0;cursor:pointer;color:#B6C6D8;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;transition:color .3s;text-shadow:0 1px 14px rgba(3,7,13,.85)}
+  .ghost:hover{color:#EAF2FB}
 
   .cue{position:absolute;left:50%;bottom:clamp(22px,5vh,44px);transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:9px;color:var(--mute);will-change:opacity}
   .cue span{font-size:10px;letter-spacing:.34em;text-transform:uppercase}
@@ -155,11 +185,15 @@ html.reel-snap{scroll-snap-type:y proximity}
 </header>
 
 <div class="film" id="top">
-  <i class="snap" style="top:190.90vh"></i>
-  <i class="snap" style="top:302.45vh"></i>
-  <i class="snap" style="top:387.55vh"></i>
-  <div class="stage" data-cine="0">
-    <video id="reel" playsinline muted preload="auto" poster="/reel-poster.jpg" src="/reel-opt.mp4"></video>
+  <i class="snap" style="top:119.60vh"></i>
+  <i class="snap" style="top:257.60vh"></i>
+  <i class="snap" style="top:383.00vh"></i>
+  <div class="stage" data-cine="0" data-live="0">
+    <img class="still" id="still" src="/reel-poster.jpg" alt="" width="1920" height="1080" fetchpriority="high">
+    <!-- src is chosen at runtime (see pickSrc) so phones and metered links do
+         not pull the full 1080p cut. -->
+    <video id="reel" playsinline muted preload="auto" width="1920" height="1080"
+           disablepictureinpicture aria-hidden="true"></video>
     <div class="grade"></div>
     <div class="bars"></div>
 
@@ -267,7 +301,7 @@ html.reel-snap{scroll-snap-type:y proximity}
 <script>
 (() => {
   const film=document.querySelector('.film'), stage=document.querySelector('.stage');
-  const reel=document.getElementById('reel');
+  const reel=document.getElementById('reel'), still=document.getElementById('still');
   const glow=document.getElementById('glow'), hero=document.getElementById('hero');
   const payoff=document.getElementById('payoff'), cue=document.getElementById('cue'), railFill=document.getElementById('railFill');
   const beats=[...document.querySelectorAll('.beat')];
@@ -277,60 +311,164 @@ html.reel-snap{scroll-snap-type:y proximity}
   const lerp=(a,b,t)=>a+(b-a)*t;
   const smooth=(e0,e1,x)=>{const t=clamp((x-e0)/(e1-e0),0,1);return t*t*(3-2*t)};
 
+  // ── Failure fallback ───────────────────────────────────────────────────
+  // A 404, an unsupported codec or a dead network must not leave a black box
+  // where the hero is. Giving up simply keeps the sharp still on screen; the
+  // copy, the rail and the beats all still animate on scroll.
+  let dead=false, painted=false;
+  function giveUp(){ if(dead) return; dead=true; stage.dataset.live='0'; }
+  function markLive(){ if(painted||dead) return; painted=true; stage.dataset.live='1'; }
+  reel.addEventListener('error',giveUp);
+
+  // ── Which cut to download ──────────────────────────────────────────────
+  // The reel is by far the heaviest thing on the page, so it is tiered rather
+  // than shipped at one size to everybody: 1080p (~6.8MB) only where there are
+  // the pixels to justify it, 720p (~2.5MB) on phones, data-saver and slow
+  // links. The stage is object-fit:cover, so the pixels actually needed are set
+  // by whichever axis has to stretch furthest to cover a 16:9 frame.
+  function pickSrc(){
+    const c=navigator.connection||{};
+    if(c.saveData) return '/reel-sd.mp4';
+    if(/(^|-)2g$|^3g$/.test(c.effectiveType||'')) return '/reel-sd.mp4';
+    // Longest viewport edge, so the answer does not flip when a phone is
+    // turned sideways. Phone-sized screens take the SD cut: cover-cropping a
+    // 16:9 frame into a tall screen means even 1080p is upscaled there, so the
+    // extra 4.3MB buys almost nothing and costs the most on cellular.
+    return Math.max(innerWidth,innerHeight) < 1000 ? '/reel-sd.mp4' : '/reel-hd.mp4';
+  }
+  // prefers-reduced-motion gets no film at all: a 14s reel scrubbing under the
+  // scroll is exactly the motion that setting asks us not to produce. Those
+  // users keep the sharp still and skip the download entirely.
+  if(reduce) giveUp(); else reel.src=pickSrc();
+
   const FPS=24;
   let duration=14.041667;
   reel.addEventListener('loadedmetadata',()=>{ if(isFinite(reel.duration)&&reel.duration>0) duration=reel.duration; },{once:true});
-  reel.addEventListener('loadeddata',()=>{ try{reel.currentTime=0.03;}catch(e){} },{once:true});
 
   // ── Seeking ────────────────────────────────────────────────────────────
-  // Scrubbing a video by currentTime is only smooth if we (a) ask for at most
-  // one distinct FRAME per rAF, (b) never seek into a region that hasn't
-  // downloaded yet, and (c) can never deadlock waiting on a 'seeked' event
-  // that the browser decides not to fire.
-  let seeking=false, pending=null, lastFrame=-1, seekTimer=null;
+  // Scrubbing by currentTime is only smooth if we ask for at most one distinct
+  // FRAME per rAF, never seek into a range that has not downloaded yet, and can
+  // never deadlock waiting on an event the browser decides not to fire.
+  //
+  // 'seeked' is the unreliable part: browsers fire it when the seek is resolved
+  // internally, which is not the same as a frame having been *presented*, and
+  // under load they sometimes skip it. requestVideoFrameCallback reports actual
+  // presentation, so it is used as the completion signal wherever it exists and
+  // 'seeked' is kept only as the fallback.
+  const RVFC='requestVideoFrameCallback' in HTMLVideoElement.prototype;
+  let seeking=false, pending=null, lastFrame=-1, seekTimer=null, frameWaiter=null;
+
+  function onPresented(){
+    markLive();
+    if(frameWaiter){ const f=frameWaiter; frameWaiter=null; f(); }
+    if(RVFC) reel.requestVideoFrameCallback(onPresented);
+  }
+  if(RVFC) reel.requestVideoFrameCallback(onPresented);
 
   /** Nearest time we can actually display: t if buffered, else the furthest
-   *  buffered point before it. Prevents dead seeks that never paint. */
+   *  buffered point before it, or null when nothing has arrived yet (in which
+   *  case we leave the still up rather than seeking into the void). */
   function reachable(t){
     const b=reel.buffered;
-    if(!b||!b.length) return 0;
+    if(!b||!b.length) return null;
     for(let i=0;i<b.length;i++) if(t>=b.start(i)&&t<=b.end(i)) return t;
-    let best=0;
-    for(let i=0;i<b.length;i++) if(b.start(i)<=t) best=Math.max(best,Math.max(0,b.end(i)-0.05));
+    let best=null;
+    for(let i=0;i<b.length;i++){
+      if(b.start(i)<=t){ const e=Math.max(0,b.end(i)-0.05); if(best==null||e>best) best=e; }
+    }
     return best;
   }
 
   function settle(){
     if(seekTimer){ clearTimeout(seekTimer); seekTimer=null; }
+    frameWaiter=null;
     reel.removeEventListener('seeked',settle);
     seeking=false;
     if(pending!=null){ const q=pending; pending=null; raw(q); }
   }
   function raw(t){
     seeking=true;
-    reel.addEventListener('seeked',settle,{once:true});
-    // Watchdog: a seek into a stalled/unbuffered range can silently never
-    // fire 'seeked'. Without this the old code latched seeking=true forever
-    // and the reel froze for the rest of the session.
-    seekTimer=setTimeout(settle,350);
+    if(RVFC) frameWaiter=settle; else reel.addEventListener('seeked',settle,{once:true});
+    // Watchdog. A seek into a stalled range can silently never complete; the
+    // old code latched seeking=true forever when that happened and the reel
+    // stayed frozen for the rest of the session.
+    seekTimer=setTimeout(settle,220);
     try{ if(reel.fastSeek) reel.fastSeek(t); else reel.currentTime=t; }
     catch(e){ settle(); }
   }
   function seek(t){
+    if(dead) return;
     t=clamp(t,0,Math.max(0,duration-0.05));
     const f=Math.round(t*FPS);
-    if(f===lastFrame) return;           // same video frame — no work to do
-    lastFrame=f;
+    if(f===lastFrame) return;            // same video frame — no work to do
     const want=reachable(f/FPS);
+    if(want==null) return;               // nothing buffered — the still holds
+    lastFrame=f;
     if(Math.abs(reel.currentTime-want)<1/(FPS*2)) return;
     if(seeking){ pending=want; return; }
     raw(want);
   }
   // As more of the file arrives, re-run so a frame we had to clamp corrects itself.
-  reel.addEventListener('progress',()=>{ lastFrame=-1; kick(); },{passive:true});
+  ['progress','canplay','loadeddata','seeked'].forEach(ev=>
+    reel.addEventListener(ev,()=>{ lastFrame=-1; kick(); },{passive:true}));
+
+  // ── Decoder priming ────────────────────────────────────────────────────
+  // A muted, playsinline video that has never been played does not reliably
+  // paint on seek in iOS Safari — you get the poster and nothing else, which is
+  // exactly the "sometimes the video just doesn't work" failure. A play/pause
+  // cycle primes the decoder. Muted + playsinline is allowed to autoplay so
+  // this usually needs no gesture; the listeners cover browsers that refuse.
+  let primed=false;
+  function prime(){
+    if(primed||dead) return;
+    primed=true;
+    const p=reel.play();
+    if(p&&p.then) p.then(()=>reel.pause()).catch(()=>{ primed=false; });
+    else { try{reel.pause()}catch(e){} }
+  }
+  ['pointerdown','touchstart','wheel','keydown'].forEach(ev=>
+    addEventListener(ev,prime,{once:true,passive:true}));
+  reel.addEventListener('loadeddata',()=>{ prime(); lastFrame=-1; kick(); },{once:true});
+
+  // ── Scroll → film time ─────────────────────────────────────────────────
+  // Scroll progress does NOT map straight onto film time. While a beat is on
+  // screen the film slows to a near-hold so the copy has time to be read, then
+  // catches back up in the gaps between beats. The whole 14s still plays across
+  // the same 560vh track — the time is just spent where there is something to
+  // read instead of being handed out evenly.
+  // 0.40 = the film runs at ~0.58x normal speed while a beat is up and ~1.45x
+  // in the gaps. Tighter than this (0.28 was tried) and the last beat's hold is
+  // slow enough to read as a video that has frozen — the exact impression this
+  // page was meant to stop giving.
+  const HOLD=0.40;
+  const SEG=[[0,0.165,1],[0.165,0.355,HOLD],[0.355,0.465,1],
+             [0.465,0.655,HOLD],[0.655,0.765,1],[0.765,0.900,HOLD],[0.900,1,1]];
+  const CUM=[];
+  {
+    let acc=0;
+    for(const s of SEG){ CUM.push(acc); acc+=(s[1]-s[0])*s[2]; }
+    CUM.push(acc);
+    for(let i=0;i<CUM.length;i++) CUM[i]/=acc;
+  }
+  function timeAt(p){
+    for(let i=0;i<SEG.length;i++){
+      const a=SEG[i][0], b=SEG[i][1];
+      if(p<=b||i===SEG.length-1){
+        const t=clamp((p-a)/(b-a),0,1);
+        return CUM[i]+(CUM[i+1]-CUM[i])*t;
+      }
+    }
+    return 1;
+  }
 
   // ── Overlay state (write only on change) ───────────────────────────────
-  const RANGE=[[0.30,0.355,0.475,0.525],[0.555,0.61,0.705,0.75],[0.775,0.82,0.865,0.905]];
+  // Each beat is [fade-in start, fully readable from, fully readable until,
+  // gone by]. The readable plateaus are roughly 2-3x wider than they were —
+  // the last beat in particular used to be legible for about 20vh of scroll,
+  // which is one flick of a trackpad.
+  const RANGE=[[0.115,0.165,0.355,0.395],
+               [0.415,0.465,0.655,0.695],
+               [0.715,0.765,0.900,0.935]];
   const beatState=beats.map(()=>({o:-1,t:''}));
   function setBeat(el,r,p,st){
     const enter=smooth(r[0],r[1],p), exit=smooth(r[2],r[3],p);
@@ -342,20 +480,20 @@ html.reel-snap{scroll-snap-type:y proximity}
 
   let lGlow=-1,lHeroO=-1,lHeroT='',lPay=-1,lCue=-1,lCine='',lRail=-1,lSnap=null;
   function apply(p){
-    seek(p*duration);
-    const gl=+Math.max(1-smooth(0.06,0.15,p),smooth(0.90,0.965,p)).toFixed(3);
+    seek(timeAt(p)*duration);
+    const gl=+Math.max(1-smooth(0.04,0.11,p),smooth(0.930,0.985,p)).toFixed(3);
     if(gl!==lGlow){ lGlow=gl; glow.style.setProperty('--gl',gl); if(reduce) glow.style.opacity=gl; }
-    const fade=smooth(0.05,0.15,p);
+    const fade=smooth(0.03,0.10,p);
     const ho=+(1-fade).toFixed(3);
     if(ho!==lHeroO){ lHeroO=ho; hero.style.opacity=ho; }
     const ht=`translateY(${(-50-fade*4).toFixed(1)}%)`;
     if(ht!==lHeroT){ lHeroT=ht; hero.style.transform=ht; }
     for(let i=0;i<beats.length;i++) setBeat(beats[i],RANGE[i],p,beatState[i]);
-    const end=+smooth(0.90,0.965,p).toFixed(3);
+    const end=+smooth(0.930,0.985,p).toFixed(3);
     if(end!==lPay){ lPay=end; payoff.style.opacity=end; payoff.style.pointerEvents=end>0.5?'auto':'none'; }
-    const cu=+(1-smooth(0.02,0.06,p)).toFixed(3);
+    const cu=+(1-smooth(0.015,0.05,p)).toFixed(3);
     if(cu!==lCue){ lCue=cu; cue.style.opacity=cu; }
-    const cine=(p>0.06&&p<0.9)?'1':'0';
+    const cine=(p>0.04&&p<0.93)?'1':'0';
     if(cine!==lCine){ lCine=cine; stage.dataset.cine=cine; }
     const rf=+p.toFixed(4);
     if(rf!==lRail){ lRail=rf; railFill.style.transform=`scaleX(${rf})`; }
@@ -377,10 +515,10 @@ html.reel-snap{scroll-snap-type:y proximity}
    *  snapping outstays the reel and the rest of the page feels sticky. */
   function syncSnap(){
     const p = clamp((window.scrollY - filmTop) / trackLen, 0, 1);
-    // Last beat sits at p=0.843 and the payoff card is fully in by ~0.965, so
-    // releasing at 0.97 keeps the pull across all three beats and is reliably
-    // off before the reel visually ends.
-    const snap = p < 0.97;
+    // The last beat is readable to p=0.90 and the payoff card is fully in by
+    // ~0.985, so releasing at 0.99 keeps the pull across all three beats and is
+    // reliably off before the reel visually ends.
+    const snap = p < 0.99;
     if(snap!==lSnap){ lSnap=snap; document.documentElement.classList.toggle('reel-snap', snap && !reduce); }
   }
 

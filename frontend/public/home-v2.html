@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Axis Roofing Performance — From Damaged to Done</title>
+<meta name="description" content="AI-powered roofing intelligence. Axis measures any roof from aerial imagery in seconds, generates pro-grade branded reports, prices the material list from live supplier data, and dispatches the crew.">
+<link rel="preload" as="image" href="/v2/reel-poster.jpg" fetchpriority="high">
+</head>
+<body>
+<style>
+  :root{
+    --ink:#070A0F; --haze:#AEB9C6; --mute:#7C8B9C;
+    --line:rgba(180,205,235,.14);
+    --cad:#6BB2FF; --cad-bright:#BFE0FF; --paper:#F4F7FB;
+    --sans:-apple-system,"SF Pro Display","SF Pro Text","Helvetica Neue",Segoe UI,Roboto,Arial,sans-serif;
+    --serif:"New York","Iowan Old Style","Hoefler Text",Palatino,"Palatino Linotype",Georgia,serif;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+    --ease:cubic-bezier(.22,.61,.36,1);
+  }
+  *{box-sizing:border-box}
+  html{background:var(--ink)}
+  body{margin:0;background:var(--ink);color:var(--haze);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:60;display:flex;align-items:center;justify-content:space-between;
+    padding:clamp(12px,2vh,20px) clamp(18px,4vw,44px);pointer-events:none;
+    background:linear-gradient(180deg,rgba(4,7,12,.66),transparent)}
+  .topbar .brand{display:flex;align-items:center;gap:12px;pointer-events:auto}
+  .topbar .mk{width:26px;height:26px;filter:drop-shadow(0 1px 8px rgba(107,178,255,.55))}
+  .mk .a{stroke:url(#axg);fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-width:2.3}
+  .mk .b{stroke:#EAF2FB;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-width:2.3}
+  .topbar .tx{font-weight:600;font-size:17px;letter-spacing:.34em;color:var(--paper);padding-left:.34em}
+  .topbar .tag{font-size:9px;letter-spacing:.4em;color:var(--cad);padding-left:11px;border-left:1px solid var(--line);align-self:center}
+  .topbar .actions{display:flex;align-items:center;gap:10px;pointer-events:auto}
+  .topbar a.nav{text-decoration:none;appearance:none;border:1px solid rgba(180,205,235,.28);background:rgba(120,175,255,.10);
+    color:#EAF2FB;font-weight:600;font-size:12.5px;padding:9px 18px;border-radius:999px;transition:background .3s,border-color .3s}
+  .topbar a.nav.ghost{background:transparent;border-color:rgba(180,205,235,.22);color:#C8DAF0}
+  .topbar a.nav:hover{background:rgba(120,175,255,.2)}
+  @media (max-width:620px){ .topbar .tag{display:none} .topbar a.nav{font-size:11.5px;padding:7px 12px} }
+
+  /* ---- cinematic film track ---- */
+  .film{position:relative;height:680vh}
+  html.reel-snap{scroll-snap-type:y proximity}
+  .snap{position:absolute;left:0;width:1px;height:1px;pointer-events:none;opacity:0;scroll-snap-align:start}
+  @media (prefers-reduced-motion:reduce){html.reel-snap{scroll-snap-type:none}}
+
+  .stage{position:sticky;top:0;height:100vh;overflow:hidden;background:#04070c}
+  .still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#04070c;
+    transition:opacity .5s var(--ease);will-change:opacity}
+  #reel{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:transparent;
+    opacity:0;transition:opacity .5s var(--ease);will-change:opacity}
+  .stage[data-live="1"] #reel{opacity:1}
+  .stage[data-live="1"] .still{opacity:0}
+
+  .grade{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(130% 100% at 50% 24%,transparent 42%,rgba(3,6,11,.5) 100%),
+               linear-gradient(180deg,rgba(3,6,11,.52) 0%,transparent 24%,transparent 56%,rgba(3,6,11,.86) 100%)}
+  .bars{position:absolute;inset:0;pointer-events:none}
+  .bars::before,.bars::after{content:"";position:absolute;left:0;right:0;height:clamp(24px,6vh,64px);background:var(--ink);opacity:0;transition:opacity .6s var(--ease)}
+  .bars::before{top:0}.bars::after{bottom:0}
+  .stage[data-cine="1"] .bars::before,.stage[data-cine="1"] .bars::after{opacity:1}
+  .ui{position:absolute;inset:0;pointer-events:none}
+
+  .hero{position:absolute;left:0;right:0;top:38%;transform:translateY(-50%);text-align:center;opacity:0;padding:0 22px;isolation:isolate}
+  .hero::before{content:"";position:absolute;left:50%;top:50%;z-index:-1;pointer-events:none;
+    width:min(1180px,124vw);height:280%;transform:translate(-50%,-50%);
+    background:radial-gradient(ellipse 50% 50% at 50% 50%,rgba(3,7,13,.62) 0%,rgba(3,7,13,.44) 44%,transparent 74%)}
+  .hero .ey{font-size:clamp(10px,1.2vw,13px);letter-spacing:.42em;text-transform:uppercase;color:var(--cad-bright);margin:0 0 18px}
+  .hero h1{font-family:var(--serif);font-weight:400;color:#F3F7FC;font-size:clamp(34px,6.4vw,82px);line-height:1.0;letter-spacing:-.015em;margin:0;text-wrap:balance;text-shadow:0 3px 40px rgba(0,0,0,.5)}
+
+  .mkt{position:absolute;left:0;right:0;bottom:clamp(72px,17vh,168px);display:flex;justify-content:center;padding:0 clamp(20px,6vw,40px)}
+  .beat{position:absolute;bottom:0;max-width:min(760px,90vw);text-align:center;opacity:0;will-change:opacity,transform;isolation:isolate}
+  .beat::before{content:"";position:absolute;left:50%;top:50%;z-index:-1;pointer-events:none;
+    width:164%;height:210%;transform:translate(-50%,-50%);
+    background:radial-gradient(ellipse 50% 50% at 50% 50%,rgba(3,7,13,.74) 0%,rgba(3,7,13,.58) 42%,rgba(3,7,13,.28) 63%,transparent 76%)}
+  .beat .ey{display:inline-flex;align-items:center;gap:12px;font-size:clamp(10px,1.15vw,12.5px);letter-spacing:.32em;text-transform:uppercase;color:var(--cad-bright);margin:0 0 16px}
+  .beat .ey::before,.beat .ey::after{content:"";width:26px;height:1px;background:linear-gradient(90deg,transparent,var(--cad),transparent)}
+  .beat h2{font-family:var(--serif);font-weight:400;color:#F1F6FC;font-size:clamp(28px,4.7vw,56px);line-height:1.05;letter-spacing:-.012em;margin:0;text-wrap:balance;text-shadow:0 2px 30px rgba(0,0,0,.5)}
+  .beat p{margin:18px auto 0;max-width:58ch;font-size:clamp(13.5px,1.55vw,17px);line-height:1.62;color:#D3DEEA;text-shadow:0 1px 16px rgba(3,7,13,.7)}
+  .beat p b{color:#fff;font-weight:600}
+
+  /* Real-UI proof card. Populated with actual Axis screenshots; hidden until
+     one is supplied so a missing capture degrades to copy alone. */
+  .proof{position:absolute;right:clamp(20px,5vw,64px);top:50%;transform:translateY(-50%);
+    width:min(370px,32vw);border-radius:14px;overflow:hidden;opacity:0;
+    border:1px solid rgba(150,200,255,.32);background:rgba(8,14,24,.72);
+    box-shadow:0 40px 90px -40px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.10);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);will-change:opacity,transform}
+  .proof img{display:block;width:100%;height:auto}
+  .proof .cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--cad-bright);padding:9px 12px;border-top:1px solid var(--line)}
+  .proof:not([data-ready="1"]){display:none}
+  @media (max-width:900px){ .proof{display:none} }
+
+  .payoff{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;opacity:0;padding:0 24px;isolation:isolate}
+  .payoff::before{content:"";position:absolute;left:50%;top:50%;z-index:-1;pointer-events:none;
+    width:min(1100px,120vw);height:min(700px,86vh);transform:translate(-50%,-50%);
+    background:radial-gradient(ellipse 50% 50% at 50% 50%,rgba(3,7,13,.70) 0%,rgba(3,7,13,.5) 44%,transparent 74%)}
+  .payoff .line{font-family:var(--serif);font-weight:400;color:#F2F6FB;font-size:clamp(36px,6.2vw,78px);line-height:1.02;letter-spacing:-.015em;margin:0;text-wrap:balance}
+  .payoff .sub{margin:20px 0 0;font-size:clamp(13.5px,1.7vw,16.5px);color:var(--haze);max-width:42ch}
+  .cta{margin-top:34px;display:flex;flex-direction:column;align-items:center;gap:16px;pointer-events:auto}
+  .btn{appearance:none;border:0;cursor:pointer;font-family:var(--sans);font-weight:600;font-size:15px;color:#0A0F16;background:var(--paper);padding:15px 34px;border-radius:999px;text-decoration:none;
+    box-shadow:0 10px 40px -8px rgba(150,195,255,.4),inset 0 1px 0 rgba(255,255,255,.6);transition:transform .3s var(--ease)}
+  .btn:hover{transform:translateY(-2px)}
+  .ghostb{background:none;border:0;cursor:pointer;color:#B6C6D8;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;text-shadow:0 1px 14px rgba(3,7,13,.85)}
+
+  .cue{position:absolute;left:50%;bottom:clamp(22px,5vh,44px);transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:9px;color:var(--mute);will-change:opacity}
+  .cue span{font-size:10px;letter-spacing:.34em;text-transform:uppercase}
+  .cue .m{width:22px;height:36px;border:1px solid var(--line);border-radius:12px;position:relative}
+  .cue .m::after{content:"";position:absolute;left:50%;top:7px;width:3px;height:7px;border-radius:2px;background:var(--cad);transform:translateX(-50%);animation:drop 1.9s var(--ease) infinite}
+  @keyframes drop{0%{opacity:0;transform:translate(-50%,0)}30%{opacity:1}70%{opacity:1}100%{opacity:0;transform:translate(-50%,12px)}}
+  @media (prefers-reduced-motion:reduce){ .cue .m::after{animation:none} }
+
+  .rail{position:absolute;left:0;top:0;height:2px;width:100%}
+  .rail i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:0 50%;will-change:transform;background:linear-gradient(90deg,var(--cad),var(--cad-bright));box-shadow:0 0 12px rgba(107,178,255,.7)}
+
+  .platform{position:relative;background:radial-gradient(120% 80% at 50% -10%,rgba(30,60,110,.28),transparent 60%),linear-gradient(180deg,#04070c,var(--ink) 40%);
+    padding:clamp(84px,15vh,150px) clamp(20px,5vw,40px) clamp(64px,10vh,110px);border-top:1px solid var(--line)}
+  .wrap{max-width:1120px;margin:0 auto}
+  .platform .ey{text-align:center;font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--cad-bright);margin:0 0 20px}
+  .platform .ttl{text-align:center;font-family:var(--serif);font-weight:400;font-size:clamp(28px,4.2vw,50px);line-height:1.08;color:#EEF4FA;margin:0 auto;max-width:20ch;letter-spacing:-.012em;text-wrap:balance}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;margin:clamp(44px,7vh,72px) 0 0}
+  .card{position:relative;padding:26px 24px 28px;border-radius:18px;background:linear-gradient(180deg,rgba(18,28,42,.6),rgba(10,16,24,.55));border:1px solid var(--line);overflow:hidden;transition:transform .35s var(--ease),border-color .35s}
+  .card:hover{transform:translateY(-5px);border-color:rgba(140,190,255,.34)}
+  .card h3{margin:0 0 9px;font-size:17.5px;font-weight:650;color:#EEF4FA}
+  .card p{margin:0;font-size:13.7px;line-height:1.6;color:var(--haze)}
+  .card .kick{display:inline-block;margin-bottom:14px;font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--cad)}
+  .finalcta{margin:clamp(48px,8vh,80px) auto 0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px}
+  .finalcta p{margin:0;font-family:var(--serif);font-size:clamp(20px,2.6vw,30px);color:#EAF1F8;letter-spacing:-.01em}
+  .foot{margin:clamp(56px,9vh,90px) auto 0;text-align:center;color:var(--mute);font-size:12px;line-height:2}
+  .foot .footlink{color:var(--mute);text-decoration:none;margin-left:18px;border-bottom:1px solid transparent;transition:color .25s,border-color .25s}
+  .foot .footlink:hover{color:#C8DAF0;border-bottom-color:rgba(180,205,235,.4)}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="axg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#CBE7FF"/><stop offset="1" stop-color="#5AA0F0"/></linearGradient>
+</defs></svg>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="mk" viewBox="0 0 32 32"><path class="a" d="M4 21 L16 7 L28 21"/><path class="b" d="M9 21 L16 12.5 L23 21"/></svg>
+    <span class="tx">AXIS</span><span class="tag">PERFORMANCE</span>
+  </div>
+  <div class="actions">
+    <a class="nav ghost" href="/login">Sign In</a>
+    <a class="nav" href="/register">Sign Up</a>
+  </div>
+</header>
+
+<div class="film" id="top">
+  <i class="snap" style="top:145.00vh"></i>
+  <i class="snap" style="top:298.70vh"></i>
+  <i class="snap" style="top:440.80vh"></i>
+  <div class="stage" data-cine="0" data-live="0">
+    <img class="still" id="still" src="/v2/reel-poster.jpg" alt="" width="1920" height="1080" fetchpriority="high">
+    <video id="reel" playsinline muted preload="auto" width="1920" height="1080" disablepictureinpicture aria-hidden="true"></video>
+    <div class="grade"></div>
+    <div class="bars"></div>
+
+    <div class="ui">
+      <div class="hero" id="hero">
+        <p class="ey">AI-powered roofing intelligence</p>
+        <h1>From damaged<br>to done.</h1>
+      </div>
+
+      <div class="mkt">
+        <div class="beat" data-beat="0">
+          <p class="ey">AI Measurement</p>
+          <h2>Axis measures the roof before you climb it.</h2>
+          <p>Aerial imagery read by AI in seconds — every facet, pitch, ridge, hip and valley, <b>accurate to the foot</b>. No ladder. No drone. No guesswork.</p>
+        </div>
+        <div class="beat" data-beat="1">
+          <p class="ey">Pro-grade reports</p>
+          <h2>A report you would be proud to hand over.</h2>
+          <p>Fully branded, to-scale facet diagrams with the complete measurement set and material takeoff — <b>EagleView-class, in minutes</b>, with no per-report bill.</p>
+        </div>
+        <div class="beat" data-beat="2">
+          <p class="ey">Materials &amp; dispatch</p>
+          <h2>Ordered, scheduled, and on site.</h2>
+          <p>Measurements flow straight into a material list priced from <b>live supplier data</b> — then Axis <b>dispatches the crew</b> and tracks the job through to done.</p>
+        </div>
+      </div>
+
+      <!-- Real Axis UI proof cards. data-ready="1" once a capture is dropped in. -->
+      <figure class="proof" id="proof0"><img alt="" src=""><figcaption class="cap">Axis · Measurement</figcaption></figure>
+      <figure class="proof" id="proof1"><img alt="" src=""><figcaption class="cap">Axis · Report</figcaption></figure>
+      <figure class="proof" id="proof2"><img alt="" src=""><figcaption class="cap">Axis · Dispatch</figcaption></figure>
+
+      <div class="payoff" id="payoff">
+        <h1 class="line">From vision to reality.</h1>
+        <p class="sub">AI-powered roofing intelligence, built for modern contractors.</p>
+        <div class="cta">
+          <a class="btn" href="/register">Get Started</a>
+          <button class="ghostb" id="replay">Replay the film</button>
+        </div>
+      </div>
+
+      <div class="cue" id="cue"><span>Scroll</span><div class="m"></div></div>
+    </div>
+    <div class="rail"><i id="railFill"></i></div>
+  </div>
+</div>
+
+<section class="platform" id="platform">
+  <div class="wrap">
+    <p class="ey">The Axis platform</p>
+    <h2 class="ttl">Everything a roofing pro needs, in one intelligent system.</h2>
+    <div class="grid">
+      <article class="card"><span class="kick">AI Measurement</span><h3>Roof measurements in seconds</h3><p>Satellite-precise squares, pitch, facets and waste — the accurate measurement that starts every quote, without setting foot on a ladder.</p></article>
+      <article class="card"><span class="kick">Reporting</span><h3>Pro-grade roof reports</h3><p>Clean, fully branded reports with to-scale diagrams, measurements and materials — presentation-ready, with no per-report bill.</p></article>
+      <article class="card"><span class="kick">Compliance</span><h3>Material compliance checks</h3><p>Every estimate is checked automatically against local building code and manufacturer specs, so what you order meets requirements before it ships.</p></article>
+      <article class="card"><span class="kick">Roof Visualizer</span><h3>Sell the roof before it's built</h3><p>Show homeowners their new roof in photoreal AI — swap shingle colors and styles live — and turn "let me think about it" into a signed job.</p></article>
+      <article class="card"><span class="kick">Dispatch</span><h3>Crews, scheduled and tracked</h3><p>Assign crews to jobs, see the day at a glance, and keep every install moving from material drop to final inspection.</p></article>
+      <article class="card"><span class="kick">CRM</span><h3>A CRM built for roofers</h3><p>Leads, inspections, proposals and jobs in one pipeline. Axis moves every customer from first click to signed contract.</p></article>
+    </div>
+    <div class="finalcta">
+      <p>The whole job, handled by one intelligent platform.</p>
+      <a class="btn" href="/register">Get Started Free</a>
+    </div>
+    <p class="foot">
+      Axis Roofing Performance — AI-powered roofing intelligence.
+      <a class="footlink" href="/pricing">Pricing</a>
+      <a class="footlink" href="/portal">Homeowner sign in</a>
+      <a class="footlink" href="/legal/privacy">Privacy</a>
+      <a class="footlink" href="/legal/terms">Terms</a>
+    </p>
+  </div>
+</section>
+
+<script>
+(() => {
+  const film=document.querySelector('.film'), stage=document.querySelector('.stage');
+  const reel=document.getElementById('reel');
+  const hero=document.getElementById('hero'), payoff=document.getElementById('payoff');
+  const cue=document.getElementById('cue'), railFill=document.getElementById('railFill');
+  const beats=[...document.querySelectorAll('.beat')];
+  const proofs=[0,1,2].map(i=>document.getElementById('proof'+i));
+  const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+  const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const smooth=(e0,e1,x)=>{const t=clamp((x-e0)/(e1-e0),0,1);return t*t*(3-2*t)};
+
+  // ── Failure fallback ───────────────────────────────────────────────────
+  let dead=false, painted=false;
+  function giveUp(){ if(dead) return; dead=true; stage.dataset.live='0'; }
+  function markLive(){ if(painted||dead) return; painted=true; stage.dataset.live='1'; }
+  reel.addEventListener('error',giveUp);
+
+  // ── Which cut to download ──────────────────────────────────────────────
+  function pickSrc(){
+    const c=navigator.connection||{};
+    if(c.saveData) return '/v2/reel-sd.mp4';
+    if(/(^|-)2g$|^3g$/.test(c.effectiveType||'')) return '/v2/reel-sd.mp4';
+    return Math.max(innerWidth,innerHeight) < 1000 ? '/v2/reel-sd.mp4' : '/v2/reel-hd.mp4';
+  }
+  if(reduce) giveUp(); else reel.src=pickSrc();
+
+  const FPS=24;
+  let duration=1;
+  reel.addEventListener('loadedmetadata',()=>{ if(isFinite(reel.duration)&&reel.duration>0) duration=reel.duration; },{once:true});
+
+  // ── Seeking ────────────────────────────────────────────────────────────
+  const RVFC='requestVideoFrameCallback' in HTMLVideoElement.prototype;
+  let seeking=false, pending=null, lastFrame=-1, seekTimer=null, frameWaiter=null;
+
+  function onPresented(){
+    markLive();
+    if(frameWaiter){ const f=frameWaiter; frameWaiter=null; f(); }
+    if(RVFC) reel.requestVideoFrameCallback(onPresented);
+  }
+  if(RVFC) reel.requestVideoFrameCallback(onPresented);
+
+  function reachable(t){
+    const b=reel.buffered;
+    if(!b||!b.length) return null;
+    for(let i=0;i<b.length;i++) if(t>=b.start(i)&&t<=b.end(i)) return t;
+    let best=null;
+    for(let i=0;i<b.length;i++){
+      if(b.start(i)<=t){ const e=Math.max(0,b.end(i)-0.05); if(best==null||e>best) best=e; }
+    }
+    return best;
+  }
+  function settle(){
+    if(seekTimer){ clearTimeout(seekTimer); seekTimer=null; }
+    frameWaiter=null;
+    reel.removeEventListener('seeked',settle);
+    seeking=false;
+    if(pending!=null){ const q=pending; pending=null; raw(q); }
+  }
+  function raw(t){
+    seeking=true;
+    if(RVFC) frameWaiter=settle; else reel.addEventListener('seeked',settle,{once:true});
+    seekTimer=setTimeout(settle,220);
+    try{ if(reel.fastSeek) reel.fastSeek(t); else reel.currentTime=t; }
+    catch(e){ settle(); }
+  }
+  function seek(t){
+    if(dead) return;
+    t=clamp(t,0,Math.max(0,duration-0.05));
+    const f=Math.round(t*FPS);
+    if(f===lastFrame) return;
+    const want=reachable(f/FPS);
+    if(want==null) return;
+    lastFrame=f;
+    if(Math.abs(reel.currentTime-want)<1/(FPS*2)) return;
+    if(seeking){ pending=want; return; }
+    raw(want);
+  }
+  ['progress','canplay','loadeddata','seeked'].forEach(ev=>
+    reel.addEventListener(ev,()=>{ lastFrame=-1; kick(); },{passive:true}));
+
+  // ── Decoder priming (iOS will not paint on seek without it) ────────────
+  let primed=false;
+  function prime(){
+    if(primed||dead) return;
+    primed=true;
+    const p=reel.play();
+    if(p&&p.then) p.then(()=>reel.pause()).catch(()=>{ primed=false; });
+    else { try{reel.pause()}catch(e){} }
+  }
+  ['pointerdown','touchstart','wheel','keydown'].forEach(ev=>
+    addEventListener(ev,prime,{once:true,passive:true}));
+  reel.addEventListener('loadeddata',()=>{ prime(); lastFrame=-1; kick(); },{once:true});
+
+  // ── Scroll → film time, with a hold on each readable beat ──────────────
+  // Scroll progress is pinned to actual cut boundaries in the reel, not spread
+  // evenly across it. Each pair is [scroll progress, fraction of film elapsed].
+  // The flat stretches are the beats: while a beat's copy is on screen the film
+  // barely advances, so the shot the copy describes is the shot you are looking
+  // at. The steep stretches are the 0.7s dissolves between shots.
+  //
+  //   film cut points (25.25s reel):
+  //     orbit descent    0.00 - 5.33     approach
+  //     roof scan        4.73 - 9.33     beat 1  measurement
+  //     contractor       8.73 - 13.33    beat 2  reports
+  //     materials/crew  12.73 - 17.53    beat 3  materials + dispatch
+  //     transformation  16.93 - 22.20    payoff
+  //     new roof hold   21.60 - 25.25    payoff
+  const MAP=[[0,0],[0.170,0.1983],[0.330,0.3570],[0.445,0.3689],
+             [0.585,0.5117],[0.700,0.5276],[0.820,0.6823],[0.955,0.8926],[1,1]];
+  function timeAt(p){
+    for(let i=1;i<MAP.length;i++){
+      if(p<=MAP[i][0]||i===MAP.length-1){
+        const t=clamp((p-MAP[i-1][0])/(MAP[i][0]-MAP[i-1][0]),0,1);
+        return MAP[i-1][1]+(MAP[i][1]-MAP[i-1][1])*t;
+      }
+    }
+    return 1;
+  }
+
+  // [fade-in from, fully readable from, readable until, gone by]
+  const RANGE=[[0.115,0.170,0.330,0.370],
+               [0.390,0.445,0.585,0.625],
+               [0.645,0.700,0.820,0.858]];
+  const beatState=beats.map(()=>({o:-1,t:''}));
+  const proofState=proofs.map(()=>({o:-1,t:''}));
+
+  function setEl(el,o,tr,st){
+    if(o!==st.o){ st.o=o; el.style.opacity=o; }
+    if(tr!==st.t){ st.t=tr; el.style.transform=tr; }
+  }
+  function setBeat(el,r,p,st){
+    const enter=smooth(r[0],r[1],p), exit=smooth(r[2],r[3],p);
+    setEl(el, +(enter*(1-exit)).toFixed(3),
+          `translateY(${((1-enter)*30 - exit*22).toFixed(1)}px)`, st);
+  }
+  function setProof(el,r,p,st){
+    if(!el || el.dataset.ready!=='1') return;
+    // trails the headline slightly so the copy reads first
+    const enter=smooth(r[0]+0.045,r[1]+0.045,p), exit=smooth(r[2],r[3],p);
+    setEl(el, +(enter*(1-exit)).toFixed(3),
+          `translateY(-50%) translateX(${((1-enter)*34).toFixed(1)}px)`, st);
+  }
+
+  let lHeroO=-1,lHeroT='',lPay=-1,lCue=-1,lCine='',lRail=-1,lSnap=null;
+  function apply(p){
+    seek(timeAt(p)*duration);
+    const fade=smooth(0.03,0.10,p);
+    const ho=+(1-fade).toFixed(3);
+    if(ho!==lHeroO){ lHeroO=ho; hero.style.opacity=ho; }
+    const ht=`translateY(${(-50-fade*4).toFixed(1)}%)`;
+    if(ht!==lHeroT){ lHeroT=ht; hero.style.transform=ht; }
+    for(let i=0;i<beats.length;i++){ setBeat(beats[i],RANGE[i],p,beatState[i]); setProof(proofs[i],RANGE[i],p,proofState[i]); }
+    const end=+smooth(0.880,0.950,p).toFixed(3);
+    if(end!==lPay){ lPay=end; payoff.style.opacity=end; payoff.style.pointerEvents=end>0.5?'auto':'none'; }
+    const cu=+(1-smooth(0.015,0.05,p)).toFixed(3);
+    if(cu!==lCue){ lCue=cu; cue.style.opacity=cu; }
+    const cine=(p>0.04&&p<0.88)?'1':'0';
+    if(cine!==lCine){ lCine=cine; stage.dataset.cine=cine; }
+    const rf=+p.toFixed(4);
+    if(rf!==lRail){ lRail=rf; railFill.style.transform=`scaleX(${rf})`; }
+  }
+
+  let target=0, shown=0, ticking=false, needMeasure=true;
+  let filmTop=0, trackLen=1;
+  function cacheGeom(){
+    filmTop = film.getBoundingClientRect().top + window.scrollY;
+    trackLen = Math.max(1, film.offsetHeight - window.innerHeight);
+  }
+  function syncSnap(){
+    const p = clamp((window.scrollY - filmTop) / trackLen, 0, 1);
+    const snap = p < 0.87;
+    if(snap!==lSnap){ lSnap=snap; document.documentElement.classList.toggle('reel-snap', snap && !reduce); }
+  }
+  function measure(){
+    cacheGeom();
+    const y=clamp(-film.getBoundingClientRect().top,0,trackLen);
+    target=trackLen>0?y/trackLen:0;
+  }
+  function frame(){
+    if(needMeasure){ needMeasure=false; measure(); }
+    shown=reduce?target:lerp(shown,target,0.16);
+    if(Math.abs(shown-target)<0.0008) shown=target;
+    apply(shown);
+    if(shown!==target) requestAnimationFrame(frame); else ticking=false;
+  }
+  function kick(){ needMeasure=true; syncSnap(); if(!ticking){ ticking=true; requestAnimationFrame(frame);} }
+  addEventListener('scroll',kick,{passive:true});
+  addEventListener('resize',()=>{ cacheGeom(); kick(); },{passive:true});
+  measure(); syncSnap(); apply(0); requestAnimationFrame(frame);
+
+  document.getElementById('replay').addEventListener('click',()=>
+    document.getElementById('top').scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'}));
+})();
+</script>
+</body>
+</html>

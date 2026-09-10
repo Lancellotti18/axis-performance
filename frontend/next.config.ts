@@ -26,13 +26,17 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // Home swap (temporary): serve the cinematic scroll-reel landing (public/home.html)
-  // at "/". beforeFiles runs ahead of filesystem routing so it wins over the old
-  // React landing at app/page.tsx, which stays in place so this is a one-line revert.
+  // Home swap: serve the cinematic scroll-reel landing at "/". beforeFiles runs
+  // ahead of filesystem routing so it wins over the old React landing at
+  // app/page.tsx, which stays in place but is dead code.
+  //
+  // Two static landings live in public/. home-v2.html is current: the brick-house
+  // "damaged to done" reel. home.html is the previous white-house cut, kept as a
+  // one-line rollback — point destination back at it and redeploy.
   async rewrites() {
     return {
       beforeFiles: [
-        { source: "/", destination: "/home.html" },
+        { source: "/", destination: "/home-v2.html" },
       ],
       afterFiles: [],
       fallback: [],
