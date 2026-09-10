@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { getUser } from '@/lib/auth'
+import { useRegisterChatContext } from '@/lib/chat-context'
 import LocationPicker, { type LocationSelected } from '@/components/roof-v2/LocationPicker'
 import RoofFacetEditor, { type Facet, type LabeledEdge } from '@/components/roof-v2/RoofFacetEditor'
 import { edgeReviewCounts } from '@/components/roof-v2/edgeGeometry'
@@ -150,6 +151,46 @@ export default function RoofV2Page() {
   // the contractor to guess at a figure that is trying to warn them.
   const [blockingIssues, setBlockingIssues] = useState<string[]>([])
   const [partialSignals, setPartialSignals] = useState<string[]>([])
+
+  // ── Tell AxisChat what is on this screen ──────────────────────────────────
+  // The dashboard invites contractors to ask the assistant "why is this pitch
+  // flagged?" and "what's missing from this report?". Neither was answerable:
+  // this page published nothing, so the assistant ran with an empty context
+  // and could only give a generic answer.
+  //
+  // Blocking issues are sent as the SAME sentence the contractor is reading on
+  // screen, not the raw code — otherwise the assistant is asked to explain
+  // `ridge_exceeds_perimeter` without knowing what it means either.
+  const chatData = useMemo(() => ({
+    address: location?.matched_address ?? project?.name ?? null,
+    project_name: project?.name ?? null,
+    step,
+    run_id: runId,
+    run_confirmed: runConfirmed,
+    confidence_pct: Math.round(confidence * 100),
+    // Present ⇒ confidence is capped and no report can be generated yet.
+    blocking_issues: blockingIssues.map(code => ISSUE_TEXT[code] ?? code),
+    partial_measurement_signals: partialSignals,
+    imagery_health_pct: Math.round((imagery?.health_score ?? 0) * 100),
+    facet_count: facets.length,
+    // pitch_source is what makes "why is this pitch flagged?" answerable:
+    // 'default' means nothing measured it and 6/12 was assumed.
+    facets: facets.map(f => ({
+      label: f.label,
+      pitch: f.pitch,
+      pitch_source: f.pitchSource ?? 'unknown',
+      user_confirmed: f.userConfirmed,
+      confidence_pct: Math.round((f.confidence ?? 0) * 100),
+    })),
+    edge_label_counts: edgeCounts,
+    unlabeled_edges: edges.filter(e => e.edgeType === 'unlabeled').length,
+    scale_description: savedScaleDesc,
+  }), [
+    location?.matched_address, project?.name, step, runId, runConfirmed, confidence,
+    blockingIssues, partialSignals, imagery?.health_score, facets, edges,
+    edgeCounts, savedScaleDesc,
+  ])
+  useRegisterChatContext('aerial-report', chatData)
 
   // Load projects on mount
   useEffect(() => {

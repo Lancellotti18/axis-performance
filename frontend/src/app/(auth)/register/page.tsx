@@ -54,6 +54,13 @@ export default function RegisterPage() {
           {loading ? 'Creating account…' : 'Create Account'}
         </Button>
         <p className="text-center text-xs leading-relaxed text-[#6b7280]">
+          By creating an account you agree to our{' '}
+          <Link href="/legal/terms" className="text-brand-700 underline underline-offset-2">Terms of Service</Link>
+          {' '}and{' '}
+          <Link href="/legal/privacy" className="text-brand-700 underline underline-offset-2">Privacy Policy</Link>,
+          which you&rsquo;ll be asked to acknowledge next.
+        </p>
+        <p className="text-center text-xs leading-relaxed text-[#6b7280]">
           Next, add your <strong className="text-[#9ca3af]">business name and logo</strong> in Settings —
           they brand every roof report and proposal you send, and appear throughout your CRM.
         </p>

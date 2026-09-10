@@ -9,6 +9,7 @@ import AxisChat from '@/components/AxisChat'
 import GlobalSearch from '@/components/GlobalSearch'
 import NotificationBell from '@/components/NotificationBell'
 import BusinessProfileBanner from '@/components/BusinessProfileBanner'
+import LegalAcknowledgmentGate from '@/components/LegalAcknowledgmentGate'
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://build-backend-jcp9.onrender.com').trim()
 
@@ -462,6 +463,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Floating AI assistant — sees the current page's context */}
       <AxisChat />
+
+      {/* Terms + Privacy consent. Mounted last so it paints above everything,
+          including AxisChat; it blocks the whole dashboard until accepted. */}
+      <LegalAcknowledgmentGate />
     </div>
     </ChatContextProvider>
     </AppQueryProvider>

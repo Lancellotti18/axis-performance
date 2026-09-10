@@ -235,10 +235,61 @@ class _EmptyGeminiResponse(Exception):
     surfaced as 'the vision model did not return structured data'."""
 
 
-def _gemini_text_or_raise(response, model: str) -> str:
+def _meter_gemini(response, model: str, kind: str) -> None:
+    """Record Gemini token usage. Field shapes vary across SDK versions, so
+    every access is defensive — metering must never break a generation."""
+    try:
+        um = getattr(response, "usage_metadata", None)
+        if um is None:
+            return
+        from app.services import llm_usage
+        llm_usage.record(
+            "gemini", model, kind,
+            int(getattr(um, "prompt_token_count", 0) or 0),
+            int(getattr(um, "candidates_token_count", 0) or 0),
+        )
+    except Exception:
+        pass
+
+
+def _meter_anthropic(resp, model: str, kind: str) -> None:
+    try:
+        u = getattr(resp, "usage", None)
+        if u is None:
+            return
+        from app.services import llm_usage
+        llm_usage.record(
+            "anthropic", model, kind,
+            int(getattr(u, "input_tokens", 0) or 0),
+            int(getattr(u, "output_tokens", 0) or 0),
+        )
+    except Exception:
+        pass
+
+
+def _meter_groq(resp, model: str, kind: str) -> None:
+    try:
+        u = getattr(resp, "usage", None)
+        if u is None:
+            return
+        from app.services import llm_usage
+        llm_usage.record(
+            "groq", model, kind,
+            int(getattr(u, "prompt_tokens", 0) or 0),
+            int(getattr(u, "completion_tokens", 0) or 0),
+        )
+    except Exception:
+        pass
+
+
+def _gemini_text_or_raise(response, model: str, kind: str = "text") -> str:
     """Pull text out of a google-genai response, or raise _EmptyGeminiResponse
     annotated with finish_reason. `response.text` is None/empty whenever the
-    candidate has no text part, so we never want to return it blindly."""
+    candidate has no text part, so we never want to return it blindly.
+
+    Also the one point both Gemini paths converge on, so usage is metered here
+    rather than duplicated into each caller."""
+    _meter_gemini(response, model, kind)
     text = None
     try:
         text = response.text
@@ -345,7 +396,7 @@ async def _gemini_vision(
             contents=contents,
             config=types.GenerateContentConfig(**cfg_kwargs),
         )
-        return _gemini_text_or_raise(response, model)
+        return _gemini_text_or_raise(response, model, "vision")
 
     keys = _gemini_keys()
     models = [GEMINI_MODEL, *GEMINI_FALLBACKS]
@@ -413,11 +464,13 @@ async def _groq_text(prompt: str, system: Optional[str], max_tokens: int) -> str
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": user_prompt})
-        return client.chat.completions.create(
+        resp = client.chat.completions.create(
             model=model,
             messages=messages,
             max_tokens=min(max_tokens, 8000),
-        ).choices[0].message.content
+        )
+        _meter_groq(resp, model, "text")
+        return resp.choices[0].message.content
 
     # Try 70b first. On 413, switch to 8b-instant WITH an aggressively
     # truncated prompt — 8b's free-tier TPM cap is so small that a real
@@ -487,7 +540,9 @@ async def _anthropic_text(prompt: str, system: Optional[str], max_tokens: int) -
         kwargs["system"] = system
 
     def _run():
-        return client.messages.create(**kwargs).content[0].text
+        resp = client.messages.create(**kwargs)
+        _meter_anthropic(resp, kwargs["model"], "text")
+        return resp.content[0].text
 
     return await asyncio.to_thread(_run)
 
@@ -513,7 +568,9 @@ async def _anthropic_vision(
         kwargs["system"] = system
 
     def _run():
-        return client.messages.create(**kwargs).content[0].text
+        resp = client.messages.create(**kwargs)
+        _meter_anthropic(resp, kwargs["model"], "vision")
+        return resp.content[0].text
 
     return await asyncio.to_thread(_run)
 

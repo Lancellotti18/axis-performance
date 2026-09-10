@@ -19,6 +19,10 @@ export type ChatSection =
   | 'project-detail'
   | 'compliance'
   | 'dashboard'
+  // The roof report. The backend has carried a system prompt for this key
+  // since the chat was built, but the union never included it, so no page
+  // could publish it and the prompt was unreachable.
+  | 'aerial-report'
   | 'general'
 
 export interface ChatContextValue {

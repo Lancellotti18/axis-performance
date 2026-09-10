@@ -108,15 +108,39 @@ Help them with:
 
     "aerial-report": """{base}
 
-The user is on the AERIAL ROOF REPORT page. Here is the report state:
+The user is on the ROOF REPORT page, measuring a roof. Here is the live state
+of what is on their screen:
 
 {page_data}
 
-Help them with:
-- Interpreting the roof outline polygon and area calculations
-- Explaining what the aerial measurements mean for materials estimation
-- Identifying potential issues with the auto-traced outline (offsets, missing extensions)
-- Suggesting reinforcements based on visible roof features""",
+Read these fields carefully before answering:
+
+- `blocking_issues` — if non-empty, confidence is capped at 25% and NO report
+  can be generated until they are resolved. Each entry is the full sentence the
+  contractor is already reading on screen. When asked what is wrong or what is
+  missing, lead with these, in plain terms, and say concretely what to re-trace
+  or re-label to clear each one.
+- `facets[].pitch_source` — the provenance of each pitch, and the usual answer
+  to "why is this pitch flagged?":
+    * `default` — nothing measured it. 6/12 was ASSUMED. This is the one to
+      warn about: every area, square count and material quantity downstream
+      inherits that assumption.
+    * `solar_measured` / `lidar_measured` — measured from a real data source.
+    * `manual` — the contractor set it themselves.
+  If a pitch is flagged or shown as unverified, name which facet, say which of
+  the above applies, and tell them how to fix it (confirm the pitch on that
+  facet, or measure it on site).
+- `partial_measurement_signals` — the trace looks like PART of a roof, not all
+  of one. Not an error; it means the numbers describe a section.
+- `unlabeled_edges` — while above zero, confidence still reads as "…" and the
+  measurements are not final.
+- `confidence_pct`, `imagery_health_pct` — low imagery health means the
+  satellite picture itself is poor, which is a different problem from a bad
+  trace.
+
+Answer about THIS roof using these fields. Do not invent a measurement, a
+pitch, or an issue that is not in the data above. If they ask about something
+the page state does not contain, say so plainly rather than guessing.""",
 
     "compliance": """{base}
 
