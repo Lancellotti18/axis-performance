@@ -22,6 +22,8 @@ export default function LegalAcknowledgmentGate() {
   const [required, setRequired] = useState(false)
   const [tos, setTos] = useState(false)
   const [privacy, setPrivacy] = useState(false)
+  // Optional. Never gates the button — see the note by the checkbox.
+  const [marketing, setMarketing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -49,14 +51,14 @@ export default function LegalAcknowledgmentGate() {
     setSaving(true)
     setError('')
     try {
-      await api.legal.accept()
+      await api.legal.accept(marketing)
       setRequired(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save your acceptance. Try again.')
     } finally {
       setSaving(false)
     }
-  }, [tos, privacy, saving])
+  }, [tos, privacy, marketing, saving])
 
   if (!required) return null
 
@@ -115,6 +117,31 @@ export default function LegalAcknowledgmentGate() {
               hint="What we collect, how AI training works, and how data is shared."
             />
           </div>
+
+          {/* Optional, and deliberately unstyled as a required row.
+              This is permission to solicit, not a contract term — the TCPA
+              forbids conditioning a product on it, so it must be refusable and
+              is never part of `ready`. Damages run $500–1,500 per message, and
+              a box someone was forced to tick is not a defence. */}
+          <label
+            htmlFor="ack-marketing"
+            className="mt-3 flex cursor-pointer select-none items-start gap-3 rounded-lg px-3.5 py-3"
+            style={{ border: '1px dashed var(--color-surface-border)' }}
+          >
+            <input
+              id="ack-marketing"
+              type="checkbox"
+              checked={marketing}
+              onChange={e => setMarketing(e.target.checked)}
+              className="mt-0.5 h-[18px] w-[18px] flex-shrink-0 cursor-pointer accent-[#0068d6]"
+            />
+            <span className="text-[13.5px] leading-snug text-[#374151]">
+              Send me occasional texts and emails about Axis features, pricing and promotions.
+              <span className="mt-0.5 block text-[12.5px] text-[#6b7280]">
+                Optional — you can use Axis either way, and unsubscribe anytime.
+              </span>
+            </span>
+          </label>
 
           {error && (
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-[13px] text-red-700">

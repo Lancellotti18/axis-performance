@@ -34,11 +34,26 @@ CURRENT_TOS_VERSION = "2026-09-07"
 CURRENT_PRIVACY_VERSION = "2026-09-07"
 
 
+# The exact wording shown beside the marketing checkbox. Stored with each
+# consent row, because under the TCPA the defence is being able to show what
+# someone agreed to. Change this and the constant changes with it, so old rows
+# keep the sentence that was actually on screen when they ticked the box.
+MARKETING_CONSENT_TEXT = (
+    "Send me occasional texts and emails about Axis features, pricing and "
+    "promotions. Optional — you can use Axis either way, and unsubscribe anytime."
+)
+
+
 class AcceptRequest(BaseModel):
     """The client asserts consent to both documents. It does not get to say
-    which version — the server stamps the versions it currently requires."""
+    which version — the server stamps the versions it currently requires.
+
+    `accept_marketing` is deliberately separate and defaults to False. It is
+    permission to solicit, not a contract term: the TCPA forbids conditioning
+    a product on it, so it never gates acceptance and its absence is normal."""
     accept_tos: bool
     accept_privacy: bool
+    accept_marketing: bool = False
 
 
 def _missing_table(err: Exception) -> bool:
@@ -141,11 +156,37 @@ async def accept_acknowledgment(
         logger.error("legal acknowledgment write failed: %s", e)
         raise HTTPException(status_code=503, detail="Could not save your acceptance. Try again.")
 
+    _record_marketing_consent(db, user["id"], body.accept_marketing, record)
+
     return {
         "ok": True,
         "tos_version": CURRENT_TOS_VERSION,
         "privacy_version": CURRENT_PRIVACY_VERSION,
+        "marketing_consent": body.accept_marketing,
     }
+
+
+def _record_marketing_consent(db, user_id: str, granted: bool, meta: dict) -> None:
+    """Log marketing permission for both channels.
+
+    A declined box is written as granted=False rather than skipped: "they said
+    no" and "we never asked" are different facts, and only the first is a
+    defence. Best-effort — a contractor must never be blocked from using Axis
+    because a marketing row would not insert.
+    """
+    rows = [{
+        "user_id": user_id,
+        "channel": ch,
+        "granted": bool(granted),
+        "source": "signup_gate",
+        "consent_text": MARKETING_CONSENT_TEXT,
+        "ip_address": meta.get("ip_address"),
+        "user_agent": meta.get("user_agent"),
+    } for ch in ("sms", "email")]
+    try:
+        db.table("marketing_consent").insert(rows).execute()
+    except Exception as e:
+        logger.info("marketing consent not recorded for %s: %s", user_id, e)
 
 
 def _client_ip(request: Request) -> Optional[str]:

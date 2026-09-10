@@ -767,10 +767,16 @@ export const api = {
   legal: {
     status: () =>
       apiRequest<LegalAcknowledgmentStatus>(`/api/v1/legal/acknowledgment`),
-    accept: () =>
-      apiRequest<{ ok: boolean; tos_version: string; privacy_version: string }>(
+    // `marketing` is the optional third box. It is sent as an explicit
+    // true/false — "they declined" and "we never asked" are different facts,
+    // and only the first is a defence if a complaint ever lands.
+    accept: (marketing: boolean) =>
+      apiRequest<{ ok: boolean; tos_version: string; privacy_version: string; marketing_consent: boolean }>(
         `/api/v1/legal/acknowledgment`,
-        { method: 'POST', body: JSON.stringify({ accept_tos: true, accept_privacy: true }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({ accept_tos: true, accept_privacy: true, accept_marketing: marketing }),
+        },
       ),
   },
   // ── Find Roofs (prospecting) ─────────────────────────────────────────────

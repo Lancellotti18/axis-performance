@@ -1444,9 +1444,49 @@ def _aggregate_run(run_id: str) -> dict:
 
 @router.get("/runs/{run_id}/recompute")
 async def recompute_run(run_id: str, user: dict = Depends(require_user)) -> dict:
-    """Recompute aggregates from current facets+edges. Idempotent."""
-    require_owned_run(get_supabase(), run_id, user)
-    return _aggregate_run(run_id)
+    """Recompute aggregates from current facets+edges. Idempotent.
+
+    This is also where a roof becomes BILLABLE. The meter used to fire when the
+    PDF was generated, which left the value free: this endpoint is what puts
+    area, squares, pitch and every edge length on the contractor's screen, so
+    anyone could trace a roof, read the numbers off, and simply never click
+    Generate. What is being sold is the measurement; the PDF is delivery.
+
+    Charged once per RUN, not per call — this endpoint fires on every edit.
+    _mark_run_billable is a no-op once the run has a billable row, and the
+    later PDF then logs as 'rebuild' via the existing already_generated check.
+    """
+    db = get_supabase()
+    require_owned_run(db, run_id, user)
+    aggregates = _aggregate_run(run_id)
+    _mark_run_billable(db, run_id, user["id"], aggregates)
+    return aggregates
+
+
+def _mark_run_billable(db, run_id: str, user_id: str, aggregates: dict) -> None:
+    """Bill a run the first time it yields measurements the contractor can use.
+
+    Two things deliberately do NOT count:
+      * a run with no area yet — they are mid-trace, not finished
+      * a run the validators blocked — those numbers are flagged as unusable
+        and no report can be produced from them, so charging would be charging
+        for a failure
+    Best-effort: metering must never break the measurement view.
+    """
+    try:
+        if aggregates.get("blocking_issues"):
+            return
+        # Key name verified against the dict _aggregate_run actually builds —
+        # a wrong name here fails silently and nothing is ever billed.
+        area = aggregates.get("total_roof_sqft") or 0
+        if not area or float(area) <= 0:
+            return
+        from app.services import llm_usage
+        if llm_usage.already_generated(db, run_id):
+            return
+        llm_usage.record_report(user_id, run_id, "generate", 0)
+    except Exception as e:
+        logger.info("run %s not marked billable: %s", run_id, e)
 
 
 # ----------------------------------------------------------------------------
