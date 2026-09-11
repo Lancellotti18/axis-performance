@@ -24,6 +24,29 @@ const nextConfig: NextConfig = {
         source: "/q/:path*",
         headers: securityHeaders.filter(h => h.key !== "X-Frame-Options"),
       },
+      {
+        // Next serves everything in public/ with "max-age=0, must-revalidate",
+        // which is fine for HTML and wrong for a 10MB hero reel: the browser
+        // re-validates it on every single visit and re-pulls the whole file
+        // whenever the edge cache is cold. That is why the scroll hero feels
+        // smooth one day and sticky the next — it was never actually cached.
+        //
+        // Long max-age, but deliberately NOT "immutable": these filenames are
+        // not content-hashed, and immutable would pin a stale reel in returning
+        // visitors' browsers forever. stale-while-revalidate lets a re-cut
+        // propagate in the background. If the reel is ever replaced, bump the
+        // filename rather than relying on this window.
+        source: "/:dir(v2)/:file*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=2592000, stale-while-revalidate=86400" },
+        ],
+      },
+      {
+        source: "/:file(reel-hd.mp4|reel-sd.mp4|reel-opt.mp4|reel.mp4|reel-poster.jpg)",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=2592000, stale-while-revalidate=86400" },
+        ],
+      },
     ];
   },
   // Home swap: serve the cinematic scroll-reel landing at "/". beforeFiles runs
