@@ -163,10 +163,19 @@ async def llm_vision(
 GEMINI_MODEL = "gemini-2.5-flash"
 # Ordered fallbacks — each has its own free-tier quota bucket, so cycling through
 # them buys us several rounds of retries on a busy day.
+# gemini-2.0-flash and gemini-2.0-flash-lite were REMOVED on 2026-09-11: both
+# return 404 on all three production keys, and Google lists them as shut down.
+# The deep health check found this — they had been silently eating a retry
+# round on every call for however long they have been gone.
+#
+# Order is deliberate: 2.5-flash-lite is verified working on all three keys, so
+# it stays first. The 3.5 entries add depth beyond it and are NOT yet verified
+# against these keys — /health/deep names any that 404, so check it after this
+# deploys and drop whatever does not answer.
 GEMINI_FALLBACKS = [
-    "gemini-2.0-flash",
     "gemini-2.5-flash-lite",
-    "gemini-2.0-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
 ]
 # Back-compat alias (some code paths import this directly)
 GEMINI_FALLBACK_MODEL = GEMINI_FALLBACKS[0]
