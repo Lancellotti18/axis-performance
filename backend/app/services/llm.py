@@ -173,9 +173,8 @@ GEMINI_MODEL = "gemini-2.5-flash"
 # against these keys — /health/deep names any that 404, so check it after this
 # deploys and drop whatever does not answer.
 GEMINI_FALLBACKS = [
-    "gemini-2.5-flash-lite",
-    "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite",   # 3/3 keys
+    "gemini-3.5-flash",        # 3/3 keys — added 2026-09-11, verified in prod
 ]
 # Back-compat alias (some code paths import this directly)
 GEMINI_FALLBACK_MODEL = GEMINI_FALLBACKS[0]

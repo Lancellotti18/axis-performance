@@ -163,20 +163,7 @@ async def health_deep(request: Request, images: int = 1):
     # Constant-time: a plain == leaks the secret one character at a time to
     # anyone willing to measure the response.
     if not _secrets.compare_digest(provided, expected):
-        # Enough to diagnose a truncated or whitespace-damaged paste without
-        # revealing the value. Only shown to a caller who already presented a
-        # secret, and only a hash prefix. Remove once this stops being useful.
-        import hashlib
-        def _fp(v: str) -> str:
-            return hashlib.sha256(v.encode()).hexdigest()[:8] if v else "-"
-        raise HTTPException(status_code=401, detail={
-            "message": "Bad or missing health secret.",
-            "server_secret_len": len(expected),
-            "server_secret_fp": _fp(expected),
-            "your_secret_len": len(provided),
-            "your_secret_fp": _fp(provided),
-            "server_reads_from": "os.environ" if os.environ.get("HEALTH_CHECK_SECRET") else "pydantic settings",
-        })
+        raise HTTPException(status_code=401, detail="Bad or missing health secret.")
 
     # ?images=0 turns off the only probes that cost real money per run.
     include_images = bool(images)
