@@ -174,11 +174,29 @@ async def health_deep(request: Request, images: int = 1):
             from google import genai
             from google.genai import types
             client = genai.Client(api_key=api_key)
+            cfg: dict = {"max_output_tokens": 20}
+            # Mirror _gemini_text: without this a 2.5 model spends the whole
+            # token budget thinking and returns empty text, which the probe
+            # would report as a dead model. Match how Axis really calls it.
+            if "2.5" in model:
+                cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
             resp = client.models.generate_content(
                 model=model, contents="Reply with the single word: ok",
-                config=types.GenerateContentConfig(max_output_tokens=10),
+                config=types.GenerateContentConfig(**cfg),
             )
-            return {"ok": bool((resp.text or "").strip())}
+            text = (resp.text or "").strip()
+            if text:
+                return {"ok": True}
+            # Reachable but empty is NOT the same as retired — say which.
+            reason = "empty response"
+            try:
+                cand = (getattr(resp, "candidates", None) or [None])[0]
+                fr = getattr(cand, "finish_reason", None)
+                if fr is not None:
+                    reason = f"empty response (finish_reason={fr})"
+            except Exception:
+                pass
+            return {"ok": False, "error": reason}
         except Exception as e:
             return {"ok": False, "error": str(e)[:200]}
 
@@ -221,10 +239,21 @@ async def health_deep(request: Request, images: int = 1):
             return {"ok": False, "error": "not configured"}
         try:
             from groq import Groq
-            Groq(api_key=settings.GROQ_API_KEY).chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": "say ok"}], max_tokens=5)
-            return {"ok": True}
+            client = Groq(api_key=settings.GROQ_API_KEY)
+            # Both models llm.py actually calls, primary first. Probing only
+            # the fallback reported a working Groq as dead.
+            errs = []
+            for model in ("llama-3.3-70b-versatile", "llama-3.1-8b-instant"):
+                try:
+                    client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "user", "content": "say ok"}], max_tokens=5)
+                    return {"ok": True, "model": model,
+                            "degraded": model != "llama-3.3-70b-versatile",
+                            "errors": errs or None}
+                except Exception as e:
+                    errs.append(f"{model}: {str(e)[:120]}")
+            return {"ok": False, "error": " | ".join(errs)}
         except Exception as e:
             return {"ok": False, "error": str(e)[:200]}
 
