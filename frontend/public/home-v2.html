@@ -102,10 +102,17 @@
   .stage{position:sticky;top:0;height:100vh;overflow:hidden;background:#04070c}
   .still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#04070c;
     transition:opacity .5s var(--ease);will-change:opacity}
-  #reel{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:transparent;
-    opacity:0;transition:opacity .5s var(--ease);will-change:opacity}
-  .stage[data-live="1"] #reel{opacity:1}
-  .stage[data-live="1"] .still{opacity:0}
+  /* Two tiers stacked over the still. The ~1MB preview buffers end-to-end in
+     about two seconds, so the FULL reel is scrubbable almost immediately; the
+     high tier fades in on top once it has downloaded completely and can never
+     freeze afterwards. Stacking order is still < preview < high. */
+  #reelLow,#reelHd{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    background:transparent;opacity:0;transition:opacity .45s var(--ease);will-change:opacity}
+  .stage[data-live="low"] #reelLow,
+  .stage[data-live="hd"]  #reelLow{opacity:1}
+  .stage[data-live="hd"]  #reelHd{opacity:1}
+  .stage[data-live="low"] .still,
+  .stage[data-live="hd"]  .still{opacity:0}
 
   .grade{position:absolute;inset:0;pointer-events:none;
     background:radial-gradient(130% 100% at 50% 24%,transparent 42%,rgba(3,6,11,.5) 100%),
@@ -211,9 +218,12 @@
   <i class="snap" style="top:145.00vh"></i>
   <i class="snap" style="top:298.70vh"></i>
   <i class="snap" style="top:440.80vh"></i>
-  <div class="stage" data-cine="0" data-live="0">
+  <div class="stage" data-cine="0" data-live="still">
     <img class="still" id="still" src="/v2/reel-poster.jpg" alt="" width="1920" height="1080" fetchpriority="high">
-    <video id="reel" playsinline muted preload="auto" width="1920" height="1080" disablepictureinpicture aria-hidden="true"></video>
+    <!-- preview tier: small, dense keyframes, loads first and alone -->
+    <video id="reelLow" playsinline muted preload="auto" width="640" height="360" disablepictureinpicture aria-hidden="true"></video>
+    <!-- high tier: src is set only once the preview has finished downloading -->
+    <video id="reelHd" playsinline muted preload="none" width="1920" height="1080" disablepictureinpicture aria-hidden="true"></video>
     <div class="grade"></div>
     <div class="bars"></div>
 
@@ -295,7 +305,7 @@
 <script>
 (() => {
   const film=document.querySelector('.film'), stage=document.querySelector('.stage');
-  const reel=document.getElementById('reel');
+  const lowEl=document.getElementById('reelLow'), hdEl=document.getElementById('reelHd');
   const hero=document.getElementById('hero'), payoff=document.getElementById('payoff');
   const cue=document.getElementById('cue'), railFill=document.getElementById('railFill');
   const beats=[...document.querySelectorAll('.beat')];
@@ -306,102 +316,178 @@
   const lerp=(a,b,t)=>a+(b-a)*t;
   const smooth=(e0,e1,x)=>{const t=clamp((x-e0)/(e1-e0),0,1);return t*t*(3-2*t)};
 
-  // ── Failure fallback ───────────────────────────────────────────────────
-  let dead=false, painted=false;
-  function giveUp(){ if(dead) return; dead=true; stage.dataset.live='0'; }
-  function markLive(){ if(painted||dead) return; painted=true; stage.dataset.live='1'; }
-  reel.addEventListener('error',giveUp);
+  const FPS=12;
+  const NOMINAL=25.25;              // all three tiers are the same cut
+  const RVFC='requestVideoFrameCallback' in HTMLVideoElement.prototype;
 
-  // ── Which cut to download ──────────────────────────────────────────────
-  function pickSrc(){
+  // ── One scrubber per tier ──────────────────────────────────────────────
+  // Scrubbing by currentTime is only smooth if we ask for at most one distinct
+  // FRAME per rAF, never seek into a range that has not downloaded, and can
+  // never deadlock waiting on an event the browser decides not to fire.
+  // 'seeked' fires when a seek resolves internally, which is not the same as a
+  // frame being presented and is skipped under load, so requestVideoFrameCallback
+  // is the completion signal wherever it exists.
+  function makeScrubber(v){
+    let seeking=false, pending=null, lastFrame=-1, timer=null, waiter=null;
+    let painted=false, dead=false, trusted=false;
+
+    v.addEventListener('error',()=>{ dead=true; });
+    function onPresented(){
+      painted=true;
+      if(waiter){ const w=waiter; waiter=null; w(); }
+      if(RVFC) v.requestVideoFrameCallback(onPresented);
+    }
+    if(RVFC) v.requestVideoFrameCallback(onPresented);
+
+    function bufferedEnd(){
+      const b=v.buffered; let e=0;
+      for(let i=0;i<b.length;i++) if(b.end(i)>e) e=b.end(i);
+      return e;
+    }
+    function reachable(t){
+      const b=v.buffered;
+      if(!b||!b.length) return null;
+      for(let i=0;i<b.length;i++) if(t>=b.start(i)&&t<=b.end(i)) return t;
+      let best=null;
+      for(let i=0;i<b.length;i++){
+        if(b.start(i)<=t){ const e=Math.max(0,b.end(i)-0.05); if(best==null||e>best) best=e; }
+      }
+      return best;
+    }
+    function settle(){
+      if(timer){ clearTimeout(timer); timer=null; }
+      waiter=null;
+      v.removeEventListener('seeked',settle);
+      seeking=false;
+      if(pending!=null){ const q=pending; pending=null; raw(q); }
+    }
+    function raw(t){
+      seeking=true;
+      if(RVFC) waiter=settle; else v.addEventListener('seeked',settle,{once:true});
+      // Watchdog: a seek into a stalled range can silently never complete.
+      timer=setTimeout(settle,220);
+      try{ if(v.fastSeek) v.fastSeek(t); else v.currentTime=t; }
+      catch(e){ settle(); }
+    }
+    ['progress','canplay','loadeddata','seeked'].forEach(ev=>
+      v.addEventListener(ev,()=>{ lastFrame=-1; kick(); },{passive:true}));
+
+    // A muted playsinline video that has never played does not reliably paint
+    // on seek in iOS Safari. A play/pause cycle primes the decoder.
+    let primed=false;
+    function prime(){
+      if(primed||dead) return; primed=true;
+      const pr=v.play();
+      if(pr&&pr.then) pr.then(()=>v.pause()).catch(()=>{ primed=false; });
+      else { try{ v.pause(); }catch(e){} }
+    }
+    v.addEventListener('loadeddata',()=>{ prime(); lastFrame=-1; kick(); },{once:true});
+
+    function duration(){ return (isFinite(v.duration)&&v.duration>0) ? v.duration : 0; }
+
+    return {
+      el:v, prime,
+      isDead(){ return dead; },
+      hasPainted(){ return painted; },
+      duration,
+      /** True once the WHOLE timeline is downloaded. After this the tier can
+       *  never freeze mid-scroll, whatever the connection does next. This is
+       *  the property the old single-file build never had: it was scrubbed
+       *  while still downloading, so past the buffered edge the picture simply
+       *  stopped tracking the scroll. */
+      /** Called once the bytes are known to be local (blob-backed), so the
+       *  buffered check cannot be fooled by lazy progressive buffering. */
+      markTrusted(){ trusted=true; },
+      complete(){
+        const d=duration();
+        if(dead||d<=0) return false;
+        return trusted || bufferedEnd() >= d-0.35;
+      },
+      seek(t){
+        if(dead) return;
+        const d=duration()||NOMINAL;
+        t=clamp(t,0,Math.max(0,d-0.05));
+        const f=Math.round(t*FPS);
+        if(f===lastFrame) return;
+        const want=reachable(f/FPS);
+        if(want==null) return;            // nothing buffered — the still holds
+        lastFrame=f;
+        if(Math.abs(v.currentTime-want)<1/(FPS*2)) return;
+        if(seeking){ pending=want; return; }
+        raw(want);
+      },
+    };
+  }
+
+  const low=makeScrubber(lowEl), hd=makeScrubber(hdEl);
+
+  function pickHigh(){
     const c=navigator.connection||{};
     if(c.saveData) return '/v2/reel-sd.mp4';
     if(/(^|-)2g$|^3g$/.test(c.effectiveType||'')) return '/v2/reel-sd.mp4';
-    return Math.max(innerWidth,innerHeight) < 1000 ? '/v2/reel-sd.mp4' : '/v2/reel-hd.mp4';
+    if(Math.max(innerWidth,innerHeight) < 1000) return '/v2/reel-sd.mp4';
+    // Below ~3 Mbps the 10MB cut takes the better part of a minute, and the
+    // viewer spends all of it on a 426x240 upscale. The 4MB cut reaches a good
+    // picture roughly twice as fast, which matters more than peak sharpness.
+    if(measuredKbps!=null && measuredKbps<3000) return '/v2/reel-sd.mp4';
+    return '/v2/reel-hd.mp4';
   }
-  if(reduce) giveUp(); else reel.src=pickSrc();
 
-  const FPS=24;
-  let duration=1;
-  reel.addEventListener('loadedmetadata',()=>{ if(isFinite(reel.duration)&&reel.duration>0) duration=reel.duration; },{once:true});
-
-  // ── Seeking ────────────────────────────────────────────────────────────
-  const RVFC='requestVideoFrameCallback' in HTMLVideoElement.prototype;
-  let seeking=false, pending=null, lastFrame=-1, seekTimer=null, frameWaiter=null;
-
-  function onPresented(){
-    markLive();
-    if(frameWaiter){ const f=frameWaiter; frameWaiter=null; f(); }
-    if(RVFC) reel.requestVideoFrameCallback(onPresented);
-  }
-  if(RVFC) reel.requestVideoFrameCallback(onPresented);
-
-  function reachable(t){
-    const b=reel.buffered;
-    if(!b||!b.length) return null;
-    for(let i=0;i<b.length;i++) if(t>=b.start(i)&&t<=b.end(i)) return t;
-    let best=null;
-    for(let i=0;i<b.length;i++){
-      if(b.start(i)<=t){ const e=Math.max(0,b.end(i)-0.05); if(best==null||e>best) best=e; }
-    }
-    return best;
-  }
-  function settle(){
-    if(seekTimer){ clearTimeout(seekTimer); seekTimer=null; }
-    frameWaiter=null;
-    reel.removeEventListener('seeked',settle);
-    seeking=false;
-    if(pending!=null){ const q=pending; pending=null; raw(q); }
-  }
-  function raw(t){
-    seeking=true;
-    if(RVFC) frameWaiter=settle; else reel.addEventListener('seeked',settle,{once:true});
-    seekTimer=setTimeout(settle,220);
-    try{ if(reel.fastSeek) reel.fastSeek(t); else reel.currentTime=t; }
-    catch(e){ settle(); }
-  }
-  function seek(t){
-    if(dead) return;
-    t=clamp(t,0,Math.max(0,duration-0.05));
-    const f=Math.round(t*FPS);
-    if(f===lastFrame) return;
-    const want=reachable(f/FPS);
-    if(want==null) return;
-    lastFrame=f;
-    if(Math.abs(reel.currentTime-want)<1/(FPS*2)) return;
-    if(seeking){ pending=want; return; }
-    raw(want);
-  }
-  ['progress','canplay','loadeddata','seeked'].forEach(ev=>
-    reel.addEventListener(ev,()=>{ lastFrame=-1; kick(); },{passive:true}));
-
-  // ── Decoder priming (iOS will not paint on seek without it) ────────────
-  let primed=false;
-  function prime(){
-    if(primed||dead) return;
-    primed=true;
-    const p=reel.play();
-    if(p&&p.then) p.then(()=>reel.pause()).catch(()=>{ primed=false; });
-    else { try{reel.pause()}catch(e){} }
-  }
-  ['pointerdown','touchstart','wheel','keydown'].forEach(ev=>
-    addEventListener(ev,prime,{once:true,passive:true}));
-  reel.addEventListener('loadeddata',()=>{ prime(); lastFrame=-1; kick(); },{once:true});
-
-  // ── Scroll → film time, with a hold on each readable beat ──────────────
-  // Scroll progress is pinned to actual cut boundaries in the reel, not spread
-  // evenly across it. Each pair is [scroll progress, fraction of film elapsed].
-  // The flat stretches are the beats: while a beat's copy is on screen the film
-  // barely advances, so the shot the copy describes is the shot you are looking
-  // at. The steep stretches are the 0.7s dissolves between shots.
+  // ── Loading: fetch whole files, scrub blobs ────────────────────────────
+  // This is the fix for the bug that made the hero feel broken. preload="auto"
+  // is only a hint: Chrome buffered roughly 14s of the 25s reel and then simply
+  // stopped, because the video never plays and so the browser saw no reason to
+  // continue. Past that point the picture stopped tracking the scroll — the
+  // payoff shot was unreachable no matter how long you waited or how fast the
+  // connection was. Scrubbing is not playback, and progressive buffering does
+  // not serve it.
   //
-  //   film cut points (25.25s reel):
-  //     orbit descent    0.00 - 5.33     approach
-  //     roof scan        4.73 - 9.33     beat 1  measurement
-  //     contractor       8.73 - 13.33    beat 2  reports
-  //     materials/crew  12.73 - 17.53    beat 3  materials + dispatch
-  //     transformation  16.93 - 22.20    payoff
-  //     new roof hold   21.60 - 25.25    payoff
+  // Fetching the file outright and handing the element a blob URL makes the
+  // whole timeline local and permanently seekable. Measured: bufferedEnd goes
+  // from 14.4/25.25 to the full 25.25, and a seek to 24.5s lands.
+  let measuredKbps=null;
+  function fetchBlobUrl(url){
+    return fetch(url,{credentials:'omit'}).then(r=>{
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.blob();
+    });
+  }
+  function loadTier(url,el,scrubber){
+    return fetchBlobUrl(url).then(blob=>{
+      el.src=URL.createObjectURL(blob);
+      scrubber.markTrusted();
+      kick();
+      return blob.size;
+    }).catch(()=>{
+      // Degrade to progressive streaming rather than losing the tier entirely.
+      el.preload='auto'; el.src=url; kick();
+      return 0;
+    });
+  }
+  if(!reduce && typeof fetch==='function'){
+    const t0=performance.now();
+    loadTier('/v2/reel-preview.mp4',lowEl,low).then(bytes=>{
+      const ms=Math.max(1,performance.now()-t0);
+      if(bytes>0) measuredKbps=bytes*8/ms;      // bytes*8/ms === kbit/s
+      return loadTier(pickHigh(),hdEl,hd);
+    });
+    ['pointerdown','touchstart','wheel','keydown'].forEach(ev=>
+      addEventListener(ev,()=>{ low.prime(); hd.prime(); },{once:true,passive:true}));
+  } else if(!reduce){
+    lowEl.src='/v2/reel-preview.mp4';
+    hdEl.preload='auto'; hdEl.src=pickHigh();
+  }
+
+  let stageState='';
+  function setStage(s){ if(s!==stageState){ stageState=s; stage.dataset.live=s; } }
+  function durationNow(){ return hd.duration() || low.duration() || NOMINAL; }
+
+  // ── Scroll → film time ─────────────────────────────────────────────────
+  // Pinned to real cut boundaries, not spread evenly: each flat stretch is a
+  // beat holding on the shot its copy describes; the steep stretches are the
+  // 0.6s dissolves between shots.
+  //   orbit 0.00-5.33 | scan 4.73-9.33 | report 8.73-13.33
+  //   materials 12.73-17.53 | transform 16.93-22.20 | new roof 21.60-25.25
   const MAP=[[0,0],[0.170,0.1983],[0.330,0.3570],[0.445,0.3689],
              [0.585,0.5117],[0.700,0.5276],[0.820,0.6823],[0.955,0.8926],[1,1]];
   function timeAt(p){
@@ -414,7 +500,6 @@
     return 1;
   }
 
-  // [fade-in from, fully readable from, readable until, gone by]
   const RANGE=[[0.115,0.170,0.330,0.370],
                [0.390,0.445,0.585,0.625],
                [0.645,0.700,0.820,0.858]];
@@ -427,20 +512,33 @@
   }
   function setBeat(el,r,p,st){
     const enter=smooth(r[0],r[1],p), exit=smooth(r[2],r[3],p);
-    setEl(el, +(enter*(1-exit)).toFixed(3),
-          `translateY(${((1-enter)*30 - exit*22).toFixed(1)}px)`, st);
+    setEl(el,+(enter*(1-exit)).toFixed(3),
+          `translateY(${((1-enter)*30 - exit*22).toFixed(1)}px)`,st);
   }
   function setProof(el,r,p,st){
     if(!el || el.dataset.ready!=='1') return;
-    // trails the headline slightly so the copy reads first
     const enter=smooth(r[0]+0.045,r[1]+0.045,p), exit=smooth(r[2],r[3],p);
-    setEl(el, +(enter*(1-exit)).toFixed(3),
-          `translateY(-50%) translateX(${((1-enter)*34).toFixed(1)}px)`, st);
+    setEl(el,+(enter*(1-exit)).toFixed(3),
+          `translateY(-50%) translateX(${((1-enter)*34).toFixed(1)}px)`,st);
+  }
+
+  let hdActive=false;
+  function driveVideo(t){
+    if(reduce) return;
+    if(!hdActive && hd.complete()) hdActive=true;
+    if(hdActive){
+      hd.seek(t);
+      if(!hd.hasPainted()) low.seek(t);     // hold the preview until HD paints
+    } else {
+      low.seek(t);
+    }
+    if(hdActive && hd.hasPainted()) setStage('hd');
+    else if(low.hasPainted()) setStage('low');
   }
 
   let lHeroO=-1,lHeroT='',lPay=-1,lCue=-1,lCine='',lRail=-1,lSnap=null;
   function apply(p){
-    seek(timeAt(p)*duration);
+    driveVideo(timeAt(p)*durationNow());
     const fade=smooth(0.03,0.10,p);
     const ho=+(1-fade).toFixed(3);
     if(ho!==lHeroO){ lHeroO=ho; hero.style.opacity=ho; }
@@ -460,13 +558,13 @@
   let target=0, shown=0, ticking=false, needMeasure=true;
   let filmTop=0, trackLen=1;
   function cacheGeom(){
-    filmTop = film.getBoundingClientRect().top + window.scrollY;
-    trackLen = Math.max(1, film.offsetHeight - window.innerHeight);
+    filmTop=film.getBoundingClientRect().top+window.scrollY;
+    trackLen=Math.max(1,film.offsetHeight-window.innerHeight);
   }
   function syncSnap(){
-    const p = clamp((window.scrollY - filmTop) / trackLen, 0, 1);
-    const snap = p < 0.87;
-    if(snap!==lSnap){ lSnap=snap; document.documentElement.classList.toggle('reel-snap', snap && !reduce); }
+    const p=clamp((window.scrollY-filmTop)/trackLen,0,1);
+    const snap=p<0.87;
+    if(snap!==lSnap){ lSnap=snap; document.documentElement.classList.toggle('reel-snap',snap&&!reduce); }
   }
   function measure(){
     cacheGeom();
