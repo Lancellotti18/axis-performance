@@ -151,14 +151,32 @@ async def health_deep(request: Request, images: int = 1):
     import asyncio as _asyncio
     import secrets as _secrets
 
-    expected = settings.HEALTH_CHECK_SECRET
+    # os.environ first, mirroring visualizer_service — this codebase already
+    # works around pydantic-settings not reflecting the deployed environment
+    # ("Read keys at call time via os.environ to avoid pydantic-settings
+    # startup order issues"). Whitespace is stripped because a value pasted
+    # into a hosting panel routinely arrives with a trailing newline.
+    expected = (os.environ.get("HEALTH_CHECK_SECRET") or settings.HEALTH_CHECK_SECRET or "").strip()
     if not expected:
         raise HTTPException(status_code=503, detail="Deep health check is not configured.")
-    provided = request.headers.get("x-health-secret") or ""
+    provided = (request.headers.get("x-health-secret") or "").strip()
     # Constant-time: a plain == leaks the secret one character at a time to
     # anyone willing to measure the response.
     if not _secrets.compare_digest(provided, expected):
-        raise HTTPException(status_code=401, detail="Bad or missing health secret.")
+        # Enough to diagnose a truncated or whitespace-damaged paste without
+        # revealing the value. Only shown to a caller who already presented a
+        # secret, and only a hash prefix. Remove once this stops being useful.
+        import hashlib
+        def _fp(v: str) -> str:
+            return hashlib.sha256(v.encode()).hexdigest()[:8] if v else "-"
+        raise HTTPException(status_code=401, detail={
+            "message": "Bad or missing health secret.",
+            "server_secret_len": len(expected),
+            "server_secret_fp": _fp(expected),
+            "your_secret_len": len(provided),
+            "your_secret_fp": _fp(provided),
+            "server_reads_from": "os.environ" if os.environ.get("HEALTH_CHECK_SECRET") else "pydantic settings",
+        })
 
     # ?images=0 turns off the only probes that cost real money per run.
     include_images = bool(images)
