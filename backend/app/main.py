@@ -174,11 +174,12 @@ async def health_deep(request: Request, images: int = 1):
             from google import genai
             from google.genai import types
             client = genai.Client(api_key=api_key)
-            cfg: dict = {"max_output_tokens": 20}
+            cfg: dict = {"max_output_tokens": 64}
             # Mirror _gemini_text: without this a 2.5 model spends the whole
             # token budget thinking and returns empty text, which the probe
             # would report as a dead model. Match how Axis really calls it.
-            if "2.5" in model:
+            from app.services.llm import _thinks
+            if _thinks(model):
                 cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
             resp = client.models.generate_content(
                 model=model, contents="Reply with the single word: ok",

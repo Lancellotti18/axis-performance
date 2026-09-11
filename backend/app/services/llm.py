@@ -181,6 +181,19 @@ GEMINI_FALLBACKS = [
 GEMINI_FALLBACK_MODEL = GEMINI_FALLBACKS[0]
 
 
+def _thinks(model: str) -> bool:
+    """Does this model reason before answering, and therefore need thinking
+    switched off for short completions?
+
+    This was `"2.5" in model`, which silently excluded every 3.x model. A 3.5
+    model left thinking-enabled spends a small max_tokens budget reasoning and
+    returns EMPTY text — the deep health check caught exactly that when 3.5
+    models were added to the fallback list. Anything newer than the 2.0 family
+    thinks, so match on that instead of naming each generation.
+    """
+    return not model.startswith("gemini-2.0")
+
+
 def _gemini_keys() -> list[str]:
     """Return every non-empty Gemini key in priority order. Multi-key lets us
     rotate across accounts when free-tier load-shedding 503s one of them —
@@ -327,7 +340,7 @@ async def _gemini_text(prompt: str, system: Optional[str], max_tokens: int) -> s
     def _run(api_key: str, model: str):
         client = genai.Client(api_key=api_key)
         cfg_kwargs: dict = {"max_output_tokens": max_tokens}
-        if "2.5" in model:
+        if _thinks(model):
             cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
         response = client.models.generate_content(
             model=model,
@@ -387,7 +400,7 @@ async def _gemini_vision(
         # EMPTY text (the "did not return structured data" failure). These are
         # bounded JSON-extraction tasks, so disable thinking and let every token
         # go to the answer. (2.0 models have no thinking config — leave them be.)
-        if "2.5" in model:
+        if _thinks(model):
             cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
         # Prepend few-shot reference images (captioned) before the target image.
         contents: list = []
