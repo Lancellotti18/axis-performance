@@ -954,6 +954,12 @@ async def check_materials_compliance(
         # Every chunk failed — fall back to the base-code brick wall.
         parse_failed = True
         result = _base_code_materials_fallback(material_list, j, project_type, loc)
+        # Say so in the RESULT, not just in local state. Without this the only
+        # difference between a real jurisdiction check and generic IRC
+        # boilerplate is that every item happens to be status="warning" — which
+        # nothing downstream can distinguish, so a silent degradation looks
+        # exactly like a healthy response to callers and to monitoring.
+        result["static_fallback"] = True
         if not chunks or all(c == [] for c in chunks):
             result["llm_unavailable"] = True
     else:
@@ -966,6 +972,16 @@ async def check_materials_compliance(
             "checklist": merged_checklist,
             "missing_required_items": dedup_missing,
         }
+
+    # How much real research actually backed this answer. Callers and monitoring
+    # cannot tell a genuine jurisdiction check from the base-code filler any
+    # other way: the filler cites the jurisdiction's own code URL, so it passes
+    # verification, carries a checklist, and sets no failure flag when there
+    # were simply no research chunks to fail. These two counts are the fact.
+    result["chunks_total"] = len(chunks)
+    result["chunks_ok"] = sum(
+        1 for cr in chunk_results if isinstance(cr, dict) and not cr.get("_parse_failed")
+    )
 
     result["checklist"] = _verify(
         result.get("checklist") or [],

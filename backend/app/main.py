@@ -297,20 +297,42 @@ async def health_deep(request: Request, images: int = 1):
             "to a finished roof run so this proves the renderer still works."
         )
     else:
-        try:
-            from app.api.v1.roofing_v2 import _build_and_store_report
-            # user_id omitted on purpose: no billing row for a health probe.
-            pdf, _fn, _url = await _build_and_store_report(run_id)
-            ok = pdf[:4] == b"%PDF" and len(pdf) > 20_000
-            checks["report_render"] = {"ok": ok, "bytes": len(pdf), "run_id": run_id}
-            if not ok:
-                problems.append(
-                    f"CRITICAL: report renderer produced {len(pdf)} bytes that do not look "
-                    "like a PDF. Contractors cannot generate reports."
-                )
-        except Exception as e:
-            checks["report_render"] = {"ok": False, "run_id": run_id, "error": str(e)[:300]}
-            problems.append(f"CRITICAL: report generation raised — {str(e)[:200]}")
+        # Retried once. This probe reaches storage and renders for several
+        # seconds, and it has already failed transiently and recovered on an
+        # immediate retry — a check that reports CRITICAL on a single blip
+        # teaches you to ignore it, which costs more than the blip.
+        from app.api.v1.roofing_v2 import _build_and_store_report
+        attempts: list[str] = []
+        for attempt in (1, 2):
+            try:
+                # user_id omitted on purpose: no billing row for a health probe.
+                pdf, _fn, _url = await _build_and_store_report(run_id)
+                ok = pdf[:4] == b"%PDF" and len(pdf) > 20_000
+                checks["report_render"] = {
+                    "ok": ok, "bytes": len(pdf), "run_id": run_id,
+                    "attempts": attempt,
+                    "first_attempt_error": attempts[0] if attempts else None,
+                }
+                if not ok:
+                    problems.append(
+                        f"CRITICAL: report renderer produced {len(pdf)} bytes that do not "
+                        "look like a PDF. Contractors cannot generate reports."
+                    )
+                elif attempts:
+                    problems.append(
+                        f"WARN: the report renderer failed once then succeeded — "
+                        f"{attempts[0]}. Transient, but worth watching if it repeats."
+                    )
+                break
+            except Exception as e:
+                attempts.append(str(e)[:200])
+                if attempt == 2:
+                    checks["report_render"] = {
+                        "ok": False, "run_id": run_id, "attempts": 2, "errors": attempts,
+                    }
+                    problems.append(
+                        f"CRITICAL: report generation failed twice — {attempts[-1]}"
+                    )
 
     # ── 4. Image generation — FOUR providers on their own keys ────────────
     # Probed individually, not as a chain. The chain short-circuits on the
@@ -383,6 +405,90 @@ async def health_deep(request: Request, images: int = 1):
     except Exception as e:
         checks["storm_report"] = {"ok": False, "error": str(e)[:300]}
         problems.append(f"HIGH: Storm Risk Report raised — {str(e)[:200]}")
+
+    # ── 6. Find Roofs — every wired county ────────────────────────────────
+    # Added after a KeyError 'city' 500'd the whole search for the two counties
+    # whose parcel data has no city column. Nothing above would have caught it:
+    # this path touches no AI provider and renders no PDF. Each county has its
+    # own field map from a different government service, so they fail
+    # independently and have to be probed independently.
+    try:
+        from app.api.v1.prospecting import PARCEL_SOURCES, find_roofs
+        counties: dict = {}
+        for county in PARCEL_SOURCES:
+            try:
+                res = await find_roofs(county=county, city=None,
+                                       owner_occupied_only=False, limit=1,
+                                       user={"id": "health-check"})
+                counties[county] = {"ok": True, "count": res.get("count", 0)}
+            except HTTPException as e:
+                # 502 is the county's own service being unreachable — their
+                # outage, not ours, and it comes back on its own.
+                counties[county] = {"ok": e.status_code == 502,
+                                    "status": e.status_code,
+                                    "error": str(e.detail)[:140]}
+            except Exception as e:
+                counties[county] = {"ok": False, "error": f"{type(e).__name__}: {e}"[:140]}
+        checks["find_roofs"] = counties
+        broken = [c for c, r in counties.items() if not r.get("ok")]
+        upstream = [c for c, r in counties.items()
+                    if r.get("ok") and r.get("status") == 502]
+        if broken:
+            detail = "; ".join(f"{c}: {counties[c].get('error')}" for c in broken)
+            problems.append(
+                f"HIGH: Find Roofs is broken for {len(broken)} of {len(counties)} "
+                f"counties ({', '.join(broken)}). Contractors searching those get "
+                f"Internal Server Error. {detail}"
+            )
+        elif upstream:
+            problems.append(
+                f"WARN: the county data service is unreachable for {', '.join(upstream)}. "
+                "That is their outage, not Axis — it usually clears on its own."
+            )
+    except Exception as e:
+        checks["find_roofs"] = {"ok": False, "error": str(e)[:200]}
+        problems.append(f"HIGH: the Find Roofs probe itself failed — {str(e)[:160]}")
+
+    # ── 7. Material Compliance ────────────────────────────────────────────
+    try:
+        from app.services.materials_compliance_service import check_materials_compliance
+        mc = await check_materials_compliance(
+            materials=[{"name": "Architectural asphalt shingles", "quantity": 30, "unit": "square"}],
+            city="Wilmington", state="NC", project_type="roof_replacement",
+        )
+        # The key is "checklist" — verified against the service, not guessed.
+        items = mc.get("checklist") or []
+        # A non-empty checklist does NOT prove the AI worked: when the model is
+        # unavailable the service falls back to a static base-code checklist and
+        # flags it. Without this the probe would report healthy while every
+        # contractor silently got generic IRC boilerplate instead of a real
+        # jurisdiction check.
+        # DELIBERATELY SHALLOW, and worth stating why. This proves the
+        # compliance path runs end to end and returns a checklist without
+        # raising. It does NOT prove a real jurisdiction check happened.
+        #
+        # Four signals were tried and each failed to tell a genuine result from
+        # the base-code filler: the filler returns a checklist, cites the
+        # jurisdiction's own code URL so it passes verification, sets no
+        # failure flag when there were simply no research chunks to fail, and
+        # still reports a parsed chunk. From outside the service the two are
+        # indistinguishable.
+        #
+        # The real fix is to record whether an LLM call actually happened —
+        # llm_usage already meters every call, so a follow-up can assert that
+        # this request produced usage rows. Until then do not claim more than
+        # this check earns.
+        checks["material_compliance"] = {
+            "ok": bool(items),
+            "depth": "shallow — proves it runs, not that AI research backed it",
+            "items_returned": len(items),
+            "research_chunks_ok": mc.get("chunks_ok"),
+            "research_chunks_total": mc.get("chunks_total"),
+            "overall_status": mc.get("overall_status"),
+        }
+    except Exception as e:
+        checks["material_compliance"] = {"ok": False, "error": str(e)[:300]}
+        problems.append(f"HIGH: Material Compliance raised — {str(e)[:200]}")
 
     return {
         "healthy": not problems,
