@@ -1,0 +1,102 @@
+# Daily production health check.
+#
+# This lives here rather than in a Claude cloud routine because that sandbox's
+# egress policy refuses outbound connections to our own domains — every request
+# came back 000 (connect_rejected) before reaching the server. GitHub runners
+# have open network access, cost nothing for this, and store the secret
+# encrypted rather than inline in a prompt.
+#
+# The thinking lives in /health/deep, which returns findings already ranked and
+# written in plain language. This job's only job is to call it and shout.
+
+name: Axis health check
+
+on:
+  schedule:
+    # 11:00 UTC = 7am ET during EDT, 6am ET once clocks go back — GitHub cron
+    # has no timezone support, so the hour drifts by one in winter.
+    - cron: "0 11 * * *"
+  workflow_dispatch:        # lets you run it on demand from the Actions tab
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the deep health check
+        id: probe
+        env:
+          SECRET: ${{ secrets.HEALTH_CHECK_SECRET }}
+          BACKEND: https://build-backend-jcp9.onrender.com
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "::error::HEALTH_CHECK_SECRET is not set in repository secrets."
+            exit 1
+          fi
+          # Render's free tier sleeps after 15 min; a cold start takes ~90s.
+          # Long timeout, and one retry, so a wake-up is never read as an outage.
+          for attempt in 1 2; do
+            code=$(curl -s -o deep.json -w '%{http_code}' --max-time 300 \
+              -H "X-Health-Secret: $SECRET" "$BACKEND/health/deep?images=1" || echo 000)
+            [ "$code" = "200" ] && break
+            echo "attempt $attempt returned HTTP $code"
+            [ "$attempt" = "1" ] && sleep 20
+          done
+          echo "status=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" != "200" ]; then
+            echo "::error::/health/deep returned HTTP $code (503 = secret not set on Render, 401 = wrong secret)"
+            exit 1
+          fi
+
+      - name: Report findings
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          d = json.load(open("deep.json"))
+          problems = d.get("problems") or []
+          checks = d.get("checks") or {}
+
+          def line(s): print(s)
+
+          line("## Axis health check\n")
+          line("**ALL CLEAR**" if d.get("healthy") else f"**PROBLEMS FOUND ({len(problems)})**")
+
+          g = checks.get("gemini", {})
+          line(f"\n- Gemini: {len(g.get('models_working') or [])} of "
+               f"{len(g.get('models_tried') or [])} models working on {g.get('keys_loaded')} keys")
+          for name in ("anthropic", "groq"):
+              line(f"- {name.title()}: {'ok' if (checks.get(name) or {}).get('ok') else 'DOWN'}")
+          fr = checks.get("find_roofs") or {}
+          bad = [c for c, r in fr.items() if not r.get("ok")]
+          line(f"- Find Roofs: {len(fr) - len(bad)}/{len(fr)} counties ok"
+               + (f" — broken: {', '.join(bad)}" if bad else ""))
+          img = checks.get("image_generation") or {}
+          okimg = [k for k, v in img.items() if v.get("ok")]
+          line(f"- Image providers: {len(okimg)}/{len(img)} working"
+               + (f" ({', '.join(okimg)})" if okimg else ""))
+          rr = checks.get("report_render") or {}
+          line(f"- Report render: {'ok' if rr.get('ok') else 'FAILED'} ({rr.get('bytes')} bytes)")
+          st = checks.get("storm_report") or {}
+          line(f"- Storm report: {'ok' if st.get('ok') else 'FAILED'}")
+          mc = checks.get("material_compliance") or {}
+          line(f"- Material compliance: {'ok' if mc.get('ok') else 'FAILED'} (shallow check)")
+
+          if problems:
+              line("\n### Problems\n")
+              for p in problems:
+                  line(f"- {p}")
+
+          # Mirror it into the run summary so it is readable without opening logs.
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("## Axis health check\n\n")
+              f.write(("**ALL CLEAR**\n" if d.get("healthy")
+                       else f"**PROBLEMS FOUND ({len(problems)})**\n\n"))
+              for p in problems:
+                  f.write(f"- {p}\n")
+
+          # Fail the run only on real severity. WARN-only mornings stay green so
+          # a red badge keeps meaning something.
+          severe = [p for p in problems if p.startswith(("CRITICAL", "HIGH"))]
+          if severe:
+              print(f"::error::{len(severe)} severe problem(s) — see summary")
+              sys.exit(1)
+          PY
