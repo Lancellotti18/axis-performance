@@ -317,7 +317,11 @@ async def find_roofs(
                     sold_months=sale[0] if sale else None, sold_year=sale[1] if sale else None,
                     sold_price=sale_price, tax_value=tax_value)
         out.append({
-            "pin": str(a.get(f["pin"])), "address": addr, "city": a.get(f["city"]),
+            # city_val above is the guarded read — f["city"] direct raised
+            # KeyError for every county whose field map lacks it (pender,
+            # york_pa), 500ing the whole search rather than one row.
+            "pin": str(a.get(f["pin"])) if "pin" in f else None,
+            "address": addr, "city": city_val or None,
             "owner": owner, "owner_mail": (owner_mail or None), "owner_occupied": occ,
             "year_built": year, "sold_year": sale[1] if sale else None,
             "tax_value": int(tax_value) if tax_value else None,
