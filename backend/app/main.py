@@ -354,10 +354,12 @@ async def health_deep(request: Request, images: int = 1):
 
         img_bytes = _swatch()
         prompt = "change the roof shingles to dark grey"
+        # Must mirror the chain in _generate_image. HuggingFace was dropped from
+        # both on 2026-09-13 — hf-inference no longer serves image-to-image, so
+        # probing it only produced a WARN nothing could ever clear.
         providers = [
             ("fal",       vis._fal_key,    lambda: vis._fal_img2img(img_bytes, "image/png", prompt)),
             ("gemini",    vis._gemini_key, lambda: vis._gemini_img2img(img_bytes, "image/png", prompt)),
-            ("huggingface", vis._hf_key,   lambda: vis._hf_img2img(img_bytes, prompt)),
             ("replicate", vis._rep_key,    lambda: vis._replicate_img2img(img_bytes, "image/png", prompt)),
         ]
         img_results: dict = {}

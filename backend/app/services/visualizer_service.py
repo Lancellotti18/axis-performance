@@ -89,14 +89,14 @@ async def _generate_image(image_bytes: bytes, content_type: str, description: st
     else:
         attempts.append("Gemini: no GEMINI_API_KEY configured")
 
-    if hf_key:
-        try:
-            return await _hf_img2img(image_bytes, description, hf_key)
-        except Exception as e:
-            attempts.append(f"HuggingFace: {e}")
-            log.warning(f"[visualizer] HuggingFace img2img failed: {e}. Trying next provider...")
-    else:
-        attempts.append("HuggingFace: no HUGGINGFACE_API_KEY configured")
+    # HuggingFace removed from the chain 2026-09-13. Not a stale model name:
+    # the hf-inference provider no longer serves image-to-image at all — it now
+    # does CPU inference (embeddings, classification, small LLMs), and returns
+    # "Model not supported by provider hf-inference" for any img2img request.
+    # Leaving it in bought a guaranteed failed request in the fallback path and
+    # a WARN in the health check every morning, and a check that is permanently
+    # slightly red is one you stop reading. _hf_img2img is kept below, unused,
+    # in case HF ever routes img2img again.
 
     if rep_key:
         try:
@@ -193,11 +193,15 @@ def _gemini_img2img_sync(image_bytes: bytes, mime: str, description: str) -> str
         "Do not invent a new house. Do not move the camera. Do not change the composition."
     )
 
-    # Gemini image-gen models, current as of 2026-04. Deprecated 2.0 preview/exp
-    # aliases were removed — they 404 now. 2.5-flash-image is "Nano Banana".
+    # Updated 2026-09-13 after /health/deep found every 2.5 image alias 404ing
+    # on all three production keys. Google now lists the 3.1 "Nano Banana 2"
+    # family as current and says to move off 2.5. Ordered newest first; 2.5 is
+    # kept last because Google still documents it, and the health check names
+    # any of these that stops answering.
     MODELS = [
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite-image",
         "gemini-2.5-flash-image",
-        "gemini-2.5-flash-image-preview",
     ]
 
     client     = genai.Client(api_key=_gemini_key())
