@@ -13,10 +13,23 @@ name: Axis health check
 
 on:
   schedule:
-    # 11:00 UTC = 7am ET during EDT, 6am ET once clocks go back — GitHub cron
-    # has no timezone support, so the hour drifts by one in winter.
-    - cron: "0 11 * * *"
-  workflow_dispatch:        # lets you run it on demand from the Actions tab
+    # Two schedules, and which one fired decides whether images are probed.
+    #
+    # Times are deliberately odd minutes. GitHub's scheduler is best-effort and
+    # the top of the hour is its most contended slot — this repo's own history
+    # proves it: keep-warm is configured for every 10 minutes and actually runs
+    # a handful of times a day, and supabase-keepalive (23 14 * * *) ran at
+    # 17:26. Expect "sometime that morning", not 7am sharp.
+    #
+    # 11:17 UTC = ~7:17am ET in summer, ~6:17am in winter (no DST handling).
+    - cron: "17 11 * * *"     # daily — everything except image generation
+    - cron: "43 11 * * 0"     # Sundays — adds the image-provider probes
+  workflow_dispatch:
+    inputs:
+      images:
+        description: "Probe image generation (costs quota)"
+        type: boolean
+        default: false
 
 jobs:
   health:
@@ -27,6 +40,10 @@ jobs:
         env:
           SECRET: ${{ secrets.HEALTH_CHECK_SECRET }}
           BACKEND: https://build-backend-jcp9.onrender.com
+          # Image probes burn Gemini's image quota, which is far tighter than
+          # text — a daily probe was exhausting the very allowance it exists to
+          # monitor. Weekly on Sundays, or on demand.
+          IMAGES: ${{ (github.event.schedule == '43 11 * * 0' || inputs.images) && '1' || '0' }}
         run: |
           if [ -z "$SECRET" ]; then
             echo "::error::HEALTH_CHECK_SECRET is not set in repository secrets."
@@ -36,7 +53,7 @@ jobs:
           # Long timeout, and one retry, so a wake-up is never read as an outage.
           for attempt in 1 2; do
             code=$(curl -s -o deep.json -w '%{http_code}' --max-time 300 \
-              -H "X-Health-Secret: $SECRET" "$BACKEND/health/deep?images=1" || echo 000)
+              -H "X-Health-Secret: $SECRET" "$BACKEND/health/deep?images=$IMAGES" || echo 000)
             [ "$code" = "200" ] && break
             echo "attempt $attempt returned HTTP $code"
             [ "$attempt" = "1" ] && sleep 20
@@ -57,7 +74,9 @@ jobs:
 
           def line(s): print(s)
 
-          line("## Axis health check\n")
+          images_probed = "skipped" not in json.dumps(checks.get("image_generation") or {})
+          line("## Axis health check"
+               + ("" if images_probed else "  _(image probes skipped — weekly)_") + "\n")
           line("**ALL CLEAR**" if d.get("healthy") else f"**PROBLEMS FOUND ({len(problems)})**")
 
           g = checks.get("gemini", {})
@@ -70,9 +89,12 @@ jobs:
           line(f"- Find Roofs: {len(fr) - len(bad)}/{len(fr)} counties ok"
                + (f" — broken: {', '.join(bad)}" if bad else ""))
           img = checks.get("image_generation") or {}
-          okimg = [k for k, v in img.items() if v.get("ok")]
-          line(f"- Image providers: {len(okimg)}/{len(img)} working"
-               + (f" ({', '.join(okimg)})" if okimg else ""))
+          if images_probed:
+              okimg = [k for k, v in img.items() if v.get("ok")]
+              line(f"- Image providers: {len(okimg)}/{len(img)} working"
+                   + (f" ({', '.join(okimg)})" if okimg else ""))
+          else:
+              line("- Image providers: not probed today (weekly, Sundays)")
           rr = checks.get("report_render") or {}
           line(f"- Report render: {'ok' if rr.get('ok') else 'FAILED'} ({rr.get('bytes')} bytes)")
           st = checks.get("storm_report") or {}
