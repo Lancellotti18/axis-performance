@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import projects, blueprints, analyses, estimates, reports, compliance, materials, permits, contractor_profile, roofing, roofing_v2, exterior, training, crm, photos, model3d, axis, proposals, material_check, visualizer, renders, chat, instant_quote, roof_proposals, appointments, notifications, prospecting, project_photos, scheduling, briefing, legal, usage
+from app.api.v1 import projects, blueprints, analyses, estimates, reports, compliance, materials, permits, contractor_profile, roofing, roofing_v2, exterior, training, crm, photos, model3d, axis, proposals, material_check, visualizer, renders, chat, instant_quote, roof_proposals, appointments, notifications, prospecting, project_photos, scheduling, briefing, legal, usage, billing
 
 router = APIRouter()
 
@@ -9,12 +9,7 @@ router = APIRouter()
 # — its tables do not even exist. Contractors talk to homeowners by phone. Restore
 # it by re-adding the import and this include_router if the demand ever appears.
 #
-# billing.py is deliberately NOT mounted. It was unfinished scaffolding that no
-# frontend code called, and POST /billing/portal took a Stripe customer_id with
-# no auth at all — anyone could mint a billing-portal URL for any customer. Its
-# price IDs are also placeholders and its redirect URLs point at localhost, so
-# there was nothing working to preserve. Re-mount it only once it has auth, real
-# STRIPE_PRICE_* config, and a signature-verified webhook.
+
 
 router.include_router(projects.router, prefix="/projects", tags=["projects"])
 router.include_router(blueprints.router, prefix="/blueprints", tags=["blueprints"])
@@ -48,3 +43,4 @@ router.include_router(briefing.router, prefix="/briefing", tags=["briefing"])
 router.include_router(scheduling.router, prefix="/scheduling", tags=["scheduling"])
 router.include_router(legal.router, prefix="/legal", tags=["legal"])
 router.include_router(usage.router, prefix="/usage", tags=["usage"])
+router.include_router(billing.router, prefix="/billing", tags=["billing"])
