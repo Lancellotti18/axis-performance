@@ -30,7 +30,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Both documents were published together on 2026-09-07.
-CURRENT_TOS_VERSION = "2026-09-07"
+# Bumped 2026-09-15: the Terms gained a Leads section. That is a material
+# change — it makes lead exclusivity a contractual promise and moves DNC/TCPA
+# responsibility onto the contractor — so everyone re-accepts.
+CURRENT_TOS_VERSION = "2026-09-15"
 CURRENT_PRIVACY_VERSION = "2026-09-07"
 
 

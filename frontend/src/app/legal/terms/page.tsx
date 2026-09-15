@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 // Keep this version string in step with CURRENT_TOS_VERSION in
 // backend/app/api/v1/legal.py. Bumping it there re-prompts every contractor.
-const VERSION = '2026-09-07'
+const VERSION = '2026-09-15'
 
 export default function TermsPage() {
   return (
@@ -102,7 +102,57 @@ export default function TermsPage() {
         RW AI Infrastructure LLC. Nothing in these Terms grants you a license to use them.
       </P>
 
-      <S>4. Data Used to Train and Improve Axis</S>
+      <S>4. Roofing Leads</S>
+      <P>
+        Where offered, Axis sells roofing leads to active subscribers. A lead is property
+        information compiled from public county records — ownership, parcel data, and
+        property characteristics — scored by Axis to indicate roofs likely due for work.
+      </P>
+
+      <H>4.1 Each lead is sold once</H>
+      <Callout>
+        <strong>A lead you buy is yours alone.</strong> Axis will not sell, re-sell, or
+        otherwise supply the same lead to another contractor. This is enforced in our
+        systems, not merely promised: once a lead is purchased it is permanently
+        withdrawn from availability to everyone else.
+      </Callout>
+      <P>
+        If a purchase fails or is refunded, that lead returns to general availability and
+        may be sold to another contractor.
+      </P>
+
+      <H>4.2 What a lead is not</H>
+      <P>
+        A lead is <strong>not</strong> an enquiry. The property owner has not contacted
+        you, has not asked to be contacted, and has not expressed interest in roofing
+        work. Axis makes no representation that any lead will answer, respond, want work
+        done, or become a customer.
+      </P>
+      <UL>
+        <li>Public records can be out of date — ownership and contact details may have changed</li>
+        <li>Scoring indicates likelihood based on property data, not homeowner intent</li>
+        <li>No lead is a guarantee of a job, an appointment, or a conversation</li>
+      </UL>
+
+      <H>4.3 Your responsibility when contacting a lead</H>
+      <Callout tone="warn">
+        <strong>You are solely responsible for how you contact the people behind a lead.</strong>
+        Calling and texting consumers is regulated — including the National Do Not Call
+        Registry, the Telephone Consumer Protection Act, and your state's own rules. These
+        property owners have not consented to be contacted by you. Complying with those
+        laws, including scrubbing against the DNC registry and observing calling hours, is
+        your obligation as the caller, not Axis's.
+      </Callout>
+
+      <H>4.4 Refunds</H>
+      <P>
+        Lead sales are final. We will replace or refund a lead only where the underlying
+        record is demonstrably defective — for example, the property does not exist or the
+        parcel data is materially wrong. A lead that is accurate but does not convert,
+        does not answer, or is not interested is not defective and is not refundable.
+      </P>
+
+      <S>5. Data Used to Train and Improve Axis</S>
       <Callout>
         <strong>Plainly stated:</strong> the roof traces, corrections, imagery, and measurements
         you create on Axis are used to train the AI models behind Axis. This is part of the
@@ -134,14 +184,14 @@ export default function TermsPage() {
         pricing, and proposals are not training data and are not sold.
       </P>
 
-      <S>5. Accuracy — What Axis Does and Does Not Guarantee</S>
+      <S>6. Accuracy — What Axis Does and Does Not Guarantee</S>
       <Callout tone="warn">
         <strong>Axis produces AI-assisted estimates, not certified measurements.</strong> You are
         responsible for verifying every measurement before you rely on it to price, order, or
         perform work.
       </Callout>
 
-      <H>5.1 The nature of the output</H>
+      <H>6.1 The nature of the output</H>
       <UL>
         <li>Roof traces are generated from aerial and satellite imagery and are approximations.</li>
         <li>
@@ -154,7 +204,7 @@ export default function TermsPage() {
         </li>
       </UL>
 
-      <H>5.2 Your responsibility to verify</H>
+      <H>6.2 Your responsibility to verify</H>
       <P>Before using any Axis output for a bid, order, or installation, you must:</P>
       <UL>
         <li>Physically inspect and measure the roof on site</li>
@@ -163,7 +213,7 @@ export default function TermsPage() {
         <li>Engage a licensed professional where your work or jurisdiction requires one</li>
       </UL>
 
-      <H>5.3 Not a licensed professional service</H>
+      <H>6.3 Not a licensed professional service</H>
       <P>
         Axis is software. RW AI Infrastructure LLC is not a licensed engineering, architectural,
         inspection, or contracting firm, and provides no structural analysis, code determination,
@@ -171,7 +221,7 @@ export default function TermsPage() {
         professional.
       </P>
 
-      <S>6. Service Availability</S>
+      <S>7. Service Availability</S>
       <P>
         The Platform is provided on an &ldquo;as is&rdquo; and &ldquo;as available&rdquo; basis,
         without warranties of any kind, express or implied, including implied warranties of
@@ -188,7 +238,7 @@ export default function TermsPage() {
         </li>
       </UL>
 
-      <S>7. Limitation of Liability</S>
+      <S>8. Limitation of Liability</S>
       <Callout tone="warn">
         <strong>
           TO THE MAXIMUM EXTENT PERMITTED BY LAW, AXIS AND RW AI INFRASTRUCTURE LLC WILL NOT BE
@@ -219,7 +269,7 @@ export default function TermsPage() {
         output.
       </P>
 
-      <S>8. Acceptable Use</S>
+      <S>9. Acceptable Use</S>
       <P>You agree not to:</P>
       <UL>
         <li>Use the Platform for any unlawful purpose, or in violation of any licensing or permitting requirement applicable to your work</li>
@@ -236,7 +286,7 @@ export default function TermsPage() {
         terminate an account that violates these Terms.
       </P>
 
-      <S>9. Governing Law and Disputes</S>
+      <S>10. Governing Law and Disputes</S>
       <P>
         These Terms are governed by the laws of the State of North Carolina, without regard to its
         conflict-of-laws rules.
@@ -255,21 +305,21 @@ export default function TermsPage() {
         proceeding.
       </P>
 
-      <S>10. Changes to These Terms</S>
+      <S>11. Changes to These Terms</S>
       <P>
         We may update these Terms. When a change materially affects your rights or obligations, we
         will notify you by email or in-app and require you to accept the updated Terms before
         continuing to use the Platform. Your acceptance is recorded with the version and date.
       </P>
 
-      <S>11. Entire Agreement</S>
+      <S>12. Entire Agreement</S>
       <P>
         These Terms and the Privacy Policy are the entire agreement between you and RW AI
         Infrastructure LLC regarding the Platform, and supersede any prior discussions. If any
         provision is held unenforceable, the remainder stays in effect.
       </P>
 
-      <S>12. Contact</S>
+      <S>13. Contact</S>
       <P>
         RW AI Infrastructure LLC<br />
         Wilmington, North Carolina<br />
