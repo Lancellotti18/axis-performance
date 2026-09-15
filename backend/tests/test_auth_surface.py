@@ -44,6 +44,11 @@ PUBLIC = {
     # plan table that is already printed on the marketing site; no user data,
     # no Stripe object, nothing that varies by caller.
     ("GET", "/api/v1/billing/plans"),
+    # Stripe posting an event. It has no Axis account and cannot carry a
+    # bearer token; it authenticates by signing the payload instead, which the
+    # handler verifies before trusting a byte. A missing signing secret makes
+    # the endpoint refuse everything rather than accept unverifiable events.
+    ("POST", "/api/v1/billing/webhook"),
 }
 
 AUTH_CALLS = {get_current_user, require_user}

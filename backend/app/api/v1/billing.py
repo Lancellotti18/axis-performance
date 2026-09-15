@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.core.auth import require_user
 from app.core.plans import (
@@ -119,3 +119,129 @@ async def my_billing(user: dict = Depends(require_user)) -> dict:
         "has_plan": bool(plan_key),
         "trial_report_used": bool((sub or {}).get("trial_report_used")),
     }
+
+
+# ── Webhooks ──────────────────────────────────────────────────────────────
+
+@router.post("/webhook")
+async def stripe_webhook(request: Request) -> dict:
+    """Stripe telling us what happened. The only endpoint here without a bearer
+    token, because Stripe has no account — it authenticates by signing the
+    payload, which is verified below before a single byte is trusted.
+
+    Two properties this must have, and both are easy to get wrong:
+
+    SIGNATURE FIRST. Without verification anyone who learns the URL can POST a
+    subscription.deleted for any account, or an invoice.paid to grant
+    themselves a plan. The raw body is required — parsing it first breaks the
+    signature.
+
+    EXACTLY ONCE. Stripe retries and does not promise single delivery. The
+    event id is claimed in stripe_events before any work happens, so a replayed
+    subscription.deleted cannot cancel an account that has since resubscribed.
+    """
+    from app.services import stripe_service
+
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature") or ""
+    secret = stripe_service.webhook_secret()
+    if not secret:
+        logger.error("STRIPE_WEBHOOK_SECRET is not set — refusing unverifiable events")
+        raise HTTPException(status_code=503, detail="Webhooks are not configured.")
+
+    try:
+        import stripe
+        event = stripe.Webhook.construct_event(payload, signature, secret)
+    except Exception as e:
+        # Never echo the reason: a caller probing signatures should learn
+        # nothing beyond "rejected".
+        logger.warning("rejected a webhook with a bad signature: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid signature.")
+
+    db = get_supabase()
+    event_id = event.get("id")
+    try:
+        # Claim it first. If this insert conflicts we have handled it already,
+        # and doing the work again would double-apply it.
+        db.table("stripe_events").insert({
+            "id": event_id, "type": event.get("type"),
+        }).execute()
+    except Exception:
+        logger.info("webhook %s already processed — skipping", event_id)
+        return {"received": True, "duplicate": True}
+
+    try:
+        await _apply_event(db, event)
+    except Exception as e:
+        # Release the claim so Stripe's retry can have another go; leaving it
+        # would mean a transient database blip silently drops the event.
+        logger.error("webhook %s (%s) failed: %s", event_id, event.get("type"), e)
+        try:
+            db.table("stripe_events").delete().eq("id", event_id).execute()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Could not process event.")
+
+    return {"received": True}
+
+
+async def _apply_event(db, event) -> None:
+    """Fold one Stripe event into our copy of the world.
+
+    Stripe is the source of truth for money; these tables are a cache of it.
+    Every branch writes what Stripe says rather than what Axis believed.
+    """
+    from app.services import stripe_service
+
+    etype = event.get("type") or ""
+    obj = (event.get("data") or {}).get("object") or {}
+
+    if etype.startswith("customer.subscription."):
+        customer_id = obj.get("customer")
+        rows = (db.table("subscriptions").select("user_id, scheduled_plan_key")
+                .eq("stripe_customer_id", customer_id).limit(1).execute().data) or []
+        if not rows:
+            logger.warning("subscription event for unknown customer %s", customer_id)
+            return
+        row = rows[0]
+        update = stripe_service.subscription_to_row(obj)
+
+        if etype.endswith(".deleted"):
+            update["status"] = "canceled"
+
+        # A scheduled downgrade lands when the period rolls over. Applying it
+        # here — off Stripe's own renewal — is what makes the new report and
+        # crew limits take effect at exactly the moment billing changes.
+        if etype.endswith(".updated") and row.get("scheduled_plan_key"):
+            update["plan_key"] = row["scheduled_plan_key"]
+            update["scheduled_plan_key"] = None
+            update["scheduled_change_at"] = None
+            logger.info("applied scheduled plan change for %s -> %s",
+                        row["user_id"], update["plan_key"])
+
+        db.table("subscriptions").update(update).eq("user_id", row["user_id"]).execute()
+        return
+
+    if etype == "payment_intent.succeeded":
+        _settle_purchase(db, obj.get("id"), "succeeded")
+        return
+
+    if etype in ("payment_intent.payment_failed", "payment_intent.canceled"):
+        # Releases a held lead back to the pool: the exclusivity index only
+        # counts pending and succeeded rows.
+        _settle_purchase(db, obj.get("id"), "failed")
+        return
+
+
+def _settle_purchase(db, payment_intent_id: str, status: str) -> None:
+    """Mark whatever this payment was for. A purchase grants nothing until it
+    reaches 'succeeded' — that is the rule that stops a declined card from
+    handing over a report or a lead."""
+    if not payment_intent_id:
+        return
+    for table in ("overage_purchases", "purchased_leads"):
+        try:
+            db.table(table).update({"status": status, "updated_at": "now()"}) \
+                .eq("stripe_payment_intent_id", payment_intent_id).execute()
+        except Exception as e:
+            logger.info("could not settle %s in %s: %s", payment_intent_id, table, e)
