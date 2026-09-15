@@ -146,6 +146,33 @@ def test_leads_are_subscriber_only(enforcing):
     assert evaluate({"status": "none"}, "buy_lead").would_allow is False
 
 
+def test_leads_blocked_for_every_non_subscriber_state(enforcing):
+    """Not just "no row". A used-up promo, a cancelled plan and an expired
+    period are all non-subscribers, and none of them may buy leads."""
+    from datetime import datetime, timedelta, timezone as tz
+    expired = (datetime.now(tz.utc) - timedelta(days=1)).isoformat()
+    for label, sub in [
+        ("no record",        None),
+        ("promo spent",      {"status": "none", "trial_report_used": True}),
+        ("promo unused",     {"status": "none", "trial_report_used": False}),
+        ("cancelled",        _sub(status="canceled")),
+        ("expired period",   _sub(current_period_end=expired)),
+        ("grace expired",    _sub(status="past_due",
+                                  current_period_end=(datetime.now(tz.utc)
+                                      - timedelta(days=30)).isoformat())),
+    ]:
+        d = evaluate(sub, "buy_lead")
+        assert d.would_allow is False, f"{label} must not be able to buy leads"
+        assert "subscribers only" in d.reason
+
+
+def test_a_free_report_does_not_unlock_leads(enforcing):
+    """The promo grants one report, nothing else. Leads stay behind a plan."""
+    promo = {"status": "none", "trial_report_used": False}
+    assert evaluate(promo, "generate_report").would_allow is True
+    assert evaluate(promo, "buy_lead").would_allow is False
+
+
 # ── Pricing constants match what was agreed ───────────────────────────────
 def test_agreed_pricing():
     assert (PLANS["solo"].monthly_usd, PLANS["solo"].reports, PLANS["solo"].crews) == (299, 15, 3)

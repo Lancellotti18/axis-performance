@@ -314,3 +314,29 @@ DECLINE_MESSAGE = (
     "a different card."
 )
 SUPPORT_EMAIL = "lance@rwinfrastructure.com"
+
+
+# ── Copy shown where leads are actually bought ────────────────────────────
+# The exclusivity promise is in the Terms, and almost nobody reads the Terms.
+# It is the single strongest thing Axis can say about leads — the reason
+# contractors resent Angi is being sold the same lead as four competitors — so
+# it belongs on the screen where the decision is made, not only in a document.
+# Kept here beside the rule it describes so the claim and the constraint that
+# makes it true cannot drift apart.
+LEAD_EXCLUSIVITY_HEADLINE = "Every lead is yours alone."
+LEAD_EXCLUSIVITY_BODY = (
+    "When you buy a lead it is permanently removed from Axis — no other "
+    "contractor can ever be sold it. We don't resell leads, and this is "
+    "enforced in our system, not just promised."
+)
+# Set against the honest caveat, on the same screen. Overselling what a lead is
+# produces refund arguments; saying it plainly up front does not lose the sale.
+LEAD_EXPECTATION_NOTE = (
+    "Leads are property owners identified from public records — they haven't "
+    "contacted you or asked to be called. You're responsible for following "
+    "Do Not Call rules when you reach out."
+)
+LEAD_LOCKED_MESSAGE = (
+    "Leads are available on any Axis plan. Choose a plan to start buying leads "
+    "in your area."
+)
