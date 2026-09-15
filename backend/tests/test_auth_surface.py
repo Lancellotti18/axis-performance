@@ -39,6 +39,11 @@ PUBLIC = {
     # Same-origin satellite tile proxy: an <img crossorigin> request cannot
     # carry a JWT. Locked to allowlisted tile hosts (SSRF guard) instead.
     ("GET", "/api/v1/roofing/v2/imagery/proxy"),
+    # The public pricing page, read by someone deciding whether to sign up —
+    # they have no account yet, so they cannot carry a token. Returns only the
+    # plan table that is already printed on the marketing site; no user data,
+    # no Stripe object, nothing that varies by caller.
+    ("GET", "/api/v1/billing/plans"),
 }
 
 AUTH_CALLS = {get_current_user, require_user}
@@ -89,10 +94,52 @@ def test_allowlist_has_no_stale_entries():
     assert not stale, f"PUBLIC lists routes that are no longer public or present: {sorted(stale)}"
 
 
-def test_billing_router_is_not_mounted():
-    """POST /billing/portal accepted any Stripe customer_id with no auth."""
-    paths = {route.path for route in app.routes if isinstance(route, APIRoute)}
-    assert not any(p.startswith("/api/v1/billing") for p in paths), (
-        "billing is mounted again — it must have auth, real STRIPE_PRICE_* config "
-        "and a signature-verified webhook before it goes back on the router."
+def test_billing_exposes_no_unauthenticated_customer_lookup():
+    """The original sin, pinned so it cannot return.
+
+    This used to assert billing was not mounted at all, which was right while
+    the router was abandoned scaffolding. Billing is being built now, so the
+    blanket ban is replaced by the specific property that made the old router
+    dangerous: POST /billing/portal took a Stripe customer_id as a parameter,
+    with no auth, and handed back that customer's billing-portal URL. Anyone
+    could mint one for anyone.
+
+    The rule is therefore: no billing route may accept a customer or
+    subscription identifier from the caller. A contractor's Stripe ids are
+    looked up from their authenticated user id, never trusted from the request.
+    """
+    billing = [r for r in app.routes
+               if isinstance(r, APIRoute) and r.path.startswith("/api/v1/billing")]
+    assert billing, "billing router is not mounted — did the prefix change?"
+
+    caller_supplied_ids = {"customer_id", "subscription_id", "stripe_customer_id",
+                           "stripe_subscription_id"}
+    offenders = []
+    for route in billing:
+        names = {p.name for p in route.dependant.query_params}
+        names |= {p.name for p in route.dependant.path_params}
+        leaked = names & caller_supplied_ids
+        if leaked:
+            offenders.append(f"{route.path} takes {sorted(leaked)}")
+    assert not offenders, (
+        "billing routes must derive Stripe ids from the authenticated user, "
+        f"never accept them from the caller: {offenders}"
     )
+
+
+def test_every_money_moving_billing_route_is_authenticated():
+    """Only reads may be public. Anything that could create a charge, a
+    subscription or a Stripe object must carry auth — a webhook is the sole
+    exception, and it authenticates by signature instead."""
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        if not route.path.startswith("/api/v1/billing"):
+            continue
+        if route.path.endswith("/webhook"):
+            continue   # verified by Stripe signature, not a bearer token
+        if "GET" in route.methods and (route.methods == {"GET", "HEAD"} or route.methods == {"GET"}):
+            continue   # reads are covered by the allowlist test above
+        assert _is_authenticated(route), (
+            f"{sorted(route.methods)} {route.path} can move money without auth"
+        )
