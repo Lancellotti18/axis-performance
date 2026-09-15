@@ -55,9 +55,37 @@ def is_test_mode() -> bool:
     return secret_key().startswith("sk_test_")
 
 
+class LiveKeyRefused(RuntimeError):
+    """A live key is present somewhere that has no business charging cards."""
+
+
+def assert_key_is_safe() -> None:
+    """Refuse a live key while billing enforcement is off.
+
+    The two keys are identical to look at apart from four characters, and the
+    failure mode is not a broken build — it is a real card charged during a
+    sandbox run, discovered by the person whose card it was. Enforcement being
+    off means we are still testing, and testing does not need live keys.
+
+    Deliberately raises rather than warns: a warning in a log nobody is reading
+    is the same as no check at all.
+    """
+    key = secret_key()
+    if not key or key.startswith("sk_test_"):
+        return
+    from app.core.plans import enforcing
+    if not enforcing():
+        raise LiveKeyRefused(
+            "A LIVE Stripe key is configured while BILLING_ENFORCE is off. "
+            "Refusing to run: this combination charges real cards during "
+            "testing. Use sk_test_ until enforcement is deliberately enabled."
+        )
+
+
 def client():
     if not configured():
         raise StripeNotConfigured("STRIPE_SECRET_KEY is not set")
+    assert_key_is_safe()
     import stripe
     stripe.api_key = secret_key()
     return stripe
