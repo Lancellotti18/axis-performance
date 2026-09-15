@@ -229,23 +229,28 @@ def evaluate(sub: Optional[dict], action: Action, *, reports_used: int = 0,
 class PlanChange:
     allowed: bool
     reason: str
-    # What the contractor has to do first, when a downgrade is blocked.
-    remedy: Optional[str] = None
+    # 'now' for upgrades, 'period_end' for downgrades.
+    effective: str = "now"
+    # What must happen before the change lands, if anything. Not a blocker —
+    # the downgrade is accepted and scheduled; this is what they are told.
+    warning: Optional[str] = None
+    action_needed: Optional[str] = None
 
 
 def can_change_plan(current_key: Optional[str], target_key: str, *,
                     crews_used: int = 0, reports_used: int = 0) -> PlanChange:
-    """May this contractor move to `target_key` right now?
+    """May this contractor move to `target_key`, and when does it take effect?
 
-    Downgrades are BLOCKED rather than silently shrinking what someone has.
-    Dropping Crew (6 crews) to Solo (3) with six crews on the dispatch board
-    means three of them have to stop existing — and picking which ones is not a
-    decision software should make quietly on a contractor's behalf, least of
-    all in the middle of a work week. They delete down to the new limit first,
-    so the choice is theirs and nothing disappears unannounced.
+    Upgrades apply immediately — Stripe prorates and the bigger allowance is
+    wanted now. Downgrades are SCHEDULED for the end of the period they already
+    paid for; nothing shrinks in the middle of a month they bought at the
+    higher tier.
 
-    Reports are not checked the same way: usage already spent this period is
-    history, and a plan change does not un-generate reports.
+    A downgrade that would strand crews is still accepted, not refused. Telling
+    a contractor "no" when they are trying to spend less is how a downgrade
+    becomes a cancellation. Instead it is scheduled with a plain warning about
+    what happens on the effective date, giving them the whole rest of the
+    period to pick which crews to keep.
     """
     target = PLANS.get(target_key)
     if target is None:
@@ -254,32 +259,48 @@ def can_change_plan(current_key: Optional[str], target_key: str, *,
         return PlanChange(False, f"already on {target.name}")
 
     current = PLANS.get(current_key or "")
-    # No current plan, or moving up — always fine. Stripe prorates the
-    # difference and the new allowance applies immediately.
     if current is None:
-        return PlanChange(True, f"subscribing to {target.name}")
+        return PlanChange(True, f"subscribing to {target.name}", effective="now")
 
     moving_down = (
         target.monthly_usd < current.monthly_usd
         or (current.crews == UNLIMITED and target.crews != UNLIMITED)
+        or (current.reports == UNLIMITED and target.reports != UNLIMITED)
     )
     if not moving_down:
-        return PlanChange(True, f"upgrading to {target.name}")
+        return PlanChange(True, f"Upgrading to {target.name} — effective immediately.",
+                          effective="now")
 
+    warning = None
+    action = None
     if target.crews != UNLIMITED and crews_used > target.crews:
         excess = crews_used - target.crews
-        return PlanChange(
-            False,
-            f"{target.name} includes {target.crews} crews and you have {crews_used}.",
-            remedy=(
-                f"Remove {excess} crew{'s' if excess > 1 else ''} from Dispatch, "
-                f"then switch to {target.name}."
-            ),
+        warning = (
+            f"You have {crews_used} crews and {target.name} includes {target.crews}. "
+            f"On the change date, {excess} crew{'s' if excess > 1 else ''} will be "
+            f"switched off — their history is kept and nothing is deleted."
+        )
+        action = (
+            f"Remove {excess} crew{'s' if excess > 1 else ''} from Dispatch before "
+            f"then to choose which ones you keep."
         )
 
-    # Downgrades take effect at the end of the period they already paid for,
-    # never mid-cycle — they bought this month at this tier.
-    return PlanChange(True, f"downgrading to {target.name} at the end of the current period")
+    return PlanChange(
+        True,
+        f"Switching to {target.name} at the end of your current billing period. "
+        f"Nothing changes until then.",
+        effective="period_end",
+        warning=warning,
+        action_needed=action,
+    )
+
+
+def limits_for(plan_key: Optional[str]) -> tuple[int, int]:
+    """(reports, crews) a plan allows. Used when a scheduled change lands, so
+    the new caps come from the same table the entitlement check reads — there
+    is no second copy to fall out of step."""
+    plan = PLANS.get(plan_key or "")
+    return (plan.reports, plan.crews) if plan else (0, 0)
 
 
 # ── What the contractor is told when a card is declined ───────────────────

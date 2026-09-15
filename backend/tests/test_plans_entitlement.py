@@ -191,34 +191,50 @@ def test_crews_are_hard_capped(enforcing):
 
 
 # ── Changing plans ────────────────────────────────────────────────────────
-def test_upgrade_is_always_allowed():
-    assert plans.can_change_plan("solo", "crew", crews_used=3).allowed is True
-    assert plans.can_change_plan(None, "solo").allowed is True
+def test_upgrade_applies_immediately():
+    c = plans.can_change_plan("solo", "crew", crews_used=3)
+    assert c.allowed is True and c.effective == "now"
 
 
-def test_downgrade_blocked_when_crews_exceed_the_target():
-    """Six crews cannot fit in Solo's three, and software must not pick which
-    three survive on a contractor's behalf."""
+def test_downgrade_is_scheduled_not_refused():
+    """Telling someone 'no' when they are trying to spend less is how a
+    downgrade becomes a cancellation."""
     c = plans.can_change_plan("crew", "solo", crews_used=6)
-    assert c.allowed is False
-    assert "Remove 3 crews" in (c.remedy or "")
-
-
-def test_downgrade_allowed_once_they_are_under_the_limit():
-    c = plans.can_change_plan("crew", "solo", crews_used=3)
     assert c.allowed is True
-    assert "end of the current period" in c.reason
+    assert c.effective == "period_end"
 
 
-def test_fleet_to_paid_tier_is_still_a_downgrade():
-    """Unlimited crews to a capped plan must be checked even though Fleet's
-    crew count is a sentinel rather than a number."""
-    assert plans.can_change_plan("fleet", "solo", crews_used=9).allowed is False
+def test_a_stranding_downgrade_warns_and_names_the_action():
+    c = plans.can_change_plan("crew", "solo", crews_used=6)
+    assert "3 crews will be switched off" in (c.warning or "")
+    assert "nothing is deleted" in (c.warning or "")
+    assert "Remove 3 crews" in (c.action_needed or "")
 
 
-def test_reports_already_used_do_not_block_a_plan_change():
-    """Usage is history — changing plan does not un-generate reports."""
+def test_downgrade_within_limits_carries_no_warning():
+    c = plans.can_change_plan("crew", "solo", crews_used=2)
+    assert c.allowed is True and c.warning is None
+
+
+def test_fleet_to_capped_tier_counts_as_a_downgrade():
+    """Fleet's limits are sentinels, not numbers — comparing price alone would
+    have let unlimited slip down unchecked."""
+    c = plans.can_change_plan("fleet", "solo", crews_used=9)
+    assert c.effective == "period_end"
+    assert c.warning is not None
+
+
+def test_reports_already_used_do_not_affect_a_plan_change():
     assert plans.can_change_plan("crew", "solo", crews_used=0, reports_used=29).allowed is True
+
+
+def test_limits_for_matches_the_plan_table():
+    """The caps applied when a scheduled change lands must come from the same
+    table the entitlement check reads."""
+    assert plans.limits_for("solo") == (15, 3)
+    assert plans.limits_for("crew") == (30, 6)
+    assert plans.limits_for("fleet") == (plans.UNLIMITED, plans.UNLIMITED)
+    assert plans.limits_for(None) == (0, 0)
 
 
 def test_decline_message_is_not_accusatory():
