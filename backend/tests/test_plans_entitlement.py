@@ -63,17 +63,44 @@ def test_enforcement_requires_an_explicit_true(monkeypatch):
 
 
 # ── Paying contractors keep working ───────────────────────────────────────
-def test_past_due_still_has_access(enforcing):
-    """A failed card is a dunning problem. Stripe retries for days; locking
-    someone out on day one turns a recoverable hiccup into a cancellation."""
-    d = evaluate(_sub(status="past_due"), "access_app")
+def test_past_due_has_a_bounded_grace_window(enforcing):
+    """A failed card is a dunning problem worth riding out — but not forever.
+    Indefinite past_due access is a free plan with extra steps."""
+    # Period ended yesterday, so we are inside the grace window.
+    ended = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    d = evaluate(_sub(status="past_due", current_period_end=ended), "access_app")
     assert d.would_allow is True
+    assert d.grace_days_left is not None and d.grace_days_left <= plans.PAST_DUE_GRACE_DAYS
 
 
-def test_over_allowance_bills_as_overage_rather_than_blocking(enforcing):
-    d = evaluate(_sub(), "generate_report", reports_used=99)
+def test_past_due_locks_once_the_grace_window_closes(enforcing):
+    long_gone = (datetime.now(timezone.utc)
+                 - timedelta(days=plans.PAST_DUE_GRACE_DAYS + 2)).isoformat()
+    d = evaluate(_sub(status="past_due", current_period_end=long_gone), "access_app")
+    assert d.would_allow is False, "cannot keep working indefinitely without paying"
+
+
+def test_over_allowance_stops_and_asks_before_charging(enforcing):
+    """Never bill for something nobody clicked. The 16th report is refused with
+    a prompt, not generated with a surprise $35 on the invoice."""
+    d = evaluate(_sub(), "generate_report", reports_used=15)
+    assert d.would_allow is False, "must not proceed silently"
+    assert d.requires_purchase is True
+    assert d.purchase_price_usd == 35
+    assert "$35" in d.reason
+
+
+def test_a_purchased_extra_report_is_then_allowed(enforcing):
+    d = evaluate(_sub(), "generate_report", reports_used=15, overage_purchased=1)
     assert d.would_allow is True
-    assert "overage" in d.reason
+    assert d.requires_purchase is False
+
+
+def test_purchased_extras_do_not_grant_unlimited(enforcing):
+    """Buying one extra grants exactly one."""
+    d = evaluate(_sub(), "generate_report", reports_used=16, overage_purchased=1)
+    assert d.would_allow is False
+    assert d.requires_purchase is True
 
 
 def test_fleet_reports_are_unlimited(enforcing):
@@ -131,3 +158,33 @@ def test_agreed_pricing():
 def test_annual_is_two_months_free():
     for p in PLANS.values():
         assert p.annual_usd == p.monthly_usd * 10, f"{p.key} annual should be 10x monthly"
+
+
+# ── The clock is the server's, never the caller's ─────────────────────────
+def test_period_end_comes_from_the_subscription_not_the_caller(enforcing):
+    """A contractor changing the date on their laptop must not reset their
+    allowance. The boundary is Stripe's current_period_end, stored server-side."""
+    ended = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    d = evaluate(_sub(current_period_end=ended), "access_app")
+    assert d.would_allow is False
+
+    future = (datetime.now(timezone.utc) + timedelta(days=5)).isoformat()
+    assert evaluate(_sub(current_period_end=future), "access_app").would_allow is True
+
+
+def test_billing_period_is_not_the_calendar_month(enforcing):
+    """Someone who subscribes on the 20th gets the 20th to the 20th, matching
+    what Stripe charges — not a 1st-of-the-month reset."""
+    start = datetime(2026, 9, 20, tzinfo=timezone.utc)
+    end = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    s0, e0 = plans.period_bounds({"current_period_start": start.isoformat(),
+                                  "current_period_end": end.isoformat()})
+    assert (s0, e0) == (start, end)
+
+
+def test_crews_are_hard_capped(enforcing):
+    """Three-crew plan means the 4th insert is refused, not billed."""
+    d = evaluate(_sub(), "add_crew", crews_used=3)
+    assert d.would_allow is False
+    assert d.requires_purchase is False, "crews upgrade, they do not meter"
+    assert "Upgrade" in d.reason

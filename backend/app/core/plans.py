@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 logger = logging.getLogger(__name__)
@@ -47,11 +47,19 @@ PLANS: dict[str, Plan] = {
 OVERAGE_REPORT_USD = 35
 LEAD_USD = 50
 
-# Stripe statuses that keep the lights on. 'past_due' is deliberately included:
-# a card that failed this morning is a dunning problem, and locking someone out
-# of software they are still paying for is how a recoverable billing hiccup
-# becomes a cancellation. Stripe retries for days; let it.
-ACTIVE_STATUSES = {"active", "trialing", "past_due"}
+# Statuses that keep the lights on outright.
+ACTIVE_STATUSES = {"active", "trialing"}
+
+# past_due is NOT open-ended access. A failed card is usually a dunning problem
+# worth riding out — Stripe retries for days and most recover — but "keeps
+# working indefinitely while not paying" is a free plan with extra steps, and
+# nothing would stop someone generating reports forever on a dead card.
+# So: a bounded grace window measured from the end of the period they actually
+# paid for, then the account locks like any other unpaid one.
+PAST_DUE_GRACE_DAYS = 5
+
+# How many days before a grace window closes we start warning in the UI.
+GRACE_WARNING_DAYS = 5
 
 
 def enforcing() -> bool:
@@ -70,41 +78,97 @@ class Decision:
     would_allow: bool
     plan_key: Optional[str] = None
     status: Optional[str] = None
+    # True when the only thing standing between the contractor and the action
+    # is money they have not agreed to spend yet. The UI must PROMPT — "you are
+    # out of included reports, buy one more for $35?" — and only proceed once
+    # they accept. Never charge a card for something someone did not click.
+    requires_purchase: bool = False
+    purchase_price_usd: Optional[int] = None
+    # Days left before a past_due grace window closes, for the UI banner.
+    grace_days_left: Optional[int] = None
 
 
-def _period_active(sub: dict) -> bool:
-    end = sub.get("current_period_end")
-    if not end:
-        return False
+def _parse(ts) -> Optional[datetime]:
+    if not ts:
+        return None
     try:
-        dt = datetime.fromisoformat(str(end).replace("Z", "+00:00"))
+        return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
     except ValueError:
-        return False
-    return dt > datetime.now(timezone.utc)
+        return None
+
+
+def access_deadline(sub: dict) -> Optional[datetime]:
+    """The moment access ends, in SERVER time.
+
+    Read from current_period_end, which Stripe sets and we store. It is never
+    derived from the caller's clock: a period boundary computed on the client
+    could be moved by changing the date on a laptop, which would reset the
+    report allowance on demand. It is also not the calendar month — a
+    contractor who subscribes on the 20th gets the 20th to the 20th, matching
+    what Stripe actually charges them for.
+    """
+    end = _parse(sub.get("current_period_end"))
+    if end is None:
+        return None
+    if (sub.get("status") or "") == "past_due":
+        # Grace runs from the end of the period they last paid for.
+        return end + timedelta(days=PAST_DUE_GRACE_DAYS)
+    return end
+
+
+def period_bounds(sub: dict) -> tuple[Optional[datetime], Optional[datetime]]:
+    """The billing period report usage is counted against. Server-side only."""
+    return _parse(sub.get("current_period_start")), _parse(sub.get("current_period_end"))
 
 
 def evaluate(sub: Optional[dict], action: Action, *, reports_used: int = 0,
-             crews_used: int = 0) -> Decision:
+             overage_purchased: int = 0, crews_used: int = 0,
+             now: Optional[datetime] = None) -> Decision:
     """Decide whether `action` is permitted. Pure — no I/O, so it is testable.
 
+    `now` is injectable for tests only; it defaults to server time and is never
+    taken from a request.
+
     A missing subscription row is not an error: it is every contractor who has
-    signed up and not yet paid, which is the population the promo flow exists
-    to serve.
+    signed up and not yet paid, which is the population the promo flow serves.
     """
     sub = sub or {}
+    now = now or datetime.now(timezone.utc)
     status = sub.get("status") or "none"
     plan_key = sub.get("plan_key")
     plan = PLANS.get(plan_key or "")
 
-    def decide(ok: bool, reason: str) -> Decision:
-        # In shadow mode allowed is always True; would_allow carries the verdict.
-        return Decision(allowed=ok if enforcing() else True, reason=reason,
-                        would_allow=ok, plan_key=plan_key, status=status)
+    deadline = access_deadline(sub)
+    within_period = deadline is not None and deadline > now
+    in_grace = status == "past_due" and within_period
+    grace_left = (
+        max(0, (deadline - now).days) if (in_grace and deadline) else None
+    )
 
-    subscribed = status in ACTIVE_STATUSES and plan is not None and _period_active(sub)
+    def decide(ok: bool, reason: str, *, purchase: bool = False,
+               price: Optional[int] = None) -> Decision:
+        # In shadow mode allowed is always True; would_allow carries the verdict.
+        return Decision(
+            allowed=ok if enforcing() else True,
+            reason=reason,
+            would_allow=ok,
+            plan_key=plan_key,
+            status=status,
+            requires_purchase=purchase,
+            purchase_price_usd=price,
+            grace_days_left=grace_left,
+        )
+
+    subscribed = (
+        plan is not None
+        and within_period
+        and (status in ACTIVE_STATUSES or in_grace)
+    )
 
     if action == "access_app":
         if subscribed:
+            if in_grace:
+                return decide(True, f"payment failed — {grace_left} days to update your card")
             return decide(True, "active subscription")
         if not sub.get("trial_report_used"):
             return decide(True, "promo: one free report not yet used")
@@ -115,29 +179,46 @@ def evaluate(sub: Optional[dict], action: Action, *, reports_used: int = 0,
             if not sub.get("trial_report_used"):
                 return decide(True, "promo: free report")
             return decide(False, "free report already used — a plan is required")
+
+        # Everything the contractor is entitled to this period: what the plan
+        # includes, plus any extra reports they have already bought and paid for.
         if plan.reports == UNLIMITED:
             return decide(True, f"{plan.name}: unlimited")
-        if reports_used < plan.reports:
-            return decide(True, f"{plan.name}: {reports_used + 1} of {plan.reports}")
-        # Over the included allowance is NOT a denial — it is billable overage
-        # at $35. Blocking here would stop a contractor mid-bid over money they
-        # are willing to spend.
-        return decide(True, f"{plan.name}: allowance used, billing as overage "
-                            f"(${OVERAGE_REPORT_USD})")
+        entitled = plan.reports + max(0, overage_purchased)
+        if reports_used < entitled:
+            extra = f" (+{overage_purchased} purchased)" if overage_purchased else ""
+            return decide(True, f"{plan.name}: {reports_used + 1} of {entitled}{extra}")
+
+        # HARD STOP until they agree to the charge. The previous version billed
+        # $35 silently the moment someone crossed the line, which is how a
+        # contractor discovers a bill he never agreed to. The UI prompts; the
+        # report is generated only after he accepts and the card is charged.
+        return decide(
+            False,
+            f"{plan.name} includes {plan.reports} reports and you have used them all. "
+            f"Buy another for ${OVERAGE_REPORT_USD}?",
+            purchase=True, price=OVERAGE_REPORT_USD,
+        )
 
     if action == "add_crew":
         if not subscribed:
             return decide(False, "dispatch crews require a plan")
-        if plan.crews == UNLIMITED or crews_used < plan.crews:
-            return decide(True, f"{plan.name}: {crews_used + 1} of "
-                                f"{'unlimited' if plan.crews == UNLIMITED else plan.crews}")
-        return decide(False, f"{plan.name} includes {plan.crews} crews — upgrade to add more")
+        if plan.crews == UNLIMITED:
+            return decide(True, f"{plan.name}: unlimited crews")
+        if crews_used < plan.crews:
+            return decide(True, f"{plan.name}: crew {crews_used + 1} of {plan.crews}")
+        return decide(
+            False,
+            f"{plan.name} includes {plan.crews} crews. Upgrade to add a "
+            f"{crews_used + 1}th.",
+        )
 
     if action == "buy_lead":
-        # Subscriber-only, by decision: leads supplement a slow stretch for
+        # Subscriber-only by decision: leads supplement a slow stretch for
         # someone already paying, which is what keeps this from being lead broking.
         if subscribed:
-            return decide(True, f"{plan.name}: leads at ${LEAD_USD}")
+            return decide(True, f"{plan.name}: leads at ${LEAD_USD}",
+                          purchase=True, price=LEAD_USD)
         return decide(False, "leads are available to subscribers only")
 
     return decide(True, f"unknown action {action!r} — allowed by default")
