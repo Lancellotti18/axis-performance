@@ -222,3 +222,74 @@ def evaluate(sub: Optional[dict], action: Action, *, reports_used: int = 0,
         return decide(False, "leads are available to subscribers only")
 
     return decide(True, f"unknown action {action!r} — allowed by default")
+
+# ── Changing plans ────────────────────────────────────────────────────────
+
+@dataclass
+class PlanChange:
+    allowed: bool
+    reason: str
+    # What the contractor has to do first, when a downgrade is blocked.
+    remedy: Optional[str] = None
+
+
+def can_change_plan(current_key: Optional[str], target_key: str, *,
+                    crews_used: int = 0, reports_used: int = 0) -> PlanChange:
+    """May this contractor move to `target_key` right now?
+
+    Downgrades are BLOCKED rather than silently shrinking what someone has.
+    Dropping Crew (6 crews) to Solo (3) with six crews on the dispatch board
+    means three of them have to stop existing — and picking which ones is not a
+    decision software should make quietly on a contractor's behalf, least of
+    all in the middle of a work week. They delete down to the new limit first,
+    so the choice is theirs and nothing disappears unannounced.
+
+    Reports are not checked the same way: usage already spent this period is
+    history, and a plan change does not un-generate reports.
+    """
+    target = PLANS.get(target_key)
+    if target is None:
+        return PlanChange(False, f"unknown plan {target_key!r}")
+    if current_key == target_key:
+        return PlanChange(False, f"already on {target.name}")
+
+    current = PLANS.get(current_key or "")
+    # No current plan, or moving up — always fine. Stripe prorates the
+    # difference and the new allowance applies immediately.
+    if current is None:
+        return PlanChange(True, f"subscribing to {target.name}")
+
+    moving_down = (
+        target.monthly_usd < current.monthly_usd
+        or (current.crews == UNLIMITED and target.crews != UNLIMITED)
+    )
+    if not moving_down:
+        return PlanChange(True, f"upgrading to {target.name}")
+
+    if target.crews != UNLIMITED and crews_used > target.crews:
+        excess = crews_used - target.crews
+        return PlanChange(
+            False,
+            f"{target.name} includes {target.crews} crews and you have {crews_used}.",
+            remedy=(
+                f"Remove {excess} crew{'s' if excess > 1 else ''} from Dispatch, "
+                f"then switch to {target.name}."
+            ),
+        )
+
+    # Downgrades take effect at the end of the period they already paid for,
+    # never mid-cycle — they bought this month at this tier.
+    return PlanChange(True, f"downgrading to {target.name} at the end of the current period")
+
+
+# ── What the contractor is told when a card is declined ───────────────────
+# One place, so the wording cannot drift between the report prompt, the lead
+# purchase and Settings. Never blame them, never say "invalid"; a decline is
+# usually the bank being cautious, and the useful next step is simply to retry
+# or use a different card.
+DECLINE_MESSAGE = (
+    "That payment didn't go through. Your bank declined it — this is usually "
+    "temporary and nothing to do with your account. You can try again, or use "
+    "a different card."
+)
+SUPPORT_EMAIL = "lance@rwinfrastructure.com"
