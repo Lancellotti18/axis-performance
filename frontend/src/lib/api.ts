@@ -779,6 +779,24 @@ export const api = {
         },
       ),
   },
+  // ── Billing ──────────────────────────────────────────────────────────────
+  // Note what these never send: no customer id, no price id, no amount. The
+  // caller names a plan; everything that decides what gets charged is resolved
+  // server-side, so a tampered request cannot buy Fleet at Solo's price.
+  billing: {
+    config: () =>
+      apiRequest<{ publishable_key: string | null; configured: boolean; test_mode: boolean }>(
+        `/api/v1/billing/config`),
+    me: () =>
+      apiRequest<{ subscription: Record<string, unknown> | null; has_plan: boolean;
+                   trial_report_used: boolean }>(`/api/v1/billing/me`),
+    subscribe: (planKey: string, interval: 'month' | 'year') =>
+      apiRequest<{ requires_payment: boolean; client_secret?: string;
+                   subscription_id: string; plan_key?: string }>(
+        `/api/v1/billing/subscribe`,
+        { method: 'POST', body: JSON.stringify({ plan_key: planKey, interval }) },
+      ),
+  },
   // ── Find Roofs (prospecting) ─────────────────────────────────────────────
   prospecting: {
     sources: () =>

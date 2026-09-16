@@ -151,7 +151,7 @@ export default function PricingTables() {
               </div>
 
               <Link
-                href={`/register?plan=${p.key}&interval=${annual ? 'year' : 'month'}`}
+                href={`/checkout?plan=${p.key}&interval=${annual ? 'year' : 'month'}`}
                 className={`mt-7 rounded-xl py-3.5 text-center text-sm font-bold transition ${
                   featured
                     ? 'bg-[#0060c4] text-white hover:bg-[#01498f]'

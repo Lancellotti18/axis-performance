@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 
 from app.core.auth import require_user
 from app.core.plans import (
@@ -143,6 +144,100 @@ async def my_billing(user: dict = Depends(require_user)) -> dict:
         "plan": _plan_json(plan_key) if plan_key in PLANS else None,
         "has_plan": bool(plan_key),
         "trial_report_used": bool((sub or {}).get("trial_report_used")),
+    }
+
+
+# ── Subscribing ───────────────────────────────────────────────────────────
+
+class SubscribeRequest(BaseModel):
+    """Which plan. Note what is NOT here: no customer id, no price id, no
+    amount. The caller names a plan and nothing else — everything that decides
+    what gets charged is resolved server-side from the plan table, so a
+    tampered request cannot buy Fleet at Solo's price."""
+    plan_key: str
+    interval: str = "month"
+
+
+@router.post("/subscribe")
+async def subscribe(body: SubscribeRequest, user: dict = Depends(require_user)) -> dict:
+    """Start a subscription and hand back a client secret for the card form.
+
+    payment_behavior='default_incomplete' is what keeps the contractor inside
+    Axis: Stripe creates the subscription unpaid, returns a PaymentIntent, and
+    the Payment Element confirms it in the page. No redirect, and no plan is
+    active until the card actually clears.
+    """
+    from app.services import stripe_service
+
+    if body.plan_key not in PLANS:
+        raise HTTPException(status_code=400, detail=f"Unknown plan {body.plan_key!r}.")
+    if body.interval not in ("month", "year"):
+        raise HTTPException(status_code=400, detail="Interval must be month or year.")
+
+    db = get_supabase()
+    rows = (db.table("subscriptions").select("*").eq("user_id", user["id"])
+            .limit(1).execute().data) or []
+    current = rows[0] if rows else None
+
+    # Changing an existing plan is a different operation with different rules —
+    # upgrades apply now, downgrades are scheduled, and a downgrade that strands
+    # crews has to warn. Routing it through here would silently create a second
+    # subscription and bill twice.
+    if current and current.get("stripe_subscription_id") and \
+            current.get("status") in ("active", "trialing", "past_due"):
+        raise HTTPException(
+            status_code=409,
+            detail="You already have an active plan. Use Change plan in Settings.",
+        )
+
+    try:
+        stripe = stripe_service.client()
+        customer_id = stripe_service.ensure_customer(
+            db, user["id"], user.get("email") or "", (user.get("user_metadata") or {}).get("full_name"))
+        price = stripe_service.price_id(body.plan_key, body.interval)
+
+        sub = stripe.Subscription.create(
+            customer=customer_id,
+            items=[{"price": price}],
+            payment_behavior="default_incomplete",
+            payment_settings={"save_default_payment_method": "on_subscription"},
+            expand=["latest_invoice.payment_intent"],
+            metadata={"axis_user_id": user["id"], "axis_plan_key": body.plan_key},
+        )
+    except stripe_service.StripeNotConfigured as e:
+        logger.error("subscribe blocked: %s", e)
+        raise HTTPException(status_code=503, detail="Payments are not set up yet.")
+    except Exception as e:
+        logger.error("subscribe failed for %s: %s", user["id"], e)
+        raise HTTPException(status_code=502, detail="Could not start the subscription.")
+
+    # Record it immediately as incomplete. The webhook is the source of truth and
+    # will overwrite this, but writing now means a contractor who closes the tab
+    # mid-payment is not invisible to us.
+    try:
+        row = stripe_service.subscription_to_row(
+            sub, plan_key=body.plan_key, interval=body.interval)
+        row["user_id"] = user["id"]
+        row["stripe_customer_id"] = customer_id
+        db.table("subscriptions").upsert(row, on_conflict="user_id").execute()
+    except Exception as e:
+        logger.info("could not pre-record subscription for %s: %s", user["id"], e)
+
+    invoice = sub.get("latest_invoice") or {}
+    intent = invoice.get("payment_intent") or {}
+    secret = intent.get("client_secret")
+    if not secret:
+        # An annual plan on a 100% coupon, or a $0 invoice, completes with no
+        # payment step. Saying so beats handing the UI a null it will not expect.
+        return {"requires_payment": False, "subscription_id": sub.get("id"),
+                "status": sub.get("status")}
+
+    return {
+        "requires_payment": True,
+        "client_secret": secret,
+        "subscription_id": sub.get("id"),
+        "plan_key": body.plan_key,
+        "interval": body.interval,
     }
 
 
