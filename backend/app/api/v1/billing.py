@@ -99,6 +99,31 @@ async def list_plans() -> dict:
     }
 
 
+@router.get("/config")
+async def billing_config() -> dict:
+    """What the browser needs to render a payment form.
+
+    Public, because the checkout page loads before anyone is charged and the
+    publishable key is designed to be public — it can only tokenize a card, not
+    charge, refund, or read a customer.
+
+    Served here rather than baked in as a NEXT_PUBLIC_ build variable so that
+    rotating the key is an environment change and a restart, not a rebuild and
+    redeploy of the frontend.
+
+    `test_mode` is surfaced so the UI can say so plainly. A checkout that looks
+    identical in test and live is how a sandbox run quietly becomes a real
+    charge.
+    """
+    from app.services import stripe_service
+    pk = stripe_service.publishable_key()
+    return {
+        "publishable_key": pk or None,
+        "configured": bool(pk and stripe_service.configured()),
+        "test_mode": stripe_service.is_test_mode(),
+    }
+
+
 @router.get("/me")
 async def my_billing(user: dict = Depends(require_user)) -> dict:
     """This contractor's current plan and entitlement state."""

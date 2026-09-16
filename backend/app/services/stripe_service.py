@@ -44,6 +44,23 @@ def webhook_secret() -> str:
             or getattr(settings, "STRIPE_WEBHOOK_SECRET", "") or "").strip()
 
 
+def publishable_key() -> str:
+    """The pk_ key, served to the browser at runtime.
+
+    Deliberately NOT a NEXT_PUBLIC_ build variable. Two reasons, and the second
+    is the one that matters: Vercel would not accept that name here, and baking
+    the key into the bundle means rotating it requires a rebuild and redeploy.
+    Served from the backend, a rotation is an env change and a restart.
+
+    It is safe to hand out — a publishable key can only tokenize a card. It
+    cannot charge, refund, or read a customer.
+    """
+    from app.core.config import settings
+    return (os.environ.get("STRIPE_PUBLISHABLE_KEY")
+            or os.environ.get("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY")
+            or getattr(settings, "STRIPE_PUBLISHABLE_KEY", "") or "").strip()
+
+
 def configured() -> bool:
     return bool(secret_key())
 

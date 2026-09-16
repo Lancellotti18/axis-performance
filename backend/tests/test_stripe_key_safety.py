@@ -50,3 +50,29 @@ def test_mode_is_reported(monkeypatch):
     assert stripe_service.is_test_mode() is True
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_live_x")
     assert stripe_service.is_test_mode() is False
+
+
+def test_config_never_exposes_the_secret_key(monkeypatch):
+    """The one endpoint that hands something to the browser must hand over the
+    publishable key and nothing else."""
+    import asyncio
+    from app.api.v1.billing import billing_config
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_SECRET_VALUE_XYZ")
+    monkeypatch.setenv("STRIPE_PUBLISHABLE_KEY", "pk_test_PUBLIC_VALUE")
+    out = asyncio.run(billing_config())
+    body = str(out)
+    assert "pk_test_PUBLIC_VALUE" in body
+    assert "sk_test_" not in body, "the secret key must never reach the browser"
+    assert "SECRET_VALUE_XYZ" not in body
+    assert out["test_mode"] is True
+
+
+def test_config_reports_unconfigured_rather_than_guessing(monkeypatch):
+    import asyncio
+    from app.api.v1.billing import billing_config
+    monkeypatch.setenv("STRIPE_PUBLISHABLE_KEY", "")
+    monkeypatch.setenv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "")
+    monkeypatch.setattr("app.core.config.settings.STRIPE_PUBLISHABLE_KEY", "", raising=False)
+    out = asyncio.run(billing_config())
+    assert out["publishable_key"] is None
+    assert out["configured"] is False

@@ -33,7 +33,7 @@ class _FakeRequest:
 def _call(body: bytes, sig: str):
     import asyncio
     from app.api.v1.billing import stripe_webhook
-    return asyncio.get_event_loop().run_until_complete(
+    return asyncio.run(
         stripe_webhook(_FakeRequest(body, {"stripe-signature": sig}))
     )
 

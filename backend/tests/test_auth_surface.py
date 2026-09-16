@@ -49,6 +49,11 @@ PUBLIC = {
     # handler verifies before trusting a byte. A missing signing secret makes
     # the endpoint refuse everything rather than accept unverifiable events.
     ("POST", "/api/v1/billing/webhook"),
+    # The checkout page loads before anyone has been charged, and may be
+    # reached by someone who has not signed in yet. Returns the publishable
+    # key, which is designed to be public — it can only tokenize a card, never
+    # charge, refund, or read a customer.
+    ("GET", "/api/v1/billing/config"),
 }
 
 AUTH_CALLS = {get_current_user, require_user}

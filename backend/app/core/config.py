@@ -108,6 +108,10 @@ class Settings(BaseSettings):
                 origins.append(origin)
         return origins
 
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+
     # Shared secret for GET /health/deep — the probe that actually exercises
     # the AI providers and the report renderer. Unset means the endpoint is
     # disabled entirely rather than open; see main.py.
