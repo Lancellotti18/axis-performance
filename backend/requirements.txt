@@ -27,7 +27,7 @@ fal-client>=0.5.0
 anthropic>=0.40.0
 tavily-python>=0.3.0
 # ultralytics==8.1.0  # add when GPU worker is ready — pulls in full PyTorch
-stripe==7.8.0
+stripe==7.8.2
 python-dotenv==1.0.0
 reportlab==4.0.8
 pymupdf==1.23.8
