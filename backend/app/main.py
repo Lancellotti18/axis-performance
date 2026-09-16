@@ -492,6 +492,51 @@ async def health_deep(request: Request, images: int = 1):
         checks["material_compliance"] = {"ok": False, "error": str(e)[:300]}
         problems.append(f"HIGH: Material Compliance raised — {str(e)[:200]}")
 
+    # ── 8. Billing configuration ──────────────────────────────────────────
+    # Cheap (environment reads, no Stripe calls) and catches a failure that
+    # only shows up at the worst moment: a missing price id means checkout
+    # raises the instant someone picks that plan.
+    try:
+        from app.core.plans import PLANS, enforcing
+        from app.services import stripe_service
+
+        prices: dict = {}
+        missing: list[str] = []
+        for plan_key in PLANS:
+            for interval in ("month", "year"):
+                name = f"STRIPE_PRICE_{plan_key.upper()}_{interval.upper()}"
+                try:
+                    prices[f"{plan_key}_{interval}"] = bool(
+                        stripe_service.price_id(plan_key, interval))
+                except Exception:
+                    prices[f"{plan_key}_{interval}"] = False
+                    missing.append(name)
+
+        live_key = stripe_service.configured() and not stripe_service.is_test_mode()
+        checks["billing"] = {
+            "stripe_configured": stripe_service.configured(),
+            "publishable_key_set": bool(stripe_service.publishable_key()),
+            "test_mode": stripe_service.is_test_mode(),
+            "enforcement_on": enforcing(),
+            "prices_resolved": prices,
+        }
+        if not stripe_service.configured():
+            problems.append("WARN: Stripe is not configured — no plan can be sold.")
+        elif missing:
+            problems.append(
+                f"HIGH: {len(missing)} Stripe price id(s) missing, so those plans "
+                f"cannot be bought: {', '.join(missing)}. Run "
+                "scripts/create_stripe_prices.py and add them to the environment."
+            )
+        if live_key and not enforcing():
+            problems.append(
+                "CRITICAL: a LIVE Stripe key is configured while billing "
+                "enforcement is off. Real cards can be charged during testing."
+            )
+    except Exception as e:
+        checks["billing"] = {"ok": False, "error": str(e)[:200]}
+        problems.append(f"WARN: the billing config probe failed — {str(e)[:150]}")
+
     return {
         "healthy": not problems,
         "problem_count": len(problems),
