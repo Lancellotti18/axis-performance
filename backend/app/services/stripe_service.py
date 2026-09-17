@@ -170,11 +170,27 @@ def subscription_to_row(sub, *, plan_key: Optional[str] = None,
 
     item = (sub.get("items", {}).get("data") or [{}])[0]
     price = item.get("price") or {}
+
+    # The billing period moved from the subscription to the subscription ITEM
+    # in Stripe's 2025+ API versions. This matters because the two sources
+    # disagree in the same codebase: the SDK pins 2023-10-16, so a retrieved
+    # subscription still has these at the top level, while webhook events are
+    # serialised with the ACCOUNT's default version (2026-08-26 here) and only
+    # carry them on the item.
+    #
+    # Reading top-level alone silently produced NULL periods from every webhook,
+    # which made evaluate() treat a paying contractor as having no active period
+    # — they would have paid and still been locked out, with an 'active' row to
+    # say everything was fine. Item first, top level as the fallback, so this
+    # holds whichever version a given payload was built with.
+    period_start = item.get("current_period_start") or sub.get("current_period_start")
+    period_end = item.get("current_period_end") or sub.get("current_period_end")
+
     return {
         "stripe_subscription_id": sub.get("id"),
         "status": sub.get("status") or "none",
-        "current_period_start": ts(sub.get("current_period_start")),
-        "current_period_end": ts(sub.get("current_period_end")),
+        "current_period_start": ts(period_start),
+        "current_period_end": ts(period_end),
         "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
         "plan_key": plan_key or (sub.get("metadata") or {}).get("axis_plan_key"),
         "billing_interval": interval or (price.get("recurring") or {}).get("interval"),
