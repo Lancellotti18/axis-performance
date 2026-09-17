@@ -790,6 +790,29 @@ export const api = {
     me: () =>
       apiRequest<{ subscription: Record<string, unknown> | null; has_plan: boolean;
                    trial_report_used: boolean }>(`/api/v1/billing/me`),
+    paymentMethods: () =>
+      apiRequest<{ payment_methods: Array<{ id: string; brand: string | null; last4: string | null;
+                   exp_month: number | null; exp_year: number | null; is_default: boolean }> }>(
+        `/api/v1/billing/payment-methods`),
+    setupIntent: () =>
+      apiRequest<{ client_secret: string }>(`/api/v1/billing/payment-methods/setup-intent`,
+        { method: 'POST' }),
+    setDefaultCard: (id: string) =>
+      apiRequest<{ ok: boolean }>(`/api/v1/billing/payment-methods/default`,
+        { method: 'POST', body: JSON.stringify({ id }) }),
+    removeCard: (id: string) =>
+      apiRequest<{ ok: boolean }>(`/api/v1/billing/payment-methods/remove`,
+        { method: 'POST', body: JSON.stringify({ id }) }),
+    changePlan: (planKey: string) =>
+      apiRequest<{ ok: boolean; effective: string; reason: string; warning: string | null;
+                   action_needed: string | null; effective_at: string | null }>(
+        `/api/v1/billing/change-plan`,
+        { method: 'POST', body: JSON.stringify({ plan_key: planKey }) }),
+    cancel: () =>
+      apiRequest<{ ok: boolean; access_until: string | null }>(`/api/v1/billing/cancel`,
+        { method: 'POST' }),
+    resume: () =>
+      apiRequest<{ ok: boolean }>(`/api/v1/billing/resume`, { method: 'POST' }),
     subscribe: (planKey: string, interval: 'month' | 'year') =>
       apiRequest<{ requires_payment: boolean; client_secret?: string;
                    subscription_id: string; plan_key?: string }>(

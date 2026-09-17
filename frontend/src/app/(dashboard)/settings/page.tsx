@@ -6,6 +6,7 @@ import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
 import type { ContractorProfile } from '@/types'
 import QuoteWidgetSettings from '@/components/settings/QuoteWidgetSettings'
+import BillingSettings from '@/components/settings/BillingSettings'
 import { notifyProfileUpdated } from '@/lib/profile-events'
 
 // The business profile drives the branded PDF report and customer proposal —
@@ -24,6 +25,10 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  // Three unrelated jobs live here — company identity, the public quote
+  // page, and money. Tabs beat one long scroll: nobody edits their logo
+  // and their card in the same sitting.
+  const [tab, setTab] = useState<'business' | 'quote' | 'billing'>('business')
   const logoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -101,7 +106,31 @@ export default function SettingsPage() {
       <div className="relative p-8 max-w-2xl mx-auto">
         <div className="mb-7">
           <h1 className="text-2xl font-bold text-[#1a1a1a]">Settings</h1>
-          <p className="text-[#6b7280] text-sm mt-1">Your business details — these brand every report and proposal you send.</p>
+
+        <div className="mt-5 flex gap-1 border-b border-[#e3e8ef]">
+          {([
+            ['business', 'Business profile'],
+            ['quote', 'Quote page'],
+            ['billing', 'Plan & billing'],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+                tab === key
+                  ? 'border-[#0068d6] text-[#0068d6]'
+                  : 'border-transparent text-[#6b7280] hover:text-[#1a1a1a]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+          <p className="text-[#6b7280] text-sm mt-4">
+            {tab === 'business' && 'Your business details — these brand every report and proposal you send.'}
+            {tab === 'quote' && 'The page homeowners see when they request a quote from your website.'}
+            {tab === 'billing' && 'Your plan, what it includes, and the cards on file.'}
+          </p>
         </div>
 
         {loading ? (
@@ -110,7 +139,7 @@ export default function SettingsPage() {
           </div>
         ) : (
         <div className="space-y-5">
-          {/* Business profile */}
+          {tab === 'business' && (
           <div className={card}>
             <h2 className="text-[#1a1a1a] font-semibold text-sm mb-5">Business profile</h2>
 
@@ -151,24 +180,13 @@ export default function SettingsPage() {
               {saving ? 'Saving…' : 'Save changes'}
             </button>
           </div>
+          )}
 
-          {/* Public quote page — lives here now rather than inside the CRM's
-              RoofIQ card. It decides what a homeowner sees and what they are
-              quoted, which makes it settings, not a tool. */}
-          <QuoteWidgetSettings />
+          {/* The public quote page decides what a homeowner sees and what they
+              are quoted, which makes it settings rather than a tool. */}
+          {tab === 'quote' && <QuoteWidgetSettings />}
 
-          {/* Plan */}
-          <div className={card}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[#1a1a1a] font-semibold text-sm">Subscription</h2>
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-900 border border-blue-400/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                Pro Plan
-              </span>
-            </div>
-            <div className="text-[#6b7280] text-sm mb-4">Your plan renews monthly. Includes unlimited roof reports and AI analysis.</div>
-            <button className="border border-[#dededc] hover:border-[#dededc] text-[#2d2d2d] hover:text-[#1a1a1a] text-sm font-medium px-5 py-2.5 rounded-xl transition-colors bg-[#f8f8f7]">Manage Billing</button>
-          </div>
+          {tab === 'billing' && <BillingSettings />}
         </div>
         )}
       </div>
