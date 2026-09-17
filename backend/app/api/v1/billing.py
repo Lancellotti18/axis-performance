@@ -196,6 +196,35 @@ async def subscribe(body: SubscribeRequest, user: dict = Depends(require_user)) 
             db, user["id"], user.get("email") or "", (user.get("user_metadata") or {}).get("full_name"))
         price = stripe_service.price_id(body.plan_key, body.interval)
 
+        # An unpaid subscription from a previous attempt — a refreshed checkout
+        # page, a closed tab, a second click. Creating another one leaves the
+        # first orphaned in Stripe with a live PaymentIntent, and a contractor
+        # with two tabs open could pay both and be charged twice.
+        pending = _existing_incomplete(stripe, db, user["id"], customer_id)
+        if pending is not None:
+            same = (
+                (pending.get("metadata") or {}).get("axis_plan_key") == body.plan_key
+                and _interval_of(pending) == body.interval
+            )
+            if same:
+                # Hand back the SAME PaymentIntent. Refreshing checkout must not
+                # cost a new subscription object.
+                secret = _client_secret_of(pending)
+                if secret:
+                    logger.info("reusing incomplete subscription %s for %s",
+                                pending.get("id"), user["id"])
+                    return {"requires_payment": True, "client_secret": secret,
+                            "subscription_id": pending.get("id"),
+                            "plan_key": body.plan_key, "interval": body.interval,
+                            "reused": True}
+            # Different plan: the old attempt is abandoned, so cancel it rather
+            # than leaving a payable intent for a plan they no longer want.
+            try:
+                stripe.Subscription.delete(pending["id"])
+                logger.info("cancelled abandoned incomplete subscription %s", pending["id"])
+            except Exception as e:
+                logger.warning("could not cancel %s: %s", pending.get("id"), e)
+
         sub = stripe.Subscription.create(
             customer=customer_id,
             items=[{"price": price}],
@@ -239,6 +268,34 @@ async def subscribe(body: SubscribeRequest, user: dict = Depends(require_user)) 
         "plan_key": body.plan_key,
         "interval": body.interval,
     }
+
+
+def _interval_of(sub) -> str | None:
+    item = ((sub.get("items") or {}).get("data") or [{}])[0]
+    return ((item.get("price") or {}).get("recurring") or {}).get("interval")
+
+
+def _client_secret_of(sub) -> str | None:
+    invoice = sub.get("latest_invoice") or {}
+    return ((invoice.get("payment_intent") or {}) or {}).get("client_secret")
+
+
+def _existing_incomplete(stripe, db, user_id: str, customer_id: str):
+    """The contractor's unpaid subscription, if they have one.
+
+    Asks Stripe rather than our own table on purpose: the table records the
+    most recent attempt, so a second click has already overwritten any memory
+    of the first. Stripe is the only place that knows about all of them.
+    """
+    try:
+        subs = stripe.Subscription.list(
+            customer=customer_id, status="incomplete", limit=5,
+            expand=["data.latest_invoice.payment_intent"],
+        ).data
+    except Exception as e:
+        logger.info("could not list incomplete subscriptions for %s: %s", user_id, e)
+        return None
+    return subs[0] if subs else None
 
 
 # ── Webhooks ──────────────────────────────────────────────────────────────
