@@ -13,12 +13,14 @@ nothing tying it to the first.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.auth import require_user
 from app.core.plans import (
+    enforcing,
     LEAD_EXCLUSIVITY_BODY,
     LEAD_EXCLUSIVITY_HEADLINE,
     LEAD_USD,
@@ -526,15 +528,194 @@ async def resume_plan(user: dict = Depends(require_user)) -> dict:
 
 
 def _crew_count(db, user_id: str) -> int:
-    """How many dispatch crews exist. Best-effort: a downgrade warning that
-    cannot count is better than a downgrade that fails."""
-    for table, col in (("sched_crews", "user_id"), ("crews", "user_id")):
+    """Delegates, so the downgrade warning and the add_crew gate count the same
+    rows. Two copies of this drifted apart once already."""
+    from app.services import entitlement
+    return entitlement.crews_used(db, user_id)
+
+
+# ── Usage, and buying one more report ─────────────────────────────────────
+
+@router.get("/usage")
+async def my_usage(user: dict = Depends(require_user)) -> dict:
+    """What this contractor has used against the current period.
+
+    Settings renders this and so does the report prompt, from the same call, so
+    "12 of 15 used" on one screen cannot disagree with the gate on the other.
+    """
+    from app.services import entitlement
+    db = get_supabase()
+    return entitlement.usage_summary(db, user["id"])
+
+
+@router.get("/entitlement")
+async def my_entitlement(action: str = "generate_report",
+                         user: dict = Depends(require_user)) -> dict:
+    """May this contractor do `action` right now, and if not, what would it cost?
+
+    This is the call the UI makes BEFORE offering anything, which is what keeps
+    the $35 charge consensual: the answer carries requires_purchase and the
+    price, and the frontend must prompt and get a click before calling
+    /purchase-report. Nothing here charges anything.
+    """
+    from app.core.plans import Action as _Action
+    from app.services import entitlement
+
+    allowed_actions = ("access_app", "generate_report", "add_crew", "buy_lead")
+    if action not in allowed_actions:
+        raise HTTPException(status_code=400, detail=f"Unknown action {action!r}.")
+
+    db = get_supabase()
+    sub = entitlement.load_subscription(db, user["id"])
+    d = entitlement.check(db, user["id"], action, sub=sub)  # type: ignore[arg-type]
+    out = {
+        "action": action,
+        "allowed": d.allowed,
+        "would_allow": d.would_allow,
+        "enforcing": enforcing(),
+        "reason": d.reason,
+        "plan_key": d.plan_key,
+        "status": d.status,
+        "requires_purchase": d.requires_purchase,
+        "purchase_price_usd": d.purchase_price_usd,
+        "grace_days_left": d.grace_days_left,
+    }
+    if action == "generate_report":
+        out["usage"] = entitlement.usage_summary(db, user["id"], sub)
+    return out
+
+
+class PurchaseReportRequest(BaseModel):
+    """Deliberately has no amount. The price comes from the plan table, so a
+    tampered body cannot buy a report for a dollar."""
+    quantity: int = 1
+
+
+@router.post("/purchase-report")
+async def purchase_extra_report(body: PurchaseReportRequest,
+                                user: dict = Depends(require_user)) -> dict:
+    """Charge the card on file for one more report, after they said yes.
+
+    Never called speculatively. The contractor has seen "you have used all 30
+    reports — buy another for $35?" and clicked buy; the UI learns that from
+    /entitlement, which charges nothing. An earlier design billed the moment
+    someone crossed the line, which is how a contractor discovers a bill he
+    never agreed to.
+
+    off_session, because the card is already saved and there is nobody to
+    complete a 3DS challenge inside a POST. If the bank demands one the intent
+    comes back requires_action and the UI has to walk them through it rather
+    than silently failing.
+    """
+    from app.core.plans import DECLINE_MESSAGE, OVERAGE_REPORT_USD
+    from app.services import entitlement, stripe_service
+
+    qty = int(body.quantity or 1)
+    if qty < 1 or qty > 10:
+        raise HTTPException(status_code=400, detail="Buy between 1 and 10 reports.")
+
+    db = get_supabase()
+    sub = entitlement.load_subscription(db, user["id"])
+    if not sub or not sub.get("stripe_customer_id"):
+        raise HTTPException(
+            status_code=409,
+            detail="Extra reports are for contractors on a plan. Choose a plan first.")
+
+    # The period the top-up belongs to, captured now so a renewal mid-purchase
+    # cannot silently move it.
+    start, end = None, None
+    from app.core.plans import period_bounds
+    start, end = period_bounds(sub)
+    if end is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Your billing period isn't set up yet. Try again in a minute.")
+
+    cards = (db.table("payment_methods").select("*")
+             .eq("user_id", user["id"]).eq("is_default", True)
+             .limit(1).execute().data) or []
+    if not cards:
+        cards = (db.table("payment_methods").select("*")
+                 .eq("user_id", user["id"]).limit(1).execute().data) or []
+    if not cards:
+        raise HTTPException(status_code=409,
+                            detail="No card on file. Add one in Settings first.")
+
+    amount_usd = OVERAGE_REPORT_USD * qty
+    row_id = None
+    try:
+        stripe = stripe_service.client()
+        # Recorded as pending BEFORE the charge. If the process dies between
+        # here and the webhook, there is a row to reconcile against instead of
+        # a charge nobody can explain.
+        row = (db.table("overage_purchases").insert({
+            "user_id": user["id"],
+            "quantity": qty,
+            "unit_price_usd": OVERAGE_REPORT_USD,
+            "status": "pending",
+            "period_start": start.isoformat() if start else None,
+            "period_end": end.isoformat(),
+        }).execute().data or [{}])[0]
+        row_id = row.get("id")
+
+        intent = stripe.PaymentIntent.create(
+            amount=amount_usd * 100,
+            currency="usd",
+            customer=sub["stripe_customer_id"],
+            payment_method=cards[0]["stripe_payment_method_id"],
+            off_session=True,
+            confirm=True,
+            description=f"Axis — {qty} additional roof report{'s' if qty > 1 else ''}",
+            metadata={"axis_user_id": user["id"], "axis_kind": "overage_report",
+                      "axis_quantity": str(qty),
+                      "axis_overage_row": str(row_id or "")},
+        )
+    except Exception as e:
+        # A decline arrives here as a CardError. Whatever the cause, the row
+        # must not stay pending — a pending row blocks nothing but muddies
+        # reconciliation, and the contractor needs to be able to retry.
+        if row_id:
+            try:
+                db.table("overage_purchases").update(
+                    {"status": "failed", "updated_at": "now()"}
+                ).eq("id", row_id).execute()
+            except Exception:
+                pass
+        logger.warning("overage purchase failed for %s: %s", user["id"], e)
+        raise HTTPException(status_code=402, detail=DECLINE_MESSAGE)
+
+    if row_id:
         try:
-            rows = db.table(table).select("id").eq(col, user_id).execute().data
-            return len(rows or [])
-        except Exception:
-            continue
-    return 0
+            db.table("overage_purchases").update(
+                {"stripe_payment_intent_id": intent.get("id"), "updated_at": "now()"}
+            ).eq("id", row_id).execute()
+        except Exception as e:
+            logger.info("could not link intent to overage row %s: %s", row_id, e)
+
+    status = intent.get("status")
+    if status == "requires_action":
+        # The bank wants the cardholder present. Not a failure yet.
+        return {"ok": False, "requires_action": True,
+                "client_secret": intent.get("client_secret"),
+                "message": "Your bank needs to confirm this payment."}
+    if status != "succeeded":
+        raise HTTPException(status_code=402, detail=DECLINE_MESSAGE)
+
+    # The webhook is the source of truth and will also settle this row; writing
+    # it here too means the contractor is not waiting on Stripe to generate the
+    # report they just paid for. _settle_purchase is idempotent.
+    try:
+        db.table("overage_purchases").update(
+            {"status": "succeeded", "updated_at": "now()"}
+        ).eq("id", row_id).execute()
+    except Exception as e:
+        logger.info("could not settle overage row %s locally: %s", row_id, e)
+
+    usage = entitlement.usage_summary(db, user["id"])
+    return {"ok": True, "quantity": qty, "charged_usd": amount_usd,
+            "payment_intent_id": intent.get("id"), "usage": usage,
+            "message": f"Charged ${amount_usd}. "
+                       f"{qty} more report{'s' if qty > 1 else ''} added to this period."}
 
 
 # ── Webhooks ──────────────────────────────────────────────────────────────
@@ -601,6 +782,44 @@ async def stripe_webhook(request: Request) -> dict:
     return {"received": True}
 
 
+# Slack for clock skew between Stripe's timestamps and our stored copy. Minutes,
+# because the error being guarded against is applying a change WEEKS early.
+_RENEWAL_SLACK = timedelta(minutes=5)
+
+
+def _period_ts(value):
+    """Parse either a Stripe-derived ISO string or a Supabase timestamptz."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _scheduled_change_is_due(row: dict, update: dict) -> bool:
+    """Has the billing period a scheduled change was promised for actually begun?
+
+    True only on a genuine renewal. The test is against the date the change was
+    promised for, not against "did anything change", because the incoming event
+    may be an unrelated update in the middle of a period the contractor paid for
+    at the higher tier.
+    """
+    new_start = _period_ts(update.get("current_period_start"))
+    if new_start is None:
+        # No period on the payload — nothing to prove a renewal happened.
+        return False
+
+    due_at = _period_ts(row.get("scheduled_change_at"))
+    if due_at is not None:
+        return new_start + _RENEWAL_SLACK >= due_at
+
+    # No due date recorded. Fall back to "the period advanced", which is what a
+    # renewal looks like, rather than applying on any event at all.
+    old_start = _period_ts(row.get("current_period_start"))
+    return old_start is not None and new_start > old_start + _RENEWAL_SLACK
+
+
 async def _apply_event(db, event) -> None:
     """Fold one Stripe event into our copy of the world.
 
@@ -614,7 +833,9 @@ async def _apply_event(db, event) -> None:
 
     if etype.startswith("customer.subscription."):
         customer_id = obj.get("customer")
-        rows = (db.table("subscriptions").select("user_id, scheduled_plan_key")
+        rows = (db.table("subscriptions")
+                .select("user_id, scheduled_plan_key, scheduled_change_at, "
+                        "current_period_start")
                 .eq("stripe_customer_id", customer_id).limit(1).execute().data) or []
         if not rows:
             logger.warning("subscription event for unknown customer %s", customer_id)
@@ -626,14 +847,31 @@ async def _apply_event(db, event) -> None:
             update["status"] = "canceled"
 
         # A scheduled downgrade lands when the period rolls over. Applying it
-        # here — off Stripe's own renewal — is what makes the new report and
-        # crew limits take effect at exactly the moment billing changes.
+        # off Stripe's own renewal is what makes the new report and crew limits
+        # take effect at exactly the moment billing changes.
+        #
+        # But ONLY on a real renewal. customer.subscription.updated is not a
+        # renewal signal — it fires for card changes, cancel/resume toggles,
+        # prorations and metadata edits too. Applying the change on any of them
+        # dropped the contractor to the smaller plan mid-period, costing them
+        # allowance they had already paid for: the precise harm scheduling
+        # exists to prevent.
         if etype.endswith(".updated") and row.get("scheduled_plan_key"):
-            update["plan_key"] = row["scheduled_plan_key"]
-            update["scheduled_plan_key"] = None
-            update["scheduled_change_at"] = None
-            logger.info("applied scheduled plan change for %s -> %s",
-                        row["user_id"], update["plan_key"])
+            if _scheduled_change_is_due(row, update):
+                update["plan_key"] = row["scheduled_plan_key"]
+                update["scheduled_plan_key"] = None
+                update["scheduled_change_at"] = None
+                logger.info("applied scheduled plan change for %s -> %s",
+                            row["user_id"], update["plan_key"])
+            else:
+                # Leave the promise standing, and do not let this event's row
+                # data quietly clear it either.
+                update.pop("plan_key", None)
+                logger.info(
+                    "holding scheduled change for %s -> %s; period has not "
+                    "rolled over yet (due %s)",
+                    row["user_id"], row["scheduled_plan_key"],
+                    row.get("scheduled_change_at"))
 
         db.table("subscriptions").update(update).eq("user_id", row["user_id"]).execute()
         return
