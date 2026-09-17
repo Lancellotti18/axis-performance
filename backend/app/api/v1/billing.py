@@ -298,6 +298,245 @@ def _existing_incomplete(stripe, db, user_id: str, customer_id: str):
     return subs[0] if subs else None
 
 
+# ── Saved cards ───────────────────────────────────────────────────────────
+
+@router.get("/payment-methods")
+async def list_payment_methods(user: dict = Depends(require_user)) -> dict:
+    """Cards on file. Brand, last four and expiry only — a card number never
+    reaches Axis, which is what keeps the platform out of PCI scope."""
+    db = get_supabase()
+    try:
+        rows = (db.table("payment_methods").select(
+            "id, stripe_payment_method_id, brand, last4, exp_month, exp_year, is_default")
+            .eq("user_id", user["id"]).order("created_at", desc=True).execute().data) or []
+    except Exception as e:
+        logger.info("payment method lookup failed for %s: %s", user["id"], e)
+        rows = []
+    return {"payment_methods": rows}
+
+
+@router.post("/payment-methods/setup-intent")
+async def create_setup_intent(user: dict = Depends(require_user)) -> dict:
+    """Client secret for adding a card without charging it.
+
+    A SetupIntent rather than a PaymentIntent, because saving a card and taking
+    money are different acts and conflating them is how people get charged for
+    'just updating my card on file'.
+    """
+    from app.services import stripe_service
+    db = get_supabase()
+    try:
+        stripe = stripe_service.client()
+        customer_id = stripe_service.ensure_customer(
+            db, user["id"], user.get("email") or "",
+            (user.get("user_metadata") or {}).get("full_name"))
+        intent = stripe.SetupIntent.create(
+            customer=customer_id, usage="off_session",
+            metadata={"axis_user_id": user["id"]})
+    except stripe_service.StripeNotConfigured:
+        raise HTTPException(status_code=503, detail="Payments are not set up yet.")
+    except Exception as e:
+        logger.error("setup intent failed for %s: %s", user["id"], e)
+        raise HTTPException(status_code=502, detail="Could not start card setup.")
+    return {"client_secret": intent.client_secret}
+
+
+class PaymentMethodRef(BaseModel):
+    """Our OWN row id, not Stripe's. Ownership is checked against it before
+    anything is touched, so a caller cannot name a stranger's Stripe payment
+    method and have Axis act on it."""
+    id: str
+
+
+@router.post("/payment-methods/default")
+async def set_default_card(body: PaymentMethodRef, user: dict = Depends(require_user)) -> dict:
+    db = get_supabase()
+    pm = _owned_payment_method(db, user["id"], body.id)
+    from app.services import stripe_service
+    try:
+        stripe = stripe_service.client()
+        sub_rows = (db.table("subscriptions").select("stripe_customer_id, stripe_subscription_id")
+                    .eq("user_id", user["id"]).limit(1).execute().data) or []
+        sub = sub_rows[0] if sub_rows else {}
+        if sub.get("stripe_customer_id"):
+            stripe.Customer.modify(
+                sub["stripe_customer_id"],
+                invoice_settings={"default_payment_method": pm["stripe_payment_method_id"]})
+        # Renewals bill the SUBSCRIPTION's default, which is separate from the
+        # customer's. Setting only one leaves the next invoice on the old card.
+        if sub.get("stripe_subscription_id"):
+            stripe.Subscription.modify(
+                sub["stripe_subscription_id"],
+                default_payment_method=pm["stripe_payment_method_id"])
+    except Exception as e:
+        logger.error("could not set default card for %s: %s", user["id"], e)
+        raise HTTPException(status_code=502, detail="Could not update your default card.")
+
+    db.table("payment_methods").update({"is_default": False}).eq("user_id", user["id"]).execute()
+    db.table("payment_methods").update({"is_default": True}).eq("id", body.id).execute()
+    return {"ok": True}
+
+
+@router.post("/payment-methods/remove")
+async def remove_card(body: PaymentMethodRef, user: dict = Depends(require_user)) -> dict:
+    """Detach a card. Refused if it is the only card behind an active
+    subscription — removing it would guarantee the next renewal fails, and
+    silently doing that to someone is worse than telling them no."""
+    db = get_supabase()
+    pm = _owned_payment_method(db, user["id"], body.id)
+
+    rows = (db.table("payment_methods").select("id").eq("user_id", user["id"])
+            .execute().data) or []
+    subs = (db.table("subscriptions").select("status").eq("user_id", user["id"])
+            .limit(1).execute().data) or []
+    active = (subs[0].get("status") if subs else "") in ("active", "trialing", "past_due")
+    if active and len(rows) <= 1:
+        raise HTTPException(
+            status_code=409,
+            detail="This is the only card on your account. Add another before "
+                   "removing it, or cancel your plan first.")
+
+    from app.services import stripe_service
+    try:
+        stripe_service.client().PaymentMethod.detach(pm["stripe_payment_method_id"])
+    except Exception as e:
+        logger.info("detach failed (continuing to remove locally): %s", e)
+    db.table("payment_methods").delete().eq("id", body.id).execute()
+    return {"ok": True}
+
+
+def _owned_payment_method(db, user_id: str, row_id: str) -> dict:
+    rows = (db.table("payment_methods").select("*")
+            .eq("id", row_id).eq("user_id", user_id).limit(1).execute().data) or []
+    if not rows:
+        # 404 rather than 403: confirming a row exists but belongs to someone
+        # else tells a prober something they should not learn.
+        raise HTTPException(status_code=404, detail="Card not found.")
+    return rows[0]
+
+
+# ── Changing and cancelling a plan ────────────────────────────────────────
+
+class ChangePlanRequest(BaseModel):
+    plan_key: str
+
+
+@router.post("/change-plan")
+async def change_plan(body: ChangePlanRequest, user: dict = Depends(require_user)) -> dict:
+    """Upgrade now, downgrade at period end. The rules live in plans.py so the
+    warning shown here and the limit enforced later cannot disagree."""
+    from app.core.plans import can_change_plan
+    from app.services import stripe_service
+
+    if body.plan_key not in PLANS:
+        raise HTTPException(status_code=400, detail=f"Unknown plan {body.plan_key!r}.")
+
+    db = get_supabase()
+    rows = (db.table("subscriptions").select("*").eq("user_id", user["id"])
+            .limit(1).execute().data) or []
+    sub = rows[0] if rows else None
+    if not sub or not sub.get("stripe_subscription_id"):
+        raise HTTPException(status_code=409, detail="You do not have a plan to change.")
+
+    crews_used = _crew_count(db, user["id"])
+    decision = can_change_plan(sub.get("plan_key"), body.plan_key, crews_used=crews_used)
+    if not decision.allowed:
+        raise HTTPException(status_code=409, detail=decision.reason)
+
+    interval = sub.get("billing_interval") or "month"
+    try:
+        stripe = stripe_service.client()
+        price = stripe_service.price_id(body.plan_key, interval)
+        remote = stripe.Subscription.retrieve(sub["stripe_subscription_id"])
+        item_id = remote["items"]["data"][0]["id"]
+
+        if decision.effective == "now":
+            # Upgrade: swap immediately and let Stripe prorate the difference.
+            stripe.Subscription.modify(
+                sub["stripe_subscription_id"],
+                items=[{"id": item_id, "price": price}],
+                proration_behavior="create_prorations",
+                metadata={"axis_plan_key": body.plan_key},
+            )
+            db.table("subscriptions").update(
+                {"plan_key": body.plan_key, "scheduled_plan_key": None,
+                 "scheduled_change_at": None, "updated_at": "now()"}
+            ).eq("user_id", user["id"]).execute()
+        else:
+            # Downgrade: recorded as a promise, applied by the renewal webhook.
+            # Nothing shrinks inside a period they already paid for.
+            db.table("subscriptions").update(
+                {"scheduled_plan_key": body.plan_key,
+                 "scheduled_change_at": sub.get("current_period_end"),
+                 "updated_at": "now()"}
+            ).eq("user_id", user["id"]).execute()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("plan change failed for %s: %s", user["id"], e)
+        raise HTTPException(status_code=502, detail="Could not change your plan.")
+
+    return {"ok": True, "effective": decision.effective, "reason": decision.reason,
+            "warning": decision.warning, "action_needed": decision.action_needed,
+            "effective_at": sub.get("current_period_end") if decision.effective == "period_end" else None}
+
+
+@router.post("/cancel")
+async def cancel_plan(user: dict = Depends(require_user)) -> dict:
+    """Cancel at period end, never immediately — they paid for this period."""
+    from app.services import stripe_service
+    db = get_supabase()
+    rows = (db.table("subscriptions").select("*").eq("user_id", user["id"])
+            .limit(1).execute().data) or []
+    sub = rows[0] if rows else None
+    if not sub or not sub.get("stripe_subscription_id"):
+        raise HTTPException(status_code=409, detail="You do not have a plan to cancel.")
+    try:
+        stripe_service.client().Subscription.modify(
+            sub["stripe_subscription_id"], cancel_at_period_end=True)
+    except Exception as e:
+        logger.error("cancel failed for %s: %s", user["id"], e)
+        raise HTTPException(status_code=502, detail="Could not cancel your plan.")
+    db.table("subscriptions").update(
+        {"cancel_at_period_end": True, "updated_at": "now()"}
+    ).eq("user_id", user["id"]).execute()
+    return {"ok": True, "access_until": sub.get("current_period_end")}
+
+
+@router.post("/resume")
+async def resume_plan(user: dict = Depends(require_user)) -> dict:
+    """Undo a pending cancellation, while the period is still running."""
+    from app.services import stripe_service
+    db = get_supabase()
+    rows = (db.table("subscriptions").select("*").eq("user_id", user["id"])
+            .limit(1).execute().data) or []
+    sub = rows[0] if rows else None
+    if not sub or not sub.get("stripe_subscription_id"):
+        raise HTTPException(status_code=409, detail="Nothing to resume.")
+    try:
+        stripe_service.client().Subscription.modify(
+            sub["stripe_subscription_id"], cancel_at_period_end=False)
+    except Exception as e:
+        logger.error("resume failed for %s: %s", user["id"], e)
+        raise HTTPException(status_code=502, detail="Could not resume your plan.")
+    db.table("subscriptions").update(
+        {"cancel_at_period_end": False, "updated_at": "now()"}
+    ).eq("user_id", user["id"]).execute()
+    return {"ok": True}
+
+
+def _crew_count(db, user_id: str) -> int:
+    """How many dispatch crews exist. Best-effort: a downgrade warning that
+    cannot count is better than a downgrade that fails."""
+    for table, col in (("sched_crews", "user_id"), ("crews", "user_id")):
+        try:
+            rows = db.table(table).select("id").eq(col, user_id).execute().data
+            return len(rows or [])
+        except Exception:
+            continue
+    return 0
+
+
 # ── Webhooks ──────────────────────────────────────────────────────────────
 
 @router.post("/webhook")
@@ -399,6 +638,26 @@ async def _apply_event(db, event) -> None:
         db.table("subscriptions").update(update).eq("user_id", row["user_id"]).execute()
         return
 
+    if etype in ("setup_intent.succeeded", "payment_method.attached"):
+        # A card was saved. Recorded here rather than when the browser confirms,
+        # because the browser can close mid-flow and Stripe's event is the only
+        # account of what actually attached.
+        pm_id = obj.get("payment_method") if etype == "setup_intent.succeeded" else obj.get("id")
+        customer_id = obj.get("customer")
+        if pm_id and customer_id:
+            _record_payment_method(db, customer_id, pm_id)
+        return
+
+    if etype == "payment_method.detached":
+        pm_id = obj.get("id")
+        if pm_id:
+            try:
+                db.table("payment_methods").delete().eq(
+                    "stripe_payment_method_id", pm_id).execute()
+            except Exception as e:
+                logger.info("could not remove detached card %s: %s", pm_id, e)
+        return
+
     if etype == "payment_intent.succeeded":
         _settle_purchase(db, obj.get("id"), "succeeded")
         return
@@ -408,6 +667,39 @@ async def _apply_event(db, event) -> None:
         # counts pending and succeeded rows.
         _settle_purchase(db, obj.get("id"), "failed")
         return
+
+
+def _record_payment_method(db, customer_id: str, pm_id: str) -> None:
+    """Store brand/last4/expiry so Settings can render a card row.
+
+    The PAN is never fetched or stored — only what is needed to say "Visa
+    ending 4242". Storing more would drag Axis into PCI scope for no benefit.
+    """
+    from app.services import stripe_service
+    try:
+        rows = (db.table("subscriptions").select("user_id")
+                .eq("stripe_customer_id", customer_id).limit(1).execute().data) or []
+        if not rows:
+            logger.warning("card attached for unknown customer %s", customer_id)
+            return
+        user_id = rows[0]["user_id"]
+        pm = stripe_service.client().PaymentMethod.retrieve(pm_id)
+        card = pm.get("card") or {}
+        existing = (db.table("payment_methods").select("id")
+                    .eq("user_id", user_id).execute().data) or []
+        db.table("payment_methods").upsert({
+            "user_id": user_id,
+            "stripe_payment_method_id": pm_id,
+            "brand": card.get("brand"),
+            "last4": card.get("last4"),
+            "exp_month": card.get("exp_month"),
+            "exp_year": card.get("exp_year"),
+            # First card added becomes the default, so someone who adds one
+            # card never ends up with none marked.
+            "is_default": not existing,
+        }, on_conflict="stripe_payment_method_id").execute()
+    except Exception as e:
+        logger.info("could not record payment method %s: %s", pm_id, e)
 
 
 def _settle_purchase(db, payment_intent_id: str, status: str) -> None:
