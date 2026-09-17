@@ -6,7 +6,27 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // payment=() blocks the Payment Request API. Correct everywhere that does
+  // not take money, and it stays the default for exactly that reason.
   { key: "Permissions-Policy", value: "camera=(), geolocation=(self), payment=()" },
+];
+
+// Checkout is the one place that needs the payment permission, and it needs to
+// delegate it to Stripe's iframe as well as allow it here. Without this,
+// Apple Pay and Google Pay fail with "Permissions policy violation: payment is
+// not allowed in this document" — the card form still works, so the loss is
+// silent, and it costs the wallet conversions that matter most on a phone.
+//
+// Scoped to /checkout rather than relaxed globally: no other route should be
+// able to invoke a payment sheet.
+const checkoutHeaders = [
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: 'camera=(), geolocation=(self), payment=(self "https://js.stripe.com")',
+  },
 ];
 
 const nextConfig: NextConfig = {
@@ -16,8 +36,20 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // every route except /q/** (embeddable widget)
-        source: "/((?!q/).*)",
+        // Checkout first: Next applies the first matching rule per header, so
+        // this must precede the catch-all or the payment permission is lost.
+        // Query strings do not affect path matching, so this covers
+        // /checkout?plan=crew as well.
+        source: "/checkout",
+        headers: checkoutHeaders,
+      },
+      {
+        source: "/checkout/:path*",
+        headers: checkoutHeaders,
+      },
+      {
+        // every route except /q/** (embeddable widget) and /checkout
+        source: "/((?!q/|checkout).*)",
         headers: securityHeaders,
       },
       {
