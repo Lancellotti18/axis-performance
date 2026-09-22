@@ -13,7 +13,9 @@ from app.core.auth import require_user
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-ALLOWED_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
+# Raised from 10 MB: a scanned PDF or a full-resolution HEIC routinely exceeds
+# it, and the file is downscaled to 2048px before anything expensive happens.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
 @router.post("/generate")
@@ -28,7 +30,8 @@ async def generate_home_visualization(
     Upload a property photo and describe the changes you want to see.
     Returns an AI-generated image of the changes plus a sourced cost estimate.
 
-    - file: JPG / PNG / WebP photo of the property (max 10 MB)
+    - file: a photo of the property — JPG, PNG, WebP, HEIC (iPhone), GIF, BMP,
+      TIFF — or a PDF, in which case the first page is used (max 25 MB)
     - description: plain-English description of desired changes
       e.g. "replace brick with stone veneer, add black shutters and a covered porch"
     - city / state: for localised cost pricing
@@ -36,22 +39,27 @@ async def generate_home_visualization(
     if not description.strip():
         raise HTTPException(status_code=422, detail="Description is required.")
 
-    content_type = (file.content_type or "").lower()
-    if content_type not in ALLOWED_TYPES:
+    raw = await file.read()
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large. Max 25 MB.")
+    if len(raw) < 1024:
+        raise HTTPException(status_code=422, detail="That file appears to be empty or corrupt.")
+
+    # Decided from the bytes, not the browser's Content-Type. This used to be an
+    # allow-list of three MIME types, so an iPhone photo — which the page's own
+    # file picker offered — was rejected with "must be a JPG, PNG, or WebP".
+    from app.services.upload_images import is_pdf, normalize_to_images
+    images, _ = normalize_to_images(raw, max_pages=1)
+    if not images:
         raise HTTPException(
             status_code=422,
-            detail="File must be a JPG, PNG, or WebP image."
+            detail="Couldn't read that file. Upload a photo of the house "
+                   "(JPG, PNG, HEIC, WebP and most other image types) or a PDF.",
         )
-
-    image_bytes = await file.read()
-    if len(image_bytes) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Image too large. Max 10 MB.")
-    if len(image_bytes) < 1024:
-        raise HTTPException(status_code=422, detail="Image file appears to be empty or corrupt.")
+    image_bytes, content_type = images[0]
+    from_pdf = is_pdf(raw)
 
     from app.services.visualizer_service import generate_visualization
-    import os
-    log.info(f"[visualizer] HF key present: {bool(os.environ.get('HUGGINGFACE_API_KEY'))}, starts: {os.environ.get('HUGGINGFACE_API_KEY','')[:6]}")
     try:
         result = await generate_visualization(
             image_bytes=image_bytes,
@@ -72,4 +80,11 @@ async def generate_home_visualization(
         log.error(f"[visualizer] Unexpected error: {e}")
         raise HTTPException(status_code=500, detail=f"Visualization failed: {e}")
 
+    # The converted photo goes back too. The page previews and attaches the
+    # "before" photo to reports from it, because a browser cannot display a PDF
+    # page — or, outside Safari, a HEIC — from the raw upload.
+    import base64
+    result["source_image_url"] = (
+        f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}")
+    result["source_from_pdf"] = from_pdf
     return result

@@ -2052,7 +2052,14 @@ export const api = {
         { method: 'POST', body: form, headers: token ? { Authorization: `Bearer ${token}` } : {} },
         180000,  // 3-minute timeout — image generation can be slow on first run
       ).then(async res => {
-        if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`) }
+        if (!res.ok) {
+          // Unwrap FastAPI's {"detail": "..."} — this call bypasses apiRequest,
+          // so it used to throw the raw JSON, which is what users saw.
+          const t = await res.text()
+          let msg = t
+          try { msg = formatDetail(JSON.parse(t).detail) || t } catch { /* not JSON */ }
+          throw new Error(msg || `HTTP ${res.status}`)
+        }
         return res.json() as Promise<Record<string, unknown>>
       })
     },

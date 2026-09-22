@@ -1536,71 +1536,17 @@ _GROUND_PHOTO_MAX_PAGES = 12  # cap PDF pages analyzed to bound cost/time
 
 
 def _normalize_image_for_vision(raw: bytes) -> tuple[Optional[bytes], str]:
-    """
-    Accept any common image a contractor's phone produces and return
-    (jpeg_bytes, media_type) ready for the vision model, downscaling huge photos.
-    Returns (None, '') only when the bytes aren't a readable image.
-    """
-    try:
-        import io as _io
-        from PIL import Image
-
-        # Register HEIC/HEIF support so iPhone photos (the default phone format)
-        # decode. Best-effort — JPEG/PNG/WEBP still work if this isn't installed.
-        try:
-            import pillow_heif
-            pillow_heif.register_heif_opener()
-        except Exception:
-            pass
-
-        im = Image.open(_io.BytesIO(raw))
-        im = im.convert("RGB")
-        if max(im.size) > 2048:               # phone photos are huge; shrink for speed
-            im.thumbnail((2048, 2048))
-        out = _io.BytesIO()
-        im.save(out, format="JPEG", quality=88)
-        return out.getvalue(), "image/jpeg"
-    except Exception:
-        # PIL couldn't decode (e.g. HEIC without the plugin). Pass through if
-        # the magic bytes are already a model-supported format.
-        if raw[:3] == b"\xff\xd8\xff":
-            return raw, "image/jpeg"
-        if raw[:8] == b"\x89PNG\r\n\x1a\n":
-            return raw, "image/png"
-        if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
-            return raw, "image/webp"
-        return None, ""
+    """Moved to app.services.upload_images so the Roof Visualizer accepts the
+    same files this endpoint does. Kept as a thin alias for existing callers."""
+    from app.services.upload_images import normalize_image
+    return normalize_image(raw)
 
 
 def _normalize_to_images(raw: bytes) -> tuple[list[tuple[bytes, str]], bool]:
-    """
-    Expand an upload into a list of analyzable images.
-
-    • PDF  → one image PER PAGE (rasterized via PyMuPDF at ~200 DPI), capped at
-             _GROUND_PHOTO_MAX_PAGES.
-    • image → a single-element list.
-
-    Returns (images, truncated) where `truncated` is True if a PDF had more
-    pages than the cap. Empty list = nothing readable.
-    """
-    if raw[:5] == b"%PDF-":
-        try:
-            import fitz  # PyMuPDF (already a dependency)
-            doc = fitz.open(stream=raw, filetype="pdf")
-            total = doc.page_count
-            images: list[tuple[bytes, str]] = []
-            for i in range(min(total, _GROUND_PHOTO_MAX_PAGES)):
-                pix = doc.load_page(i).get_pixmap(matrix=fitz.Matrix(200 / 72, 200 / 72))
-                norm, mt = _normalize_image_for_vision(pix.tobytes("png"))
-                if norm is not None:
-                    images.append((norm, mt))
-            doc.close()
-            return images, total > _GROUND_PHOTO_MAX_PAGES
-        except Exception:
-            return [], False
-
-    norm, mt = _normalize_image_for_vision(raw)
-    return ([(norm, mt)] if norm is not None else []), False
+    """PDF -> one image per page (capped at _GROUND_PHOTO_MAX_PAGES); image ->
+    one image. See app.services.upload_images.normalize_to_images."""
+    from app.services.upload_images import normalize_to_images
+    return normalize_to_images(raw, _GROUND_PHOTO_MAX_PAGES)
 
 
 _GROUND_PHOTO_PROMPT = """You are a roofing estimator analyzing a GROUND-LEVEL photo of a house. Report only what improves a ROOF estimate. Return ONLY JSON:
