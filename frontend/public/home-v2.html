@@ -95,24 +95,40 @@
 
   /* ---- cinematic film track ---- */
   .film{position:relative;height:680vh}
-  html.reel-snap{scroll-snap-type:y proximity}
-  .snap{position:absolute;left:0;width:1px;height:1px;pointer-events:none;opacity:0;scroll-snap-align:start}
-  @media (prefers-reduced-motion:reduce){html.reel-snap{scroll-snap-type:none}}
+  /* Scroll snapping was REMOVED 2026-09-27 and must not come back.
+     `scroll-snap-type:y proximity` on a scroll-scrubbed sticky stage fights the
+     gesture instead of guiding it: one ordinary trackpad flick measured FOUR
+     scroll-direction reversals as the snap pulled the page back and forth, and
+     because film time is a pure function of scrollY the reel ran backwards with
+     it. The same flick with snapping off reversed zero times and the rAF loop
+     sampled at twice the rate. The scrub IS the pacing here; it does not need
+     help landing on a beat. */
 
   .stage{position:sticky;top:0;height:100vh;overflow:hidden;background:#04070c}
   .still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#04070c;
-    transition:opacity .5s var(--ease);will-change:opacity}
+    transition:opacity .5s var(--ease)}
   /* Two tiers stacked over the still. The ~1MB preview buffers end-to-end in
      about two seconds, so the FULL reel is scrubbable almost immediately; the
      high tier fades in on top once it has downloaded completely and can never
      freeze afterwards. Stacking order is still < preview < high. */
+  /* No `will-change:opacity` on these three. A <video> is composited anyway,
+     and pinning the poster to its own layer as well left three full-screen
+     layers alive for the whole page on a machine with no headroom for them.
+     The opacity transitions promote for their own duration and release. */
   #reelLow,#reelHd{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
-    background:transparent;opacity:0;transition:opacity .45s var(--ease);will-change:opacity}
+    background:transparent;opacity:0;transition:opacity .45s var(--ease)}
   .stage[data-live="low"] #reelLow,
   .stage[data-live="hd"]  #reelLow{opacity:1}
   .stage[data-live="hd"]  #reelHd{opacity:1}
   .stage[data-live="low"] .still,
   .stage[data-live="hd"]  .still{opacity:0}
+  /* Holding the preview at opacity 1 *underneath* HD is deliberate for the
+     length of the cross-fade: two half-opaque layers do not composite to one
+     opaque layer, so releasing it early shows a brightness dip. Keeping it
+     there afterwards buys nothing and costs a full-screen video layer, so it
+     is released once the fade has finished. */
+  .stage[data-settled="1"] #reelLow{opacity:0}
+  .stage[data-settled="1"] .still{visibility:hidden}
 
   .grade{position:absolute;inset:0;pointer-events:none;
     background:radial-gradient(130% 100% at 50% 24%,transparent 42%,rgba(3,6,11,.5) 100%),
@@ -215,9 +231,6 @@
 </header>
 
 <div class="film" id="top">
-  <i class="snap" style="top:145.00vh"></i>
-  <i class="snap" style="top:298.70vh"></i>
-  <i class="snap" style="top:440.80vh"></i>
   <div class="stage" data-cine="0" data-live="still">
     <img class="still" id="still" src="/v2/reel-poster.jpg" alt="" width="1920" height="1080" fetchpriority="high">
     <!-- preview tier: small, dense keyframes, loads first and alone -->
@@ -369,7 +382,10 @@
       try{ if(v.fastSeek) v.fastSeek(t); else v.currentTime=t; }
       catch(e){ settle(); }
     }
-    ['progress','canplay','loadeddata','seeked'].forEach(ev=>
+    // 'seeked' is deliberately NOT in this list. It fires on every scrub seek,
+    // and each one re-entered kick() -> measure() -> a forced layout read. Only
+    // the buffering events can make a previously unreachable frame reachable.
+    ['progress','canplay','loadeddata'].forEach(ev=>
       v.addEventListener(ev,()=>{ lastFrame=-1; kick(); },{passive:true}));
 
     // A muted playsinline video that has never played does not reliably paint
@@ -426,12 +442,12 @@
     if(c.saveData) return '/v2/reel-sd.mp4';
     if(/(^|-)2g$|^3g$/.test(c.effectiveType||'')) return '/v2/reel-sd.mp4';
     if(Math.max(innerWidth,innerHeight) < 1000) return '/v2/reel-sd.mp4';
-    // Below ~3 Mbps the 10MB cut takes the better part of a minute, and the
-    // viewer spends all of it on a 426x240 upscale. The 4MB cut reaches a good
-    // picture roughly twice as fast, which matters more than peak sharpness.
-    if(measuredKbps!=null && measuredKbps<3000) return '/v2/reel-sd.mp4';
     return '/v2/reel-hd.mp4';
   }
+  // How much of the high tier to watch before judging the connection, and the
+  // rate below which the 10MB cut is a bad trade. 900KB is large enough that
+  // the handshake is noise in the measurement; see fetchBlobAdaptive.
+  const PROBE_BYTES=900*1024, MIN_KBPS=1400;
 
   // ── Loading: fetch whole files, scrub blobs ────────────────────────────
   // This is the fix for the bug that made the hero feel broken. preload="auto"
@@ -445,7 +461,6 @@
   // Fetching the file outright and handing the element a blob URL makes the
   // whole timeline local and permanently seekable. Measured: bufferedEnd goes
   // from 14.4/25.25 to the full 25.25, and a seek to 24.5s lands.
-  let measuredKbps=null;
   function fetchBlobUrl(url){
     return fetch(url,{credentials:'omit'}).then(r=>{
       if(!r.ok) throw new Error('HTTP '+r.status);
@@ -464,13 +479,57 @@
       return 0;
     });
   }
-  if(!reduce && typeof fetch==='function'){
-    const t0=performance.now();
-    loadTier('/v2/reel-preview.mp4',lowEl,low).then(bytes=>{
-      const ms=Math.max(1,performance.now()-t0);
-      if(bytes>0) measuredKbps=bytes*8/ms;      // bytes*8/ms === kbit/s
-      return loadTier(pickHigh(),hdEl,hd);
+  // ── Picking the high tier without guessing ────────────────────────────
+  // The tier used to be chosen up front from throughput measured across the
+  // 297KB preview download. That sample is small enough that DNS, TLS and TTFB
+  // dominate it: anything over ~790ms scored under 3 Mbps, so one slow
+  // handshake pinned the whole session to the 720p cut and it never recovered.
+  // On a Retina display that is a 2.6x upscale where 1080p would have been
+  // 1.75x — the intermittent "why is it blurry today" bug.
+  //
+  // The sharp tier is now the default, and the connection has to prove itself
+  // slow on the real download, timed from the FIRST BYTE so the handshake
+  // cannot poison it. If it does, the partial download is dropped and the
+  // smaller cut is fetched instead; the preview keeps the reel scrubbable the
+  // whole time either way.
+  function fetchBlobAdaptive(url,alt){
+    return fetch(url,{credentials:'omit'}).then(r=>{
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      if(!alt||!r.body||!r.body.getReader) return r.blob();
+      const reader=r.body.getReader(), chunks=[];
+      let got=0, first=0, judged=false;
+      return (function pump(){
+        return reader.read().then(({done,value})=>{
+          if(done) return new Blob(chunks,{type:'video/mp4'});
+          if(!first) first=performance.now();
+          chunks.push(value); got+=value.length;
+          if(!judged && got>=PROBE_BYTES){
+            judged=true;                 // judge once, then never again
+            const ms=Math.max(1,performance.now()-first);
+            if(got*8/ms < MIN_KBPS){
+              const smaller=fetchBlobUrl(alt);
+              try{ reader.cancel(); }catch(e){}
+              return smaller;
+            }
+          }
+          return pump();
+        });
+      })();
     });
+  }
+  function loadHigh(){
+    const want=pickHigh();
+    const alt=want==='/v2/reel-hd.mp4' ? '/v2/reel-sd.mp4' : null;
+    return fetchBlobAdaptive(want,alt).then(blob=>{
+      hdEl.src=URL.createObjectURL(blob);
+      hd.markTrusted();
+      kick();
+    }).catch(()=>{
+      hdEl.preload='auto'; hdEl.src=want; kick();
+    });
+  }
+  if(!reduce && typeof fetch==='function'){
+    loadTier('/v2/reel-preview.mp4',lowEl,low).then(loadHigh);
     ['pointerdown','touchstart','wheel','keydown'].forEach(ev=>
       addEventListener(ev,()=>{ low.prime(); hd.prime(); },{once:true,passive:true}));
   } else if(!reduce){
@@ -478,8 +537,18 @@
     hdEl.preload='auto'; hdEl.src=pickHigh();
   }
 
-  let stageState='';
-  function setStage(s){ if(s!==stageState){ stageState=s; stage.dataset.live=s; } }
+  let stageState='', settleTimer=null;
+  function setStage(s){
+    if(s===stageState) return;
+    stageState=s; stage.dataset.live=s;
+    if(settleTimer){ clearTimeout(settleTimer); settleTimer=null; }
+    if(s==='hd'){
+      // Wait out the .45s cross-fade, then release the layers beneath HD.
+      settleTimer=setTimeout(()=>{ stage.dataset.settled='1'; settleTimer=null; },620);
+    } else if(stage.dataset.settled){
+      delete stage.dataset.settled;   // HD died; the preview has to show again
+    }
+  }
   function durationNow(){ return hd.duration() || low.duration() || NOMINAL; }
 
   // ── Scroll → film time ─────────────────────────────────────────────────
@@ -536,7 +605,7 @@
     else if(low.hasPainted()) setStage('low');
   }
 
-  let lHeroO=-1,lHeroT='',lPay=-1,lCue=-1,lCine='',lRail=-1,lSnap=null;
+  let lHeroO=-1,lHeroT='',lPay=-1,lCue=-1,lCine='',lRail=-1;
   function apply(p){
     driveVideo(timeAt(p)*durationNow());
     const fade=smooth(0.03,0.10,p);
@@ -555,33 +624,51 @@
     if(rf!==lRail){ lRail=rf; railFill.style.transform=`scaleX(${rf})`; }
   }
 
-  let target=0, shown=0, ticking=false, needMeasure=true;
+  let target=0, shown=0, ticking=false, lastT=0;
   let filmTop=0, trackLen=1;
+
+  // Geometry is read ONLY when it can actually have changed. The old loop ran
+  // getBoundingClientRect() twice and offsetHeight once per animation frame —
+  // three forced synchronous layouts a frame on a 680vh document, for two
+  // numbers that only move on resize. scrollY is free to read.
   function cacheGeom(){
-    filmTop=film.getBoundingClientRect().top+window.scrollY;
-    trackLen=Math.max(1,film.offsetHeight-window.innerHeight);
+    const r=film.getBoundingClientRect();
+    filmTop=r.top+window.scrollY;
+    trackLen=Math.max(1,r.height-window.innerHeight);
   }
-  function syncSnap(){
-    const p=clamp((window.scrollY-filmTop)/trackLen,0,1);
-    const snap=p<0.87;
-    if(snap!==lSnap){ lSnap=snap; document.documentElement.classList.toggle('reel-snap',snap&&!reduce); }
-  }
-  function measure(){
-    cacheGeom();
-    const y=clamp(-film.getBoundingClientRect().top,0,trackLen);
-    target=trackLen>0?y/trackLen:0;
-  }
-  function frame(){
-    if(needMeasure){ needMeasure=false; measure(); }
-    shown=reduce?target:lerp(shown,target,0.16);
-    if(Math.abs(shown-target)<0.0008) shown=target;
+  function measure(){ target=clamp((window.scrollY-filmTop)/trackLen,0,1); }
+
+  // Easing as a time constant in seconds, not a fixed fraction per frame. The
+  // old lerp(shown,target,0.16) was a per-FRAME rate, so the reel caught up
+  // twice as fast on a 120Hz display as on a 60Hz one. This holds the same
+  // ~100ms settle on any refresh rate.
+  const TAU=0.10;
+  // Half a film frame of scroll progress, over the steepest segment of MAP.
+  // Below this nothing on screen can change, so chasing the remainder only
+  // keeps the rAF loop and the seek pipeline awake for another half second.
+  const EPS=(0.5/(NOMINAL*FPS))/1.6;
+  function frame(now){
+    measure();
+    const dt=lastT?Math.min(0.05,(now-lastT)/1000):1/60;
+    lastT=now;
+    shown=reduce?target:lerp(shown,target,1-Math.exp(-dt/TAU));
+    if(Math.abs(shown-target)<EPS) shown=target;
     apply(shown);
-    if(shown!==target) requestAnimationFrame(frame); else ticking=false;
+    if(shown!==target) requestAnimationFrame(frame);
+    else { ticking=false; lastT=0; }
   }
-  function kick(){ needMeasure=true; syncSnap(); if(!ticking){ ticking=true; requestAnimationFrame(frame);} }
+  function kick(){ if(!ticking){ ticking=true; lastT=0; requestAnimationFrame(frame); } }
   addEventListener('scroll',kick,{passive:true});
   addEventListener('resize',()=>{ cacheGeom(); kick(); },{passive:true});
-  measure(); syncSnap(); apply(0); requestAnimationFrame(frame);
+  // Nothing re-measures per frame any more, so whatever can change the track's
+  // height now has to say so: late font/image layout on load, and any later
+  // reflow of the film itself (mobile URL bar, zoom, orientation).
+  addEventListener('load',()=>{ cacheGeom(); kick(); });
+  if('ResizeObserver' in window) new ResizeObserver(()=>{ cacheGeom(); kick(); }).observe(film);
+
+  // Land on the real position immediately rather than easing in from 0, so a
+  // reload part-way down the film does not rewind the reel.
+  cacheGeom(); measure(); shown=target; apply(shown); kick();
 
   document.getElementById('replay').addEventListener('click',()=>
     document.getElementById('top').scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'}));
