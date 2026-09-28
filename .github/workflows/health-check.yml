@@ -190,6 +190,14 @@ jobs:
                "the 297KB bandwidth probe is back — one slow handshake pins the session to 720p"),
               ('class="snap"', False,
                "scroll-snap markers are back — the page fights the scroll and the reel jerks"),
+              ("readyState>=2", True,
+               "the paint check depends on requestVideoFrameCallback alone again — "
+               "Firefox and Safari below 15.4 show a frozen poster and no reel at all"),
+              (".fastSeek(", False,
+               "fastSeek is back — WebKit and Gecko snap it to the nearest keyframe, so "
+               "Safari and Firefox lurch through 12 positions where Chrome shows 91. "
+               "(The file names fastSeek in comments without the dot, so this string "
+               "matches only a real call.)"),
           ]
           for needle, want_present, effect in CHECKS:
               present = needle in html

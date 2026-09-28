@@ -379,7 +379,14 @@
       if(RVFC) waiter=settle; else v.addEventListener('seeked',settle,{once:true});
       // Watchdog: a seek into a stalled range can silently never complete.
       timer=setTimeout(settle,220);
-      try{ if(v.fastSeek) v.fastSeek(t); else v.currentTime=t; }
+      // NEVER use fastSeek() here. It is specified as "trade precision for
+      // speed" and WebKit/Gecko implement it by snapping to the nearest sync
+      // sample — with a ~23-frame GOP that is a 1.94s quantum, so the reel
+      // advanced in two-second lurches while the copy scrolled smoothly past.
+      // Chrome is the ONLY major engine that does not implement fastSeek, so it
+      // silently took the exact-seek branch and looked fine; Safari and Firefox
+      // took the other one and looked broken. A scrubber wants precision.
+      try{ v.currentTime=t; }
       catch(e){ settle(); }
     }
     // 'seeked' is deliberately NOT in this list. It fires on every scrub seek,
@@ -404,8 +411,21 @@
     return {
       el:v, prime,
       isDead(){ return dead; },
-      hasPainted(){ return painted; },
       duration,
+      /** Whether a frame is on screen for this element.
+       *
+       *  This gates the cross-fade, so getting it wrong hides the reel
+       *  entirely. `painted` is only ever set from requestVideoFrameCallback,
+       *  which Chrome and Safari have and **Firefox does not** — so on Firefox
+       *  it stayed false forever, setStage() was never called with 'low' or
+       *  'hd', the stage sat at data-live="still" and the hero was a frozen
+       *  poster with no video at all. Same for Safari before 15.4.
+       *
+       *  readyState >= HAVE_CURRENT_DATA means the element has data for the
+       *  current position, i.e. there is something to show. It is a slightly
+       *  weaker promise than "a frame was presented", which is why the rVFC
+       *  signal is still preferred when it exists. */
+      hasPainted(){ return painted || v.readyState>=2; },
       /** True once the WHOLE timeline is downloaded. After this the tier can
        *  never freeze mid-scroll, whatever the connection does next. This is
        *  the property the old single-file build never had: it was scrubbed
