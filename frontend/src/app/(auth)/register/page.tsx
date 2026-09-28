@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { signUp, signIn } from '@/lib/auth'
+import { signUp, signIn, resendConfirmation } from '@/lib/auth'
 import { Button, Input, Label } from '@/components/ui'
 import { AuthShell, AuthAlert } from '@/components/auth/AuthShell'
 
@@ -13,6 +13,11 @@ export default function RegisterPage() {
   const [fullName, setFullName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // Set when the account exists but Supabase is holding it until the email is
+  // confirmed. Shown in place of the form: bouncing to /login loses the address
+  // they just typed, so they cannot resend and have nothing to act on.
+  const [awaitingEmail, setAwaitingEmail] = useState(false)
+  const [resent, setResent] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -26,12 +31,55 @@ export default function RegisterPage() {
       return
     }
 
+    // With email confirmation ON, Supabase refuses the sign-in until the link
+    // is clicked. That is the expected path, not an error.
     const { error: signInError } = await signIn(email, password)
+    setLoading(false)
     if (signInError) {
-      router.push('/login?registered=1')
+      if (/confirm/i.test(signInError.message)) {
+        setAwaitingEmail(true)
+      } else {
+        router.push('/login?registered=1')
+      }
     } else {
       router.push('/dashboard')
     }
+  }
+
+  if (awaitingEmail) {
+    return (
+      <AuthShell title="Confirm your email"
+                 subtitle="One click and your workspace is ready">
+        <AuthAlert tone="info">
+          We sent a confirmation link to <strong>{email}</strong>. Open it and
+          you&rsquo;ll be signed straight in.
+        </AuthAlert>
+        <p className="mt-4 text-center text-xs leading-relaxed text-[#6b7280]">
+          It usually arrives within a minute. Check your spam folder before
+          resending &mdash; a second copy lands in the same place as the first.
+        </p>
+        <div className="mt-4 space-y-3">
+          <Button type="button" size="lg" variant="secondary" className="w-full"
+                  disabled={resent}
+                  onClick={async () => {
+                    const { error: e } = await resendConfirmation(email)
+                    if (e) setError(e.message)
+                    else setResent(true)
+                  }}>
+            {resent ? 'Sent again — check your inbox' : 'Resend the link'}
+          </Button>
+          {error && <AuthAlert tone="error">{error}</AuthAlert>}
+        </div>
+        <p className="text-center text-[#6b7280] text-sm mt-6">
+          Wrong address?{' '}
+          <button type="button"
+                  onClick={() => { setAwaitingEmail(false); setResent(false); setError('') }}
+                  className="text-brand-700 hover:text-brand-800 font-medium underline underline-offset-2">
+            Start again
+          </button>
+        </p>
+      </AuthShell>
+    )
   }
 
   return (
