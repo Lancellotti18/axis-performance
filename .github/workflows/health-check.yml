@@ -122,3 +122,120 @@ jobs:
               print(f"::error::{len(severe)} severe problem(s) — see summary")
               sys.exit(1)
           PY
+
+  # ── Homepage integrity ────────────────────────────────────────────────
+  # Separate job, no secret, no backend. It exists because the hero reel has
+  # twice now degraded silently rather than breaking: first by buffering only
+  # 14s of a 25s file, then by a bandwidth probe so short that one slow TLS
+  # handshake pinned the whole session to the 720p cut. Neither threw an error
+  # and neither showed up in any check — they just looked bad.
+  #
+  # So this asserts the two things that actually rot: that the fixes are still
+  # in the served HTML, and that every reel tier is still there at full size.
+  # All of it is deterministic curl + string matching, no browser, so a red
+  # badge here always means something real. See the comments on each check for
+  # what regressing it would look like to a visitor.
+  homepage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the live homepage and reel assets
+        run: |
+          BASE=https://www.axisroofingperformance.com
+          code=$(curl -sS -o home.html -w '%{http_code}' --max-time 60 -D head.txt "$BASE/" || echo 000)
+          echo "home=$code" > status.txt
+          # Range request: the reel is fetched as a blob, but 206 support is
+          # what lets the browser stream it at all if that path ever fails.
+          for f in reel-hd.mp4 reel-sd.mp4 reel-preview.mp4 reel-poster.jpg; do
+            line=$(curl -sS -o /dev/null --max-time 60 -r 0-1 \
+              -w '%{http_code} %{content_type} %{size_download}' "$BASE/v2/$f" || echo "000 - 0")
+            len=$(curl -sS -o /dev/null --max-time 60 -r 0-1 -D - "$BASE/v2/$f" 2>/dev/null \
+              | tr -d '\r' | awk -F'/' '/^[Cc]ontent-[Rr]ange:/{print $2}')
+            echo "$f $line ${len:-0}" >> status.txt
+          done
+          cat status.txt
+
+      - name: Check it
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+
+          html = open("home.html", encoding="utf-8", errors="replace").read()
+          headers = open("head.txt", encoding="utf-8", errors="replace").read().lower()
+          status = dict(l.split("=", 1) for l in open("status.txt") if "=" in l)
+          assets = [l.split() for l in open("status.txt") if not l.startswith("home=")]
+
+          problems, notes = [], []
+
+          if status.get("home", "").strip() != "200":
+              problems.append(f"CRITICAL homepage returned HTTP {status.get('home','?').strip()}")
+          if "/home-v2.html" not in headers:
+              problems.append("HIGH  / is no longer rewritten to home-v2.html — "
+                              "next.config.ts rewrite may have been dropped, so visitors "
+                              "are getting the dead app/page.tsx landing instead")
+
+          # Strip CSS/JS block comments before looking for snapping: the file
+          # deliberately NAMES scroll-snap-type in the comment explaining why it
+          # was removed, and that comment must not trip this check.
+          bare = re.sub(r"/\*.*?\*/", "", html, flags=re.S)
+
+          # (fix, must_be_present, what a visitor sees if it regresses)
+          CHECKS = [
+              ("fetchBlobAdaptive", True,
+               "the reel tier is chosen by a bandwidth guess again — random blurry loads"),
+              ("const TAU", True,
+               "scrub easing is a per-frame rate again — settles twice as fast on 120Hz"),
+              ("data-settled", True,
+               "poster and preview layers never release — three full-screen layers stay live"),
+              ("measuredKbps", False,
+               "the 297KB bandwidth probe is back — one slow handshake pins the session to 720p"),
+              ('class="snap"', False,
+               "scroll-snap markers are back — the page fights the scroll and the reel jerks"),
+          ]
+          for needle, want_present, effect in CHECKS:
+              present = needle in html
+              if present != want_present:
+                  problems.append(f"HIGH  homepage regressed ({'lost' if want_present else 'reintroduced'} "
+                                  f"`{needle}`): {effect}")
+
+          if "scroll-snap-type" in bare:
+              problems.append("HIGH  an active scroll-snap rule is back on the homepage: "
+                              "it fights the gesture and drags the scrubbed reel with it")
+
+          # Every tier must still be there, and still be big enough to be the
+          # quality it claims. A shrunken reel-hd is how 'it went blurry' would
+          # look if someone re-encoded or replaced it.
+          FLOOR = {"reel-hd.mp4": 8_000_000, "reel-sd.mp4": 3_000_000,
+                   "reel-preview.mp4": 200_000, "reel-poster.jpg": 100_000}
+          for row in assets:
+              if len(row) < 4:
+                  problems.append(f"HIGH  could not probe {row[0] if row else '?'}")
+                  continue
+              name, code, ctype, total = row[0], row[1], row[2], int(row[-1] or 0)
+              if code not in ("200", "206"):
+                  problems.append(f"CRITICAL /v2/{name} returned HTTP {code} — "
+                                  "the hero falls back to a lower tier or the poster")
+                  continue
+              if not (ctype.startswith("video/") or ctype.startswith("image/")):
+                  problems.append(f"HIGH  /v2/{name} served as {ctype}")
+              floor = FLOOR.get(name, 0)
+              if total < floor:
+                  problems.append(f"HIGH  /v2/{name} is {total:,} bytes, under the "
+                                  f"{floor:,} floor — it has been re-encoded or replaced "
+                                  "with something lower quality")
+              else:
+                  notes.append(f"- {name}: {code}, {total:,} bytes")
+
+          title = "## Axis homepage integrity\n\n"
+          body = ("**ALL CLEAR**\n" if not problems
+                  else f"**PROBLEMS FOUND ({len(problems)})**\n\n"
+                       + "".join(f"- {p}\n" for p in problems))
+          body += "\n" + "\n".join(notes) + "\n"
+          print(title + body)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(title + body)
+
+          severe = [p for p in problems if p.startswith(("CRITICAL", "HIGH"))]
+          if severe:
+              print(f"::error::{len(severe)} homepage problem(s) — see summary")
+              sys.exit(1)
+          PY
