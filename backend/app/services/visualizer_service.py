@@ -35,6 +35,11 @@ HF_API            = "https://router.huggingface.co/hf-inference/models"
 HF_IMG2IMG_MODEL  = "runwayml/stable-diffusion-v1-5"
 
 REPLICATE_API     = "https://api.replicate.com/v1"
+# FLUX Kontext is a photo EDITOR — same family as the fal model that is
+# currently the only working provider. SDXL is a general image generator being
+# asked to edit, which is why it needed a wall of "identical roofline, identical
+# windows" prompting to stop it inventing a different house.
+KONTEXT_MODEL     = "black-forest-labs/flux-kontext-pro"
 SDXL_MODEL        = "stability-ai/sdxl"
 
 
@@ -100,10 +105,17 @@ async def _generate_image(image_bytes: bytes, content_type: str, description: st
 
     if rep_key:
         try:
+            return await _replicate_kontext(image_bytes, content_type, description)
+        except Exception as e:
+            attempts.append(f"Replicate Kontext: {e}")
+            log.warning(f"[visualizer] Replicate Kontext failed: {e}. Trying SDXL...")
+        # SDXL last: it edits worse and trips its own safety checker on ordinary
+        # house photos, but a mediocre render beats no render.
+        try:
             return await _replicate_img2img(image_bytes, content_type, description)
         except Exception as e:
-            attempts.append(f"Replicate: {e}")
-            log.warning(f"[visualizer] Replicate failed: {e}.")
+            attempts.append(f"Replicate SDXL: {e}")
+            log.warning(f"[visualizer] Replicate SDXL failed: {e}.")
     else:
         attempts.append("Replicate: no REPLICATE_API_KEY configured")
 
@@ -297,13 +309,94 @@ async def _hf_img2img(image_bytes: bytes, description: str, hf_key: str = "") ->
 
 # ── Replicate fallback ────────────────────────────────────────────────────────
 
+async def _replicate_upload(image_bytes: bytes, content_type: str) -> str:
+    """Put the photo on Replicate and return a URL its models can read."""
+    async with httpx.AsyncClient(timeout=60) as client:
+        r = await client.post(
+            f"{REPLICATE_API}/files",
+            headers={"Authorization": f"Token {_rep_key()}"},
+            files={"content": ("image", image_bytes, content_type)},
+        )
+        r.raise_for_status()
+        return r.json()["urls"]["get"]
+
+
+async def _replicate_poll(prediction_id: str, *, budget_s: int = 240) -> str:
+    async with httpx.AsyncClient(timeout=15) as client:
+        start = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start < budget_s:
+            r = await client.get(
+                f"{REPLICATE_API}/predictions/{prediction_id}",
+                headers={"Authorization": f"Token {_rep_key()}"},
+            )
+            data = r.json()
+            status = data.get("status")
+            if status == "succeeded":
+                out = data.get("output", [])
+                return out[-1] if isinstance(out, list) else out
+            if status in ("failed", "canceled"):
+                raise ValueError(f"Replicate generation {status}: {data.get('error')}")
+            await asyncio.sleep(4)
+    raise TimeoutError("Replicate generation timed out.")
+
+
+# Optional inputs, dropped one at a time if Replicate rejects them. The model's
+# exact schema needs an API key to read and the key lives only on Render, so
+# this adapts at runtime instead of hard-coding a guess that fails in
+# production. safety_tolerance is Black Forest Labs' own dial (higher = fewer
+# false positives); Replicate restricts it when an input image is present, which
+# is exactly our case, so it may legitimately be refused.
+_KONTEXT_OPTIONAL = ("safety_tolerance", "output_format", "prompt_upsampling")
+
+
+async def _replicate_kontext(image_bytes: bytes, content_type: str, description: str) -> str:
+    """FLUX Kontext on Replicate — instruction-following photo editing.
+
+    Kontext takes a plain instruction, not SDXL's positive/negative prompt pair:
+    it edits what you name and leaves the rest of the photo alone, so the
+    "identical windows, identical yard" scaffolding is unnecessary and actively
+    unhelpful.
+    """
+    image_url = await _replicate_upload(image_bytes, content_type)
+    instruction = (
+        f"{description}. Keep the house, roofline, windows, doors, landscaping, "
+        f"camera angle and lighting exactly as they are. If a new roof is shown, "
+        f"render it as brand-new uniform shingles with no damage, streaks or moss. "
+        f"Photorealistic result."
+    )
+    optional = {"safety_tolerance": 6, "output_format": "png", "prompt_upsampling": False}
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        headers = {"Authorization": f"Token {_rep_key()}",
+                   "Content-Type": "application/json"}
+        # Official-model endpoint: no version id, unlike community models.
+        url = f"{REPLICATE_API}/models/{KONTEXT_MODEL}/predictions"
+        last_error = None
+        for _ in range(len(_KONTEXT_OPTIONAL) + 1):
+            payload = {"input": {"prompt": instruction, "input_image": image_url, **optional}}
+            r = await client.post(url, headers=headers, json=payload)
+            if r.status_code < 400:
+                return await _replicate_poll(r.json()["id"])
+            last_error = f"HTTP {r.status_code}: {r.text[:200]}"
+            if r.status_code != 422 or not optional:
+                break
+            # Unprocessable: an input this deployment does not accept. Drop the
+            # most likely culprit and try again rather than failing the request.
+            dropped = next((k for k in _KONTEXT_OPTIONAL if k in optional), None)
+            if dropped is None:
+                break
+            optional.pop(dropped)
+            log.info(f"[visualizer] Kontext rejected '{dropped}' — retrying without it")
+        raise ValueError(f"Replicate Kontext request rejected — {last_error}")
+
+
 async def _replicate_img2img(image_bytes: bytes, content_type: str, description: str) -> str:
     """Replicate SDXL img2img — paid fallback."""
     # Get version
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(
             f"{REPLICATE_API}/models/{SDXL_MODEL}",
-            headers={"Authorization": f"Token {settings.REPLICATE_API_KEY}"},
+            headers={"Authorization": f"Token {_rep_key()}"},
         )
         r.raise_for_status()
         version = r.json()["latest_version"]["id"]
@@ -312,7 +405,7 @@ async def _replicate_img2img(image_bytes: bytes, content_type: str, description:
     async with httpx.AsyncClient(timeout=60) as client:
         r = await client.post(
             f"{REPLICATE_API}/files",
-            headers={"Authorization": f"Token {settings.REPLICATE_API_KEY}"},
+            headers={"Authorization": f"Token {_rep_key()}"},
             files={"content": ("image", image_bytes, content_type)},
         )
         r.raise_for_status()
@@ -338,7 +431,7 @@ async def _replicate_img2img(image_bytes: bytes, content_type: str, description:
         r = await client.post(
             f"{REPLICATE_API}/predictions",
             headers={
-                "Authorization": f"Token {settings.REPLICATE_API_KEY}",
+                "Authorization": f"Token {_rep_key()}",
                 "Content-Type": "application/json",
             },
             json={
@@ -354,6 +447,11 @@ async def _replicate_img2img(image_bytes: bytes, content_type: str, description:
                     "height": 1024,
                     "refine": "expert_ensemble_refiner",
                     "high_noise_frac": 0.8,
+                    # Replicate runs SDXL's NSFW classifier by default and it
+                    # false-positived on a roof photo, failing the prediction
+                    # outright. Nothing here is user-published; the input is a
+                    # photo the contractor took of a house.
+                    "disable_safety_checker": True,
                 },
             },
         )
@@ -366,7 +464,7 @@ async def _replicate_img2img(image_bytes: bytes, content_type: str, description:
         while asyncio.get_event_loop().time() - start < 240:
             r = await client.get(
                 f"{REPLICATE_API}/predictions/{prediction_id}",
-                headers={"Authorization": f"Token {settings.REPLICATE_API_KEY}"},
+                headers={"Authorization": f"Token {_rep_key()}"},
             )
             data = r.json()
             status = data.get("status")
