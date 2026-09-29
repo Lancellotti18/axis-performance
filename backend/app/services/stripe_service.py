@@ -151,7 +151,56 @@ def price_id(plan_key: str, interval: str) -> str:
             f"{var} is not set — run scripts/create_stripe_prices.py and add the "
             f"printed ids to the environment."
         )
+    # Present is not the same as valid. On 2026-09-28 STRIPE_PRICE_FLEET_MONTH
+    # was 'rice_…' — a paste that clipped the leading p — and every upgrade to
+    # Fleet came back as a bare 502 while the health check, which only asked
+    # whether the variable existed, stayed green. Refusing the shape here puts
+    # the variable's name in the error instead of Stripe's "No such price".
+    if not value.startswith("price_"):
+        raise StripeNotConfigured(
+            f"{var} does not look like a Stripe price id: it should start with "
+            f"'price_' but begins {value[:6]!r}. Check it for a clipped paste."
+        )
     return value
+
+
+def verify_price(plan_key: str, interval: str, expected_usd: int) -> Optional[str]:
+    """Ask Stripe whether the configured price is one it can actually charge.
+
+    Returns a sentence describing what is wrong, or None when it is right.
+    Checks, in order, the things that each break checkout differently:
+
+      * the id is set and shaped like a price id (see price_id)
+      * Stripe knows it in the CURRENT mode — a test-mode id pasted alongside a
+        live key is well-formed and still "No such price"
+      * it is not archived
+      * it bills on the interval the variable claims
+      * it charges what plans.py says, so the page and the card agree
+
+    A price is not secret, so the id itself is safe to put in the message.
+    """
+    var = f"STRIPE_PRICE_{plan_key.upper()}_{interval.upper()}"
+    try:
+        pid = price_id(plan_key, interval)
+    except StripeNotConfigured as e:
+        return str(e)
+    mode = "test" if is_test_mode() else "LIVE"
+    try:
+        price = client().Price.retrieve(pid)
+    except Exception as e:
+        return (f"{var}={pid} is not a price Stripe can find in {mode} mode "
+                f"({str(e)[:120]})")
+    if not price.get("active"):
+        return f"{var}={pid} points at an archived price"
+    billed_every = (price.get("recurring") or {}).get("interval")
+    if billed_every != interval:
+        return f"{var}={pid} bills every {billed_every!r}, not every {interval!r}"
+    amount = price.get("unit_amount")
+    if amount != expected_usd * 100:
+        shown = "unknown" if amount is None else f"${amount / 100:,.2f}"
+        return (f"{var}={pid} charges {shown} but plans.py says "
+                f"${expected_usd:,} — the price page and the card would disagree")
+    return None
 
 
 def subscription_to_row(sub, *, plan_key: Optional[str] = None,

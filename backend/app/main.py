@@ -493,24 +493,30 @@ async def health_deep(request: Request, images: int = 1):
         problems.append(f"HIGH: Material Compliance raised — {str(e)[:200]}")
 
     # ── 8. Billing configuration ──────────────────────────────────────────
-    # Cheap (environment reads, no Stripe calls) and catches a failure that
-    # only shows up at the worst moment: a missing price id means checkout
-    # raises the instant someone picks that plan.
+    # Catches a failure that only shows up at the worst moment: a bad price id
+    # means checkout or an upgrade fails the instant someone picks that plan.
+    # This used to be environment reads only, asking whether each variable
+    # existed. That stayed green through 'rice_…' — present, and useless. So
+    # each price is now checked against Stripe itself: six read calls, once a
+    # day, which is cheap next to a contractor's upgrade silently 502ing.
     try:
         from app.core.plans import PLANS, enforcing
         from app.services import stripe_service
 
         prices: dict = {}
-        missing: list[str] = []
-        for plan_key in PLANS:
-            for interval in ("month", "year"):
-                name = f"STRIPE_PRICE_{plan_key.upper()}_{interval.upper()}"
-                try:
-                    prices[f"{plan_key}_{interval}"] = bool(
-                        stripe_service.price_id(plan_key, interval))
-                except Exception:
-                    prices[f"{plan_key}_{interval}"] = False
-                    missing.append(name)
+        bad_prices: list[str] = []
+        if stripe_service.configured():
+            for plan_key, plan in PLANS.items():
+                for interval, usd in (("month", plan.monthly_usd),
+                                      ("year", plan.annual_usd)):
+                    try:
+                        problem = stripe_service.verify_price(plan_key, interval, usd)
+                    except Exception as e:
+                        problem = (f"STRIPE_PRICE_{plan_key.upper()}_{interval.upper()} "
+                                   f"could not be checked ({str(e)[:100]})")
+                    prices[f"{plan_key}_{interval}"] = problem is None
+                    if problem:
+                        bad_prices.append(problem)
 
         live_key = stripe_service.configured() and not stripe_service.is_test_mode()
         checks["billing"] = {
@@ -522,11 +528,12 @@ async def health_deep(request: Request, images: int = 1):
         }
         if not stripe_service.configured():
             problems.append("WARN: Stripe is not configured — no plan can be sold.")
-        elif missing:
+        elif bad_prices:
             problems.append(
-                f"HIGH: {len(missing)} Stripe price id(s) missing, so those plans "
-                f"cannot be bought: {', '.join(missing)}. Run "
-                "scripts/create_stripe_prices.py and add them to the environment."
+                f"HIGH: {len(bad_prices)} Stripe price id(s) will fail at checkout "
+                f"or on upgrade: " + "; ".join(bad_prices) + ". Fix the value on "
+                "Render (scripts/create_stripe_prices.py prints the right ids), "
+                "then redeploy — saving an env var alone does not."
             )
         if live_key and not enforcing():
             problems.append(
