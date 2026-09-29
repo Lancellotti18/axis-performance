@@ -931,6 +931,23 @@ async def _solar_pitch_for_polygons(
             logger.info("solar pitch skipped for run %s — %s", run.get("id"), diag["reason"])
             return out
 
+        # Keep Google's view of the WHOLE building, for the coverage check in
+        # _aggregate_run. distance_m is only recorded against a tapped house:
+        # measured from the tile centre it says nothing about whether Google
+        # found the right building, so trace_coverage treats None as "don't judge".
+        ctr = solar.get("center") or {}
+        dist = None
+        if (diag.get("queried", "").startswith("subject_point")
+                and ctr.get("lat") is not None and ctr.get("lng") is not None):
+            dist = round(geo.metres_between(q_lat, q_lng, float(ctr["lat"]), float(ctr["lng"])), 1)
+        diag["reference"] = {
+            "ground_sqft": solar.get("whole_roof_ground_sqft") or 0.0,
+            "roof_sqft": solar.get("whole_roof_area_sqft") or 0.0,
+            "distance_m": dist,
+            "imagery_quality": solar.get("imagery_quality"),
+            "imagery_date": solar.get("imagery_date"),
+        }
+
         # The zoom the CLIENT sent wins over the zoom the tile was captured at.
         # If they disagree, every Solar rectangle is projected at the wrong
         # scale and lands off the building — coverage comes out ~0 for every
@@ -1136,6 +1153,16 @@ async def put_facets(
     solar_pitches = await _solar_pitch_for_polygons(
         run.data, [f.polygon for f in req.facets], req.zoom,
     )
+    # Persist Google's whole-building numbers alongside the run so every later
+    # recompute can check coverage without paying for another Solar call.
+    # Fails open: if the column is not migrated yet, coverage simply isn't judged.
+    reference = (_SOLAR_DIAG.get(str(run_id)) or {}).get("reference")
+    if reference:
+        try:
+            db.table("roof_measurement_runs").update(
+                {"solar_reference": reference}).eq("id", run_id).execute()
+        except Exception as e:
+            logger.info("solar_reference not stored for %s (migration pending?): %s", run_id, e)
 
     rows: list[dict] = []
     for f in req.facets:
@@ -1454,6 +1481,30 @@ def _aggregate_run(run_id: str) -> dict:
         except Exception:
             pass   # column not migrated yet — treat as full
 
+        # Coverage (C): does the trace cover the building Google sees? The only
+        # check here that can catch a clean trace of PART of a roof — see
+        # trace_coverage. Read in its own query so an unmigrated column costs
+        # this check alone, not the scope check above.
+        from app.services.report_validators import trace_coverage
+        reference = None
+        try:
+            row = db.table("roof_measurement_runs").select("solar_reference") \
+                .eq("id", run_id).single().execute()
+            reference = (row.data or {}).get("solar_reference")
+        except Exception:
+            pass   # column not migrated yet — coverage is not judged
+        cov = trace_coverage(aggregates, reference, partial=declared_partial)
+        if cov is not None:
+            aggregates["trace_coverage"] = {
+                "ratio": cov.ratio, "traced_sqft": cov.traced_sqft,
+                "reference_sqft": cov.reference_sqft, "basis": cov.basis,
+                "capped": cov.cap is not None,
+            }
+            if cov.cap is not None:
+                aggregates["confidence"] = min(aggregates["confidence"], cov.cap)
+                if cov.signal:
+                    signals.append(cov.signal)
+
         blockers = blocking(validate_report_inputs(
             aggregates, confirmed_penetration_count=0, partial=declared_partial))
         if blockers:
@@ -1466,7 +1517,7 @@ def _aggregate_run(run_id: str) -> dict:
 
     db.table("roof_measurement_runs").update(
         {k: v for k, v in aggregates.items()
-         if k not in ("blocking_issues", "partial_signals")}
+         if k not in ("blocking_issues", "partial_signals", "trace_coverage")}
     ).eq("id", run_id).execute()
     return {
         **aggregates,
