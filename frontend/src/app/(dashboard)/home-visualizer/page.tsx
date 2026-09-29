@@ -8,6 +8,15 @@ import { STATES } from '@/lib/jurisdictions'
 import type { Project } from '@/types'
 import { toUploadable, isHeic } from '@/lib/image'
 
+function isPdf(f: File | null): boolean {
+  return !!f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
+}
+
+async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
+  const blob = await (await fetch(dataUrl)).blob()
+  return new File([blob], name, { type: blob.type || 'image/jpeg' })
+}
+
 const cardStyle = {
   boxShadow: '0 2px 12px rgba(59,130,246,0.07)',
   border: '1px solid rgba(255,255,255,0.10)',
@@ -35,6 +44,9 @@ export default function HomeVisualizerPage() {
   const [dragOver, setDragOver]       = useState(false)
   const [file, setFile]               = useState<File | null>(null)
   const [preview, setPreview]         = useState<string | null>(null)
+  // A PDF has no browser preview until the server renders its first page, so
+  // show its name instead of a broken <img>.
+  const [docName, setDocName]         = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [state, setState]             = useState('')
   const [city, setCity]               = useState('')
@@ -71,7 +83,12 @@ export default function HomeVisualizerPage() {
         try {
           // HEIC must be converted here — storage accepts the bytes but nothing
           // downstream can decode them, so the photo silently disappears.
-          const uploadable = await toUploadable(file)
+          // Prefer the server's converted JPEG: it exists for PDFs, which
+          // toUploadable cannot turn into a photo.
+          const src = result.source_image_url as string | undefined
+          const uploadable = src
+            ? await dataUrlToFile(src, file.name.replace(/\.[^.]+$/, '') + '.jpg')
+            : await toUploadable(file)
           await api.projectPhotos.upload(projectId, uploadable, 'before', 'Before — Roof Visualizer')
         } catch (err: any) {
           // Never swallow this. The old bare `catch {}` discarded the reason,
@@ -92,13 +109,22 @@ export default function HomeVisualizerPage() {
     }
   }, [result, file])
 
-  const handleFile = (f: File) => {
+  const handleFile = async (f: File) => {
     setFile(f)
     setResult(null)
     setError(null)
+    setPreview(null)
+    setDocName(null)
+    if (isPdf(f)) { setDocName(f.name); return }
+    // Chrome cannot display HEIC, so convert for the preview only — the
+    // original still goes to the server, which converts it properly.
+    let shown: File = f
+    if (isHeic(f)) {
+      try { shown = await toUploadable(f) } catch { setDocName(f.name); return }
+    }
     const reader = new FileReader()
     reader.onload = e => setPreview(e.target?.result as string)
-    reader.readAsDataURL(f)
+    reader.readAsDataURL(shown)
   }
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -107,7 +133,7 @@ export default function HomeVisualizerPage() {
     const f = e.dataTransfer.files[0]
     // `accept` does not filter drops, so a .heic dropped here used to sail
     // straight through to storage as an undecodable "jpg".
-    if (f && (f.type.startsWith('image/') || isHeic(f))) handleFile(f)
+    if (f && (f.type.startsWith('image/') || isHeic(f) || isPdf(f))) handleFile(f)
   }, [])
 
   const canSubmit = !!file && description.trim().length > 0
@@ -120,6 +146,9 @@ export default function HomeVisualizerPage() {
     try {
       const res = await api.visualizer.generate(file!, description.trim(), city.trim(), state)
       setResult(res)
+      // The server's converted photo: page 1 of a PDF, or a decoded HEIC.
+      // It becomes the "Before" so both halves of the comparison show.
+      if (typeof res.source_image_url === 'string') setPreview(res.source_image_url)
     } catch (err: any) {
       setError(err.message || 'Visualization failed. Please try again.')
     } finally {
@@ -162,11 +191,19 @@ export default function HomeVisualizerPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+                accept="image/*,.heic,.heif,application/pdf,.pdf"
                 className="hidden"
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
               />
-              {preview ? (
+              {docName && !preview ? (
+                <div className="flex flex-col items-center justify-center p-10 space-y-1.5">
+                  <div className="text-[#1a1a1a] font-semibold text-sm break-all text-center">{docName}</div>
+                  <div className="text-[#6b7280] text-xs">
+                    {isPdf(file) ? 'PDF — the first page will be used as the photo' : 'Ready to upload'}
+                  </div>
+                  <div className="text-[#0068d6] text-xs font-semibold">Click to change</div>
+                </div>
+              ) : preview ? (
                 <div className="relative">
                   <img src={preview} alt="Property" className="w-full object-cover rounded-2xl" style={{ maxHeight: 320 }} />
                   <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-all rounded-2xl flex items-center justify-center opacity-0 hover:opacity-100">
@@ -177,7 +214,7 @@ export default function HomeVisualizerPage() {
                 <div className="flex flex-col items-center justify-center p-10 space-y-2">
                   <div className="text-4xl"></div>
                   <div className="text-[#9ca3af] font-semibold text-sm">Drop a photo or click to upload</div>
-                  <div className="text-[#6b7280] text-xs">JPG, PNG, or WebP · max 10 MB</div>
+                  <div className="text-[#6b7280] text-xs">Photo or PDF · JPG, PNG, HEIC, WebP and more · max 25 MB</div>
                 </div>
               )}
             </div>
