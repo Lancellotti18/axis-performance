@@ -1505,6 +1505,26 @@ def _aggregate_run(run_id: str) -> dict:
                 if cov.signal:
                     signals.append(cov.signal)
 
+        # Resolution (D): how fine is the picture the roof was traced on?
+        # Coarse imagery makes edges hard to place, not the measurement wrong —
+        # so when Google's footprint independently CONFIRMS the trace covers the
+        # building, it is a note only; without that confirmation it caps at
+        # Moderate, because nothing else vouches for the outline.
+        from app.services.report_validators import imagery_resolution, CAP_MODERATE
+        try:
+            tile = db.table("roof_measurement_runs").select("satellite_lat, satellite_zoom") \
+                .eq("id", run_id).single().execute().data or {}
+            res = imagery_resolution(tile.get("satellite_lat"), tile.get("satellite_zoom"))
+        except Exception:
+            res = None
+        if res is not None:
+            aggregates["imagery_ft_per_px"] = res.ft_per_px
+            if res.coarse:
+                confirmed = cov is not None and cov.cap is None
+                if not confirmed:
+                    aggregates["confidence"] = min(aggregates["confidence"], CAP_MODERATE)
+                signals.append(res.signal)
+
         blockers = blocking(validate_report_inputs(
             aggregates, confirmed_penetration_count=0, partial=declared_partial))
         if blockers:
@@ -1517,7 +1537,8 @@ def _aggregate_run(run_id: str) -> dict:
 
     db.table("roof_measurement_runs").update(
         {k: v for k, v in aggregates.items()
-         if k not in ("blocking_issues", "partial_signals", "trace_coverage")}
+         if k not in ("blocking_issues", "partial_signals", "trace_coverage",
+                      "imagery_ft_per_px")}
     ).eq("id", run_id).execute()
     return {
         **aggregates,
@@ -4096,6 +4117,12 @@ async def _build_and_store_report(run_id: str, user_id: Optional[str] = None) ->
     pens_res = db.table("roof_penetrations").select("*").eq("run_id", run_id).eq("user_confirmed", True).execute()
 
     aggregates = _aggregate_run(run_id)
+    # `run` was read BEFORE the recompute above, and the PDF prints confidence
+    # from it. So any cap _aggregate_run applied — implausible geometry, a
+    # partial trace, coarse imagery — was written to the database and then left
+    # off the report in hand: the first PDF after a cap still said High (97%).
+    # Carry every recomputed stored field onto the copy the report reads.
+    run = {**run, **{k: v for k, v in aggregates.items() if k in run}}
 
     catalog = db.table("materials_catalog").select("*").eq("active", True).execute().data or []
     # Reports price with the contractor's own price book too.

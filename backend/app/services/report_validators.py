@@ -173,6 +173,46 @@ def trace_coverage(aggregates: dict, reference: dict | None, *,
     return Coverage(round(ratio, 3), round(traced, 1), round(ref, 1), basis, cap, signal)
 
 
+# ── Imagery resolution ───────────────────────────────────────────────────────
+#
+# The tile's health score asks whether the picture is usable (not blank, not
+# cloud). It never asked how FINE the picture is. The Buch Ave tile came back at
+# zoom 19 — about 0.75 ft per pixel, twice as coarse as zoom 20 — and the
+# contractor could not see the facets, yet the report said imagery health
+# 100/100. Resolution is a separate question and is answered separately here,
+# so provider selection (which runs off the health score) is untouched.
+
+# Coarser than this, a pixel is wider than a typical shingle course is tall and
+# ridge/valley lines blur into the surrounding plane. Zoom 20 at US latitudes
+# is ~0.33-0.40; zoom 19 is ~0.66-0.80.
+COARSE_FT_PER_PX = 0.55
+
+
+@dataclass(frozen=True)
+class Resolution:
+    ft_per_px: float
+    zoom: int
+    coarse: bool
+    signal: str | None
+
+
+def imagery_resolution(lat: float | None, zoom: int | None) -> Resolution | None:
+    """Ground resolution of the run's tile, and whether it is too coarse to
+    place edges confidently. None when the run has no tile coordinates."""
+    if lat is None or zoom is None:
+        return None
+    from app.services.geometry_service import feet_per_pixel
+    ftpp = feet_per_pixel(float(lat), int(zoom))
+    coarse = ftpp > COARSE_FT_PER_PX
+    signal = None
+    if coarse:
+        signal = (
+            f"The satellite image here is coarse ({ftpp:.2f} ft per pixel, zoom {int(zoom)}), "
+            "so roof edges and facet lines are harder to place precisely. Verify key "
+            "dimensions on site before ordering.")
+    return Resolution(round(ftpp, 3), int(zoom), coarse, signal)
+
+
 def validate_report_inputs(
     aggregates: dict,
     *,

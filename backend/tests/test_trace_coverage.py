@@ -77,3 +77,71 @@ def test_falls_back_to_roof_area_when_google_omits_the_footprint():
 
 def test_an_empty_trace_is_not_judged():
     assert trace_coverage(_agg(plan=0.0, roof=0.0), _ref()) is None
+
+
+# ── Imagery resolution ────────────────────────────────────────────────────
+
+from app.services.report_validators import imagery_resolution, COARSE_FT_PER_PX
+
+
+def test_zoom_19_at_buch_ave_is_coarse():
+    r = imagery_resolution(40.0947, 19)          # 339 Buch Ave, Lancaster PA
+    assert r.coarse and 0.70 < r.ft_per_px < 0.80
+    assert "zoom 19" in r.signal
+
+
+def test_zoom_20_in_wilmington_is_fine():
+    r = imagery_resolution(34.2257, 20)
+    assert not r.coarse and r.ft_per_px < COARSE_FT_PER_PX and r.signal is None
+
+
+def test_no_tile_no_opinion():
+    assert imagery_resolution(None, 20) is None
+    assert imagery_resolution(40.0, None) is None
+
+
+# ── The PDF says it ───────────────────────────────────────────────────────
+
+def _texts(flowables):
+    out = []
+    for f in flowables:
+        if hasattr(f, "text"):
+            out.append(f.text)
+        for row in getattr(f, "_cellvalues", []) or []:
+            for cell in row:
+                out.append(cell if isinstance(cell, str) else getattr(cell, "text", ""))
+    return "\n".join(out)
+
+
+def _aspen_aggregates():
+    cov = trace_coverage(_agg(), _ref())
+    return {
+        "confidence": cov.cap,
+        "partial_signals": [cov.signal, imagery_resolution(40.0947, 19).signal],
+        "trace_coverage": {"ratio": cov.ratio, "traced_sqft": cov.traced_sqft,
+                           "reference_sqft": cov.reference_sqft, "basis": cov.basis,
+                           "capped": True},
+        "imagery_ft_per_px": 0.75,
+    }
+
+
+def test_methodology_page_gives_the_reasons_and_the_resolution():
+    from app.services.roof_report_pdf import _styles
+    from app.services.roof_report_v2_pdf import _section_8_methodology
+    agg = _aspen_aggregates()
+    run = {"confidence": agg["confidence"], "imagery_health": 1.0}
+    text = _texts(_section_8_methodology(run, agg, _styles()))
+    assert "Low (45%)" in text
+    assert "Check before ordering" in text and "71%" in text
+    assert "0.75 ft per pixel" in text
+
+
+def test_a_passing_coverage_check_is_stated_too():
+    from app.services.roof_report_pdf import _styles
+    from app.services.roof_report_v2_pdf import _section_8_methodology
+    agg = {"confidence": 0.9, "partial_signals": [],
+           "trace_coverage": {"ratio": 0.98, "reference_sqft": 2062, "basis": "footprint",
+                              "capped": False}}
+    text = _texts(_section_8_methodology({"confidence": 0.9}, agg, _styles()))
+    assert "Coverage check" in text and "98%" in text
+    assert "Check before ordering" not in text
