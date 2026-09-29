@@ -41,6 +41,10 @@ function roofThumb(lat: number, lng: number, d = 0.0006) {
 const mapsLink = (lat: number, lng: number) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
 // Area view (no dropped pin) — a tract centroid pin can land in a field; this
 // shows the surrounding neighborhood so the contractor recognizes the area.
+// Interactive Street View from the panorama nearest the lead. The link used to
+// be labelled "Street view" but opened a map pin.
+const streetViewLink = (lat: number, lng: number) =>
+  `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`
 const mapAreaLink = (lat: number, lng: number) => `https://www.google.com/maps/@${lat},${lng},15z`
 
 // Satellite by default (free Esri); tap for a street-level photo aimed at the
@@ -48,6 +52,7 @@ const mapAreaLink = (lat: number, lng: number) => `https://www.google.com/maps/@
 function LeadImage({ lat, lng }: { lat: number; lng: number }) {
   const [mode, setMode] = useState<'sat' | 'street'>('sat')
   const [street, setStreet] = useState<'idle' | 'loading' | 'none' | string>('idle')
+  const [doubt, setDoubt] = useState<string | null>(null)
   const toggle = async () => {
     if (mode === 'street') { setMode('sat'); return }
     setMode('street')
@@ -56,6 +61,9 @@ function LeadImage({ lat, lng }: { lat: number; lng: number }) {
       try {
         const r = await api.roofing.v2.getStreetView(lat, lng)
         setStreet(r.available && r.image ? r.image : 'none')
+        setDoubt(r.available && (r.far || r.aimed_at !== 'building')
+          ? (r.far ? `Taken ${r.distance_m} m away, possibly another street` : 'Aimed at the closest mapped building')
+          : null)
       } catch { setStreet('none') }
     }
   }
@@ -63,8 +71,16 @@ function LeadImage({ lat, lng }: { lat: number; lng: number }) {
   return (
     <div className="relative h-28 w-36 flex-shrink-0">
       {mode === 'street' && typeof street === 'string' && street.startsWith('data:') ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={street} alt="Street view" className={imgCls} />
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={street} alt="Street view" className={imgCls} />
+          {doubt && (
+            <span title={doubt}
+              className="absolute right-1 top-1 rounded bg-amber-400 px-1 py-0.5 text-[9px] font-bold text-amber-950">
+              May not be this house
+            </span>
+          )}
+        </>
       ) : mode === 'street' && street === 'loading' ? (
         <div className={`flex items-center justify-center text-[10px] text-[#6b7280] ${imgCls}`}>Loading street view…</div>
       ) : mode === 'street' && street === 'none' ? (
@@ -250,8 +266,10 @@ export default function FindRoofsPage() {
                           className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
                           {converting === p.pin ? 'Starting…' : 'Create project & measure'}
                         </button>
-                        <a href={mapsLink(p.lat, p.lng)} target="_blank" rel="noreferrer"
+                        <a href={streetViewLink(p.lat, p.lng)} target="_blank" rel="noreferrer"
                           className="text-[11px] text-[#6b7280] underline decoration-dotted hover:text-[#1a1a1a]">Street view ↗</a>
+                        <a href={mapsLink(p.lat, p.lng)} target="_blank" rel="noreferrer"
+                          className="text-[11px] text-[#6b7280] underline decoration-dotted hover:text-[#1a1a1a]">Map ↗</a>
                       </div>
                     </div>
                   ))}

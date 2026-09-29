@@ -1321,6 +1321,14 @@ export const api = {
                      /** What the camera was pointed at: the mapped building when
                       *  we could find one, otherwise the raw address point. */
                      aimed_at?: 'building' | 'nearest building' | 'address'
+                     /** Capture month from Google, "YYYY-MM". */
+                     date?: string
+                     /** Camera-to-house distance; `far` means it is probably on
+                      *  another street, looking at a different building. */
+                     distance_m?: number
+                     far?: boolean
+                     /** Opens this exact panorama in interactive Street View. */
+                     pano_url?: string
                      reason?: 'no_key' | 'no_coverage' | 'api_rejected' | 'error'
                      detail?: string }>(
           `/api/v1/roofing/v2/streetview?lat=${lat}&lng=${lng}`),

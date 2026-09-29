@@ -489,6 +489,12 @@ _SV_CACHE: dict[str, tuple[float, dict]] = {}
 _SV_MAX = 60
 
 
+# A house seen from its own street is typically 15-35 m from the camera. Past
+# this, the nearest panorama is usually on a different road or an alley, and
+# the photo shows the back or side of some other building.
+_SV_FAR_METRES = 45.0
+
+
 def _sv_key(lat: float, lng: float) -> str:
     return f"{lat:.4f},{lng:.4f}"
 
@@ -558,9 +564,13 @@ async def street_view(
 
     try:
         async with _httpx.AsyncClient(timeout=10) as client:
+            # source=outdoor on the metadata call too. It used to be on the image
+            # call only, so the two could resolve to DIFFERENT panoramas: the
+            # heading was worked out from one camera and applied to another,
+            # which points the shot at the neighbour's house.
             meta = await client.get(
                 "https://maps.googleapis.com/maps/api/streetview/metadata",
-                params={"location": f"{lat},{lng}", "key": key},
+                params={"location": f"{lat},{lng}", "source": "outdoor", "key": key},
             )
             md = meta.json() or {}
             status = md.get("status")
@@ -599,16 +609,24 @@ async def street_view(
                 logger.info("street view footprint aim unavailable: %s", e)
 
             heading: Optional[float] = None
+            distance_m: Optional[float] = None
             fov = 75.0
             ploc = md.get("location") or {}
             plat, plng = ploc.get("lat"), ploc.get("lng")
             if plat is not None and plng is not None:
                 heading = _bearing(float(plat), float(plng), target_lat, target_lng)
-                fov = _frame_fov(_metres(float(plat), float(plng), target_lat, target_lng))
+                distance_m = _metres(float(plat), float(plng), target_lat, target_lng)
+                fov = _frame_fov(distance_m)
 
-            # location= places the camera; heading/fov decide what it looks at.
-            params = {"size": "640x400", "location": f"{lat},{lng}",
-                      "fov": f"{fov:.0f}", "source": "outdoor", "key": key}
+            # Request the exact panorama the heading was computed from. Asking by
+            # location again lets Google re-pick the camera, and a heading is only
+            # meaningful from the point it was measured at.
+            pano_id = md.get("pano_id")
+            params = {"size": "640x400", "fov": f"{fov:.0f}", "key": key}
+            if pano_id:
+                params["pano"] = pano_id
+            else:
+                params.update({"location": f"{lat},{lng}", "source": "outdoor"})
             if heading is not None:
                 params["heading"] = f"{heading:.0f}"
             img = await client.get(
@@ -616,8 +634,22 @@ async def street_view(
             img.raise_for_status()
             ct = img.headers.get("content-type", "image/jpeg").split(";")[0]
             b64 = base64.b64encode(img.content).decode()
-            return _remember({"available": True, "image": f"data:{ct};base64,{b64}",
-                              "aimed_at": aimed_at})
+            # Everything a contractor needs to judge whether to trust the photo:
+            # how old it is, how far away it was taken (a far camera is usually
+            # on the next street over, looking at the back of a different
+            # house), and a link to walk around in the real Street View.
+            result = {"available": True, "image": f"data:{ct};base64,{b64}",
+                      "aimed_at": aimed_at, "date": md.get("date")}
+            if distance_m is not None:
+                result["distance_m"] = round(distance_m)
+                result["far"] = distance_m > _SV_FAR_METRES
+            if pano_id:
+                link = ("https://www.google.com/maps/@?api=1&map_action=pano"
+                        f"&pano={pano_id}")
+                if heading is not None:
+                    link += f"&heading={heading:.0f}"
+                result["pano_url"] = link
+            return _remember(result)
     except Exception as e:
         # Deliberately NOT cached: a timeout or a transient 5xx would otherwise
         # poison a perfectly good address for a week.

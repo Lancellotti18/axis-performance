@@ -28,6 +28,23 @@ interface Props {
   onConfirmed?: (p: { x: number; y: number }) => void
 }
 
+interface SvMeta {
+  aimedAt?: 'building' | 'nearest building' | 'address'
+  date?: string
+  distanceM?: number
+  far?: boolean
+  panoUrl?: string
+}
+
+/** "2019-05" -> "May 2019", plus how many years old that is. */
+function photoAge(date?: string): { label: string; years: number } | null {
+  const m = date?.match(/^(\d{4})-(\d{2})/)
+  if (!m) return null
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, 1)
+  const years = (Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000)
+  return { label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }), years }
+}
+
 export default function HousePicker({
   runId, imageUrl, lat, lng, address,
   imageWidthPx, imageHeightPx, feetPerPixel,
@@ -41,6 +58,9 @@ export default function HousePicker({
   // a switched-off API is visible instead of silently showing nothing.
   const [svState, setSvState] = useState<'loading' | 'ok' | 'no_coverage' | 'unavailable'>('loading')
   const [svZoom, setSvZoom] = useState(false)
+  // How far to trust the photo. A street photo is a claim about which house is
+  // at this address, and a wrong one sends a roofer to the neighbour's door.
+  const [svMeta, setSvMeta] = useState<SvMeta>({})
 
   // Two stages, in the order a person actually identifies a house:
   //   'street'    — recognise it from the road, where houses are recognisable
@@ -82,7 +102,11 @@ export default function HousePicker({
     api.roofing.v2.getStreetView(lat, lng)
       .then(r => {
         if (cancelled) return
-        if (r.available && r.image) { setStreetView(r.image); setSvState('ok'); return }
+        if (r.available && r.image) {
+          setStreetView(r.image)
+          setSvMeta({ aimedAt: r.aimed_at, date: r.date, distanceM: r.distance_m, far: r.far, panoUrl: r.pano_url })
+          setSvState('ok'); return
+        }
         setStreetView(null)
         setSvState(r.reason === 'no_coverage' ? 'no_coverage' : 'unavailable')
         setStage(st => (st === 'street' ? 'satellite' : st))
@@ -174,6 +198,14 @@ export default function HousePicker({
   const userTapped = point.x !== 0.5 || point.y !== 0.5
   const placed = autoPicked || confirmed || userTapped
 
+  const age = photoAge(svMeta.date)
+  // Each of these is a concrete reason the photo may show the wrong house.
+  const svDoubts: string[] = []
+  if (svMeta.far) svDoubts.push(`It was taken ${svMeta.distanceM} m away, which usually means a different street or an alley, so it may show another house.`)
+  if (svMeta.aimedAt === 'nearest building') svDoubts.push('The address didn\u2019t land on a mapped building, so the camera is pointed at the closest one.')
+  if (svMeta.aimedAt === 'address') svDoubts.push('No building outline is mapped here, so the camera is aimed at the raw address point.')
+  if (age && age.years >= 5) svDoubts.push(`The photo is from ${age.label}. The house may have changed since.`)
+
   if (!imageUrl) return null
 
   return (
@@ -207,7 +239,9 @@ export default function HousePicker({
 
       {/* The street photo. In stage 1 it is the subject of the question, so it
           gets the full width; afterwards it stays as a small reference. */}
-      {streetView && (
+      {/* Once they've said the photo is NOT their house, it must not linger as a
+          "reference" — that is how the wrong house ends up in someone's head. */}
+      {streetView && !(stage === 'satellite' && geocodeRejected) && (
         <div className="mt-3 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2.5">
           <div className={stage === 'street' ? '' : 'flex gap-3'}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -223,9 +257,26 @@ export default function HousePicker({
             {stage === 'street' ? (
               <div className="mt-2.5">
                 <p className="text-[11px] leading-relaxed text-[#6b7280]">
-                  This is <span className="font-medium text-[#1a1a1a]">{address || 'the address'}</span> from
-                  the street. Click the photo to enlarge it.
+                  Google&apos;s street photo closest to{' '}
+                  <span className="font-medium text-[#1a1a1a]">{address || 'the address'}</span>
+                  {age && <> · taken {age.label}</>}
+                  {svMeta.distanceM != null && <> · ~{svMeta.distanceM} m from the house</>}.
+                  Check the house number or a feature you know before you say yes.
                 </p>
+                {svDoubts.length > 0 && (
+                  <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
+                    <span className="font-semibold">Look closely at this one.</span>
+                    <ul className="mt-0.5 list-disc pl-4">
+                      {svDoubts.map(d => <li key={d}>{d}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {svMeta.panoUrl && (
+                  <a href={svMeta.panoUrl} target="_blank" rel="noreferrer"
+                     className="mt-1.5 inline-block text-[11px] font-medium text-emerald-800 underline decoration-dotted hover:text-emerald-900">
+                    Look around in Google Street View ↗
+                  </a>
+                )}
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -256,7 +307,7 @@ export default function HousePicker({
             ) : (
               <div className="text-[11px] leading-relaxed text-[#6b7280]">
                 <span className="font-semibold text-[#1a1a1a]">Street reference.</span>{' '}
-                The same house, from the road. Click to enlarge.
+                The street photo you confirmed{age ? `, from ${age.label}` : ''}. Click to enlarge.
                 <button
                   type="button"
                   onClick={() => setStage('street')}
