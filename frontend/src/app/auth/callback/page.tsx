@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Suspense } from 'react'
+import type { EmailOtpType } from '@supabase/supabase-js'
 
 function CallbackHandler() {
   const router = useRouter()
@@ -11,6 +12,38 @@ function CallbackHandler() {
 
   useEffect(() => {
     async function handle() {
+      // Supabase reports a bad link (expired, already used) by redirecting here
+      // with error params in the query or the hash rather than with a code.
+      const hashParams = new URLSearchParams(window.location.hash.replace('#', ''))
+      const errCode = params.get('error_code') || hashParams.get('error_code')
+      if (errCode) {
+        if (params.get('type') === 'recovery' || hashParams.get('type') === 'recovery') {
+          setError(params.get('error_description') || hashParams.get('error_description') || 'Link expired')
+        } else {
+          // A signup link. /login explains it and offers a fresh one.
+          router.replace('/login?expired=1')
+        }
+        return
+      }
+
+      // token_hash flow: the link carries a hash we verify server-side. Unlike
+      // the code flow below it needs nothing stored in THIS browser, so it works
+      // when someone signs up on a laptop and taps the link on their phone.
+      // Used once the "Confirm signup" email template points here with
+      // ?token_hash={{ .TokenHash }}&type=email.
+      const tokenHash = params.get('token_hash')
+      const otpType = params.get('type') as EmailOtpType | null
+      if (tokenHash && otpType) {
+        const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: otpType })
+        if (error) {
+          if (otpType === 'recovery') { setError(error.message); return }
+          router.replace('/login?expired=1')
+          return
+        }
+        router.replace(otpType === 'recovery' ? '/reset-password' : '/dashboard')
+        return
+      }
+
       // PKCE flow: Supabase sends ?code=XXX after the user clicks the email link
       const code = params.get('code')
       const type = params.get('type') // 'recovery' for password reset
@@ -18,7 +51,14 @@ function CallbackHandler() {
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (error) {
-          setError(error.message)
+          // The exchange needs a verifier that signUp stored in the browser the
+          // account was created in. Opened anywhere else (the phone, a different
+          // browser, a mail app's webview) it fails, even though Supabase has
+          // ALREADY confirmed the address before redirecting here with a code.
+          // So for a signup this is a success that just needs a sign-in, not an
+          // "invalid reset link".
+          if (type === 'recovery') { setError(error.message); return }
+          router.replace('/login?confirmed=1')
           return
         }
         if (type === 'recovery') {
@@ -31,9 +71,7 @@ function CallbackHandler() {
 
       // Implicit flow fallback: token is in the URL hash (#access_token=...)
       // Next.js can't read hash server-side, so we parse it client-side
-      const hash = window.location.hash
-      if (hash) {
-        const hashParams = new URLSearchParams(hash.replace('#', ''))
+      if (window.location.hash) {
         const accessToken = hashParams.get('access_token')
         const refreshToken = hashParams.get('refresh_token')
         const hashType = hashParams.get('type')
