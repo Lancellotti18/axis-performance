@@ -29,9 +29,13 @@
       "@type": "Organization",
       "@id": "https://www.axisroofingperformance.com/#org",
       "name": "Axis Roofing Performance",
+      "legalName": "RW AI Infrastructure LLC",
       "url": "https://www.axisroofingperformance.com/",
       "description": "AI-powered roofing intelligence for contractors: aerial roof measurement, pro-grade reports, material lists and crew dispatch.",
-      "logo": "https://www.axisroofingperformance.com/v2/og-cover.jpg"
+      "logo": "https://www.axisroofingperformance.com/v2/og-cover.jpg",
+      "email": "lance@rwinfrastructure.com",
+      "founder": { "@type": "Person", "name": "Ryan Lancellotti" },
+      "address": { "@type": "PostalAddress", "addressLocality": "Wilmington", "addressRegion": "NC", "addressCountry": "US" }
     },
     {
       "@type": "WebSite",
@@ -93,6 +97,47 @@
   .topbar a.nav:hover{background:rgba(120,175,255,.2)}
   @media (max-width:620px){ .topbar .tag{display:none} .topbar a.nav{font-size:11.5px;padding:7px 12px} }
 
+  /* ---- site nav: on the logo's line, between the brand and sign-in ----
+     The bar floats over a MOVING video, so nothing here uses backdrop-filter
+     (the compositor could never cache the blur) and the dropdown animates
+     opacity + transform only. Panels are near-opaque instead of frosted. */
+  .topbar .menu{flex:1;display:flex;justify-content:center;align-items:center;gap:2px;pointer-events:auto;margin:0 16px}
+  .menu > a,.menu .ddbtn{appearance:none;background:none;border:0;cursor:pointer;font-family:var(--sans);
+    font-size:13px;font-weight:500;color:#C8DAF0;text-decoration:none;padding:8px 14px;border-radius:999px;
+    display:inline-flex;align-items:center;gap:6px;transition:color .25s,background .25s;text-shadow:0 1px 10px rgba(3,7,13,.6)}
+  .menu > a:hover,.menu .ddbtn:hover,.menu .has-dd[data-open] .ddbtn{color:#fff;background:rgba(120,175,255,.10)}
+  .ddbtn svg{width:9px;height:9px;transition:transform .25s var(--ease)}
+  .has-dd{position:relative}
+  .has-dd[data-open] .ddbtn svg{transform:rotate(180deg)}
+  /* padding-top bridges the gap so the pointer can travel from button to panel */
+  .dd{position:absolute;top:100%;left:50%;padding-top:12px;width:min(540px,80vw);
+    opacity:0;visibility:hidden;transform:translate(-50%,-6px);transition:opacity .22s var(--ease),transform .22s var(--ease),visibility 0s .22s}
+  .has-dd[data-open] .dd{opacity:1;visibility:visible;transform:translate(-50%,0);transition:opacity .22s var(--ease),transform .22s var(--ease)}
+  @media (hover:hover){ .has-dd:hover .dd{opacity:1;visibility:visible;transform:translate(-50%,0);transition:opacity .22s var(--ease),transform .22s var(--ease)}
+    .has-dd:hover .ddbtn svg{transform:rotate(180deg)} }
+  .dd .panel{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:8px;border-radius:16px;
+    background:rgba(7,11,18,.97);border:1px solid rgba(150,195,245,.18);box-shadow:0 30px 70px -20px rgba(0,0,0,.85)}
+  .dd a{display:block;padding:12px 14px;border-radius:11px;text-decoration:none;transition:background .2s}
+  .dd a:hover,.dd a:focus-visible{background:rgba(120,175,255,.09);outline:none}
+  .dd .k{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--cad);margin-bottom:4px}
+  .dd .t{display:block;font-size:13.5px;font-weight:600;color:#EEF4FA}
+  .dd .d{display:block;font-size:12px;line-height:1.45;color:var(--mute);margin-top:3px}
+
+  /* Mobile: the links collapse into a drawer under the bar. */
+  .burger{display:none;appearance:none;background:none;border:1px solid rgba(180,205,235,.22);border-radius:10px;
+    width:38px;height:34px;cursor:pointer;pointer-events:auto;align-items:center;justify-content:center;color:#EAF2FB}
+  .burger svg{width:18px;height:18px}
+  .drawer{position:fixed;top:0;left:0;right:0;z-index:59;padding:74px 20px 22px;background:rgba(6,10,16,.985);
+    border-bottom:1px solid var(--line);opacity:0;visibility:hidden;transform:translateY(-10px);
+    transition:opacity .25s var(--ease),transform .25s var(--ease),visibility 0s .25s;max-height:100vh;overflow-y:auto}
+  body[data-drawer] .drawer{opacity:1;visibility:visible;transform:none;transition:opacity .25s var(--ease),transform .25s var(--ease)}
+  .drawer a{display:block;text-decoration:none;color:#EAF2FB;font-size:16px;font-weight:500;padding:12px 4px;border-bottom:1px solid var(--line)}
+  .drawer .sub{padding-left:16px;font-size:14px;color:#C8DAF0}
+  .drawer .grp{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--cad);padding:16px 4px 4px}
+  @media (max-width:900px){ .topbar .menu{display:none} .burger{display:inline-flex} }
+  @media (min-width:901px){ .drawer{display:none} }
+  @media (max-width:420px){ .topbar a.nav.ghost{display:none} }
+
   /* ---- cinematic film track ---- */
   .film{position:relative;height:680vh}
   /* Scroll snapping was REMOVED 2026-09-27 and must not come back.
@@ -144,6 +189,8 @@
     width:min(1180px,124vw);height:280%;transform:translate(-50%,-50%);
     background:radial-gradient(ellipse 50% 50% at 50% 50%,rgba(3,7,13,.62) 0%,rgba(3,7,13,.44) 44%,transparent 74%)}
   .hero .ey{font-size:clamp(10px,1.2vw,13px);letter-spacing:.42em;text-transform:uppercase;color:var(--cad-bright);margin:0 0 18px}
+  /* .42em tracking ran the eyebrow off both edges of a phone screen. */
+  @media (max-width:480px){ .hero .ey{letter-spacing:.22em} }
   .hero h1{font-family:var(--serif);font-weight:400;color:#F3F7FC;font-size:clamp(34px,6.4vw,82px);line-height:1.0;letter-spacing:-.015em;margin:0;text-wrap:balance;text-shadow:0 3px 40px rgba(0,0,0,.5)}
   /* 46ch keeps the whole line on one row on desktop; text-wrap:balance splits
      it evenly at the sentence rather than orphaning "confidence." on mobile. */
@@ -210,9 +257,43 @@
   .card .kick{display:inline-block;margin-bottom:14px;font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--cad)}
   .finalcta{margin:clamp(48px,8vh,80px) auto 0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px}
   .finalcta p{margin:0;font-family:var(--serif);font-size:clamp(20px,2.6vw,30px);color:#EAF1F8;letter-spacing:-.01em}
-  .foot{margin:clamp(56px,9vh,90px) auto 0;text-align:center;color:var(--mute);font-size:12px;line-height:2}
-  .foot .footlink{color:var(--mute);text-decoration:none;margin-left:18px;border-bottom:1px solid transparent;transition:color .25s,border-color .25s}
-  .foot .footlink:hover{color:#C8DAF0;border-bottom-color:rgba(180,205,235,.4)}
+  .platform .lede{max-width:62ch;margin:24px auto 0;text-align:center;font-size:clamp(14px,1.5vw,16px);line-height:1.7;color:var(--haze);text-wrap:pretty}
+  /* Feature cards are nav targets: clear the fixed bar, and mark the one landed on. */
+  .card{scroll-margin-top:110px}
+  .card:target{border-color:rgba(140,190,255,.55);box-shadow:0 0 0 1px rgba(140,190,255,.25),0 20px 60px -30px rgba(107,178,255,.5)}
+
+  /* ---- about ---- */
+  .about{position:relative;padding:clamp(80px,13vh,130px) clamp(20px,5vw,40px);border-top:1px solid var(--line);
+    background:radial-gradient(90% 70% at 50% 0%,rgba(30,60,110,.16),transparent 70%),var(--ink);scroll-margin-top:40px}
+  .about .wrap{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:clamp(36px,6vw,80px);align-items:start}
+  @media (max-width:860px){ .about .wrap{grid-template-columns:1fr} }
+  .about .ey{font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--cad-bright);margin:0 0 18px}
+  .about h2{font-family:var(--serif);font-weight:400;font-size:clamp(28px,3.6vw,44px);line-height:1.1;color:#EEF4FA;margin:0;letter-spacing:-.012em;text-wrap:balance}
+  .about .note p{margin:20px 0 0;font-size:15.5px;line-height:1.75;color:#C3CFDC;max-width:60ch}
+  .sig{display:flex;align-items:center;gap:14px;margin-top:30px}
+  .sig .mono{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;
+    font-family:var(--serif);font-size:17px;color:#EAF2FB;background:linear-gradient(145deg,#1B3252,#0C1726);border:1px solid rgba(150,195,245,.3)}
+  .sig b{display:block;color:#EEF4FA;font-weight:600;font-size:14.5px}
+  .sig span{font-size:12.5px;color:var(--mute)}
+  .facts{border:1px solid var(--line);border-radius:18px;background:linear-gradient(180deg,rgba(18,28,42,.55),rgba(10,16,24,.5));padding:6px 22px}
+  .facts dl{margin:0}
+  .facts .row{display:flex;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--line)}
+  .facts .row:last-of-type{border-bottom:0}
+  .facts dt{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute);padding-top:3px;flex-shrink:0}
+  .facts dd{margin:0;text-align:right;font-size:14px;color:#E3ECF6}
+  .facts dd a{color:var(--cad-bright);text-decoration:none;border-bottom:1px solid rgba(191,224,255,.3);word-break:break-all}
+  .usa{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;color:#D6E2EF;letter-spacing:.02em}
+  .usa svg{width:19px;height:10px;border-radius:1.5px;flex-shrink:0;box-shadow:0 0 0 1px rgba(255,255,255,.12)}
+  .facts .usa{margin:4px 0 16px;padding-top:14px;border-top:1px solid var(--line);width:100%}
+
+  /* ---- footer ---- */
+  .site{border-top:1px solid var(--line);padding:34px clamp(20px,5vw,40px) 40px;color:var(--mute);font-size:12px}
+  .site .wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px 28px}
+  .site nav{display:flex;flex-wrap:wrap;gap:6px 20px}
+  .site a{color:var(--mute);text-decoration:none;border-bottom:1px solid transparent;transition:color .25s,border-color .25s}
+  .site a:hover{color:#C8DAF0;border-bottom-color:rgba(180,205,235,.4)}
+  .site .legal{flex-basis:100%;display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;padding-top:18px;border-top:1px solid rgba(180,205,235,.07)}
+  .site .usa{color:var(--mute);font-size:12px}
 </style>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -220,15 +301,50 @@
 </defs></svg>
 
 <header class="topbar">
-  <div class="brand">
+  <a class="brand" href="#top" aria-label="Axis Roofing Performance — home" style="text-decoration:none">
     <svg class="mk" viewBox="0 0 32 32"><path class="a" d="M4 21 L16 7 L28 21"/><path class="b" d="M9 21 L16 12.5 L23 21"/></svg>
     <span class="tx">AXIS</span><span class="tag">PERFORMANCE</span>
-  </div>
+  </a>
+  <nav class="menu" aria-label="Main">
+    <a href="#top">Home</a>
+    <div class="has-dd" id="featDd">
+      <button class="ddbtn" type="button" aria-expanded="false" aria-controls="featPanel">Features
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 3.5 5 7l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="dd" id="featPanel"><div class="panel">
+        <a href="#f-measure"><span class="k">AI Measurement</span><span class="t">Roof measurements in seconds</span><span class="d">Squares, pitch, facets and waste from aerial imagery.</span></a>
+        <a href="#f-reports"><span class="k">Reporting</span><span class="t">Pro-grade roof reports</span><span class="d">Branded, to-scale, with no per-report bill.</span></a>
+        <a href="#f-compliance"><span class="k">Compliance</span><span class="t">Material compliance checks</span><span class="d">Checked against local code and manufacturer specs.</span></a>
+        <a href="#f-visualizer"><span class="k">Roof Visualizer</span><span class="t">Sell the roof first</span><span class="d">Show homeowners their new roof in photoreal AI.</span></a>
+        <a href="#f-dispatch"><span class="k">Dispatch</span><span class="t">Crews, scheduled and tracked</span><span class="d">Every install from material drop to inspection.</span></a>
+        <a href="#f-crm"><span class="k">CRM</span><span class="t">A CRM built for roofers</span><span class="d">Leads to signed contract in one pipeline.</span></a>
+      </div></div>
+    </div>
+    <a href="/pricing">Pricing</a>
+    <a href="#about">About</a>
+  </nav>
   <div class="actions">
     <a class="nav ghost" href="/login">Sign In</a>
     <a class="nav" href="/register">Sign Up</a>
+    <button class="burger" id="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="drawer">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
   </div>
 </header>
+
+<div class="drawer" id="drawer" aria-label="Menu">
+  <a href="#top">Home</a>
+  <div class="grp">Features</div>
+  <a class="sub" href="#f-measure">AI Measurement</a>
+  <a class="sub" href="#f-reports">Pro-grade reports</a>
+  <a class="sub" href="#f-compliance">Compliance checks</a>
+  <a class="sub" href="#f-visualizer">Roof Visualizer</a>
+  <a class="sub" href="#f-dispatch">Dispatch</a>
+  <a class="sub" href="#f-crm">CRM</a>
+  <a href="/pricing">Pricing</a>
+  <a href="#about">About</a>
+  <a href="/login">Sign In</a>
+</div>
 
 <div class="film" id="top">
   <div class="stage" data-cine="0" data-live="still">
@@ -294,26 +410,76 @@
     sitting. That is the shift: not one task done faster, but the whole rhythm of the job
     rebuilt around measurements the software already has.</p>
     <div class="grid">
-      <article class="card"><span class="kick">AI Measurement</span><h3>Roof measurements in seconds</h3><p>Satellite-precise squares, pitch, facets and waste — the accurate measurement that starts every quote, without setting foot on a ladder.</p></article>
-      <article class="card"><span class="kick">Reporting</span><h3>Pro-grade roof reports</h3><p>Clean, fully branded reports with to-scale diagrams, measurements and materials — presentation-ready, with no per-report bill.</p></article>
-      <article class="card"><span class="kick">Compliance</span><h3>Material compliance checks</h3><p>Every estimate is checked automatically against local building code and manufacturer specs, so what you order meets requirements before it ships.</p></article>
-      <article class="card"><span class="kick">Roof Visualizer</span><h3>Sell the roof before it's built</h3><p>Show homeowners their new roof in photoreal AI — swap shingle colors and styles live — and turn "let me think about it" into a signed job.</p></article>
-      <article class="card"><span class="kick">Dispatch</span><h3>Crews, scheduled and tracked</h3><p>Assign crews to jobs, see the day at a glance, and keep every install moving from material drop to final inspection.</p></article>
-      <article class="card"><span class="kick">CRM</span><h3>A CRM built for roofers</h3><p>Leads, inspections, proposals and jobs in one pipeline. Axis moves every customer from first click to signed contract.</p></article>
+      <article class="card" id="f-measure"><span class="kick">AI Measurement</span><h3>Roof measurements in seconds</h3><p>Satellite-precise squares, pitch, facets and waste — the accurate measurement that starts every quote, without setting foot on a ladder.</p></article>
+      <article class="card" id="f-reports"><span class="kick">Reporting</span><h3>Pro-grade roof reports</h3><p>Clean, fully branded reports with to-scale diagrams, measurements and materials — presentation-ready, with no per-report bill.</p></article>
+      <article class="card" id="f-compliance"><span class="kick">Compliance</span><h3>Material compliance checks</h3><p>Every estimate is checked automatically against local building code and manufacturer specs, so what you order meets requirements before it ships.</p></article>
+      <article class="card" id="f-visualizer"><span class="kick">Roof Visualizer</span><h3>Sell the roof before it's built</h3><p>Show homeowners their new roof in photoreal AI — swap shingle colors and styles live — and turn "let me think about it" into a signed job.</p></article>
+      <article class="card" id="f-dispatch"><span class="kick">Dispatch</span><h3>Crews, scheduled and tracked</h3><p>Assign crews to jobs, see the day at a glance, and keep every install moving from material drop to final inspection.</p></article>
+      <article class="card" id="f-crm"><span class="kick">CRM</span><h3>A CRM built for roofers</h3><p>Leads, inspections, proposals and jobs in one pipeline. Axis moves every customer from first click to signed contract.</p></article>
     </div>
     <div class="finalcta">
       <p>The whole job, handled by one intelligent platform.</p>
       <a class="btn" href="/register">Get Started Free</a>
     </div>
-    <p class="foot">
-      Axis Roofing Performance — AI-powered roofing intelligence.
-      <a class="footlink" href="/pricing">Pricing</a>
-      <a class="footlink" href="/portal">Homeowner sign in</a>
-      <a class="footlink" href="/legal/privacy">Privacy</a>
-      <a class="footlink" href="/legal/terms">Terms</a>
-    </p>
   </div>
 </section>
+
+<!-- DRAFT COPY — Ryan to rewrite the founder note in his own words before this
+     ships. Everything stated as fact here is taken from the legal pages. -->
+<section class="about" id="about">
+  <div class="wrap">
+    <div class="note">
+      <p class="ey">About Axis</p>
+      <h2>Built in North Carolina, by someone you can actually reach.</h2>
+      <p>I'm Ryan Lancellotti, and I build Axis. Roofers were paying per report for
+      measurements, then retyping those same numbers into a material list, a supplier
+      quote and a crew schedule. Axis is my answer to that: one measurement that carries
+      the whole job.</p>
+      <p>Axis is designed, built and supported here in Wilmington. There is no call
+      center between you and the product. If a report looks wrong, you are writing to
+      the person who wrote the code that made it, and I would rather hear about it than
+      have you guess.</p>
+      <div class="sig">
+        <!-- A real photo of Ryan is the strongest trust signal this section could
+             carry; swap it in for the monogram when there is one. -->
+        <div class="mono" aria-hidden="true">RL</div>
+        <div><b>Ryan Lancellotti</b><span>Founder, Axis Roofing Performance</span></div>
+      </div>
+    </div>
+    <aside class="facts" aria-label="Company details">
+      <dl>
+        <div class="row"><dt>Company</dt><dd>RW AI Infrastructure LLC</dd></div>
+        <div class="row"><dt>Based in</dt><dd>Wilmington, North Carolina</dd></div>
+        <div class="row"><dt>Contact</dt><dd><a href="mailto:lance@rwinfrastructure.com">lance@rwinfrastructure.com</a></dd></div>
+      </dl>
+      <div class="usa">
+        <svg viewBox="0 0 19 10" aria-hidden="true"><rect width="19" height="10" fill="#B22234"/><path d="M0 1.15h19M0 2.69h19M0 4.23h19M0 5.77h19M0 7.31h19M0 8.85h19" stroke="#fff" stroke-width=".77"/><rect width="7.6" height="5.38" fill="#3C3B6E"/></svg>
+        Designed &amp; built in the USA
+      </div>
+    </aside>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap">
+    <span>Axis Roofing Performance — AI-powered roofing intelligence.</span>
+    <nav aria-label="Footer">
+      <a href="#platform">Features</a>
+      <a href="/pricing">Pricing</a>
+      <a href="#about">About</a>
+      <a href="/portal">Homeowner sign in</a>
+      <a href="/legal/privacy">Privacy</a>
+      <a href="/legal/terms">Terms</a>
+    </nav>
+    <div class="legal">
+      <span>© 2026 RW AI Infrastructure LLC. All rights reserved.</span>
+      <span class="usa">
+        <svg viewBox="0 0 19 10" aria-hidden="true"><rect width="19" height="10" fill="#B22234"/><path d="M0 1.15h19M0 2.69h19M0 4.23h19M0 5.77h19M0 7.31h19M0 8.85h19" stroke="#fff" stroke-width=".77"/><rect width="7.6" height="5.38" fill="#3C3B6E"/></svg>
+        Made in Wilmington, NC
+      </span>
+    </div>
+  </div>
+</footer>
 
 <script>
 (() => {
@@ -692,6 +858,33 @@
 
   document.getElementById('replay').addEventListener('click',()=>
     document.getElementById('top').scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'}));
+})();
+
+// ── Site nav ─────────────────────────────────────────────────────────────
+// Kept apart from the film loop on purpose: none of this runs per frame. Hover
+// opens the Features panel on a mouse; this click path is for touch and keyboard.
+(() => {
+  const dd=document.getElementById('featDd'), btn=dd.querySelector('.ddbtn');
+  const burger=document.getElementById('burger'), drawer=document.getElementById('drawer');
+  function setDd(open){
+    if(open) dd.dataset.open=''; else delete dd.dataset.open;
+    btn.setAttribute('aria-expanded',open?'true':'false');
+  }
+  function setDrawer(open){
+    if(open) document.body.dataset.drawer=''; else delete document.body.dataset.drawer;
+    burger.setAttribute('aria-expanded',open?'true':'false');
+    burger.setAttribute('aria-label',open?'Close menu':'Open menu');
+  }
+  btn.addEventListener('click',e=>{ e.stopPropagation(); setDd(!('open' in dd.dataset)); });
+  burger.addEventListener('click',e=>{ e.stopPropagation(); setDrawer(!('drawer' in document.body.dataset)); });
+  // Any link in either panel navigates, so the panel should get out of the way.
+  dd.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>setDd(false)));
+  drawer.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>setDrawer(false)));
+  document.addEventListener('click',e=>{
+    if(!dd.contains(e.target)) setDd(false);
+    if(!drawer.contains(e.target)) setDrawer(false);
+  });
+  addEventListener('keydown',e=>{ if(e.key==='Escape'){ setDd(false); setDrawer(false); } });
 })();
 </script>
 </body>
