@@ -13,7 +13,7 @@ import { loadStripe, type Stripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import toast from 'react-hot-toast'
 
-import { api } from '@/lib/api'
+import { api, type UsageSummary } from '@/lib/api'
 
 type Card = {
   id: string; brand: string | null; last4: string | null
@@ -32,6 +32,10 @@ export default function BillingSettings() {
   const [sub, setSub] = useState<Sub>(null)
   const [plans, setPlans] = useState<Plan[]>([])
   const [cards, setCards] = useState<Card[]>([])
+  const [usage, setUsage] = useState<UsageSummary | null>(null)
+  // From the plans endpoint, never typed here — a second copy of the overage
+  // price is how the pricing page ended up claiming $49 Solo.
+  const [overageUsd, setOverageUsd] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [addingCard, setAddingCard] = useState(false)
@@ -40,14 +44,18 @@ export default function BillingSettings() {
 
   const refresh = useCallback(async () => {
     try {
-      const [me, plansRes, pms] = await Promise.all([
+      const [me, plansRes, pms, use] = await Promise.all([
         api.billing.me(),
         fetch(`${API_BASE}/api/v1/billing/plans`).then(r => r.json()),
         api.billing.paymentMethods().catch(() => ({ payment_methods: [] })),
+        api.billing.usage().catch(() => null),
       ])
       setSub(me.subscription)
       setPlans(plansRes.plans || [])
       setCards(pms.payment_methods || [])
+      setUsage(use)
+      setOverageUsd(typeof plansRes.overage_report_usd === 'number'
+        ? plansRes.overage_report_usd : null)
     } catch {
       /* leave the section empty rather than blocking the rest of Settings */
     } finally {
@@ -117,11 +125,50 @@ export default function BillingSettings() {
             </div>
 
             {current && (
-              <div className="mt-4 flex flex-wrap gap-6 rounded-xl bg-[#f4f6f9] p-4">
-                <Stat value={current.reports_unlimited ? '∞' : String(current.reports)}
-                      label="reports a month" />
-                <Stat value={current.crews_unlimited ? '∞' : String(current.crews)}
-                      label="dispatch crews" />
+              <div className="mt-4 rounded-xl bg-[#f4f6f9] p-4">
+                <div className="flex flex-wrap gap-6">
+                  {/* What they have USED, not just what the plan includes. The
+                      card used to state the allowance only, which tells a
+                      contractor nothing about whether he is about to hit it. */}
+                  <Stat
+                    value={usage && !usage.reports_unlimited
+                      ? `${usage.reports_used} / ${usage.reports_entitled ?? '—'}`
+                      : (current.reports_unlimited ? '∞' : String(current.reports))}
+                    label={usage && !usage.reports_unlimited
+                      ? 'reports used this period' : 'reports a month'} />
+                  <Stat value={current.crews_unlimited ? '∞' : String(current.crews)}
+                        label="dispatch crews" />
+                  {usage?.overage_purchased ? (
+                    <Stat value={`+${usage.overage_purchased}`}
+                          label={overageUsd != null
+                            ? `extra bought ($${overageUsd * usage.overage_purchased})`
+                            : 'extra bought'} />
+                  ) : null}
+                </div>
+
+                {usage && !usage.reports_unlimited && usage.reports_entitled ? (
+                  <>
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#dfe3ea]">
+                      <div className="h-full rounded-full transition-[width]"
+                           style={{
+                             width: `${Math.min(100, Math.round(
+                               (usage.reports_used / usage.reports_entitled) * 100))}%`,
+                             background: usage.reports_remaining === 0 ? '#b03535'
+                               : usage.reports_remaining! <= 2 ? '#e0a955' : '#0068d6',
+                           }} />
+                    </div>
+                    <p className="mt-2 text-[11px] text-[#6b7280]">
+                      {usage.reports_remaining === 0
+                        ? (overageUsd != null
+                            ? `No reports left. Another is $${overageUsd}, charged only when you choose to buy one.`
+                            : 'No reports left.')
+                        : `${usage.reports_remaining} left`}
+                      {usage.period_end
+                        ? ` — resets ${new Date(usage.period_end).toLocaleDateString()}`
+                        : ''}
+                    </p>
+                  </>
+                ) : null}
               </div>
             )}
 

@@ -1459,32 +1459,89 @@ async def recompute_run(run_id: str, user: dict = Depends(require_user)) -> dict
     db = get_supabase()
     require_owned_run(db, run_id, user)
     aggregates = _aggregate_run(run_id)
-    _mark_run_billable(db, run_id, user["id"], aggregates)
+    _gate_and_mark_billable(db, run_id, user["id"], aggregates)
     return aggregates
 
 
-def _mark_run_billable(db, run_id: str, user_id: str, aggregates: dict) -> None:
-    """Bill a run the first time it yields measurements the contractor can use.
+def _would_newly_bill(db, run_id: str, aggregates: dict) -> bool:
+    """Is THIS call the one that turns a trace into a billable measurement?
 
-    Two things deliberately do NOT count:
+    Three things deliberately do not count:
       * a run with no area yet — they are mid-trace, not finished
-      * a run the validators blocked — those numbers are flagged as unusable
-        and no report can be produced from them, so charging would be charging
-        for a failure
-    Best-effort: metering must never break the measurement view.
+      * a run the validators blocked — those numbers are flagged unusable and
+        no report can come from them, so charging would be charging for failure
+      * a run already billed — recompute fires on every edit, and reopening a
+        roof you paid for must never cost again or be gated
+
+    This is separated from the charge so the ENTITLEMENT GATE can ask the same
+    question. Gating every recompute would block a contractor mid-trace and
+    re-block one browsing a roof he already owns.
     """
     try:
         if aggregates.get("blocking_issues"):
-            return
+            return False
         # Key name verified against the dict _aggregate_run actually builds —
         # a wrong name here fails silently and nothing is ever billed.
         area = aggregates.get("total_roof_sqft") or 0
         if not area or float(area) <= 0:
-            return
+            return False
         from app.services import llm_usage
-        if llm_usage.already_generated(db, run_id):
-            return
+        # Fails CLOSED (True) on error, so a blip reads as "already billed":
+        # no gate and no second charge.
+        return not llm_usage.already_generated(db, run_id)
+    except Exception as e:
+        logger.info("run %s billable check failed: %s", run_id, e)
+        return False
+
+
+def _gate_and_mark_billable(db, run_id: str, user_id: str, aggregates: dict) -> None:
+    """Check entitlement, then meter the run.
+
+    This is the call site plans.evaluate() was written for. WHILE
+    BILLING_ENFORCE IS OFF nothing is refused — the decision is recorded to
+    entitlement_denials and the run bills as before, so the question "would
+    this have locked out someone who should have access?" gets answered from
+    real traffic first.
+
+    Under enforcement, an exhausted allowance raises 402 carrying the price, and
+    the UI prompts "you have used all 30 — buy another for $35?". The charge
+    only happens after that click, via /billing/purchase-report. Nothing here
+    ever charges a card.
+    """
+    if not _would_newly_bill(db, run_id, aggregates):
+        return
+
+    from app.services import entitlement
+
+    try:
+        decision = entitlement.check(db, user_id, "generate_report")
+    except Exception as e:
+        # The gate must never be what takes measurement down. An entitlement
+        # system that 500s is worse than one that is briefly too generous.
+        logger.warning("entitlement check failed for %s, allowing: %s", user_id, e)
+        decision = None
+
+    if decision is not None and not decision.allowed:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "entitlement_required",
+                "reason": decision.reason,
+                "requires_purchase": decision.requires_purchase,
+                "purchase_price_usd": decision.purchase_price_usd,
+                "plan_key": decision.plan_key,
+                "status": decision.status,
+            },
+        )
+
+    try:
+        from app.services import llm_usage
         llm_usage.record_report(user_id, run_id, "generate", 0)
+        # An unsubscribed contractor who just billed a run used the one free
+        # report. Burn it here, at the moment it is consumed, so the promo
+        # cannot be spent twice.
+        if decision is not None and decision.plan_key is None:
+            entitlement.consume_trial_report(db, user_id)
     except Exception as e:
         logger.info("run %s not marked billable: %s", run_id, e)
 

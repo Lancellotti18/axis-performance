@@ -311,6 +311,57 @@ function formatDetail(detail: unknown): string {
   return ''
 }
 
+/**
+ * An HTTP error that keeps its status and its parsed `detail` payload.
+ *
+ * Extends Error and carries the identical message, so every existing
+ * `e instanceof Error ? e.message : …` call site behaves exactly as before.
+ */
+export class ApiError extends Error {
+  status: number
+  detail: unknown
+  constructor(message: string, status: number, detail: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.detail = detail
+  }
+}
+
+export type EntitlementAction =
+  'access_app' | 'generate_report' | 'add_crew' | 'buy_lead'
+
+/** Usage against the current Stripe billing period — never a calendar month. */
+export type UsageSummary = {
+  reports_used: number
+  reports_included: number | null
+  reports_unlimited: boolean
+  overage_purchased: number
+  reports_entitled: number | null
+  reports_remaining: number | null
+  period_start: string | null
+  period_end: string | null
+  plan_key: string | null
+  status: string
+  trial_report_used: boolean
+}
+
+/** The 402 body the entitlement gate raises when an allowance is spent. */
+export type EntitlementBlock = {
+  error: 'entitlement_required'
+  reason: string
+  requires_purchase: boolean
+  purchase_price_usd: number | null
+  plan_key: string | null
+  status: string | null
+}
+
+export function entitlementBlock(e: unknown): EntitlementBlock | null {
+  if (!(e instanceof ApiError) || e.status !== 402) return null
+  const d = e.detail as EntitlementBlock | undefined
+  return d && d.error === 'entitlement_required' ? d : null
+}
+
 async function apiRequest<T>(
   path: string,
   options?: RequestInit,
@@ -403,11 +454,19 @@ async function _doRequest<T>(
     // which reads like a crash rather than the specific, fixable problem it is.
     try {
       const json = JSON.parse(text)
-      throw new Error(`[HTTP ${res!.status}] ${formatDetail(json.detail) || text}`)
+      // ApiError, not Error, so a caller that needs the STRUCTURE — the
+      // entitlement gate needs the price and whether a purchase would clear it
+      // — can read it instead of parsing it back out of a message string. The
+      // message is byte-identical to before, so `e.message` callers are
+      // unaffected.
+      throw new ApiError(
+        `[HTTP ${res!.status}] ${formatDetail(json.detail) || text}`,
+        res!.status, json.detail)
     } catch (parseErr: unknown) {
+      if (parseErr instanceof ApiError) throw parseErr
       if (parseErr instanceof Error && parseErr.message.startsWith('[HTTP')) throw parseErr
     }
-    throw new Error(text || `HTTP ${res!.status}`)
+    throw new ApiError(text || `HTTP ${res!.status}`, res!.status, undefined)
   }
   return res!.json()
 }
@@ -813,6 +872,23 @@ export const api = {
         { method: 'POST' }),
     resume: () =>
       apiRequest<{ ok: boolean }>(`/api/v1/billing/resume`, { method: 'POST' }),
+    usage: () =>
+      apiRequest<UsageSummary>(`/api/v1/billing/usage`),
+    entitlement: (action: EntitlementAction = 'generate_report') =>
+      apiRequest<{ action: string; allowed: boolean; would_allow: boolean;
+                   enforcing: boolean; reason: string; plan_key: string | null;
+                   status: string | null; requires_purchase: boolean;
+                   purchase_price_usd: number | null; grace_days_left: number | null;
+                   usage?: UsageSummary }>(
+        `/api/v1/billing/entitlement?action=${encodeURIComponent(action)}`),
+    // Charges the card on file. Only ever called after the contractor has seen
+    // the price and clicked buy.
+    purchaseReport: (quantity = 1) =>
+      apiRequest<{ ok: boolean; requires_action?: boolean; client_secret?: string;
+                   quantity?: number; charged_usd?: number; message: string;
+                   usage?: UsageSummary }>(
+        `/api/v1/billing/purchase-report`,
+        { method: 'POST', body: JSON.stringify({ quantity }) }),
     subscribe: (planKey: string, interval: 'month' | 'year') =>
       apiRequest<{ requires_payment: boolean; client_secret?: string;
                    subscription_id: string; plan_key?: string }>(

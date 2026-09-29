@@ -14,7 +14,8 @@
  * the recompute and renders results — no math happens here.
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '@/lib/api'
+import { api, entitlementBlock, type EntitlementBlock, type UsageSummary } from '@/lib/api'
+import OveragePrompt from '@/components/billing/OveragePrompt'
 import type { VendorOption } from '@/types'
 import RoofScanSpinner from '@/components/roof-v2/RoofScanSpinner'
 
@@ -179,6 +180,9 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
   const [wastePct, setWastePct] = useState<number>(12)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A 402 from recompute is not an error to print — it is an offer to make.
+  const [block, setBlock] = useState<EntitlementBlock | null>(null)
+  const [blockUsage, setBlockUsage] = useState<UsageSummary | null>(null)
   const lastStampRef = useRef<number>(-1)
   // Price book editing + live price checks (per SKU)
   const [priceEdit, setPriceEdit] = useState<{ sku: string; value: string } | null>(null)
@@ -243,7 +247,15 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
         setMaterials(null)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to recompute')
+      // The allowance is spent. Show the buy-one-more offer rather than a red
+      // error string — the measurement is complete and one click away.
+      const gate = entitlementBlock(err)
+      if (gate) {
+        setBlock(gate)
+        api.billing.usage().then(setBlockUsage).catch(() => setBlockUsage(null))
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to recompute')
+      }
     } finally {
       setLoading(false)
     }
@@ -587,6 +599,21 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
 
       {loading && <p className="text-xs text-[#6b7280]">Recomputing…</p>}
       {error && <p className="text-xs text-rose-400">{error}</p>}
+
+      {block && (
+        <OveragePrompt
+          block={block}
+          usage={blockUsage}
+          onPurchased={async () => {
+            // Paid — the entitlement that just blocked this now clears, so
+            // re-run the same recompute rather than making them click again.
+            setBlock(null)
+            setBlockUsage(null)
+            await fetchAll(wastePct)
+          }}
+          onDismiss={() => { setBlock(null); setBlockUsage(null) }}
+        />
+      )}
     </div>
   )
 }
