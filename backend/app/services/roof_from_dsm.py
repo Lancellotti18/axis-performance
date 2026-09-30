@@ -128,6 +128,9 @@ def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
     labels = _assign_remaining(dsm, labels, bldg, planes, px_m)
     labels = _sharpen_creases(dsm, labels, bldg, planes, px_m)
     planes = _fit_planes(dsm, labels, px_m)          # refit on the final regions
+    labels, planes = _merge_coplanar(dsm, labels, planes, px_m)
+    labels = _sharpen_creases(dsm, labels, bldg, planes, px_m)
+    planes = _fit_planes(dsm, labels, px_m)
 
     facets = _facets(dsm, labels, planes, px_m)
     kept = {f.id for f in facets}
@@ -137,7 +140,7 @@ def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
         # between two facets come from _crease_edges, which does not trust the
         # noisy pixel boundary for where they are.
         edges.extend(e for e in _facet_edges(f, labels, planes, px_m) if e.neighbour is None)
-    edges.extend(_crease_edges(labels, {k: v for k, v in planes.items() if k in kept}, px_m))
+    edges.extend(_crease_edges(labels, {k: v for k, v in planes.items() if k in kept}, px_m, dsm))
     lengths = _dedup_lengths(edges)
 
     plan = float(bldg.sum()) * px_m ** 2
@@ -277,9 +280,35 @@ def _grow_planes(normals, curvature, bldg, px_m):
     return labels
 
 
+INLIER_M = 0.15              # a pixel this far off its plane is an object ON the roof
+
+
+def _robust_plane(x, y, z):
+    """Plane through the roof SURFACE, ignoring what sits on it.
+
+    A dormer, a vent stack or an overhanging branch is a block of pixels well
+    off the slope. Fitted naively they tilt the plane — Buch Ave's east wing
+    came out facing 213 deg instead of south, which turned its eave into a
+    "rake" and its ridge into a "hip". So: fit, keep pixels within 15 cm (the
+    DSM itself is good to ~5 cm), refit, a few times. Returns
+    (a, b, c, rms_of_inliers, inlier_fraction)."""
+    A = np.column_stack([x, y, np.ones_like(x)])
+    keep = np.ones(len(z), bool)
+    coef, *_ = np.linalg.lstsq(A, z, rcond=None)
+    for _ in range(5):
+        res = z - A @ coef
+        new_keep = np.abs(res) < max(INLIER_M, 0.5 * float(np.median(np.abs(res))) * 3)
+        if new_keep.sum() < max(3, 0.5 * len(z)) or np.array_equal(new_keep, keep):
+            break
+        keep = new_keep
+        coef, *_ = np.linalg.lstsq(A[keep], z[keep], rcond=None)
+    res = (z - A @ coef)[keep]
+    rms = float(np.sqrt(np.mean(res ** 2))) if len(res) else 0.0
+    return float(coef[0]), float(coef[1]), float(coef[2]), rms, float(keep.mean())
+
+
 def _fit_planes(dsm, labels, px_m):
-    """Least-squares plane per region, refit once without outliers (a vent or
-    a chimney poking up through the facet)."""
+    """A robust plane per region: see _robust_plane."""
     planes = {}
     H, W = labels.shape
     cols, rows = np.meshgrid(np.arange(W), np.arange(H))
@@ -289,19 +318,62 @@ def _fit_planes(dsm, labels, px_m):
         sel = labels == fid
         if sel.sum() < 3:
             continue
-        x = cols[sel] * px_m
-        y = rows[sel] * px_m
-        z = dsm[sel]
-        A = np.column_stack([x, y, np.ones_like(x)])
-        coef, *_ = np.linalg.lstsq(A, z, rcond=None)
-        res = z - A @ coef
-        keep = np.abs(res) < max(0.10, 3 * res.std())
-        if keep.sum() >= 3 and keep.sum() < len(z):
-            coef, *_ = np.linalg.lstsq(A[keep], z[keep], rcond=None)
-            res = z - A @ coef
-        planes[int(fid)] = (float(coef[0]), float(coef[1]), float(coef[2]),
-                            float(np.sqrt(np.mean(res[np.abs(res) < 0.5] ** 2)) if (np.abs(res) < 0.5).any() else 0.0))
+        a, b, c, rms, _ = _robust_plane(cols[sel] * px_m, rows[sel] * px_m, dsm[sel])
+        planes[int(fid)] = (a, b, c, rms)
     return planes
+
+MERGE_RMS_M = 0.12          # one plane explaining both halves this well means one facet
+MERGE_MAX_ANGLE_DEG = 40.0  # never merge across a real ridge or valley
+
+
+def _merge_coplanar(dsm, labels, planes, px_m):
+    """Join neighbouring facets that one plane explains as well as two.
+
+    A dormer or a skylight in the middle of a slope bends the fitted surface
+    either side of it, and region growing then splits one real facet into two
+    tilted halves. Their shared "crease" is typed a hip, and the tilt makes the
+    eave below them read as a sloped rake. Buch Ave's east wing did exactly
+    this. The test is a plain one: fit a single plane to both, robustly, and
+    merge if it fits about as well as each half did."""
+    labels = labels.copy()
+    H, W = labels.shape
+    cols, rows = np.meshgrid(np.arange(W), np.arange(H))
+    changed = True
+    while changed:
+        changed = False
+        shared: dict[tuple[int, int], int] = {}
+        for (dr, dc) in ((0, 1), (1, 0)):
+            A = labels[: H - dr, : W - dc]; B = labels[dr:, dc:]
+            sel = (A >= 0) & (B >= 0) & (A != B)
+            for a_, b_ in zip(A[sel].tolist(), B[sel].tolist()):
+                k = (min(a_, b_), max(a_, b_))
+                shared[k] = shared.get(k, 0) + 1
+        # Only facets sharing a real edge. Two pieces of one slope either side
+        # of a wing touch at a single pixel where they narrow to nothing; merged,
+        # they became one facet made of two separate shapes.
+        pairs = [k for k, n in shared.items() if n * px_m >= 1.0]
+        best = None
+        for ia, ib in pairs:
+            if ia not in planes or ib not in planes:
+                continue
+            na = np.array([-planes[ia][0], -planes[ia][1], 1.0])
+            nb = np.array([-planes[ib][0], -planes[ib][1], 1.0])
+            ang = math.degrees(math.acos(min(1.0, float(na @ nb) / (np.linalg.norm(na) * np.linalg.norm(nb)))))
+            if ang > MERGE_MAX_ANGLE_DEG:
+                continue
+            sel = (labels == ia) | (labels == ib)
+            _, _, _, rms, frac = _robust_plane(cols[sel] * px_m, rows[sel] * px_m, dsm[sel])
+            worse = max(planes[ia][3], planes[ib][3])
+            # One plane must explain both halves about as well as each alone did,
+            # using most of their pixels (not just a sliver that happens to fit).
+            if frac >= 0.75 and rms <= max(MERGE_RMS_M, 1.15 * worse) and (best is None or rms < best[0]):
+                best = (rms, ia, ib)
+        if best:
+            _, ia, ib = best
+            labels[labels == ib] = ia
+            planes = _fit_planes(dsm, labels, px_m)
+            changed = True
+    return labels, planes
 
 
 def _plane_z(plane, rows, cols, px_m):
@@ -522,6 +594,23 @@ def _runs(across: list[int], self_id: int, min_len: int) -> list[tuple[int, int,
     return [(int(v), s, e) for v, s, e in runs]
 
 
+def _outer_kind(plane, direction) -> str:
+    """Eave or rake for a line on a roof's outer edge, by DIRECTION.
+
+    An eave runs across the slope; a rake runs down it. Deciding by whether the
+    line is level failed on real roofs: on a 10/12 wing, an eave traced along
+    a slightly wobbly edge (trees over the north side) climbs enough to read
+    as sloped, and 22 ft of Buch Ave's eave was called rake."""
+    a, b = plane[0], plane[1]
+    g = math.hypot(a, b)
+    if g < 0.05:
+        return "eave"                         # near-flat: every edge is an eave
+    down = np.array([-a, -b]) / g             # downslope, plan view (east, south)
+    d = np.asarray(direction, dtype=np.float64)
+    d = d / (np.linalg.norm(d) or 1.0)
+    return "rake" if abs(float(down @ d)) > math.cos(math.radians(45)) else "eave"
+
+
 def _classify(f: Facet, nb: int, q0, q1, normal, planes, px_m) -> Edge:
     """What kind of line is this, from what the heights do either side of it."""
     a, b = f.plane[0], f.plane[1]
@@ -531,7 +620,7 @@ def _classify(f: Facet, nb: int, q0, q1, normal, planes, px_m) -> Edge:
     length_m = math.hypot(plan_m, z1 - z0)
     level = plan_m > 0 and abs(z1 - z0) / plan_m < LEVEL_RISE_PER_RUN
     if nb == OUTSIDE:
-        kind, neighbour = ("eave" if level else "rake"), None
+        kind, neighbour = _outer_kind(f.plane, q1 - q0), None
     else:
         neighbour = nb
         other = planes[nb]
@@ -560,7 +649,7 @@ CREASE_MIN_M = 0.4          # shorter crease segments are corners, not lines
 PARALLEL_DEG = 4.0          # planes this close to parallel do not form a crease
 
 
-def _crease_edges(labels, planes, px_m) -> list[Edge]:
+def _crease_edges(labels, planes, px_m, dsm=None) -> list[Edge]:
     """Ridges, hips and valleys as the exact intersection of two fitted planes.
 
     Where two facets meet, the pixel boundary between them zig-zags with every
@@ -571,25 +660,42 @@ def _crease_edges(labels, planes, px_m) -> list[Edge]:
     only where it starts and stops comes from the pixels."""
     H, W = labels.shape
     pts: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    jumps: dict[tuple[int, int], list[float]] = {}
     # Every 4-adjacent pixel pair with two different facets marks the boundary.
     for (dr, dc) in ((0, 1), (1, 0)):
         A = labels[: H - dr, : W - dc]
         B = labels[dr:, dc:]
         sel = (A >= 0) & (B >= 0) & (A != B)
         rr, cc = np.nonzero(sel)
-        for r, c, a_, b_ in zip(rr, cc, A[sel], B[sel]):
+        zA = dsm[: H - dr, : W - dc][sel] if dsm is not None else np.zeros(len(rr))
+        zB = dsm[dr:, dc:][sel] if dsm is not None else np.zeros(len(rr))
+        for r, c, a_, b_, za, zb in zip(rr, cc, A[sel], B[sel], zA, zB):
             if a_ in planes and b_ in planes:
                 key = (int(min(a_, b_)), int(max(a_, b_)))
                 pts.setdefault(key, []).append((c + dc / 2.0, r + dr / 2.0))
+                jumps.setdefault(key, []).append(abs(float(za) - float(zb)))
 
     edges: list[Edge] = []
     for (ia, ib), P in pts.items():
         pa, pb = planes[ia], planes[ib]
         na = np.array([-pa[0], -pa[1], 1.0]); nb_ = np.array([-pb[0], -pb[1], 1.0])
         cosang = abs(float(na @ nb_)) / (np.linalg.norm(na) * np.linalg.norm(nb_))
-        if cosang > math.cos(math.radians(PARALLEL_DEG)):
-            continue                              # same slope: no crease here
         P = np.array(P) * px_m                    # boundary points, metres (x east, y south)
+        # A wall is a JUMP in height between neighbouring pixels; a crease is
+        # continuous. Checked FIRST: a lower wing and the main slope above it
+        # often face the same way, and skipping near-parallel pairs before this
+        # check dropped Buch Ave's whole north tie-in line (~15 ft).
+        if dsm is not None:
+            is_step = float(np.median(jumps[(ia, ib)])) > STEP_M
+        else:
+            zA = pa[0] * P[:, 0] + pa[1] * P[:, 1] + pa[2]
+            zB = pb[0] * P[:, 0] + pb[1] * P[:, 1] + pb[2]
+            is_step = float(np.median(np.abs(zA - zB))) > STEP_M
+        if is_step:
+            edges.extend(_step_edges(P, ia, ib, pa, pb, px_m))
+            continue
+        if cosang > math.cos(math.radians(PARALLEL_DEG)):
+            continue                              # same slope, same height: no crease
         # Plan-view line where the two planes are the same height:
         # (a_a - a_b) x + (b_a - b_b) y + (c_a - c_b) = 0
         da, db, dc_ = pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]
@@ -601,11 +707,6 @@ def _crease_edges(labels, planes, px_m) -> list[Edge]:
         dist = P @ n2 + off                       # signed distance of each point from the line
         # A height step (a lower roof against a wall) is not an intersection at
         # all: the planes' shared line runs somewhere else entirely.
-        zA = pa[0] * P[:, 0] + pa[1] * P[:, 1] + pa[2]
-        zB = pb[0] * P[:, 0] + pb[1] * P[:, 1] + pb[2]
-        if np.median(np.abs(zA - zB)) > STEP_M:
-            edges.extend(_step_edges(P, ia, ib, px_m))
-            continue
         near = np.abs(dist) < CREASE_MAX_OFFSET_M
         if near.sum() < 3:
             continue
@@ -636,7 +737,7 @@ def _crease_edges(labels, planes, px_m) -> list[Edge]:
             mid = (q0 + q1) / 2
             zm = pa[0] * mid[0] + pa[1] * mid[1] + pa[2]
             # Which side of the line is facet A on? Use A's own pixels.
-            a_side = _side_of(labels, ia, n2, off, px_m)
+            a_side = _side_of(labels, ia, n2, off, px_m, near_m=(float(mid[0]), float(mid[1])))
             pA = mid + n2 * 0.5 * a_side
             pB = mid - n2 * 0.5 * a_side
             zA_ = pa[0] * pA[0] + pa[1] * pA[1] + pa[2] - zm
@@ -653,17 +754,32 @@ def _crease_edges(labels, planes, px_m) -> list[Edge]:
     return edges
 
 
-def _side_of(labels, fid, n2, off, px_m) -> int:
-    """+1 if facet `fid` lies on the +n2 side of the plan line, else -1."""
+def _side_of(labels, fid, n2, off, px_m, near_m=None) -> int:
+    """+1 if facet `fid` lies on the +n2 side of the plan line, else -1.
+
+    Judged from the facet's pixels NEAR the line segment when a point is given.
+    A large facet can wrap around a smaller one (a main slope running either
+    side of a front gable), and the median of ALL its pixels then sits on the
+    wrong side for one of the two valleys — which typed a valley as a hip."""
     rr, cc = np.nonzero(labels == fid)
     if len(rr) == 0:
         return 1
+    if near_m is not None:
+        mx, my = near_m
+        close = (cc * px_m - mx) ** 2 + (rr * px_m - my) ** 2 < 1.5 ** 2
+        if close.sum() >= 5:
+            rr, cc = rr[close], cc[close]
     d = (cc * px_m) * n2[0] + (rr * px_m) * n2[1] + off
     return 1 if float(np.median(d)) >= 0 else -1
 
 
-def _step_edges(P, ia, ib, px_m) -> list[Edge]:
-    """A roof meeting a wall: its length is the extent of the boundary itself."""
+def _step_edges(P, ia, ib, pa, pb, px_m) -> list[Edge]:
+    """Where a lower roof meets the wall of a higher one.
+
+    That single line in plan is TWO lines on the house, needing two different
+    materials: the upper roof's own edge (drip edge on a rake or an eave), and
+    the lower roof running into the wall (step flashing). Aspen's Buch Ave
+    report counts both, and counting only the wall under-read the rakes."""
     c = P.mean(axis=0)
     _, _, vt = np.linalg.svd(P - c)
     u = vt[0]
@@ -671,9 +787,22 @@ def _step_edges(P, ia, ib, px_m) -> list[Edge]:
     plan_m = float(t.max() - t.min())
     if plan_m < CREASE_MIN_M:
         return []
-    q0 = (c + u * t.min()) / px_m; q1 = (c + u * t.max()) / px_m
-    return [Edge("wall_intersection", f_, o_, tuple(q0), tuple(q1), round(plan_m, 3), round(plan_m, 3))
-            for f_, o_ in ((ia, ib), (ib, ia))]
+    q0m = c + u * t.min(); q1m = c + u * t.max()
+    q0 = q0m / px_m; q1 = q1m / px_m
+    zA = pa[0] * c[0] + pa[1] * c[1] + pa[2]
+    zB = pb[0] * c[0] + pb[1] * c[1] + pb[2]
+    upper, uplane, lower = (ia, pa, ib) if zA >= zB else (ib, pb, ia)
+    z0 = uplane[0] * q0m[0] + uplane[1] * q0m[1] + uplane[2]
+    z1 = uplane[0] * q1m[0] + uplane[1] * q1m[1] + uplane[2]
+    up_len = math.hypot(plan_m, z1 - z0)
+    return [
+        # The upper roof's edge: owned by that facet alone, like an outside edge.
+        Edge(_outer_kind(uplane, q1m - q0m), upper, None, tuple(q0), tuple(q1),
+             round(plan_m, 3), round(up_len, 3)),
+        # The lower roof against the wall.
+        Edge("wall_intersection", lower, upper, tuple(q0), tuple(q1),
+             round(plan_m, 3), round(plan_m, 3)),
+    ]
 
 
 def _dedup_lengths(edges: list[Edge]) -> dict:

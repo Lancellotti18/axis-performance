@@ -73,6 +73,7 @@ def latlng_to_utm(lat: float, lng: float, zone: Optional[int] = None) -> tuple[f
 
 _TAG_PIXEL_SCALE = 33550
 _TAG_TIEPOINT = 33922
+_TAG_TRANSFORM = 34264          # 4x4 ModelTransformation — what Google's files actually use
 _TAG_GEOKEYS = 34735
 _GEOKEY_PROJECTED_CRS = 3072
 
@@ -100,8 +101,9 @@ def read_geotiff(blob: bytes) -> Raster:
     tags = im.tag_v2
     scale = tags.get(_TAG_PIXEL_SCALE)
     tie = tags.get(_TAG_TIEPOINT)
-    if not scale or not tie:
-        raise ValueError("not a GeoTIFF: pixel scale or tiepoint tag missing")
+    xform = tags.get(_TAG_TRANSFORM)
+    if not xform and (not scale or not tie):
+        raise ValueError("not a GeoTIFF: no transformation, pixel scale or tiepoint tag")
     epsg = None
     keys = tags.get(_TAG_GEOKEYS)
     if keys:
@@ -109,15 +111,27 @@ def read_geotiff(blob: bytes) -> Raster:
         for i in range(4, len(k), 4):                 # header is 4 shorts, then 4 per key
             if k[i] == _GEOKEY_PROJECTED_CRS:
                 epsg = int(k[i + 3])
-    try:
+    # Pixels come from OpenCV's libtiff, NOT Pillow. On Google's real files
+    # (tiled, Adobe-deflate, 32-bit float) Pillow returned plausible-looking
+    # arrays of garbage — heights of +/-1e38 m — without raising. OpenCV decodes
+    # them correctly. Pillow is kept only for the tags above.
+    import cv2
+    data = cv2.imdecode(np.frombuffer(blob, np.uint8), cv2.IMREAD_UNCHANGED | cv2.IMREAD_ANYDEPTH)
+    if data is None:
         data = np.array(im)
-    except Exception:
-        # Pillow can decline some compressions for float rasters; OpenCV's
-        # libtiff reads them.
-        import cv2
-        data = cv2.imdecode(np.frombuffer(blob, np.uint8), cv2.IMREAD_UNCHANGED | cv2.IMREAD_ANYDEPTH)
-        if data is None:
-            raise
+    elif data.ndim == 3 and data.shape[2] == 3:
+        data = data[..., ::-1]                   # OpenCV is BGR; keep RGB as RGB
+    if data.dtype.kind == "f":
+        finite = data[np.isfinite(data)]
+        if finite.size == 0 or float(np.abs(finite).max()) > 20000.0:
+            raise ValueError("height values are not plausible elevations — decode failed")
+    if xform:
+        # Row-major 4x4: E = m0*col + m1*row + m3 ;  N = m4*col + m5*row + m7.
+        # Google's is axis-aligned (m1 = m4 = 0) with m5 negative (rows run south).
+        m = [float(v) for v in list(xform)[:16]]
+        if abs(m[1]) > 1e-9 or abs(m[4]) > 1e-9:
+            raise ValueError("rotated GeoTIFF grids are not supported")
+        return Raster(data, m[0], -m[5], m[3], m[7], epsg)
     # Tiepoint: (i, j, k, X, Y, Z) — raster point (i, j) sits at map point (X, Y).
     i, j, _, X, Y, _ = [float(v) for v in list(tie)[:6]]
     sx, sy = float(scale[0]), float(scale[1])
@@ -216,7 +230,9 @@ async def fetch_layers(lat: float, lng: float, api_key: str, *, radius_m: float 
             for k, u in urls.items():
                 if not u:
                     continue
-                g = await client.get(u, params={"key": api_key})
+                # The URL already carries ?id=...; passing params= would REPLACE
+                # that query (httpx does not merge), dropping the id -> HTTP 400.
+                g = await client.get(httpx.URL(u).copy_merge_params({"key": api_key}))
                 if g.status_code != 200:
                     return LayerSet(False, f"could not download {k} ({g.status_code})")
                 blobs[k] = g.content
