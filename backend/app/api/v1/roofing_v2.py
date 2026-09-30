@@ -1414,18 +1414,31 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     # and if the corrected tap is on a different building, that building is
     # the one they meant.
     shift_en = (0.0, 0.0)
+    align_note = "not attempted"
     try:
         from urllib.parse import urlparse
         from app.services import imagery_align
         from app.services.auto_measure import pixel_mappers, building_bounds, seed_for
         tile_url = run.get("satellite_image_url") or req.satellite_image_url or ""
-        ok_host = urlparse(tile_url).hostname and \
-            urlparse(tile_url).hostname == urlparse(settings.SUPABASE_URL or "").hostname
-        if ok_host:          # only our own storage: never fetch an arbitrary URL
+        # On a NEW job the photo is still the provider's live link at this point
+        # (put_facets copies it into storage later, after alignment). Allowing
+        # only our storage silently skipped alignment on every fresh job — which
+        # is how the fix looked like it did nothing on its first live try. The
+        # imagery providers the proxy already vets are allowed too; nothing else.
+        host = (urlparse(tile_url).hostname or "").lower()
+        ok_host = bool(host) and (
+            host == (urlparse(settings.SUPABASE_URL or "").hostname or "").lower()
+            or any(host == h or host.endswith("." + h) for h in _PROXY_ALLOWED_HOSTS))
+        if not tile_url:
+            align_note = "no photo on this job to line up with"
+        elif not ok_host:
+            align_note = f"photo host not allowed ({host or 'none'})"
+        if ok_host:          # our storage or a vetted imagery provider — never an arbitrary URL
             import httpx as _httpx
-            async with _httpx.AsyncClient(timeout=20) as client:
-                resp = await client.get(tile_url)
+            async with _httpx.AsyncClient(timeout=25) as client:
+                resp = await client.get(tile_url)   # no redirects: stay on the vetted host
             tile = None
+            align_note = f"photo download failed (HTTP {resp.status_code})"
             if resp.status_code == 200:
                 import cv2 as _cv2
                 arr = _cv2.imdecode(np.frombuffer(resp.content, np.uint8), _cv2.IMREAD_COLOR)
@@ -1439,8 +1452,11 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
                     imagery_align.align_offset, tile, tile_px_of,
                     imagery_align.roof_line_image(layers.dsm), google_px_of,
                     building_bounds(model, layers, sp))
+                align_note = "no confident match between Google's roof and your photo"
                 if al:
                     shift_en = (al["east_m"], al["north_m"])
+                    align_note = (f"lined up with your photo (moved {math.hypot(*shift_en):.1f} m, "
+                                  f"match {al['score']:.2f})")
                     seed = seed_for(layers, sp, shift_en)
                     h_, w_ = model.labels.shape
                     same = (0 <= seed[0] < h_ and 0 <= seed[1] < w_ and model.labels[seed] >= 0)
@@ -1458,11 +1474,12 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
                                             "to trust — trace it by hand.", quality=q)
                         warnings.append("Google's map and your photo were offset, so the house "
                                         "under your tap was re-identified. Check it's the right one.")
-        if shift_en == (0.0, 0.0):
-            warnings.append("The outline couldn't be lined up precisely with this photo and may "
-                            "sit a few feet off the roof. The measurements are not affected.")
     except Exception as e:
-        logger.info("auto-measure alignment skipped for %s: %s", run_id, e)
+        logger.warning("auto-measure alignment failed for %s", run_id, exc_info=True)
+        align_note = f"error: {type(e).__name__}: {str(e)[:160]}"
+    if shift_en == (0.0, 0.0):
+        warnings.append("The outline couldn't be lined up with this photo and may sit a few feet "
+                        f"off the roof ({align_note}). The measurements are not affected.")
 
     if q.get("attached_suspected"):
         warnings.append("This looks like attached homes sharing one roof. Trim the outline to "
@@ -1501,6 +1518,7 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
         "warnings": warnings,
         "imagery_date": layers.imagery_date,
         "imagery_quality": layers.imagery_quality,
+        "alignment": align_note,
     }
 
 

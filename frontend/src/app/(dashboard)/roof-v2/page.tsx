@@ -627,7 +627,8 @@ export default function RoofV2Page() {
         setGeometryStamp(v => v + 1)
         setAutoNote({
           ok: true,
-          text: `Measured automatically from Google 3D${r.imagery_date ? ` (imagery from ${r.imagery_date})` : ''}. `
+          text: `Measured automatically from Google 3D${r.imagery_date ? ` (imagery from ${r.imagery_date})` : ''}`
+            + `${r.alignment ? ` — ${r.alignment}` : ''}. `
             + 'Check the outline sits on the right roof, adjust anything that looks off, then continue.',
           warnings: r.warnings || [],
         })
