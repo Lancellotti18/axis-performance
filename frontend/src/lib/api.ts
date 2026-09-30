@@ -1387,6 +1387,32 @@ export const api = {
       // Most recent run for a project — used to RESUME saved roof work.
       latestRun: (projectId: string) =>
         apiRequest<{ run_id: string | null }>(`/api/v1/roofing/v2/projects/${projectId}/latest-run`),
+      // Automatic 3D measurement (Google Solar Data Layers) — switched on per
+      // account on the server. The page asks once whether to offer it.
+      autoMeasureEnabled: () =>
+        apiRequest<{ enabled: boolean }>(`/api/v1/roofing/v2/auto-measure/enabled`),
+      // Measures the confirmed house from Google 3D and stores it exactly like
+      // a hand trace. available=false carries a plain reason to trace instead.
+      autoMeasure: (runId: string, req: {
+        image_width_px: number
+        image_height_px: number
+        zoom: number
+        lat: number
+        lng: number
+        satellite_image_url?: string | null
+      }) =>
+        apiRequest<{
+          available: boolean
+          reason?: string
+          facets?: Array<Record<string, unknown>>
+          edges?: Array<Record<string, unknown>>
+          warnings?: string[]
+          imagery_date?: string | null
+          imagery_quality?: string | null
+        }>(`/api/v1/roofing/v2/runs/${runId}/auto-measure`, {
+          method: 'POST',
+          body: JSON.stringify(req),
+        }),
       patchRun: (runId: string, updates: Record<string, unknown>) =>
         apiRequest<Record<string, unknown>>(`/api/v1/roofing/v2/runs/${runId}`, {
           method: 'PATCH',

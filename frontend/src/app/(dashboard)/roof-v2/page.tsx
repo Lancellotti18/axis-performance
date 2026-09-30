@@ -88,6 +88,35 @@ const SHOW_SIDING = false
 // endpoint, the estimator service and the report all stay wired.
 const SHOW_ADJUSTER_MODE = false
 
+// Saved facet/edge rows → the editor's geometry. Used by RESUME and by
+// auto-measure, so both load a roof the same way (a stored auto-measurement IS
+// a stored trace; there must be no second mapping to drift out of step).
+function rowsToGeometry(facetRows: Record<string, unknown>[], edgeRows: Record<string, unknown>[]):
+  { fcts: Facet[]; edgs: LabeledEdge[] } {
+  const byId: Record<string, string> = {}
+  const fcts: Facet[] = facetRows.map(f => {
+    byId[f.id as string] = f.facet_label as string
+    return {
+      label: (f.facet_label as string) || '?',
+      polygon: (f.polygon as [number, number][]) || [],
+      pitch: (f.pitch as string) || '6/12',
+      pitchSource: (f.pitch_source as string) || undefined,
+      confidence: (f.confidence as number) ?? 0.8,
+      userConfirmed: !!f.user_confirmed,
+      aiSuggested: !!f.ai_suggested,
+    }
+  })
+  const edgs: LabeledEdge[] = edgeRows.map(e => ({
+    facetLabel: byId[e.facet_id as string] || '',
+    vertexIndexStart: e.vertex_index_start as number,
+    vertexIndexEnd: e.vertex_index_end as number,
+    edgeType: (e.edge_type as LabeledEdge['edgeType']) || 'unlabeled',
+    userConfirmed: !!e.user_confirmed,
+    sharedWithFacetLabel: e.shared_with_facet ? (byId[e.shared_with_facet as string] || undefined) : undefined,
+  })).filter(e => e.facetLabel)
+  return { fcts, edgs }
+}
+
 type Step = 'project' | 'location' | 'imagery' | 'editor' | 'details' | 'siding' | 'report'
 
 // Friendly stepper labels (the Step values stay the same for all the logic).
@@ -142,6 +171,11 @@ export default function RoofV2Page() {
   // time (confirm house → check scale → draw) and clicks Next, instead of
   // scrolling past several stacked tiles.
   const [editorSub, setEditorSub] = useState<'confirm' | 'scale' | 'draw'>('confirm')
+  // Auto-measure from Google 3D. Offered only when the server says this account
+  // has it (Ryan's rule: nobody else until 5 side-by-side comparisons pass).
+  const [autoMeasureOn, setAutoMeasureOn] = useState(false)
+  const [autoBusy, setAutoBusy] = useState(false)
+  const [autoNote, setAutoNote] = useState<{ ok: boolean; text: string; warnings: string[] } | null>(null)
   const [step, setStep] = useState<Step>('project')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -265,27 +299,8 @@ export default function RoofV2Page() {
           setSavedScaleDesc((run.scale_reference_description as string) || null)
 
           // Geometry doesn't depend on the tile being pinned — restore it either way.
-          const byId: Record<string, string> = {}
-          const fcts: Facet[] = (data.facets as Record<string, unknown>[]).map(f => {
-            byId[f.id as string] = f.facet_label as string
-            return {
-              label: (f.facet_label as string) || '?',
-              polygon: (f.polygon as [number, number][]) || [],
-              pitch: (f.pitch as string) || '6/12',
-              pitchSource: (f.pitch_source as string) || undefined,
-              confidence: (f.confidence as number) ?? 0.8,
-              userConfirmed: !!f.user_confirmed,
-              aiSuggested: !!f.ai_suggested,
-            }
-          })
-          const edgs: LabeledEdge[] = (data.edges as Record<string, unknown>[]).map(e => ({
-            facetLabel: byId[e.facet_id as string] || '',
-            vertexIndexStart: e.vertex_index_start as number,
-            vertexIndexEnd: e.vertex_index_end as number,
-            edgeType: (e.edge_type as LabeledEdge['edgeType']) || 'unlabeled',
-            userConfirmed: !!e.user_confirmed,
-            sharedWithFacetLabel: e.shared_with_facet ? (byId[e.shared_with_facet as string] || undefined) : undefined,
-          })).filter(e => e.facetLabel)
+          const { fcts, edgs } = rowsToGeometry(
+            data.facets as Record<string, unknown>[], data.edges as Record<string, unknown>[])
 
           setFacets(fcts)
           setEdges(edgs)
@@ -579,6 +594,53 @@ export default function RoofV2Page() {
     if (debouncedRef.t) { clearTimeout(debouncedRef.t); debouncedRef.t = null }
     debouncedRef.pending = null
   }, [debouncedRef])
+
+  // Ask once whether this account gets auto-measure.
+  useEffect(() => {
+    api.roofing.v2.autoMeasureEnabled()
+      .then(r => setAutoMeasureOn(!!r.enabled))
+      .catch(() => setAutoMeasureOn(false))
+  }, [])
+
+  // Measure the confirmed house from Google 3D. On success the result is
+  // already stored server-side exactly like a trace; load it into the editor
+  // for review. On any refusal, say why and open the editor empty to trace.
+  const runAutoMeasure = useCallback(async () => {
+    if (!runId || !imagery) return
+    setAutoBusy(true)
+    setAutoNote(null)
+    try {
+      const r = await api.roofing.v2.autoMeasure(runId, {
+        image_width_px: imagery.width_px ?? 2048,
+        image_height_px: imagery.height_px ?? 1366,
+        zoom: imagery.zoom ?? 20,
+        lat: imagery.lat ?? location?.lat ?? 0,
+        lng: imagery.lng ?? location?.lng ?? 0,
+        satellite_image_url: imagery.original_url || imagery.url,
+      })
+      if (r.available && r.facets && r.edges) {
+        const { fcts, edgs } = rowsToGeometry(r.facets, r.edges)
+        cancelPending()   // a queued canvas write would overwrite the measurement
+        setFacets(fcts)
+        setEdges(edgs)
+        setEditorSyncRev(v => v + 1)
+        setGeometryStamp(v => v + 1)
+        setAutoNote({
+          ok: true,
+          text: `Measured automatically from Google 3D${r.imagery_date ? ` (imagery from ${r.imagery_date})` : ''}. `
+            + 'Check the outline sits on the right roof, adjust anything that looks off, then continue.',
+          warnings: r.warnings || [],
+        })
+      } else {
+        setAutoNote({ ok: false, text: `${r.reason || "This roof couldn't be measured automatically."} Trace it below instead.`, warnings: [] })
+      }
+    } catch (e) {
+      setAutoNote({ ok: false, text: `Automatic measurement didn't finish (${e instanceof Error ? e.message : 'error'}). Trace it below instead.`, warnings: [] })
+    } finally {
+      setAutoBusy(false)
+      setEditorSub('draw')
+    }
+  }, [runId, imagery, location, cancelPending])
 
   const onEditorChange = useCallback((newFacets: Facet[], newEdges: LabeledEdge[]) => {
     setFacets(newFacets)
@@ -897,9 +959,25 @@ export default function RoofV2Page() {
               <div className="flex items-center justify-end gap-2">
                 <button onClick={() => setEditorSub('scale')}
                   className="rounded-md bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2]">Check scale (optional)</button>
-                <button onClick={() => setEditorSub('draw')}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Next: draw roof &rarr;</button>
+                {autoMeasureOn ? (<>
+                  <button onClick={() => setEditorSub('draw')}
+                    className="rounded-md bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2]">Trace by hand</button>
+                  <button onClick={() => { void runAutoMeasure() }} disabled={!subjectPoint || autoBusy}
+                    title={subjectPoint ? 'Measure the whole roof from Google 3D — no tracing' : 'Confirm the house first'}
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
+                    {autoBusy ? 'Measuring the roof…' : '✨ Auto-measure roof'}
+                  </button>
+                </>) : (
+                  <button onClick={() => setEditorSub('draw')}
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Next: draw roof &rarr;</button>
+                )}
               </div>
+              {autoBusy && (
+                <div className="flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-900">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-800" />
+                  Pulling Google's 3D model of this roof and measuring every facet — usually under 30 seconds.
+                </div>
+              )}
             </div>
           )}
 
@@ -924,6 +1002,14 @@ export default function RoofV2Page() {
           )}
 
           {editorSub === 'draw' && (<>
+          {autoNote && (
+            <div className={`rounded-lg border p-3 text-sm ${autoNote.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
+              <div>{autoNote.ok ? '✨ ' : ''}{autoNote.text}</div>
+              {autoNote.warnings.map(w => (
+                <div key={w} className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-amber-900">⚠️ {w}</div>
+              ))}
+            </div>
+          )}
           {/* Save state, always on screen while drawing. Tracing is the most
               expensive work in the app and it saves on a debounce — the
               contractor should never have to wonder whether it landed. */}

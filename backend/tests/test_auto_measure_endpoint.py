@@ -1,0 +1,121 @@
+"""The auto-measure endpoint: who gets it, when it refuses, and what it stores.
+
+Google and the database are faked; the geometry is real (a synthetic gable)."""
+import asyncio
+import math
+
+import numpy as np
+import pytest
+
+from app.api.v1 import roofing_v2 as rv
+from app.core.config import settings
+from app.services import solar_layers_service as SL, solar_service, address_match
+from tests import _roof_synth as S
+
+RYAN = {"id": "f9dafe47-810a-4c72-81c6-dbe2d9baf64b", "email": ""}
+OTHER = {"id": "00000000-0000-0000-0000-000000000000", "email": ""}
+LAT, LNG = 34.2257, -77.9447
+REQ = rv.AutoMeasureRequest(image_width_px=2048, image_height_px=1366, zoom=20, lat=LAT, lng=LNG)
+
+
+def test_only_listed_accounts_get_it(monkeypatch):
+    assert rv._auto_measure_allowed(RYAN)
+    assert not rv._auto_measure_allowed(OTHER)
+    monkeypatch.setattr(settings, "AUTO_MEASURE_USER_IDS", "*")
+    assert rv._auto_measure_allowed(OTHER)                 # "*" switches it on for everyone
+
+
+class _Q:
+    def __init__(self, data): self.data = data
+    def __getattr__(self, _): return lambda *a, **k: self
+    def execute(self): return self
+
+
+class _DB:
+    def __init__(self, stored): self.stored = stored
+    def table(self, name):
+        if name == "projects":
+            return _Q({"name": "1422 Oak St", "city": "Wilmington", "state": "NC"})
+        return _Q(self.stored.get(name, []))
+
+
+def _layers_for(dsm, mask, px):
+    """A LayerSet for synthetic arrays, placed so the tap is the roof's centre."""
+    e, n, _ = SL.latlng_to_utm(LAT, LNG)
+    h, w = dsm.shape
+    return SL.LayerSet(True, None, dsm=dsm, mask=mask, rgb=None, px_m=px,
+                       seed_rc=(h // 2, w // 2), imagery_date="2024-05-02", imagery_quality="HIGH",
+                       epsg=32600 + SL.utm_zone(LNG),
+                       origin_e=e - (w // 2 + 0.5) * px, origin_n=n + (h // 2 + 0.5) * px)
+
+
+@pytest.fixture
+def wired(monkeypatch):
+    stored = {}
+    run = {"id": "r1", "project_id": "p1", "subject_point": {"x": 0.5, "y": 0.5, "lat": LAT, "lng": LNG}}
+    monkeypatch.setattr(rv, "get_supabase", lambda: _DB(stored))
+    monkeypatch.setattr(rv, "require_owned_run", lambda db, rid, user: run)
+    async def no_addr(*a, **k): return (None, None)
+    monkeypatch.setattr(address_match, "reverse_lookup", no_addr)
+    async def bi(lat, lng): return {"available": True, "center": {"lat": LAT, "lng": LNG}}
+    monkeypatch.setattr(solar_service, "get_building_insights", bi)
+    saved = {}
+    async def put_f(run_id, req, user): saved["facets"] = req; return {}
+    async def put_e(run_id, req, user): saved["edges"] = req; return {}
+    monkeypatch.setattr(rv, "put_facets", put_f)
+    monkeypatch.setattr(rv, "put_edges", put_e)
+    monkeypatch.setattr(rv, "_aggregate_run", lambda rid: {"squares": 1.0})
+    monkeypatch.setattr(settings, "GOOGLE_SOLAR_API_KEY", "test-key")
+    return {"run": run, "saved": saved}
+
+
+def _call(user=RYAN):
+    return asyncio.run(rv.auto_measure("r1", REQ, user))
+
+
+def test_an_account_not_on_the_list_is_refused(wired):
+    with pytest.raises(rv.HTTPException) as e:
+        _call(OTHER)
+    assert e.value.status_code == 403
+
+
+def test_no_tap_means_trace_by_hand(wired):
+    wired["run"]["subject_point"] = {"x": 0.5, "y": 0.5}      # no lat/lng recorded
+    out = _call()
+    assert out["available"] is False and "Tap the house" in out["reason"]
+
+
+def test_no_google_coverage_means_trace_by_hand(wired, monkeypatch):
+    async def none(*a, **k): return SL.LayerSet(False, "no Google 3D coverage at this address")
+    monkeypatch.setattr(SL, "fetch_layers", none)
+    out = _call()
+    assert out["available"] is False and "coverage" in out["reason"]
+    assert "facets" not in wired["saved"]                      # nothing stored
+
+
+def test_googles_two_views_disagreeing_about_the_building_is_refused(wired, monkeypatch):
+    dsm, mask, px = S.gable()
+    async def layers(*a, **k): return _layers_for(dsm, mask, px)
+    monkeypatch.setattr(SL, "fetch_layers", layers)
+    async def far(lat, lng):                                  # ~60 m away
+        return {"available": True, "center": {"lat": LAT + 60 / 111320.0, "lng": LNG}}
+    monkeypatch.setattr(solar_service, "get_building_insights", far)
+    out = _call()
+    assert out["available"] is False and "disagree" in out["reason"]
+    assert "facets" not in wired["saved"]
+
+
+def test_a_gable_is_measured_and_stored_like_a_trace(wired, monkeypatch):
+    dsm, mask, px = S.gable()
+    async def layers(*a, **k): return _layers_for(dsm, mask, px)
+    monkeypatch.setattr(SL, "fetch_layers", layers)
+    out = _call()
+    assert out["available"] is True and out["imagery_date"] == "2024-05-02"
+    fr = wired["saved"]["facets"]
+    assert len(fr.facets) == 2
+    assert all(f.pitch == "6.0/12" and f.pitch_source == "solar_3d" for f in fr.facets)
+    kinds = {e.edge_type for e in wired["saved"]["edges"].edges}
+    assert {"eave", "rake", "ridge"} <= kinds and "hip" not in kinds and "valley" not in kinds
+    # The outline sits around the tap (the image centre here), in image fractions.
+    xs = [p[0] for f in fr.facets for p in f.polygon]
+    assert min(xs) < 0.5 < max(xs)

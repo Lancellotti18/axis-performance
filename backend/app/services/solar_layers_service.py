@@ -153,6 +153,8 @@ class LayerSet:
     imagery_quality: Optional[str] = None
     epsg: Optional[int] = None
     notes: list[str] = field(default_factory=list)
+    origin_e: float = 0.0          # UTM of the top-left corner of pixel (0, 0)
+    origin_n: float = 0.0
 
 
 def assemble(dsm: Raster, mask: Raster, rgb: Optional[Raster], lat: float, lng: float,
@@ -194,6 +196,8 @@ def assemble(dsm: Raster, mask: Raster, rgb: Optional[Raster], lat: float, lng: 
         imagery_quality=meta.get("imageryQuality"),
         epsg=epsg,
         notes=notes,
+        origin_e=dsm.origin_e,
+        origin_n=dsm.origin_n,
     )
 
 

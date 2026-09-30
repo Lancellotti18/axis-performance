@@ -106,7 +106,7 @@ MIN_FACET_M2 = 1.5          # smaller regions are noise or chimneys, not facets
 THIN_ERODE_PX = 2           # a "facet" that vanishes under this erosion is a crease strip
 LEVEL_RISE_PER_RUN = 0.15   # an edge climbing less than this is level (eave/ridge)
 STEP_M = 0.4                # a height gap this big between facets is a wall, not a crease
-SIDE_TOL_M = 0.30           # facet outlines are simplified to within this
+SIDE_TOL_M = 0.30           # outline topology tolerance; sides are then re-fitted (see _regularize)
 
 
 def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
@@ -139,7 +139,12 @@ def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
         # Outline sides: only the ones on the building's outside edge. Lines
         # between two facets come from _crease_edges, which does not trust the
         # noisy pixel boundary for where they are.
-        edges.extend(e for e in _facet_edges(f, labels, planes, px_m) if e.neighbour is None)
+        fe = _facet_edges(f, labels, planes, px_m)
+        ks = _absorb_corner_stubs([e.kind for e in fe], [e.plan_m for e in fe],
+                                  [e.neighbour is None for e in fe])
+        for e, k in zip(fe, ks):
+            e.kind = k
+        edges.extend(e for e in fe if e.neighbour is None)
     edges.extend(_crease_edges(labels, {k: v for k, v in planes.items() if k in kept}, px_m, dsm))
     lengths = _dedup_lengths(edges)
 
@@ -466,10 +471,58 @@ def _facets(dsm, labels, planes, px_m):
         if cnts:
             cnt = max(cnts, key=cv2.contourArea)
             approx = cv2.approxPolyDP(cnt, SIDE_TOL_M / px_m, True)
-            poly = _outward_offset([(float(p[0][0]), float(p[0][1])) for p in approx], 0.5)
+            poly = _outward_offset(_regularize(cnt, approx), 0.5)
         out.append(Facet(fid, round(plan, 3), round(plan * math.sqrt(1 + grad * grad), 3),
                          round(math.degrees(slope), 2), round(12 * grad, 2), round(az, 1),
                          (a, b, c), round(rms, 4), poly))
+    return out
+
+
+def _regularize(cnt, approx) -> list[tuple[float, float]]:
+    """Straight sides through the boundary, not chords between its corners.
+
+    A simplified outline joins corner points of the pixel boundary. With a
+    coarse tolerance it cuts corners (Buch Ave lost ~1% of its area); with a
+    fine one it follows the pixel staircase along any edge not square to the
+    grid (a house at 38 deg read its eaves 6% long). Instead: keep the coarse
+    outline for WHERE the sides are, fit a least-squares line through every
+    boundary pixel belonging to each side, and put each corner where two
+    neighbouring fitted lines meet."""
+    C = cnt.reshape(-1, 2).astype(np.float64)
+    A = approx.reshape(-1, 2).astype(np.float64)
+    n = len(A)
+    if n < 3:
+        return [(float(x), float(y)) for x, y in A]
+    # Where each simplified corner sits in the full boundary.
+    idx = [int(np.argmin(np.sum((C - a) ** 2, axis=1))) for a in A]
+    N = len(C)
+    fits = []
+    for i in range(n):
+        i0, i1 = idx[i], idx[(i + 1) % n]
+        seg = C[i0:i1 + 1] if i1 >= i0 else np.vstack([C[i0:], C[:i1 + 1]])
+        m = len(seg)
+        core = seg[int(m * 0.1): max(int(m * 0.9), int(m * 0.1) + 2)] if m >= 8 else seg
+        c = core.mean(axis=0)
+        if len(core) >= 2:
+            _, _, vt = np.linalg.svd(core - c)
+            d = vt[0]
+        else:
+            d = (A[(i + 1) % n] - A[i]); d = d / (np.linalg.norm(d) or 1.0)
+        fits.append((c, d))
+    out = []
+    for i in range(n):
+        (c1, d1), (c2, d2) = fits[i - 1], fits[i]
+        den = d1[0] * d2[1] - d1[1] * d2[0]
+        if abs(den) < 0.17:                        # sides within ~10 deg of parallel
+            out.append((float(A[i][0]), float(A[i][1])))
+            continue
+        t = ((c2[0] - c1[0]) * d2[1] - (c2[1] - c1[1]) * d2[0]) / den
+        x = c1 + d1 * t
+        # A runaway intersection (very acute corner) keeps the original point.
+        if float(np.hypot(*(x - A[i]))) > 15:
+            out.append((float(A[i][0]), float(A[i][1])))
+        else:
+            out.append((float(x[0]), float(x[1])))
     return out
 
 
@@ -609,6 +662,25 @@ def _outer_kind(plane, direction) -> str:
     d = np.asarray(direction, dtype=np.float64)
     d = d / (np.linalg.norm(d) or 1.0)
     return "rake" if abs(float(down @ d)) > math.cos(math.radians(45)) else "eave"
+
+
+CORNER_STUB_M = 1.0         # an outside piece shorter than this is a corner, not a line of its own
+
+
+def _absorb_corner_stubs(kinds: list[str], lengths: list[float], outside: list[bool]) -> list[str]:
+    """A finely traced outline cuts each corner with a short diagonal. Typed
+    on its own, the one at a hip roof's corner reads as ~1 m of "rake" on a
+    roof that has none. A corner piece takes the type of the longer outside
+    line beside it."""
+    n = len(kinds)
+    out = list(kinds)
+    for i in range(n):
+        if not outside[i] or lengths[i] >= CORNER_STUB_M:
+            continue
+        nbrs = [j for j in ((i - 1) % n, (i + 1) % n) if outside[j] and lengths[j] >= CORNER_STUB_M]
+        if nbrs:
+            out[i] = kinds[max(nbrs, key=lambda j: lengths[j])]
+    return out
 
 
 def _classify(f: Facet, nb: int, q0, q1, normal, planes, px_m) -> Edge:
@@ -820,3 +892,228 @@ def _dedup_lengths(edges: list[Edge]) -> dict:
     for (_, _, kind), sides in shared.items():
         totals[kind] = totals.get(kind, 0.0) + sum(sides.values()) / len(sides)
     return {k: round(v, 3) for k, v in totals.items()}
+
+
+# ── Handing the result to the rest of Axis ───────────────────────────────
+#
+# Axis stores a roof the way a contractor traces it: each facet is an outline,
+# and each EDGE IS ONE SIDE of that outline, tagged eave/rake/ridge/hip/valley.
+# Every length on the report is then derived from those sides and the facet's
+# pitch. So the engine's result is re-expressed as outlines whose sides ARE the
+# lines: a vertex wherever the neighbour across the side changes, and vertices
+# on shared creases snapped onto the exact plane-intersection line, so two
+# facets sharing a ridge agree on precisely where it runs.
+
+@dataclass
+class AxisFacet:
+    label: str
+    fid: int
+    vertices_px: list[tuple[float, float]]             # (col, row), pixel-centre coords
+    sides: list[tuple[str, Optional[int]]]             # side i = vertex i -> i+1: (kind, neighbour fid)
+    pitch_12: float
+
+
+def _labels_seq(n: int) -> list[str]:
+    out = []
+    for i in range(n):
+        s, k = "", i
+        while True:
+            s = chr(ord("A") + k % 26) + s
+            k = k // 26 - 1
+            if k < 0:
+                break
+        out.append(s)
+    return out
+
+
+def _project(p, a, b):
+    """Closest point to p on the infinite line through a, b."""
+    p, a, b = (np.asarray(v, dtype=np.float64) for v in (p, a, b))
+    d = b - a
+    dd = float(d @ d) or 1e-12
+    return a + d * float((p - a) @ d) / dd
+
+
+def _intersect(a1, a2, b1, b2):
+    a1, a2, b1, b2 = (np.asarray(v, dtype=np.float64) for v in (a1, a2, b1, b2))
+    da, db = a2 - a1, b2 - b1
+    den = da[0] * db[1] - da[1] * db[0]
+    if abs(den) < 1e-9:
+        return None
+    t = ((b1[0] - a1[0]) * db[1] - (b1[1] - a1[1]) * db[0]) / den
+    return a1 + da * t
+
+
+def axis_facets(model: RoofModel) -> list[AxisFacet]:
+    """The engine's roof as Axis-style outlines, with every side typed."""
+    if not model.available or model.labels is None:
+        return []
+    px_m = model.px_m
+    labels = model.labels
+    planes = {f.id: (*f.plane, f.rms_m) for f in model.facets}
+    H, W = labels.shape
+
+    # The exact line for every shared boundary, and what kind of line it is.
+    lines: dict[tuple[int, int], tuple] = {}
+    kinds: dict[tuple[int, int], dict[str, float]] = {}
+    steps: dict[tuple[int, int], int] = {}              # pair -> the UPPER facet
+    for e in model.edges:
+        if e.neighbour is None:
+            continue
+        k = (min(e.facet, e.neighbour), max(e.facet, e.neighbour))
+        if e.kind == "wall_intersection":
+            steps[k] = e.neighbour                      # emitted from the lower facet
+        else:
+            kinds.setdefault(k, {})
+            kinds[k][e.kind] = kinds[k].get(e.kind, 0.0) + e.length_m
+        # Keep the longest segment's line for snapping.
+        if k not in lines or e.plan_m > lines[k][2]:
+            lines[k] = (np.array(e.p0), np.array(e.p1), e.plan_m)
+    pair_kind = {k: max(v, key=v.get) for k, v in kinds.items()}
+
+    min_run = max(3, int(0.5 / px_m))
+    out: list[AxisFacet] = []
+    names = _labels_seq(len(model.facets))
+    for name, f in zip(names, model.facets):
+        poly = f.polygon_px
+        if len(poly) < 3:
+            continue
+        cnt = np.array(poly, dtype=np.float32).reshape(-1, 1, 2)
+        verts: list[np.ndarray] = []
+        nbrs: list[Optional[int]] = []
+        for i in range(len(poly)):
+            p0, p1 = np.array(poly[i]), np.array(poly[(i + 1) % len(poly)])
+            seg = p1 - p0
+            L = float(np.hypot(*seg))
+            if L < 1e-6:
+                continue
+            u = seg / L
+            normal = np.array([-u[1], u[0]])
+            mid = (p0 + p1) / 2
+            if cv2.pointPolygonTest(cnt, (float(mid[0] + normal[0] * 2), float(mid[1] + normal[1] * 2)), False) > 0:
+                normal = -normal
+            steps_n = max(4, int(L))
+            across = []
+            for t in (np.arange(steps_n) + 0.5) / steps_n:
+                q = p0 + seg * t + normal * 2.0
+                c_, r_ = int(round(q[0])), int(round(q[1]))
+                lab = int(labels[r_, c_]) if (0 <= r_ < H and 0 <= c_ < W) else OUTSIDE
+                across.append(lab if (lab >= 0 and lab in planes) else OUTSIDE)
+            runs = _runs(across, f.id, min_run) or [(OUTSIDE, 0, steps_n)]
+            for nb, j0, _ in runs:
+                verts.append(p0 + seg * (j0 / steps_n))
+                nbrs.append(None if nb == OUTSIDE else nb)
+        # Drop vertices closer than 15 cm to the previous one (and their side).
+        keep_v, keep_n = [], []
+        for v, n in zip(verts, nbrs):
+            if keep_v and float(np.hypot(*(v - keep_v[-1]))) * px_m < 0.15:
+                keep_n[-1] = keep_n[-1] if keep_n[-1] is not None else n
+                continue
+            keep_v.append(v); keep_n.append(n)
+        # Merge consecutive sides with the same neighbour that are nearly collinear.
+        if len(keep_v) < 3:
+            continue
+
+        # Snap vertices onto exact shared lines.
+        n = len(keep_v)
+        snapped = []
+        for i in range(n):
+            v = keep_v[i]
+            prev_nb, next_nb = keep_n[i - 1], keep_n[i]
+            cands = []
+            for nb in {prev_nb, next_nb}:
+                if nb is None:
+                    continue
+                k = (min(f.id, nb), max(f.id, nb))
+                if k in lines:
+                    cands.append(lines[k])
+            new = v
+            if len(cands) == 2:
+                x = _intersect(cands[0][0], cands[0][1], cands[1][0], cands[1][1])
+                if x is not None and float(np.hypot(*(x - v))) * px_m < 1.0:
+                    new = x
+                else:
+                    new = _project(v, cands[0][0], cands[0][1])
+            elif len(cands) == 1:
+                proj = _project(v, cands[0][0], cands[0][1])
+                if float(np.hypot(*(proj - v))) * px_m < 0.6:
+                    new = proj
+            snapped.append(new)
+
+        # Snap onto crease ENDS too. Where a valley meets the eave, the traced
+        # outline turns the corner in a few short stubs that border the next
+        # facet without lying on the valley; typed by their neighbour they read
+        # as extra valley, and because the two facets' stubs never coincide the
+        # report could not de-duplicate them (Buch Ave: valleys +14%). Pulling
+        # every nearby vertex onto the crease's exact end collapses the stubs.
+        # Only a vertex that BORDERS a crease (a side on either side of it has
+        # that crease's facet as its neighbour) may snap to the crease's ends;
+        # otherwise outer corners near a ridge end got pulled inward, costing
+        # eave and rake length and area.
+        for i in range(n):
+            ends = []
+            for nb in {keep_n[i - 1], keep_n[i]}:
+                if nb is None:
+                    continue
+                k = (min(f.id, nb), max(f.id, nb))
+                if k in lines:
+                    ends.extend([lines[k][0], lines[k][1]])
+            best = None
+            for q in ends:
+                d = float(np.hypot(*(snapped[i] - q))) * px_m
+                if d < 0.9 and (best is None or d < best[0]):
+                    best = (d, q)
+            if best:
+                snapped[i] = np.array(best[1], dtype=np.float64)
+        # Remove sides that collapsed (both ends on the same point).
+        pts, nbs = [], []
+        for i in range(n):
+            if pts and float(np.hypot(*(snapped[i] - pts[-1]))) * px_m < 0.15:
+                continue
+            pts.append(snapped[i]); nbs.append(keep_n[i])
+        if len(pts) >= 2 and float(np.hypot(*(pts[0] - pts[-1]))) * px_m < 0.15:
+            pts.pop(); nbs.pop()
+        # Merge consecutive sides with the same neighbour that run straight on.
+        changed = True
+        while changed and len(pts) > 3:
+            changed = False
+            for i in range(len(pts)):
+                a_, b_, c_ = pts[i - 1], pts[i], pts[(i + 1) % len(pts)]
+                if nbs[i - 1] != nbs[i]:
+                    continue
+                u1, u2 = b_ - a_, c_ - b_
+                n1, n2 = np.hypot(*u1), np.hypot(*u2)
+                if n1 < 1e-9 or n2 < 1e-9 or float(u1 @ u2) / (n1 * n2) > math.cos(math.radians(5)):
+                    pts.pop(i); nbs.pop(i)
+                    changed = True
+                    break
+        snapped, keep_n, n = pts, nbs, len(pts)
+        if n < 3:
+            continue
+
+        # Type every side.
+        sides: list[tuple[str, Optional[int]]] = []
+        for i in range(n):
+            a, b = snapped[i], snapped[(i + 1) % n]
+            nb = keep_n[i]
+            if nb is None:
+                sides.append((_outer_kind(f.plane, b - a), None))
+                continue
+            k = (min(f.id, nb), max(f.id, nb))
+            if k in steps:
+                upper = steps[k]
+                sides.append((_outer_kind(f.plane, b - a) if upper == f.id else "wall_intersection", nb))
+            elif k in pair_kind:
+                q0, q1, _ = lines[k]
+                on_line = all(float(np.hypot(*(np.asarray(v) - _project(v, q0, q1)))) * px_m < 0.35
+                              for v in (a, b))
+                sides.append((pair_kind[k], nb) if on_line else ("unlabeled", nb))
+            else:
+                sides.append(("unlabeled", nb))
+        lens = [float(np.hypot(*(np.asarray(snapped[(i + 1) % n]) - np.asarray(snapped[i])))) * px_m
+                for i in range(n)]
+        ks = _absorb_corner_stubs([k for k, _ in sides], lens, [nb is None for _, nb in sides])
+        sides = [(k, nb) for k, (_, nb) in zip(ks, sides)]
+        out.append(AxisFacet(name, f.id, [(float(p[0]), float(p[1])) for p in snapped],
+                             sides, f.pitch_12))
+    return out

@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     REPLICATE_API_KEY: str = ""
     GOOGLE_SOLAR_API_KEY: str = ""
+    # Who gets automatic 3D measurement (Solar Data Layers) instead of tracing.
+    # Comma-separated Supabase user ids, or "*" for everyone. Ryan's rule: no
+    # contractor gets it until 5 side-by-side comparisons pass, so it defaults
+    # to his own accounts only. Ids, not emails, so no address lives in code.
+    AUTO_MEASURE_USER_IDS: str = (
+        "f9dafe47-810a-4c72-81c6-dbe2d9baf64b,"
+        "f096fd85-1541-4b1b-a491-1bc8c966afca,"
+        "7b92b4aa-4187-4ff8-9014-46702b65986b,"
+        "37ff7be5-b75c-402c-aa42-8061e9b23783"
+    )
 
     # Stripe — checkout is only offered when the secret key AND all price IDs
     # are configured; otherwise /billing/subscribe returns 503 and the pricing

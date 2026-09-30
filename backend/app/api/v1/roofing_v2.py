@@ -43,6 +43,8 @@ import asyncio
 import logging
 import math
 import time
+
+import numpy as np
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -1289,6 +1291,161 @@ async def put_edges(
         new_edges = []
 
     return {"edges": new_edges, "count": len(new_edges)}
+
+
+# ----------------------------------------------------------------------------
+# Auto-measure: the whole roof from Google's 3D data, no tracing
+# ----------------------------------------------------------------------------
+#
+# After the contractor confirms the house, the roof is measured from Google
+# Solar's Data Layers (a height map + roof mask) by roof_from_dsm, converted to
+# outlines whose sides ARE the eaves/rakes/ridges/valleys, and stored through
+# put_facets / put_edges exactly as a hand trace would be — so the editor, the
+# report and the material list see no difference.
+#
+# It refuses rather than guesses. Any failed check returns available=False with
+# a plain reason and the contractor traces as before. Right-house rules (Axis
+# has shipped three wrong-building bugs): measure only the TAPPED house; the
+# engine refuses taps that miss or sit between two roofs; Google's two views of
+# the address must agree on the building; the tapped address is compared with
+# the job's; attached homes are flagged.
+
+AUTO_MIN_ASSIGNED = 0.95      # share of the building the facets must explain
+AUTO_MAX_RMS_M = 0.20         # worst facet: a plane this far off is not one surface
+AUTO_MAX_FACETS = 40
+AUTO_MAX_CENTRE_GAP_M = 20.0  # Building Insights' centre vs the measured building
+
+
+def _auto_measure_allowed(user: dict) -> bool:
+    from app.core.config import settings
+    ids = {x.strip() for x in (settings.AUTO_MEASURE_USER_IDS or "").split(",") if x.strip()}
+    return "*" in ids or str(user.get("id") or "") in ids
+
+
+@router.get("/auto-measure/enabled")
+async def auto_measure_enabled(user: dict = Depends(require_user)) -> dict:
+    """Whether this account gets the auto-measure step (the UI asks once)."""
+    from app.core.config import settings
+    return {"enabled": _auto_measure_allowed(user) and bool(settings.GOOGLE_SOLAR_API_KEY)}
+
+
+class AutoMeasureRequest(BaseModel):
+    image_width_px: int = Field(..., ge=64)
+    image_height_px: int = Field(..., ge=64)
+    zoom: int = Field(..., ge=10, le=22)
+    lat: float
+    lng: float
+    satellite_image_url: Optional[str] = None
+
+
+@router.post("/runs/{run_id}/auto-measure")
+async def auto_measure(run_id: str, req: AutoMeasureRequest,
+                       user: dict = Depends(require_user)) -> dict:
+    from app.core.config import settings
+    from app.services import roof_from_dsm, solar_layers_service, solar_service, address_match
+    from app.services.auto_measure import build_payload
+
+    db = get_supabase()
+    run = require_owned_run(db, run_id, user)
+    if not _auto_measure_allowed(user):
+        raise HTTPException(status_code=403,
+                            detail="Automatic measurement isn't switched on for this account yet.")
+
+    def fallback(reason: str, **extra) -> dict:
+        logger.info("auto-measure fell back for run %s: %s", run_id, reason)
+        return {"available": False, "reason": reason, **extra}
+
+    sp = run.get("subject_point") or {}
+    if not all(sp.get(k) is not None for k in ("x", "y", "lat", "lng")):
+        return fallback("Tap the house first, so Axis knows which roof to measure.")
+    lat, lng = float(sp["lat"]), float(sp["lng"])
+    warnings: list[str] = []
+
+    # The tapped house against the job's address. Warns, never blocks: the
+    # contractor in the driveway knows better than a geocoder.
+    try:
+        proj = db.table("projects").select("name, address, city, state") \
+            .eq("id", run["project_id"]).single().execute().data or {}
+        job_addr = ", ".join(x for x in (proj.get("address") or proj.get("name"),
+                                          proj.get("city"), proj.get("state")) if x)
+        found, source = await address_match.reverse_lookup(
+            lat, lng, google_key=settings.GOOGLE_SOLAR_API_KEY,
+            maptiler_key=settings.MAPTILER_API_KEY)
+        check = address_match.compare(job_addr, found, source=source)
+        if check.status == "mismatch" and check.message:
+            warnings.append(check.message)
+    except Exception as e:
+        logger.info("auto-measure address check skipped for %s: %s", run_id, e)
+
+    layers = await solar_layers_service.fetch_layers(lat, lng, settings.GOOGLE_SOLAR_API_KEY)
+    if not layers.available:
+        return fallback(layers.reason or "Google has no 3D data for this address.")
+
+    model = await asyncio.to_thread(roof_from_dsm.extract_roof, layers.dsm, layers.mask,
+                                    layers.px_m, layers.seed_rc)
+    if not model.available:
+        return fallback(model.reason or "The roof could not be measured from the 3D data.")
+    q = model.quality
+    if (q.get("assigned_fraction", 0) < AUTO_MIN_ASSIGNED
+            or q.get("worst_facet_rms_m", 1) > AUTO_MAX_RMS_M
+            or not (1 <= q.get("facet_count", 0) <= AUTO_MAX_FACETS)):
+        return fallback("The 3D data for this roof is too irregular to trust (trees or recent "
+                        "changes, perhaps) — trace it by hand.", quality=q)
+
+    # Two independent Google views must agree on WHICH building this is.
+    try:
+        bi = await solar_service.get_building_insights(lat, lng)
+        ctr = bi.get("center") or {}
+        if bi.get("available") and ctr.get("lat") is not None:
+            be, bn, _ = solar_layers_service.latlng_to_utm(float(ctr["lat"]), float(ctr["lng"]),
+                                                           (layers.epsg - 32600) if layers.epsg else None)
+            rr, cc = np.nonzero(model.labels >= 0)
+            me = layers.origin_e + (float(cc.mean()) + 0.5) * layers.px_m
+            mn = layers.origin_n - (float(rr.mean()) + 0.5) * layers.px_m
+            gap = math.hypot(me - be, mn - bn)
+            if gap > AUTO_MAX_CENTRE_GAP_M:
+                return fallback("Google's two views of this address disagree about which "
+                                f"building it is ({gap:.0f} m apart) — trace it by hand.")
+    except Exception as e:
+        logger.info("auto-measure building cross-check skipped for %s: %s", run_id, e)
+
+    if q.get("attached_suspected"):
+        warnings.append("This looks like attached homes sharing one roof. Trim the outline to "
+                        "this home's section before ordering.")
+    sel = q.get("selection") or {}
+    if sel.get("how") == "snapped to the nearest roof":
+        warnings.append(f"Your tap was {sel.get('tap_distance_m')} m off the roof; the nearest "
+                        "roof was measured. Check it's the right house.")
+
+    facets, edges = build_payload(model, layers, sp, width_px=req.image_width_px,
+                                  height_px=req.image_height_px, zoom=req.zoom, lat=req.lat)
+    if not facets:
+        return fallback("No usable roof outline came out of the 3D data.")
+
+    # Stored through the SAME endpoints a hand trace uses.
+    await put_facets(run_id, PutFacetsRequest(
+        image_width_px=req.image_width_px, image_height_px=req.image_height_px,
+        zoom=req.zoom, lat=req.lat, lng=req.lng, facets=[FacetIn(**f) for f in facets],
+        satellite_image_url=req.satellite_image_url), user)
+    await put_edges(run_id, PutEdgesRequest(
+        image_width_px=req.image_width_px, image_height_px=req.image_height_px,
+        zoom=req.zoom, lat=req.lat, edges=[EdgeIn(**e) for e in edges]), user)
+    aggregates = _aggregate_run(run_id)
+
+    frows = db.table("roof_facets").select("*").eq("run_id", run_id).execute().data or []
+    erows = []
+    if frows:
+        erows = db.table("roof_edges").select("*").in_("facet_id", [f["id"] for f in frows]) \
+            .execute().data or []
+    return {
+        "available": True,
+        "facets": frows,
+        "edges": erows,
+        "aggregates": aggregates,
+        "warnings": warnings,
+        "imagery_date": layers.imagery_date,
+        "imagery_quality": layers.imagery_quality,
+    }
 
 
 # ----------------------------------------------------------------------------

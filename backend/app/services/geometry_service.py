@@ -463,6 +463,12 @@ def edge_totals_by_type(edges: list, facets: Optional[list] = None) -> dict:
         seg = _edge_segment(e, facet_polys) if facet_polys else None
         if seg is not None and _segment_length(seg) > 0:
             for group in geo_groups:
+                # A wall line and a roof-edge line in the same place are TWO
+                # lines on the house, not one: where a lower roof meets a wall,
+                # the upper roof's rake needs drip edge and the lower roof needs
+                # step flashing. Collapsing them dropped one from the order.
+                if (group[1].get("edge_type") == "wall_intersection") != (t == "wall_intersection"):
+                    continue
                 if _same_segment(group[0], seg):
                     if _better_representative(group[1], e):
                         group[1] = e
