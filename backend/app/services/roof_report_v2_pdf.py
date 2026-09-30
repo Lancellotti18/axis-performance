@@ -418,7 +418,7 @@ def _render_pitch_diagram(facets: list[dict]) -> bytes | None:
             # deliberately CHOSE 6/12 is indistinguishable from one who never
             # touched it. Calling that "unverified" would brand a real decision
             # as a guess. user_confirmed is the signal that separates them.
-            measured = src in ("solar_measured", "lidar_measured", "ground_photo")
+            measured = src in ("solar_measured", "solar_3d", "lidar_measured", "ground_photo")
             contractor_set = src == "manual" or (bool(f.get("user_confirmed")) and bool(f.get("pitch")))
             unverified = not measured and not contractor_set
             if unverified:
@@ -632,6 +632,9 @@ def _section_1_executive(
 # as measured; a default guess reads as one — never presented interchangeably.
 _PITCH_SOURCE_LABELS = {
     "solar_measured": "Measured (Google Solar)",
+    # A plane fitted to Google's 3D height map for THIS facet — the strongest
+    # pitch source Axis has, so it must never render as a guess.
+    "solar_3d": "Measured (Google 3D)",
     "solar_direction": "Measured (Solar, direction)",
     "lidar_measured": "Measured (USGS LiDAR)",
     "ground_photo": "Ground photo",
