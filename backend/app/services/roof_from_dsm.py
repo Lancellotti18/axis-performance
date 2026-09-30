@@ -115,9 +115,10 @@ def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
     """Measure the roof of the building at `seed_rc` (the tapped house, as
     row/col in these arrays), or of the largest building if none is given."""
     dsm = np.asarray(dsm, dtype=np.float64)
-    bldg = _select_building(np.asarray(mask, dtype=bool), px_m, seed_rc, min_building_m2)
-    if isinstance(bldg, str):
-        return RoofModel(False, bldg, px_m=px_m)
+    picked = _select_building(np.asarray(mask, dtype=bool), px_m, seed_rc, min_building_m2)
+    if isinstance(picked, str):
+        return RoofModel(False, picked, px_m=px_m)
+    bldg, selection = picked
 
     normals, curvature = _surface_normals(dsm, bldg, px_m)
     labels = _grow_planes(normals, curvature, bldg, px_m)
@@ -147,14 +148,29 @@ def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
         True, None, px_m, facets, edges, round(plan, 2), round(true, 2), lengths,
         quality={"assigned_fraction": round(assigned, 4),
                  "worst_facet_rms_m": round(worst_rms, 3),
-                 "facet_count": len(facets)},
+                 "facet_count": len(facets),
+                 "selection": selection,
+                 "attached_suspected": _attached_suspected(bldg, px_m)},
         labels=labels,
     )
 
 
 # ── Steps ────────────────────────────────────────────────────────────────
 
+# Right-house rules. A report on the wrong roof is worse than no report, and
+# Axis has already shipped three wrong-building bugs, so the engine refuses to
+# guess: anything uncertain returns a reason and the contractor traces by hand.
+SNAP_M = 3.0          # a tap this close to a roof (a driveway, an eave's shadow) snaps to it
+AMBIGUOUS_M = 2.0     # if a second roof is within this much of the nearest, ask again
+# Attached homes share one continuous roof, and the whole row would be measured.
+# A footprint this large, or this elongated, is flagged for the contractor to trim.
+ATTACHED_M2 = 460.0   # ~5,000 sq ft of footprint
+ATTACHED_ASPECT = 3.5
+
+
 def _select_building(mask, px_m, seed_rc, min_m2):
+    """The building to measure, or a sentence saying why none can be chosen.
+    Returns (building_mask, selection_info) on success."""
     n, comp = cv2.connectedComponents(mask.astype(np.uint8), connectivity=8)
     if n <= 1:
         return "no roof pixels in the mask"
@@ -162,24 +178,41 @@ def _select_building(mask, px_m, seed_rc, min_m2):
     candidates = [i for i in range(1, n) if sizes[i] * px_m ** 2 >= min_m2]
     if not candidates:
         return "only small structures were found (sheds or fragments), not a house"
-    if seed_rc is not None:
-        r, c = seed_rc
-        if 0 <= r < comp.shape[0] and 0 <= c < comp.shape[1] and comp[r, c] in candidates:
-            pick = comp[r, c]
-        else:
-            # The tap landed just off the roof (a driveway, a shadow): take the
-            # nearest building, but not one across the street.
-            best, pick = None, None
-            for i in candidates:
-                rr, cc = np.nonzero(comp == i)
-                d = float(np.min((rr - r) ** 2 + (cc - c) ** 2)) ** 0.5 * px_m
-                if best is None or d < best:
-                    best, pick = d, i
-            if best is None or best > 8.0:
-                return "no building within 8 m of the tapped point"
-    else:
+    if seed_rc is None:
         pick = max(candidates, key=lambda i: sizes[i])
-    return comp == pick
+        return comp == pick, {"how": "largest building (no tap)", "tap_distance_m": None}
+
+    r, c = seed_rc
+    if 0 <= r < comp.shape[0] and 0 <= c < comp.shape[1] and comp[r, c] in candidates:
+        return comp == comp[r, c], {"how": "tap on the roof", "tap_distance_m": 0.0}
+
+    # The tap missed every roof. Snap only when one roof is clearly the one
+    # meant: close, and not in a near-tie with another.
+    dists = []
+    for i in candidates:
+        rr, cc = np.nonzero(comp == i)
+        d = float(np.min((rr - r) ** 2 + (cc - c) ** 2)) ** 0.5 * px_m
+        dists.append((d, i))
+    dists.sort()
+    d1, pick = dists[0]
+    if d1 > SNAP_M:
+        return (f"the tap is {d1:.0f} m from the nearest roof — tap directly on the "
+                "house to measure it")
+    if len(dists) > 1 and dists[1][0] - d1 < AMBIGUOUS_M:
+        return ("two roofs are about equally close to the tap — tap directly on the "
+                "house you mean")
+    return comp == pick, {"how": "snapped to the nearest roof", "tap_distance_m": round(d1, 2)}
+
+
+def _attached_suspected(bldg, px_m) -> bool:
+    """Row houses and duplexes: one roof, several homes."""
+    area = float(bldg.sum()) * px_m ** 2
+    cnts, _ = cv2.findContours(bldg.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return False
+    (_, _), (w, h), _ = cv2.minAreaRect(max(cnts, key=cv2.contourArea))
+    aspect = max(w, h) / max(1.0, min(w, h))
+    return area > ATTACHED_M2 or (aspect > ATTACHED_ASPECT and area > 150.0)
 
 
 def _surface_normals(dsm, bldg, px_m):

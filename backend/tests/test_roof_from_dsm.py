@@ -119,7 +119,7 @@ def test_a_tap_far_from_any_roof_falls_back_to_manual_tracing():
     big = np.zeros((dsm.shape[0] + 400, dsm.shape[1]), np.float32); big[:dsm.shape[0]] = dsm
     bigm = np.zeros(big.shape, bool); bigm[:mask.shape[0]] = mask
     m = extract_roof(big, bigm, px, seed_rc=(big.shape[0] - 5, 10))
-    assert not m.available and "8 m" in m.reason
+    assert not m.available and "tap directly on the house" in m.reason
 
 
 def test_a_shed_alone_is_not_measured_as_a_house():
@@ -131,3 +131,41 @@ def test_a_shed_alone_is_not_measured_as_a_house():
 def test_an_empty_mask_is_reported_not_crashed_on():
     m = extract_roof(np.zeros((50, 50), np.float32), np.zeros((50, 50), bool), 0.1)
     assert not m.available
+
+
+# ── Right-house rules ─────────────────────────────────────────────────────
+
+def test_a_tap_on_the_lawn_between_two_houses_is_refused():
+    """Equally close to two roofs: guessing is how a report ends up about the
+    neighbour's house. Ask again instead."""
+    dsm, mask, px, gshape = _two_houses()
+    mid_col = gshape[1]                               # the seam; 3 m from each roof
+    m = extract_roof(dsm, mask, px, seed_rc=(gshape[0] // 2, mid_col))
+    assert not m.available and "two roofs" in m.reason
+
+
+def test_a_tap_just_off_one_roof_snaps_to_it_and_says_so():
+    dsm, mask, px, gshape = _two_houses()
+    col = gshape[1] - int(2.0 / px)                   # 1 m off the gable, 5 m from the hip
+    m = extract_roof(dsm, mask, px, seed_rc=(gshape[0] // 2, col))
+    assert m.available and len(m.facets) == 2
+    sel = m.quality["selection"]
+    assert sel["how"] == "snapped to the nearest roof" and 0.5 < sel["tap_distance_m"] < 1.5
+
+
+def test_a_tap_on_the_roof_is_recorded_as_such():
+    dsm, mask, px, gshape = _two_houses()
+    m = extract_roof(dsm, mask, px, seed_rc=(gshape[0] // 2, gshape[1] // 2))
+    assert m.quality["selection"] == {"how": "tap on the roof", "tap_distance_m": 0.0}
+
+
+def test_a_row_of_townhouses_is_flagged_for_the_contractor_to_trim():
+    dsm, mask, px = S.gable(W=8.0, L=40.0)            # one continuous roof, 40 m long
+    m = extract_roof(dsm, mask, px)
+    assert m.available and m.quality["attached_suspected"] is True
+
+
+def test_an_ordinary_house_is_not_flagged_as_attached():
+    for name in ("gable", "hip", "cross_gable"):
+        dsm, mask, px = getattr(S, name)()
+        assert extract_roof(dsm, mask, px).quality["attached_suspected"] is False
