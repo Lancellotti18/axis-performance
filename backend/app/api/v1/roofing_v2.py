@@ -1409,6 +1409,61 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     except Exception as e:
         logger.info("auto-measure building cross-check skipped for %s: %s", run_id, e)
 
+    # Line Google's data up with the contractor's photo (see imagery_align).
+    # The tap was made on THEIR photo, so it is corrected by the same shift —
+    # and if the corrected tap is on a different building, that building is
+    # the one they meant.
+    shift_en = (0.0, 0.0)
+    try:
+        from urllib.parse import urlparse
+        from app.services import imagery_align
+        from app.services.auto_measure import pixel_mappers, building_bounds, seed_for
+        tile_url = run.get("satellite_image_url") or req.satellite_image_url or ""
+        ok_host = urlparse(tile_url).hostname and \
+            urlparse(tile_url).hostname == urlparse(settings.SUPABASE_URL or "").hostname
+        if ok_host:          # only our own storage: never fetch an arbitrary URL
+            import httpx as _httpx
+            async with _httpx.AsyncClient(timeout=20) as client:
+                resp = await client.get(tile_url)
+            tile = None
+            if resp.status_code == 200:
+                import cv2 as _cv2
+                arr = _cv2.imdecode(np.frombuffer(resp.content, np.uint8), _cv2.IMREAD_COLOR)
+                tile = arr[..., ::-1] if arr is not None else None
+            if tile is not None:
+                tile_px_of, google_px_of = pixel_mappers(
+                    layers, sp, tile_w=tile.shape[1], tile_h=tile.shape[0],
+                    width_px=req.image_width_px, height_px=req.image_height_px,
+                    zoom=req.zoom, lat=req.lat)
+                al = await asyncio.to_thread(
+                    imagery_align.align_offset, tile, tile_px_of,
+                    imagery_align.roof_line_image(layers.dsm), google_px_of,
+                    building_bounds(model, layers, sp))
+                if al:
+                    shift_en = (al["east_m"], al["north_m"])
+                    seed = seed_for(layers, sp, shift_en)
+                    h_, w_ = model.labels.shape
+                    same = (0 <= seed[0] < h_ and 0 <= seed[1] < w_ and model.labels[seed] >= 0)
+                    if not same:
+                        remeasured = await asyncio.to_thread(
+                            roof_from_dsm.extract_roof, layers.dsm, layers.mask, layers.px_m, seed)
+                        if not remeasured.available:
+                            return fallback(remeasured.reason or
+                                            "The tapped house could not be found in Google's 3D data.")
+                        model, q = remeasured, remeasured.quality
+                        if (q.get("assigned_fraction", 0) < AUTO_MIN_ASSIGNED
+                                or q.get("worst_facet_rms_m", 1) > AUTO_MAX_RMS_M
+                                or not (1 <= q.get("facet_count", 0) <= AUTO_MAX_FACETS)):
+                            return fallback("The 3D data for the tapped house is too irregular "
+                                            "to trust — trace it by hand.", quality=q)
+                        warnings.append("Google's map and your photo were offset, so the house "
+                                        "under your tap was re-identified. Check it's the right one.")
+        if shift_en == (0.0, 0.0):
+            warnings.append("The outline couldn't be lined up precisely with this photo and may "
+                            "sit a few feet off the roof. The measurements are not affected.")
+    except Exception as e:
+        logger.info("auto-measure alignment skipped for %s: %s", run_id, e)
+
     if q.get("attached_suspected"):
         warnings.append("This looks like attached homes sharing one roof. Trim the outline to "
                         "this home's section before ordering.")
@@ -1418,7 +1473,8 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
                         "roof was measured. Check it's the right house.")
 
     facets, edges = build_payload(model, layers, sp, width_px=req.image_width_px,
-                                  height_px=req.image_height_px, zoom=req.zoom, lat=req.lat)
+                                  height_px=req.image_height_px, zoom=req.zoom, lat=req.lat,
+                                  shift_en=shift_en)
     if not facets:
         return fallback("No usable roof outline came out of the 3D data.")
 

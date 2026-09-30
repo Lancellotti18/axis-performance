@@ -347,12 +347,15 @@ def _merge_coplanar(dsm, labels, planes, px_m):
     while changed:
         changed = False
         shared: dict[tuple[int, int], int] = {}
+        jump: dict[tuple[int, int], list[float]] = {}
         for (dr, dc) in ((0, 1), (1, 0)):
             A = labels[: H - dr, : W - dc]; B = labels[dr:, dc:]
             sel = (A >= 0) & (B >= 0) & (A != B)
-            for a_, b_ in zip(A[sel].tolist(), B[sel].tolist()):
+            zA = dsm[: H - dr, : W - dc][sel]; zB = dsm[dr:, dc:][sel]
+            for a_, b_, za, zb in zip(A[sel].tolist(), B[sel].tolist(), zA.tolist(), zB.tolist()):
                 k = (min(a_, b_), max(a_, b_))
                 shared[k] = shared.get(k, 0) + 1
+                jump.setdefault(k, []).append(abs(za - zb))
         # Only facets sharing a real edge. Two pieces of one slope either side
         # of a wing touch at a single pixel where they narrow to nothing; merged,
         # they became one facet made of two separate shapes.
@@ -371,7 +374,14 @@ def _merge_coplanar(dsm, labels, planes, px_m):
             worse = max(planes[ia][3], planes[ib][3])
             # One plane must explain both halves about as well as each alone did,
             # using most of their pixels (not just a sliver that happens to fit).
-            if frac >= 0.75 and rms <= max(MERGE_RMS_M, 1.15 * worse) and (best is None or rms < best[0]):
+            # EXCEPT two sections that are plainly one slope: facing the same way
+            # (within 6 deg) with no height step between them. A roof with a slight
+            # sag or a later addition built to the same line split into two facets
+            # on Ryan's Wilmington test — 9 cm apart, one plane fitting both to
+            # 7 cm — and left a zig-zag "unlabeled" line between them.
+            same_slope = ang < 6.0 and float(np.median(jump.get((ia, ib), [1.0]))) < 0.15
+            fits = rms <= max(MERGE_RMS_M, 1.15 * worse)
+            if fits and (frac >= 0.75 or same_slope) and (best is None or rms < best[0]):
                 best = (rms, ia, ib)
         if best:
             _, ia, ib = best
@@ -957,6 +967,7 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
     lines: dict[tuple[int, int], tuple] = {}
     kinds: dict[tuple[int, int], dict[str, float]] = {}
     steps: dict[tuple[int, int], int] = {}              # pair -> the UPPER facet
+    all_lines: dict[tuple[int, int], list] = {}
     for e in model.edges:
         if e.neighbour is None:
             continue
@@ -966,9 +977,11 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
         else:
             kinds.setdefault(k, {})
             kinds[k][e.kind] = kinds[k].get(e.kind, 0.0) + e.length_m
-        # Keep the longest segment's line for snapping.
+        # Keep the longest segment's line for snapping (and every segment, for
+        # sides that sit nearer a shorter one).
         if k not in lines or e.plan_m > lines[k][2]:
             lines[k] = (np.array(e.p0), np.array(e.p1), e.plan_m)
+        all_lines.setdefault(k, []).append((np.array(e.p0), np.array(e.p1)))
     pair_kind = {k: max(v, key=v.get) for k, v in kinds.items()}
 
     min_run = max(3, int(0.5 / px_m))
@@ -1035,8 +1048,16 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
                 else:
                     new = _project(v, cands[0][0], cands[0][1])
             elif len(cands) == 1:
-                proj = _project(v, cands[0][0], cands[0][1])
-                if float(np.hypot(*(proj - v))) * px_m < 0.6:
+                # A crease is straight; a pixel boundary beside it wanders (a
+                # merged, compromise plane put Wilmington's ridge up to 0.5 m
+                # off in places, leaving a zig-zag "unlabeled" run). Pull any
+                # vertex within a metre onto the nearest segment's line.
+                nb_ = prev_nb if prev_nb is not None else next_nb
+                k_ = (min(f.id, nb_), max(f.id, nb_))
+                segs_ = all_lines.get(k_) or [(cands[0][0], cands[0][1])]
+                projs = [_project(v, a_, b_) for a_, b_ in segs_]
+                proj = min(projs, key=lambda q_: float(np.hypot(*(q_ - v))))
+                if float(np.hypot(*(proj - v))) * px_m < 1.0:
                     new = proj
             snapped.append(new)
 
@@ -1104,9 +1125,9 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
                 upper = steps[k]
                 sides.append((_outer_kind(f.plane, b - a) if upper == f.id else "wall_intersection", nb))
             elif k in pair_kind:
-                q0, q1, _ = lines[k]
-                on_line = all(float(np.hypot(*(np.asarray(v) - _project(v, q0, q1)))) * px_m < 0.35
-                              for v in (a, b))
+                segs_ = all_lines.get(k) or [lines[k][:2]]
+                on_line = any(all(float(np.hypot(*(np.asarray(v) - _project(v, q0, q1)))) * px_m < 0.35
+                                  for v in (a, b)) for q0, q1 in segs_)
                 sides.append((pair_kind[k], nb) if on_line else ("unlabeled", nb))
             else:
                 sides.append(("unlabeled", nb))
