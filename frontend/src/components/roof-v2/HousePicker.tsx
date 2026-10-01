@@ -318,11 +318,26 @@ export default function HousePicker({
             </p>
           )}
         </div>
-        {confirmed && (
-          <span className="shrink-0 rounded-full bg-emerald-500/20 px-2.5 py-1 text-[10px] font-semibold text-emerald-800">
-            Locked ✓
-          </span>
-        )}
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {/* Flip between the two views at any time — the road is where a house
+              is recognisable, the satellite is where its roof is confirmed. */}
+          {streetView && (
+            <div role="tablist" aria-label="View" className="inline-flex rounded-lg border border-emerald-400/40 bg-white p-0.5 text-xs">
+              {(['street', 'satellite'] as const).map(v => (
+                <button key={v} role="tab" aria-selected={stage === v}
+                  onClick={() => setStage(v)}
+                  className={`rounded-md px-3 py-1 font-medium transition ${stage === v ? 'bg-emerald-600 text-white' : 'text-emerald-900 hover:bg-emerald-50'}`}>
+                  {v === 'street' ? '🏠 Street View' : '🛰 Satellite'}
+                </button>
+              ))}
+            </div>
+          )}
+          {confirmed && (
+            <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-[10px] font-semibold text-emerald-800">
+              Locked ✓
+            </span>
+          )}
+        </div>
       </div>
 
       {/* The street photo. In stage 1 it is the subject of the question, so it

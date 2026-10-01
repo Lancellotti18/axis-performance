@@ -125,7 +125,7 @@ type Step = 'project' | 'location' | 'imagery' | 'editor' | 'details' | 'siding'
 
 // Friendly stepper labels (the Step values stay the same for all the logic).
 const STEP_LABELS: Record<Step, string> = {
-  project: 'Project',
+  project: 'Project address',
   location: 'Address',
   imagery: 'Locate roof',
   editor: 'Measure roof',
@@ -181,6 +181,11 @@ export default function RoofV2Page() {
   const [autoBusy, setAutoBusy] = useState(false)
   const [autoNote, setAutoNote] = useState<{ ok: boolean; text: string; warnings: string[] } | null>(null)
   const [step, setStep] = useState<Step>('project')
+  // Callbacks that chain into each other across a project being created a
+  // moment earlier read these, not stale closures.
+  const projectIdRef = useRef<string | null>(null)
+  const openRunRef = useRef<(pid: string | null, img: ImageryPayload | null) => Promise<void>>(async () => {})
+  const onLocationSelectedRef = useRef<(loc: LocationSelected, pid?: string) => Promise<void>>(async () => {})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confidence, setConfidence] = useState<number>(0)
@@ -340,13 +345,21 @@ export default function RoofV2Page() {
         console.warn('[axis] resume failed — starting fresh', e)
       }
 
-      const addr = [(p as Project).address, (p as Project).city, (p as Project).state, (p as Project).zip].filter(Boolean).join(', ')
+      // The project's name IS its address now; older projects may only have
+      // the name filled in, so it is the fallback.
+      const addr = [(p as Project).address, (p as Project).city, (p as Project).state, (p as Project).zip]
+        .filter(Boolean).join(', ') || (p as Project).name || ''
       if (addr) {
         try {
-          const loc = await api.roofing.v2.locationValidate(addr)
-          setLocation(loc as LocationSelected)
+          const loc = await api.roofing.v2.locationValidate(addr) as LocationSelected
+          if (loc && loc.lat) {
+            setBusy(false)
+            await onLocationSelectedRef.current(loc, id)
+            return
+          }
+          setLocation(loc)
         } catch {
-          // Address validation optional at this stage
+          // Could not resolve it: let them pick the address by hand below.
         }
       }
       setStep('location')
@@ -371,7 +384,8 @@ export default function RoofV2Page() {
   // the user immediately. Sharpening is OPT-IN via a button — the user
   // reported it wasn't adding visible value, so we don't run it automatically.
 
-  const onLocationSelected = useCallback(async (loc: LocationSelected) => {
+  const onLocationSelected = useCallback(async (loc: LocationSelected, pidOverride?: string) => {
+    const projectId = pidOverride ?? projectIdRef.current
     setLocation(loc)
     setStep('imagery')
     // Persist the validated address onto the project so the Permits and Report
@@ -413,31 +427,35 @@ export default function RoofV2Page() {
       // "outline lands in the wrong spot on resume" bug. The homeowner taps
       // their house in the confirm step instead.
       const health = await api.roofing.v2.imageryHealth(loc.lat, loc.lng, 22, 2048, 1366) as ImageryPayload
-      setImagery({ ...health, original_url: health.url, display_mode: 'original' })
+      const img = { ...health, original_url: health.url, display_mode: 'original' } as ImageryPayload
+      setImagery(img)
       setBusy(false)
+      // Straight to the house: the photo-stats screen with "Ready to trace" was
+      // a click that decided nothing. It still shows if the photo is unusable.
+      if (img.url && img.status !== 'unavailable') await openRunRef.current(projectId, img)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Imagery health check failed')
       setBusy(false)
     }
-  }, [projectId])
+  }, [])
+  onLocationSelectedRef.current = onLocationSelected
 
   // Create a measurement run + advance to editor. Heavily instrumented so we
   // can see EXACTLY what happens on each click and where it gets stuck if it
   // does — silent failures here have made debugging hard before.
-  const startRun = useCallback(async () => {
-    // eslint-disable-next-line no-console
-    console.log('[axis] startRun click', { projectId, hasLocation: !!location, hasImagery: !!imagery, imageryUrl: imagery?.url })
-
+  // Opens the measuring screen on the house. Takes the project and tile as
+  // arguments (not from state) so the address box can create a project, load
+  // its tile and land here in one go — state set a moment earlier is not yet
+  // visible inside this callback.
+  const openRun = useCallback(async (pid: string | null, img: ImageryPayload | null) => {
+    const projectId = pid
+    const imagery = img
     if (!projectId) {
-      setError('Cannot open editor: no project selected. Go back to step 1.')
-      return
-    }
-    if (!location) {
-      setError('Cannot open editor: location not validated. Go back to step 2.')
+      setError('Cannot open editor: no project selected. Enter the project address first.')
       return
     }
     if (!imagery || !imagery.url) {
-      setError('Cannot open editor: satellite tile failed to load. Go back to step 3.')
+      setError('Cannot open editor: the satellite photo failed to load. Try the address again.')
       return
     }
 
@@ -483,6 +501,7 @@ export default function RoofV2Page() {
       }
       setRunId((run as { id: string }).id)
       setRunConfirmed(false)   // a freshly created run starts unconfirmed → gate until reviewed
+      setEditorSub('confirm')
       setStep('editor')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown'
@@ -495,7 +514,10 @@ export default function RoofV2Page() {
     } finally {
       setBusy(false)
     }
-  }, [projectId, location, imagery, runId, facets, edges])
+  }, [runId, facets, edges])
+  openRunRef.current = openRun
+  projectIdRef.current = projectId
+  const startRun = useCallback(() => openRun(projectId, imagery), [openRun, projectId, imagery])
 
   // Persist facets + edges to backend whenever the editor publishes them.
   // Surfaces specific errors instead of silently failing so the contractor
@@ -710,9 +732,12 @@ export default function RoofV2Page() {
         // AFTER the report is reachable, because the whole promise of the product
         // is a finished report without going to the property — anything needing a
         // site visit is an add-on, never a step you have to pass through.
-        const order: Step[] = SHOW_SIDING
+        // Address and photo happen automatically between "Project address" and
+        // the house; their steps only show while something needs fixing there.
+        const order: Step[] = (SHOW_SIDING
           ? ['project', 'location', 'imagery', 'editor', 'details', 'report', 'siding']
           : ['project', 'location', 'imagery', 'editor', 'details', 'report']
+        ).filter(s => (s !== 'location' && s !== 'imagery') || s === step) as Step[]
         const currentIdx = order.indexOf(step)
         return (
           <nav className="sticky top-0 z-20 -mx-6 flex flex-wrap items-center gap-1.5 border-b border-[#dededc] bg-[#f8f8f7] px-6 py-2 text-xs">
@@ -767,17 +792,21 @@ export default function RoofV2Page() {
         <section className="space-y-4">
           {/* Quick start: create a new roofing project right here */}
           <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-4">
-            <h2 className="mb-2 text-sm font-semibold text-emerald-900">Quick start — new project</h2>
+            <h2 className="mb-2 text-sm font-semibold text-emerald-900">New project — property address</h2>
             <p className="mb-3 text-xs text-[#6b7280]">
-              Skip the Projects page. Just name your job (the property address or anything memorable)
-              and start measuring. We'll create the project record automatically.
+              Type the address and pick it from the list. That becomes the project's name, and
+              you go straight to the house.
             </p>
-            <QuickCreateProject
+            <NewProjectByAddress
               userId={userId}
               busy={busy}
-              onCreated={async (newProject) => {
+              onCreated={async (newProject, loc) => {
                 setProjects(prev => [newProject, ...prev])
-                await pickProject(newProject.id)
+                setProjectId(newProject.id)
+                projectIdRef.current = newProject.id
+                setProject(newProject)
+                setRunId(null); setFacets([]); setEdges([]); setRunConfirmed(false); setSubjectPoint(null)
+                await onLocationSelected(loc, newProject.id)
               }}
               onError={(msg) => setError(msg)}
             />
@@ -892,7 +921,7 @@ export default function RoofV2Page() {
                         <span>Opening…</span>
                       </>
                     ) : (
-                      <>Ready to trace →</>
+                      <>Continue to the house →</>
                     )}
                   </button>
                 </div>
@@ -1350,58 +1379,55 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
   )
 }
 
-function QuickCreateProject({
+/**
+ * A new project starts from its address, and the address IS its name. Two
+ * fields for the same thing (Ryan, 2026-10-01: "most of the time the user will
+ * name the project the same as the address") only gave people a chance to
+ * type it twice, differently.
+ */
+function NewProjectByAddress({
   userId, busy, onCreated, onError,
 }: {
   userId: string | null
   busy: boolean
-  onCreated: (project: Project) => void | Promise<void>
+  onCreated: (project: Project, loc: LocationSelected) => void | Promise<void>
   onError: (msg: string) => void
 }) {
-  const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [pickerKey, setPickerKey] = useState(0)
 
-  const submit = useCallback(async () => {
+  const create = useCallback(async (loc: LocationSelected) => {
     if (!userId) {
       onError('Not signed in. Refresh and try again.')
       return
     }
-    const trimmed = name.trim()
-    if (trimmed.length < 2) {
-      onError('Project name is too short — try the property address.')
-      return
-    }
     setCreating(true)
     try {
-      const created = await api.projects.create(
-        { name: trimmed, blueprint_type: 'residential' },
-        userId,
-      )
-      setName('')
-      await onCreated(created as Project)
+      const created = await api.projects.create({
+        name: loc.matched_address,
+        blueprint_type: 'residential',
+        address: loc.matched_address || undefined,
+        city: loc.city || undefined,
+        state: loc.state || undefined,
+        region: loc.state ? `US-${loc.state}` : undefined,
+        zip_code: loc.zip || undefined,
+        county: loc.county || undefined,
+        lat: loc.lat || undefined,
+        lng: loc.lng || undefined,
+      }, userId)
+      await onCreated(created as Project, loc)
+      setPickerKey(k => k + 1)          // a fresh, empty box for the next job
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Could not create project')
     } finally {
       setCreating(false)
     }
-  }, [userId, name, onCreated, onError])
+  }, [userId, onCreated, onError])
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <input
-        type="text"
-        placeholder="e.g., 123 Main St roof, or Smith residence"
-        value={name}
-        onChange={e => setName(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') void submit() }}
-        disabled={creating || busy}
-        className="min-w-[260px] flex-1 rounded bg-[#f8f8f7] px-3 py-2 text-sm text-[#1a1a1a] placeholder:text-[#6b7280] focus:border-emerald-400/60 focus:outline-none disabled:opacity-50"
-      />
-      <button
-        onClick={() => void submit()}
-        disabled={creating || busy || name.trim().length < 2}
-        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
-      >{creating ? 'Creating…' : '+ Create and continue →'}</button>
+    <div className={creating || busy ? 'pointer-events-none opacity-60' : ''}>
+      <LocationPicker key={pickerKey} onSelected={(loc) => { void create(loc) }} />
+      {creating && <p className="mt-2 text-xs text-[#6b7280]">Creating the project and loading the house…</p>}
     </div>
   )
 }
