@@ -25,7 +25,11 @@ from typing import Callable, Optional
 import cv2
 import numpy as np
 
-SEARCH_M = 15.0          # misregistration beyond this is not what we are correcting
+# Misregistration beyond this is not what we are correcting. It was 15 m, which
+# reaches the next lot: on Brookside Oaks' street of look-alike houses the
+# best-scoring 'match' (rejected only by the score floor) was the neighbour's
+# roof, 16 m away. The largest real offset seen is ~8 m (Wilmington).
+SEARCH_M = 10.0
 STEP_M = 0.2             # matching grid resolution
 MARGIN_M = 3.0           # context kept around the building in the template
 MIN_SCORE = 0.25         # normalised correlation of the best match

@@ -1492,19 +1492,15 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
                     h_, w_ = model.labels.shape
                     same = (0 <= seed[0] < h_ and 0 <= seed[1] < w_ and model.labels[seed] >= 0)
                     if not same:
-                        remeasured = await asyncio.to_thread(
-                            roof_from_dsm.extract_roof, layers.dsm, layers.mask, layers.px_m, seed)
-                        if not remeasured.available:
-                            return fallback(remeasured.reason or
-                                            "The tapped house could not be found in Google's 3D data.")
-                        model, q = remeasured, remeasured.quality
-                        if (q.get("assigned_fraction", 0) < AUTO_MIN_ASSIGNED
-                                or q.get("worst_facet_rms_m", 1) > AUTO_MAX_RMS_M
-                                or not (1 <= q.get("facet_count", 0) <= AUTO_MAX_FACETS)):
-                            return fallback("The 3D data for the tapped house is too irregular "
-                                            "to trust — trace it by hand.", quality=q)
-                        warnings.append("Google's map and your photo were offset, so the house "
-                                        "under your tap was re-identified. Check it's the right one.")
+                        # Lining up moved the tap onto a DIFFERENT building. That
+                        # used to re-measure the other building with a warning; but
+                        # on a street of look-alike houses a confident-looking match
+                        # can be the neighbour's roof, and then the tap "corrects"
+                        # onto the wrong house. Two sources disagreeing about which
+                        # house is a reason to ask, not to pick: trace by hand.
+                        return fallback("Google's 3D map and your photo disagree about which "
+                                        "house is under your tap, so it can't be measured "
+                                        "automatically — trace it by hand.")
     except Exception as e:
         logger.warning("auto-measure alignment failed for %s", run_id, exc_info=True)
         align_note = f"error: {type(e).__name__}: {str(e)[:160]}"

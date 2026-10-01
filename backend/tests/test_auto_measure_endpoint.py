@@ -152,3 +152,32 @@ def test_a_hand_traced_roof_still_gets_suggestions(monkeypatch):
     res = _suggest(monkeypatch, rows, [{"facet_label": "A", "vertex_index_start": 1, "vertex_index_end": 2}])
     assert res["skipped_measured"] == 0
     assert len(res["suggestions"]) == 1
+
+
+def test_lining_up_onto_a_different_building_falls_back_to_tracing(wired, monkeypatch):
+    """If matching the photo moves the tap onto another building, two sources
+    disagree about which house it is. On a street of look-alike houses that is
+    how the neighbour's roof gets measured, so the answer is to trace by hand."""
+    import cv2, httpx
+    from app.services import imagery_align
+    dsm, mask, px = S.gable()
+    async def layers(*a, **k): return _layers_for(dsm, mask, px)
+    monkeypatch.setattr(SL, "fetch_layers", layers)
+    monkeypatch.setattr(settings, "SUPABASE_URL", "https://proj.supabase.co")
+    wired["run"]["satellite_image_url"] = "https://proj.supabase.co/storage/tile.png"
+    png = cv2.imencode(".png", np.zeros((64, 64, 3), np.uint8))[1].tobytes()
+
+    class _Resp:
+        status_code, content = 200, png
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, *a, **k): return _Resp()
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    # A confident match 30 m away: the corrected tap leaves this roof entirely.
+    monkeypatch.setattr(imagery_align, "align_offset",
+                        lambda *a, **k: {"east_m": 30.0, "north_m": 0.0, "score": 0.6, "lead": 0.2})
+    out = _call()
+    assert out["available"] is False and "disagree about which house" in out["reason"]
+    assert "facets" not in wired["saved"]
