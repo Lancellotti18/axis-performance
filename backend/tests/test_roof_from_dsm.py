@@ -83,14 +83,14 @@ def test_totals_use_the_keys_axis_stores():
 
 @pytest.mark.parametrize("angle,noisy", VARIANTS)
 def test_a_lower_porch_roof_is_its_own_facet(angle, noisy):
-    """Same direction as the main slope, a metre lower: one facet hid its
-    eave, rakes and the wall flashing above it."""
+    """Same direction as the main slope, 30 cm lower and blurred: one facet
+    hid its eave, rakes and the wall flashing above it (Brookside Oaks)."""
     m, exp = _run("gable_with_porch", angle, noisy)
     assert m.available, m.reason
     assert len(m.facets) == exp["planes"]
     assert m.true_m2 == pytest.approx(exp["true_m2"], rel=AREA_TOL)
     assert min(f.true_m2 for f in m.facets) == pytest.approx(exp["porch_m2"], rel=0.05)
-    assert all(f.pitch_12 == pytest.approx(exp["pitch_12"], abs=0.3) for f in m.facets)
+    assert all(f.pitch_12 == pytest.approx(exp["pitch_12"], abs=0.5) for f in m.facets)   # blur tilts the porch a little
     # The drop between them is a wall (step flashing), not a ridge or a hip.
     assert m.lengths_m.get("wall_intersection", 0.0) == pytest.approx(8.0, rel=0.1)   # the porch's top edge
     assert m.lengths_m.get("hip", 0.0) <= LINE_ABS_M

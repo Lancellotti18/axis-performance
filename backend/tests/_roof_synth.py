@@ -113,18 +113,30 @@ def cross_gable_expected(W=8.0, L=16.0, wing=8.0, slope=0.5):
             "pitch_12": 12 * slope}
 
 
-def gable_with_porch(W=10.0, L=14.0, slope=0.5, depth=3.0, porch_len=8.0):
+def gable_with_porch(W=10.0, L=14.0, slope=0.5, depth=3.0, porch_len=8.0, drop=0.3):
     """A two-storey gable with a lower porch roof along part of the south side,
-    sloping the SAME way as the main south slope. Facing the same way, region
-    growing alone folds the porch into the main slope — Brookside Oaks lost
-    four of its nine roofs like that. Only the 1.3 m drop at the main eave
-    tells them apart."""
+    sloping the SAME way as the main south slope and tucked just under its
+    eave. Facing the same way, region growing folds the porch into the main
+    slope — Brookside Oaks lost four of its nine roofs like that. Only the
+    small drop at the main eave tells them apart, and Google's DSM blurs that
+    drop over the better part of a metre, as `soften` does here."""
     X, Y = _grid(L, W + depth)
     main = gable_section(X, Y, 0, 0, L, W, slope, "x") + 1.5        # eave at 4.5 m
     x0 = (L - porch_len) / 2
     inside = (X >= x0) & (X < x0 + porch_len) & (Y >= W) & (Y < W + depth)
-    porch = np.where(inside, 3.2 - slope * (Y - W), np.nan)       # 3.2 m down to 1.7 m
-    return (*_finish([main, porch]), PX)
+    porch = np.where(inside, EAVE_H + 1.5 - drop - slope * (Y - W), np.nan)
+    return (*soften(*_finish([main, porch])), PX)
+
+
+def soften(dsm, mask, sigma_px=1.5):
+    """Blur heights the way Google's photogrammetry does: a step between two
+    roofs becomes a ramp. Blurred within the roof only — mixing the lawn in
+    drags every eave down, which is a separate effect from the one tested."""
+    import cv2
+    m = mask.astype(np.float64)
+    num = cv2.GaussianBlur(np.where(mask, dsm, 0.0).astype(np.float64), (0, 0), sigma_px)
+    den = cv2.GaussianBlur(m, (0, 0), sigma_px)
+    return np.where(mask, num / np.maximum(den, 1e-6), 0.0).astype(np.float32), mask
 
 
 def gable_with_porch_expected(W=10.0, L=14.0, slope=0.5, depth=3.0, porch_len=8.0):

@@ -136,6 +136,12 @@ def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
         labels = _assign_remaining(dsm, labels, bldg, planes, px_m)
         labels = _sharpen_creases(dsm, labels, bldg, planes, px_m)
         planes = _fit_planes(dsm, labels, px_m)
+    labels, thin = _dissolve_thin(labels, planes, px_m)
+    if thin:
+        planes = {k: v for k, v in planes.items() if k not in thin}
+        labels = _assign_remaining(dsm, labels, bldg, planes, px_m)
+        labels = _sharpen_creases(dsm, labels, bldg, planes, px_m)
+        planes = _fit_planes(dsm, labels, px_m)
     labels, planes = _merge_coplanar(dsm, labels, planes, px_m)
     labels = _sharpen_creases(dsm, labels, bldg, planes, px_m)
     planes = _fit_planes(dsm, labels, px_m)
@@ -236,6 +242,27 @@ POOR_FIT_RMS_M = 0.10       # a "facet" its own plane explains this badly is sev
 SPLIT_INLIER_M = 0.12       # RANSAC: a pixel this close to a plane lies on it
 SPLIT_MIN_M2 = 2.0          # smallest roof the splitter will create
 SPLIT_MAX_PITCH = 2.5       # rise/run; steeper "planes" are walls and tree edges (30/12)
+SPLIT_MIN_WIDTH_M = 1.0     # a grown region narrower than this is a wall smeared by the DSM
+
+
+def _dissolve_thin(labels, planes, px_m):
+    """Hand strips narrower than SPLIT_MIN_WIDTH_M back to their neighbours.
+
+    Where a lower roof meets a higher one the DSM blurs the wall between them
+    into a ramp ~1 m wide, and region growing makes that ramp a "facet" of its
+    own (13/12 on a 6/12 roof, in the porch test). It used to vanish only
+    because the whole porch was merged into the main slope. Returns the new
+    labels and the ids removed."""
+    labels = labels.copy()
+    half = max(1, int(round(SPLIT_MIN_WIDTH_M / 2 / px_m)))
+    kernel = np.ones((3, 3), np.uint8)
+    gone = set()
+    for fid in planes:
+        sel = labels == fid
+        if sel.any() and not cv2.erode(sel.astype(np.uint8), kernel, iterations=half).any():
+            labels[sel] = UNASSIGNED
+            gone.add(fid)
+    return labels, gone
 
 
 def _ransac_planes(dsm, region, px_m, start_id):
@@ -460,6 +487,7 @@ def _fit_planes(dsm, labels, px_m):
 
 MERGE_RMS_M = 0.12          # one plane explaining both halves this well means one facet
 MERGE_MAX_ANGLE_DEG = 40.0  # never merge across a real ridge or valley
+STEP_GAP_M = 0.15           # planes this far apart where they meet are two levels, not one slope
 
 
 def _merge_coplanar(dsm, labels, planes, px_m):
@@ -479,14 +507,18 @@ def _merge_coplanar(dsm, labels, planes, px_m):
         changed = False
         shared: dict[tuple[int, int], int] = {}
         jump: dict[tuple[int, int], list[float]] = {}
+        where: dict[tuple[int, int], list[tuple[int, int]]] = {}
         for (dr, dc) in ((0, 1), (1, 0)):
             A = labels[: H - dr, : W - dc]; B = labels[dr:, dc:]
             sel = (A >= 0) & (B >= 0) & (A != B)
             zA = dsm[: H - dr, : W - dc][sel]; zB = dsm[dr:, dc:][sel]
-            for a_, b_, za, zb in zip(A[sel].tolist(), B[sel].tolist(), zA.tolist(), zB.tolist()):
+            rs, cs = np.nonzero(sel)
+            for a_, b_, za, zb, r_, c_ in zip(A[sel].tolist(), B[sel].tolist(), zA.tolist(), zB.tolist(),
+                                              rs.tolist(), cs.tolist()):
                 k = (min(a_, b_), max(a_, b_))
                 shared[k] = shared.get(k, 0) + 1
                 jump.setdefault(k, []).append(abs(za - zb))
+                where.setdefault(k, []).append((r_, c_))
         # Only facets sharing a real edge. Two pieces of one slope either side
         # of a wing touch at a single pixel where they narrow to nothing; merged,
         # they became one facet made of two separate shapes.
@@ -499,6 +531,13 @@ def _merge_coplanar(dsm, labels, planes, px_m):
             nb = np.array([-planes[ib][0], -planes[ib][1], 1.0])
             ang = math.degrees(math.acos(min(1.0, float(na @ nb) / (np.linalg.norm(na) * np.linalg.norm(nb)))))
             if ang > MERGE_MAX_ANGLE_DEG:
+                continue
+            # Two pieces of one slope meet at the same height; a lower roof
+            # tucked under an eave does not, however well one tilted plane
+            # might split the difference between them.
+            wr, wc = np.array(where[(ia, ib)]).T
+            gap = float(np.median(np.abs(_plane_z(planes[ia], wr, wc, px_m) - _plane_z(planes[ib], wr, wc, px_m))))
+            if gap > STEP_GAP_M:
                 continue
             sel = (labels == ia) | (labels == ib)
             a_, b_, c_, rms, frac = _robust_plane(cols[sel] * px_m, rows[sel] * px_m, dsm[sel])
@@ -919,6 +958,13 @@ def _crease_edges(labels, planes, px_m, dsm=None) -> list[Edge]:
             zA = pa[0] * P[:, 0] + pa[1] * P[:, 1] + pa[2]
             zB = pb[0] * P[:, 0] + pb[1] * P[:, 1] + pb[2]
             is_step = float(np.median(np.abs(zA - zB))) > STEP_M
+        if not is_step and cosang > math.cos(math.radians(PARALLEL_DEG)):
+            # Parallel planes cannot cross, so if they sit apart where they
+            # meet, it is a step however gently the DSM has blurred it: a porch
+            # roof 30 cm under the main eave reads as a 3 cm-per-pixel ramp.
+            zA = pa[0] * P[:, 0] + pa[1] * P[:, 1] + pa[2]
+            zB = pb[0] * P[:, 0] + pb[1] * P[:, 1] + pb[2]
+            is_step = float(np.median(np.abs(zA - zB))) > STEP_GAP_M
         if is_step:
             edges.extend(_step_edges(P, ia, ib, pa, pb, px_m))
             continue
