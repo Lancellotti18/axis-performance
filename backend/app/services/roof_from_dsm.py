@@ -918,6 +918,30 @@ CREASE_MIN_M = 0.4          # shorter crease segments are corners, not lines
 PARALLEL_DEG = 4.0          # planes this close to parallel do not form a crease
 
 
+def _level_on_roof(dsm, q0, q1, px_m, limit: float = LEVEL_RISE_PER_RUN) -> bool:
+    """Is the roof itself level along this line? Two small planes fitted a
+    little skewed make their crossing line tilt: Brookside Oaks' bump-out ridge
+    came out a 9 ft "hip" (EagleView: no hips) though the heights along it rise
+    only where it meets the main roof. Robust slope (median of pairwise
+    slopes), so that one end does not decide."""
+    q0 = np.asarray(q0, float); q1 = np.asarray(q1, float)
+    run_m = float(np.hypot(*(q1 - q0)))
+    if run_m < 1.0:
+        return False
+    H, W = dsm.shape
+    ts = np.linspace(0.1, 0.9, 9)
+    zs = []
+    for t in ts:
+        x, y = (q0 + (q1 - q0) * t) / px_m            # metres -> pixels
+        r, c = int(round(y)), int(round(x))
+        if not (1 <= r < H - 1 and 1 <= c < W - 1):
+            return False
+        zs.append(float(np.median(dsm[r - 1:r + 2, c - 1:c + 2])))
+    slopes = [abs(zs[j] - zs[i]) / ((ts[j] - ts[i]) * run_m)
+              for i in range(len(ts)) for j in range(i + 1, len(ts))]
+    return float(np.median(slopes)) < limit
+
+
 def _crease_edges(labels, planes, px_m, dsm=None) -> list[Edge]:
     """Ridges, hips and valleys as the exact intersection of two fitted planes.
 
@@ -1020,6 +1044,11 @@ def _crease_edges(labels, planes, px_m, dsm=None) -> list[Edge]:
             zB_ = pb[0] * pB[0] + pb[1] * pB[1] + pb[2] - zm
             if zA_ < 0 and zB_ < 0:
                 kind = "ridge" if level else "hip"
+                # A real hip between slopes of grade g climbs at about g/sqrt(2).
+                slope_ab = min(math.hypot(pa[0], pa[1]), math.hypot(pb[0], pb[1]))
+                if kind == "hip" and dsm is not None and _level_on_roof(
+                        dsm, q0, q1, px_m, max(LEVEL_RISE_PER_RUN, 0.5 * slope_ab / math.sqrt(2))):
+                    kind = "ridge"
             elif zA_ > 0 and zB_ > 0:
                 kind = "valley"
             else:
