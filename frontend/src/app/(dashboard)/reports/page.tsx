@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getUser } from '@/lib/auth'
-import { api } from '@/lib/api'
+import { api, describeReportQueue } from '@/lib/api'
 import toast from 'react-hot-toast'
 
 const cardStyle = { boxShadow: '0 2px 12px rgba(59,130,246,0.07)', border: '1px solid rgba(255,255,255,0.10)' }
@@ -166,7 +166,11 @@ export default function ReportsPage() {
     }
     setRoofBusy(rep.run_id + ':open')
     try {
-      const { url } = await api.roofing.v2.getReportShareUrl(rep.run_id)
+      const { url } = await api.roofing.v2.getReportShareUrl(rep.run_id, s => {
+        // Keep the placeholder tab honest while the report waits its turn.
+        const msg = describeReportQueue(s)
+        if (msg && tab && !tab.closed) tab.document.body.textContent = msg
+      })
       cacheReportUrl(rep.run_id, url)
       if (tab && !tab.closed) tab.location.href = url
       else window.open(url, '_blank')   // popup blocked entirely — try anyway
@@ -181,11 +185,15 @@ export default function ReportsPage() {
   async function shareRoofReport(rep: { run_id: string; pdf_url: string | null }) {
     setRoofBusy(rep.run_id + ':share')
     try {
-      const url = rep.pdf_url || (await api.roofing.v2.getReportShareUrl(rep.run_id)).url
+      const url = rep.pdf_url || (await api.roofing.v2.getReportShareUrl(rep.run_id, s => {
+        const msg = describeReportQueue(s)
+        if (msg) toast.loading(msg, { id: `share-${rep.run_id}` })
+      })).url
+      toast.dismiss(`share-${rep.run_id}`)
       await navigator.clipboard.writeText(url)
       cacheReportUrl(rep.run_id, url)
       toast.success('Share link copied to clipboard')
-    } catch { toast.error('Could not create a share link') }
+    } catch { toast.dismiss(`share-${rep.run_id}`); toast.error('Could not create a share link') }
     finally { setRoofBusy('') }
   }
 
@@ -317,7 +325,15 @@ export default function ReportsPage() {
                       className="text-xs font-medium text-blue-900 bg-blue-50 hover:bg-blue-500/25 border border-blue-400/25 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
                       {busyOpen ? '…' : 'Open'}
                     </button>
-                    <button onClick={() => api.roofing.v2.downloadReport(rep.run_id).catch(() => toast.error('Download failed'))}
+                    <button onClick={() => {
+                      const id = `dl-${rep.run_id}`
+                      api.roofing.v2.downloadReport(rep.run_id, s => {
+                        const msg = describeReportQueue(s)
+                        if (msg) toast.loading(msg, { id })
+                      })
+                        .then(() => toast.dismiss(id))
+                        .catch(() => toast.error('Download failed', { id }))
+                    }}
                       className="text-xs font-medium text-[#2d2d2d] bg-[#f8f8f7] hover:bg-[#f8f8f7] border border-[#dededc] px-3 py-1.5 rounded-lg transition-colors">
                       Download
                     </button>

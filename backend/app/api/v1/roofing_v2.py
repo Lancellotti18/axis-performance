@@ -4742,10 +4742,26 @@ async def get_calibration(user: dict = Depends(require_user)) -> dict:
     return stats or {"jobs": 0}
 
 
-async def _build_and_store_report(run_id: str, user_id: Optional[str] = None) -> tuple[bytes, str, Optional[str]]:
+async def _build_and_store_report(run_id: str, user_id: Optional[str] = None,
+                                  queue_id: Optional[str] = None) -> tuple[bytes, str, Optional[str]]:
     """Build the v2 roof-report PDF, persist it to storage (so it can be reopened /
     re-downloaded / shared from the Reports tab), and return (bytes, filename, url).
-    url is a long-lived signed URL, or None if storage failed (download still works)."""
+    url is a long-lived signed URL, or None if storage failed (download still works).
+
+    The whole build runs on a worker thread, and only REPORT_CONCURRENCY of them
+    at once (see report_queue). It used to run on the event loop apart from the
+    PDF drawing: a dozen blocking Supabase calls, photo signing and a ~4 MB
+    upload, which froze every other request on the server for the length of
+    each report, and nothing limited how many built side by side."""
+    from app.services import report_queue
+    async with report_queue.slot(queue_id):
+        # to_thread copies the context, so llm_usage.attribute_to still applies.
+        return await asyncio.to_thread(_build_and_store_report_sync, run_id, user_id)
+
+
+def _build_and_store_report_sync(run_id: str, user_id: Optional[str] = None) -> tuple[bytes, str, Optional[str]]:
+    """The report build itself. Blocking by design: call it only through
+    _build_and_store_report, which runs it on a worker thread in the queue."""
     from app.services.roof_report_v2_pdf import generate_v2_report
     db = get_supabase()
     run_res = db.table("roof_measurement_runs").select("*").eq("id", run_id).single().execute()
@@ -4845,8 +4861,8 @@ async def _build_and_store_report(run_id: str, user_id: Optional[str] = None) ->
                 logo_url = fresh_logo_url(db, owner, contractor.get("logo_url"))
                 if logo_url:
                     import httpx
-                    async with httpx.AsyncClient(timeout=10) as client:
-                        lr = await client.get(logo_url, follow_redirects=True)
+                    with httpx.Client(timeout=10) as client:
+                        lr = client.get(logo_url, follow_redirects=True)
                         if lr.status_code == 200 and len(lr.content) < 3_000_000:
                             contractor["logo_bytes"] = lr.content
     except Exception as e:
@@ -4921,8 +4937,7 @@ async def _build_and_store_report(run_id: str, user_id: Optional[str] = None) ->
         flashing_summary = None
     siding_for_report = (siding_res.data or []) if REPORT_INCLUDES_SIDING else []
 
-    pdf_bytes = await asyncio.to_thread(
-        generate_v2_report,
+    pdf_bytes = generate_v2_report(
         proj.data, run, aggregates, facets_res.data or [], edges,
         pens_res.data or [], material_lines, siding_for_report, flashing_summary,
         contractor, calibration,
@@ -4956,13 +4971,26 @@ async def _build_and_store_report(run_id: str, user_id: Optional[str] = None) ->
     return pdf_bytes, filename, url
 
 
+# A place-in-line id the browser makes up, so it can ask where it is while it waits.
+_QUEUE_ID = r"^[A-Za-z0-9-]{8,64}$"
+
+
+@router.get("/reports/queue")
+async def report_queue_status(q: Optional[str] = Query(None, pattern=_QUEUE_ID),
+                              user: dict = Depends(require_user)) -> dict:
+    """Where a report request stands in the build line ("2 ahead of you")."""
+    from app.services import report_queue
+    return report_queue.status(q)
+
+
 @router.get("/runs/{run_id}/report")
-async def get_run_report(run_id: str, user: dict = Depends(require_user)):
+async def get_run_report(run_id: str, q: Optional[str] = Query(None, pattern=_QUEUE_ID),
+                         user: dict = Depends(require_user)):
     """Redesigned 8-section roof report PDF (also stored for the Reports tab)."""
     require_owned_run(get_supabase(), run_id, user)
     from app.services.llm_usage import attribute_to
     with attribute_to(user["id"], run_id):
-        pdf_bytes, filename, _ = await _build_and_store_report(run_id, user["id"])
+        pdf_bytes, filename, _ = await _build_and_store_report(run_id, user["id"], queue_id=q)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -5039,7 +5067,8 @@ async def solar_diagnostic(run_id: str, user: dict = Depends(require_user)) -> d
 
 @router.get("/runs/{run_id}/report/url")
 async def get_run_report_url(
-    run_id: str, refresh: bool = False, user: dict = Depends(require_user),
+    run_id: str, refresh: bool = False, q: Optional[str] = Query(None, pattern=_QUEUE_ID),
+    user: dict = Depends(require_user),
 ) -> dict:
     """A shareable signed URL for the run's report.
 
@@ -5064,7 +5093,7 @@ async def get_run_report_url(
     try:
         from app.services.llm_usage import attribute_to
         with attribute_to(user["id"], run_id):
-            _, _, url = await _build_and_store_report(run_id, user["id"])
+            _, _, url = await _build_and_store_report(run_id, user["id"], queue_id=q)
     except HTTPException:
         raise
     except Exception as e:

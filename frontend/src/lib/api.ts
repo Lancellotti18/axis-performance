@@ -362,6 +362,55 @@ export function entitlementBlock(e: unknown): EntitlementBlock | null {
   return d && d.error === 'entitlement_required' ? d : null
 }
 
+// ── Report build line ────────────────────────────────────────────────────
+// Reports build two at a time on the server; the rest wait their turn. A
+// request carries an id the browser makes up, and while it is pending the page
+// can ask where that id stands, so a wait reads as "1 ahead of you" instead of
+// a spinner that looks hung.
+export interface ReportQueueStatus {
+  state: 'waiting' | 'building' | 'unknown'
+  ahead: number
+  building: number
+  waiting: number
+  limit: number
+  typical_seconds: number | null
+}
+
+/** Human wording for a queue status, or null when there is nothing to say. */
+export function describeReportQueue(s: ReportQueueStatus | null): string | null {
+  if (!s) return null
+  if (s.state === 'waiting') {
+    const wait = s.typical_seconds ? ` (about ${Math.max(5, Math.round(s.typical_seconds * (s.ahead + 1)))}s)` : ''
+    return s.ahead > 0 ? `In line, ${s.ahead} ahead of you${wait}` : `Next in line${wait}`
+  }
+  if (s.state === 'building') return 'Building your report…'
+  return null
+}
+
+function newQueueId(): string {
+  const c = (globalThis as { crypto?: Crypto }).crypto
+  if (c?.randomUUID) return c.randomUUID()
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+}
+
+/** Poll the line for a pending request. Waits a moment first, so a report that
+ *  builds straight away never polls at all. Returns a stop function. */
+function watchReportQueue(q: string, onQueue?: (s: ReportQueueStatus) => void): () => void {
+  if (!onQueue) return () => {}
+  let stopped = false
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const tick = async () => {
+    if (stopped) return
+    try {
+      const s = await apiRequest<ReportQueueStatus>(`/api/v1/roofing/v2/reports/queue?q=${q}`, {}, 10000)
+      if (!stopped) onQueue(s)
+    } catch { /* a missed poll is harmless; the next one will tell */ }
+    if (!stopped) timer = setTimeout(tick, 2000)
+  }
+  timer = setTimeout(tick, 1500)
+  return () => { stopped = true; if (timer) clearTimeout(timer) }
+}
+
 async function apiRequest<T>(
   path: string,
   options?: RequestInit,
@@ -1900,12 +1949,19 @@ export const api = {
           disclaimer: string
         }>(`/api/v1/roofing/v2/runs/${runId}/adjuster-estimate${qs ? `?${qs}` : ''}`)
       },
-      downloadReport: async (runId: string) => {
+      downloadReport: async (runId: string, onQueue?: (s: ReportQueueStatus) => void) => {
         const session = await getCachedSession()
         const token = session?.access_token
-        const res = await fetch(`${API_BASE}/api/v1/roofing/v2/runs/${runId}/report`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        })
+        const q = newQueueId()
+        const stop = watchReportQueue(q, onQueue)
+        let res: Response
+        try {
+          res = await fetch(`${API_BASE}/api/v1/roofing/v2/runs/${runId}/report?q=${q}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          })
+        } finally {
+          stop()
+        }
         if (!res.ok) {
           // This path does its own fetch (it needs the blob), so it has to do
           // its own error formatting too — otherwise a structured 422 arrives
@@ -1938,8 +1994,17 @@ export const api = {
           pdf_url: string | null
         }> }>(`/api/v1/roofing/v2/reports?user_id=${userId}`),
       // A shareable signed URL for a run's report (builds + stores it if needed).
-      getReportShareUrl: (runId: string) =>
-        apiRequest<{ url: string }>(`/api/v1/roofing/v2/runs/${runId}/report/url`, {}, 60000),
+      // 180s, not 60: building one takes ~25s on the free server, and a request
+      // can be waiting behind two others first.
+      getReportShareUrl: async (runId: string, onQueue?: (s: ReportQueueStatus) => void) => {
+        const q = newQueueId()
+        const stop = watchReportQueue(q, onQueue)
+        try {
+          return await apiRequest<{ url: string }>(`/api/v1/roofing/v2/runs/${runId}/report/url?q=${q}`, {}, 180000)
+        } finally {
+          stop()
+        }
+      },
       addSidingMeasurement: (payload: {
         project_id: string
         elevation: 'front' | 'rear' | 'left' | 'right' | 'other'

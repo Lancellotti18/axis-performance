@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/api'
+import { api, describeReportQueue } from '@/lib/api'
 import { createLogger, describeError } from '@/lib/logger'
 import toast from 'react-hot-toast'
 import type { ComplianceCheck, ComplianceItem, ComplianceSeverity } from '@/types'
@@ -381,7 +381,11 @@ export default function ProjectPage() {
     if (!roofRunId) return
     setOpeningReport(true)
     try {
-      const { url } = await api.roofing.v2.getReportShareUrl(roofRunId)
+      const { url } = await api.roofing.v2.getReportShareUrl(roofRunId, s => {
+        const msg = describeReportQueue(s)
+        if (msg) toast.loading(msg, { id: 'report-queue' })
+      })
+      toast.dismiss('report-queue')
       setReportUrl(url)
     } catch (err) {
       // Only say "measure the roof" when that is actually the problem. The
@@ -389,6 +393,7 @@ export default function ProjectPage() {
       // telling someone to re-measure a roof they already measured is how a
       // transient failure turns into an hour of wasted work.
       const msg = err instanceof Error ? err.message : ''
+      toast.dismiss('report-queue')
       toast.error(/404/.test(msg)
         ? 'No report for this roof yet — open the measurement tool and generate one.'
         : 'Could not open the report. Please try again in a moment.')

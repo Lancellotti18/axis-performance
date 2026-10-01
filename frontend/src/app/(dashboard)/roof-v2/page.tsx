@@ -18,7 +18,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, describeReportQueue } from '@/lib/api'
 import { getUser } from '@/lib/auth'
 import { useRegisterChatContext } from '@/lib/chat-context'
 import LocationPicker, { type LocationSelected } from '@/components/roof-v2/LocationPicker'
@@ -192,6 +192,8 @@ export default function RoofV2Page() {
   const openRunRef = useRef<(pid: string | null, img: ImageryPayload | null) => Promise<void>>(async () => {})
   const onLocationSelectedRef = useRef<(loc: LocationSelected, pid?: string) => Promise<void>>(async () => {})
   const [busy, setBusy] = useState(false)
+  // "In line, 1 ahead of you" while the report waits for a build slot.
+  const [reportQueueMsg, setReportQueueMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confidence, setConfidence] = useState<number>(0)
   // The backend caps confidence at 25% when the geometry is physically
@@ -730,11 +732,12 @@ export default function RoofV2Page() {
     try {
       await api.roofing.v2.patchRun(runId, { confirmed: true })
       setRunConfirmed(true)
-      await api.roofing.v2.downloadReport(runId)
+      await api.roofing.v2.downloadReport(runId, s => setReportQueueMsg(describeReportQueue(s)))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Report download failed')
     } finally {
       setBusy(false)
+      setReportQueueMsg(null)
     }
   }, [runId])
 
@@ -1383,7 +1386,7 @@ export default function RoofV2Page() {
               disabled={busy || facets.length === 0}
               className="mt-4 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
             >
-              {busy ? 'Generating…' : 'Confirm + download PDF report'}
+              {busy ? (reportQueueMsg ?? 'Generating…') : 'Confirm + download PDF report'}
             </button>
           </section>
         </>
