@@ -84,6 +84,8 @@ const LINE_HINTS: Record<Exclude<EdgeType, 'unlabeled' | 'gable_end'>, string> =
   wall_intersection: 'Where the roof meets a wall or a chimney',
 }
 
+const GUIDE_MAX_SCALE = 8
+
 const PITCH_OPTIONS = ['2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '9/12', '10/12', '12/12']
 
 // Phase 1: label + color for a facet's pitch provenance, so a MEASURED pitch reads
@@ -797,16 +799,22 @@ export function RoofFacetEditor({
     setActiveFacetIdx(fi)
     setSelectedEdge({ facetIdx: fi, edgeIdx: e.vertexIndexStart })
     setGuiding(true)
-    const r = el.getBoundingClientRect()
-    // The SVG letterboxes the image inside the stage (preserveAspectRatio meet).
-    const k = Math.min(r.width / imageDims.w, r.height / imageDims.h)
-    const ox = (r.width - imageDims.w * k) / 2; const oy = (r.height - imageDims.h * k) / 2
-    const px = ox + ((a[0] + b[0]) / 2) * imageDims.w * k
-    const py = oy + ((a[1] + b[1]) / 2) * imageDims.h * k
-    const lenPx = Math.hypot((b[0] - a[0]) * imageDims.w * k, (b[1] - a[1]) * imageDims.h * k)
-    // Zoom so the line fills about a third of the canvas, within limits.
-    const S = Math.max(2, Math.min(MAX_SCALE, (Math.min(r.width, r.height) / 3) / Math.max(lenPx, 1)))
-    setView({ scale: S, x: r.width / 2 - px * S, y: r.height / 2 - py * S })
+    // Measure AFTER the layout settles: entering label mode hides the nudge
+    // banner above the canvas, which makes the canvas taller. Centring on the
+    // old size left the line ~300 px below the middle at high zoom.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const r = el.getBoundingClientRect()
+      // The SVG letterboxes the image inside the stage (preserveAspectRatio meet).
+      const k = Math.min(r.width / imageDims.w, r.height / imageDims.h)
+      const ox = (r.width - imageDims.w * k) / 2; const oy = (r.height - imageDims.h * k) / 2
+      const px = ox + ((a[0] + b[0]) / 2) * imageDims.w * k
+      const py = oy + ((a[1] + b[1]) / 2) * imageDims.h * k
+      const lenPx = Math.hypot((b[0] - a[0]) * imageDims.w * k, (b[1] - a[1]) * imageDims.h * k)
+      // The line fills about a third of the canvas, but never past 8x: beyond
+      // that a satellite photo is only pixels and the roof around it is lost.
+      const S = Math.max(2, Math.min(GUIDE_MAX_SCALE, (Math.min(r.width, r.height) / 3) / Math.max(lenPx, 1)))
+      setView({ scale: S, x: r.width / 2 - px * S, y: r.height / 2 - py * S })
+    }))
   }, [facets, imageDims.w, imageDims.h])
 
   const selectedRecord = useMemo(() => {
@@ -1334,7 +1342,7 @@ export function RoofFacetEditor({
                 </li>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white">5</span>
-                  <span>Hit <strong className="text-emerald-800">✨ Auto-label edges</strong>, then review — accept the good ones, fix any single edge by hand. The measurements lock in once you confirm.</span>
+                  <span>Hit <strong className="text-emerald-800">🏷 Label lines</strong>, then review — accept the good ones, fix any single edge by hand. The measurements lock in once you confirm.</span>
                 </li>
               </ol>
               <div className="mt-2 rounded bg-[#eeeeed] px-2 py-1.5 text-[10px] text-[#6b7280]">
