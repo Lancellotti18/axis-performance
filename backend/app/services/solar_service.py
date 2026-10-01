@@ -185,8 +185,19 @@ async def get_building_insights(lat: float, lng: float) -> dict:
     if d.get("year"):
         imagery_date = f"{int(d['year']):04d}-{int(d.get('month', 1)):02d}-{int(d.get('day', 1)):02d}"
 
+    # The building's own id and outline box. The street-view picker uses them
+    # to tell neighbouring buildings apart when it asks which one a click hit.
+    bb = data.get("boundingBox") or {}
+    bsw, bne = bb.get("sw") or {}, bb.get("ne") or {}
+    building_bbox = None
+    if bsw.get("latitude") is not None and bne.get("latitude") is not None:
+        building_bbox = {"sw": {"lat": bsw["latitude"], "lng": bsw["longitude"]},
+                         "ne": {"lat": bne["latitude"], "lng": bne["longitude"]}}
+
     result = {
         "available": True,
+        "building_name": data.get("name"),
+        "building_bbox": building_bbox,
         "imagery_quality": data.get("imageryQuality"),
         "imagery_date": imagery_date,
         "center": {"lat": center.get("latitude"), "lng": center.get("longitude")},

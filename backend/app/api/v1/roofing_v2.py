@@ -609,6 +609,18 @@ async def street_view(
                     aimed_at = "building" if fp.get("confident") else "nearest building"
             except Exception as e:
                 logger.info("street view footprint aim unavailable: %s", e)
+            # No OSM outline here: Google Solar's building for the address is the
+            # next best thing to aim at. Without it the camera points at the bare
+            # geocode, which sits on the road a few metres from the camera.
+            if aimed_at == "address":
+                try:
+                    from app.services import solar_service
+                    sb = await solar_service.get_building_insights(lat, lng)
+                    c = sb.get("center") or {}
+                    if sb.get("available") and c.get("lat") is not None:
+                        target_lat, target_lng, aimed_at = float(c["lat"]), float(c["lng"]), "building"
+                except Exception as e:
+                    logger.info("street view solar aim unavailable: %s", e)
 
             heading: Optional[float] = None
             distance_m: Optional[float] = None
@@ -641,7 +653,13 @@ async def street_view(
             # on the next street over, looking at the back of a different
             # house), and a link to walk around in the real Street View.
             result = {"available": True, "image": f"data:{ct};base64,{b64}",
-                      "aimed_at": aimed_at, "date": md.get("date")}
+                      "aimed_at": aimed_at, "date": md.get("date"),
+                      # What the picker needs to let the user turn the camera
+                      # and to turn a click on the photo into a bearing.
+                      "fov": round(fov), "heading": round(heading) if heading is not None else None,
+                      "pano_id": pano_id}
+            if plat is not None and plng is not None:
+                result["camera"] = {"lat": float(plat), "lng": float(plng)}
             if distance_m is not None:
                 result["distance_m"] = round(distance_m)
                 result["far"] = distance_m > _SV_FAR_METRES
@@ -657,6 +675,149 @@ async def street_view(
         # poison a perfectly good address for a week.
         logger.warning("street view lookup failed: %s", e)
         return {"available": False, "reason": "error"}
+
+
+# Turning the camera is a new image from the SAME panorama, so it is cheap to
+# cache by (pano, heading, fov) and the click-to-bearing maths stays valid.
+_SV_LOOK_CACHE: dict[str, tuple[float, str]] = {}
+
+
+@router.get("/streetview/look")
+async def street_view_look(
+    pano: str = Query(..., min_length=8, max_length=128, pattern=r"^[A-Za-z0-9_\-]+$"),
+    heading: float = Query(..., ge=-720, le=720),
+    fov: float = Query(75, ge=20, le=110),
+    user: dict = Depends(require_user),
+) -> dict:
+    """The same Street View camera pointed somewhere else, so a contractor can
+    look up and down the street for the house instead of being stuck with the
+    one shot we aimed for them."""
+    from app.core.config import settings as _settings
+    import base64
+    import httpx as _httpx
+    key = _settings.GOOGLE_SOLAR_API_KEY
+    if not key:
+        return {"available": False, "reason": "no_key"}
+    heading = heading % 360
+    ck = f"{pano}|{heading:.0f}|{fov:.0f}"
+    hit = _SV_LOOK_CACHE.get(ck)
+    if hit and (time.time() - hit[0]) < _SV_TTL_SECONDS:
+        return {"available": True, "image": hit[1], "heading": round(heading), "fov": round(fov)}
+    try:
+        async with _httpx.AsyncClient(timeout=10) as client:
+            img = await client.get("https://maps.googleapis.com/maps/api/streetview", params={
+                "size": "640x400", "pano": pano, "heading": f"{heading:.0f}",
+                "fov": f"{fov:.0f}", "key": key})
+            img.raise_for_status()
+    except Exception as e:
+        logger.warning("street view look failed: %s", e)
+        return {"available": False, "reason": "error"}
+    ct = img.headers.get("content-type", "image/jpeg").split(";")[0]
+    data_url = f"data:{ct};base64,{base64.b64encode(img.content).decode()}"
+    if len(_SV_LOOK_CACHE) >= _SV_MAX:
+        for k in sorted(_SV_LOOK_CACHE, key=lambda k: _SV_LOOK_CACHE[k][0])[:12]:
+            _SV_LOOK_CACHE.pop(k, None)
+    _SV_LOOK_CACHE[ck] = (time.time(), data_url)
+    return {"available": True, "image": data_url, "heading": round(heading), "fov": round(fov)}
+
+
+class StreetViewLocate(BaseModel):
+    camera_lat: float = Field(..., ge=-90, le=90)
+    camera_lng: float = Field(..., ge=-180, le=180)
+    bearing: float = Field(..., ge=-720, le=720)
+
+
+@router.post("/streetview/locate")
+async def street_view_locate(payload: StreetViewLocate, user: dict = Depends(require_user)) -> dict:
+    """Which building did the user click in the street photo?
+
+    The click is a bearing from the camera; the answer is the first mapped
+    building outline that bearing runs into. That outline is what the picker
+    then highlights on the satellite, so the house recognised from the road is
+    the roof that gets measured."""
+    from app.services import footprint_service
+    cam_lat, cam_lng, bearing = payload.camera_lat, payload.camera_lng, payload.bearing % 360
+
+    # 1. OpenStreetMap: free, and a real outline when it has one.
+    rings = await footprint_service.buildings_near(cam_lat, cam_lng)
+    osm_failed = rings is None
+    hit = footprint_service.first_building_on_bearing(cam_lat, cam_lng, bearing, rings) if rings else None
+    source = "openstreetmap"
+
+    # 2. Google Solar, where OSM has nothing in that direction. Whole suburbs
+    # have no OSM buildings at all (339 Buch Ave, Lancaster, returns zero within
+    # 150 m), and those are exactly the streets Axis is used on.
+    if not hit:
+        solar = await _solar_first_hit(cam_lat, cam_lng, bearing)
+        if solar == "failed":
+            # OSM had nothing that way and Solar couldn't answer (quota or an
+            # outage): "try again" is honest, "no building there" would not be.
+            return {"found": False, "reason": "lookup_failed"}
+        if solar:
+            hit, source = solar, "google_solar"
+
+    if not hit:
+        return {"found": False, "reason": "nothing_on_bearing"}
+    ring, dist = hit
+    return {"found": True, "ring": ring, "distance_m": round(dist), "source": source,
+            "centroid": {"lat": sum(p["lat"] for p in ring) / len(ring),
+                         "lng": sum(p["lng"] for p in ring) / len(ring)}}
+
+
+# Distances along the click's bearing at which to ask Solar for the closest
+# building. 8 m apart is less than any house is deep, so the walk cannot step
+# over one; past ~70 m a house is too small in a 640 px photo to click on.
+_SOLAR_RAY_STEPS_M = (6, 14, 22, 30, 38, 46, 56, 68)
+
+
+async def _solar_first_hit(cam_lat: float, cam_lng: float, bearing: float):
+    """The first Google Solar building along a bearing, as (box ring, metres).
+
+    Walks outward one sample at a time and stops at the first building the ray
+    enters before the walk has passed it. Firing every sample at once was
+    measured to trip Google's per-MINUTE quota on findClosest within a few
+    clicks, and that quota is shared with auto-measure, so this spends the
+    fewest calls it can: usually two to four.
+
+    Returns None when nothing is on the bearing, "failed" when Solar could not
+    answer at all (no key, quota, outage)."""
+    from app.services import footprint_service, solar_service
+    b = math.radians(bearing)
+    k = 111320.0 * math.cos(math.radians(cam_lat))
+    answered = False
+    best = None
+    seen: set = set()
+    import asyncio
+    for d in _SOLAR_RAY_STEPS_M:
+        pt = (cam_lat + d * math.cos(b) / 111320.0, cam_lng + d * math.sin(b) / k)
+        r = await solar_service.get_building_insights(*pt)
+        reason = r.get("reason") or ""
+        if "429" in reason:
+            # Per-MINUTE quota, shared with auto-measure: a short pause usually
+            # clears a burst. One retry, so a real outage still fails fast.
+            await asyncio.sleep(1.5)
+            r = await solar_service.get_building_insights(*pt)
+            reason = r.get("reason") or ""
+        if r.get("available") or "coverage" in reason:
+            answered = True
+        bb, name = r.get("building_bbox"), r.get("building_name")
+        if r.get("available") and bb and name not in seen:
+            seen.add(name)
+            sw, ne = bb["sw"], bb["ne"]
+            ring = [{"lat": sw["lat"], "lng": sw["lng"]}, {"lat": sw["lat"], "lng": ne["lng"]},
+                    {"lat": ne["lat"], "lng": ne["lng"]}, {"lat": ne["lat"], "lng": sw["lng"]}]
+            h = footprint_service.first_building_on_bearing(cam_lat, cam_lng, bearing, [ring])
+            if h and (best is None or h[1] < best[1]):
+                best = h
+        # A hit that starts before this sample cannot be beaten by any building
+        # further out, so stop spending calls.
+        if best and best[1] <= d:
+            return best
+        if "429" in reason:
+            break                       # still over quota: more calls only fail too
+    if best:
+        return best
+    return None if answered else "failed"
 
 
 # ----------------------------------------------------------------------------

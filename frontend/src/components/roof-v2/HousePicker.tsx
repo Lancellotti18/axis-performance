@@ -61,6 +61,17 @@ export default function HousePicker({
   // How far to trust the photo. A street photo is a claim about which house is
   // at this address, and a wrong one sends a roofer to the neighbour's door.
   const [svMeta, setSvMeta] = useState<SvMeta>({})
+  // The camera behind the photo. Turning it asks for a new image from the same
+  // panorama, and a click on the photo becomes a compass bearing from it.
+  const [svCam, setSvCam] = useState<{ pano: string; lat: number; lng: number; heading: number; fov: number } | null>(null)
+  const [svTurning, setSvTurning] = useState(false)
+  // Where they clicked on the street photo, as fractions of the image.
+  const [svClick, setSvClick] = useState<{ x: number; y: number } | null>(null)
+  const [svPick, setSvPick] = useState<'idle' | 'locating' | 'miss' | 'failed' | 'off_tile'>('idle')
+  // Set once the building came from a street-view click. From then on the
+  // address lookup must never overwrite it: the user has told us which house.
+  const pickedFromStreet = useRef(false)
+  const [streetPicked, setStreetPicked] = useState(false)
 
   // Two stages, in the order a person actually identifies a house:
   //   'street'    — recognise it from the road, where houses are recognisable
@@ -105,6 +116,9 @@ export default function HousePicker({
         if (r.available && r.image) {
           setStreetView(r.image)
           setSvMeta({ aimedAt: r.aimed_at, date: r.date, distanceM: r.distance_m, far: r.far, panoUrl: r.pano_url })
+          if (r.pano_id && r.camera && r.heading != null) {
+            setSvCam({ pano: r.pano_id, lat: r.camera.lat, lng: r.camera.lng, heading: r.heading, fov: r.fov ?? 75 })
+          }
           setSvState('ok'); return
         }
         setStreetView(null)
@@ -130,7 +144,7 @@ export default function HousePicker({
     setFpState('loading')
     api.roofing.v2.getFootprint(runId)
       .then(fp => {
-        if (cancelled) return
+        if (cancelled || pickedFromStreet.current) return
         if (!fp.available || !fp.ring?.length) { setFpState('none'); return }
         const pts = fp.ring.map(p => {
           const [x, y] = geoToFrac(p.lat, p.lng, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel)
@@ -142,9 +156,78 @@ export default function HousePicker({
         // never let it masquerade as a confident pick.
         setFpState(fp.confident ? 'found' : 'guess')
       })
-      .catch(() => { if (!cancelled) setFpState('error') })
+      .catch(() => { if (!cancelled && !pickedFromStreet.current) setFpState('error') })
     return () => { cancelled = true }
   }, [runId, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel])
+
+  // Look around from the same camera: a turn or a zoom is a new image from the
+  // same panorama, so the click-to-bearing maths keeps working.
+  const look = useCallback(async (dHeading: number, fovScale: number) => {
+    if (!svCam || svTurning) return
+    const heading = (svCam.heading + dHeading + 360) % 360
+    const fov = Math.max(25, Math.min(100, svCam.fov * fovScale))
+    setSvTurning(true)
+    try {
+      const r = await api.roofing.v2.getStreetViewLook(svCam.pano, heading, fov)
+      if (r.available && r.image) {
+        setStreetView(r.image)
+        setSvCam({ ...svCam, heading, fov })
+        setSvClick(null); setSvPick('idle')
+      } else {
+        toast.error('Couldn\u2019t turn the camera, try again')
+      }
+    } catch {
+      toast.error('Couldn\u2019t turn the camera, try again')
+    } finally {
+      setSvTurning(false)
+    }
+  }, [svCam, svTurning])
+
+  // They clicked the house in the street photo. The click's horizontal position
+  // gives the bearing from the camera (a rectilinear photo: offset = atan of the
+  // position times tan of half the field of view), and the house is the first
+  // building outline that bearing runs into. That outline is then highlighted on
+  // the satellite, so the house recognised from the road is the roof measured.
+  const pickFromStreet = useCallback(async (clientX: number, clientY: number, el: HTMLImageElement) => {
+    if (!svCam || svPick === 'locating') return
+    const r = el.getBoundingClientRect()
+    const fx = Math.max(0, Math.min(1, (clientX - r.left) / r.width))
+    const fy = Math.max(0, Math.min(1, (clientY - r.top) / r.height))
+    setSvClick({ x: fx, y: fy })
+    const half = (svCam.fov * Math.PI) / 360
+    const offset = (Math.atan((fx - 0.5) * 2 * Math.tan(half)) * 180) / Math.PI
+    const bearing = (svCam.heading + offset + 360) % 360
+    setSvPick('locating')
+    try {
+      const res = await api.roofing.v2.locateFromStreetView(svCam.lat, svCam.lng, bearing)
+      if (!res.found || !res.ring?.length || !res.centroid) {
+        setSvPick(res.reason === 'lookup_failed' ? 'failed' : 'miss'); return
+      }
+      if (lat == null || lng == null || !imageWidthPx || !imageHeightPx || !feetPerPixel) {
+        setSvPick('failed'); return
+      }
+      const [cx, cy] = geoToFrac(res.centroid.lat, res.centroid.lng, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel)
+      // geoToFrac clamps to the tile, so a centroid pinned to an edge means the
+      // house is outside this satellite image. Highlighting a clamped outline
+      // would point at the wrong roof.
+      if (cx <= 0.001 || cx >= 0.999 || cy <= 0.001 || cy >= 0.999) { setSvPick('off_tile'); return }
+      pickedFromStreet.current = true
+      setStreetPicked(true)
+      setOutline(res.ring.map(p => {
+        const [x, y] = geoToFrac(p.lat, p.lng, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel)
+        return { x, y }
+      }))
+      setFpState('found')
+      setGeocodeRejected(false)
+      setPoint({ x: cx, y: cy })
+      setAutoPicked(true)
+      setConfirmed(false)
+      setSvPick('idle')
+      setStage('satellite')
+    } catch {
+      setSvPick('failed')
+    }
+  }, [svCam, svPick, lat, lng, imageWidthPx, imageHeightPx, feetPerPixel])
 
   // Drop the marker in the middle of that building once we have it — but never
   // over a point the user placed themselves, and never when they've told us the
@@ -199,6 +282,9 @@ export default function HousePicker({
   const placed = autoPicked || confirmed || userTapped
 
   const age = photoAge(svMeta.date)
+  // Turn by most of the current view, so a zoomed-in photo can't turn straight
+  // past the house and a wide one doesn't take six clicks to look behind you.
+  const turnStep = svCam ? Math.round(svCam.fov * 0.75) : 45
   // Each of these is a concrete reason the photo may show the wrong house.
   const svDoubts: string[] = []
   if (svMeta.far) svDoubts.push(`It was taken ${svMeta.distanceM} m away, which usually means a different street or an alley, so it may show another house.`)
@@ -213,13 +299,15 @@ export default function HousePicker({
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-emerald-900">
-            {stage === 'street' ? '🏠 Is this the house?' : '📍 Confirm the roof'}
+            {stage === 'street' ? (svCam ? '🏠 Click the house in the street photo' : '🏠 Is this the house?') : '📍 Confirm the roof'}
           </h3>
           <p className="text-xs text-[#6b7280]">
             {stage === 'street'
-              ? 'Houses are far easier to recognise from the road than from above. Check this is the right one, and we\u2019ll pick it out on the satellite for you.'
+              ? 'Houses are far easier to recognise from the road than from above. Find the house in the photo, turning the camera if you need to, and click it. We\u2019ll highlight that same building on the satellite.'
               : autoPicked
-                ? (fpState === 'guess'
+                ? streetPicked
+                  ? 'This is the building you clicked in the street photo. Check the outline sits on YOUR roof, then confirm. Tap elsewhere if it\u2019s wrong.'
+                  : (fpState === 'guess'
                     ? 'This is our best guess at the building \u2014 check the outline is on YOUR roof before confirming.'
                     : 'We found this building at the address and highlighted it. Check the outline sits on YOUR roof \u2014 tap elsewhere if it\u2019s wrong.')
                 : 'Tap the center of YOUR roof so auto-detect locks onto the right building \u2014 not a neighbor or a shed.'}
@@ -244,24 +332,84 @@ export default function HousePicker({
       {streetView && !(stage === 'satellite' && geocodeRejected) && (
         <div className="mt-3 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2.5">
           <div className={stage === 'street' ? '' : 'flex gap-3'}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={streetView}
-              alt="Street view of the address"
-              onClick={() => setSvZoom(true)}
-              className={stage === 'street'
-                ? 'w-full cursor-zoom-in rounded-md border border-[#dededc] object-cover transition hover:brightness-95'
-                : 'h-28 w-44 shrink-0 cursor-zoom-in rounded-md border border-[#dededc] object-cover transition hover:brightness-95'}
-              draggable={false}
-            />
+            <div className={stage === 'street' ? 'relative' : 'relative shrink-0'}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={streetView}
+                alt="Street view of the address"
+                onClick={e => {
+                  // In the street stage a click picks the house. Without camera
+                  // details (an older cached photo) it can only be enlarged.
+                  if (stage === 'street' && svCam) pickFromStreet(e.clientX, e.clientY, e.currentTarget)
+                  else setSvZoom(true)
+                }}
+                className={stage === 'street'
+                  ? `w-full rounded-md border border-[#dededc] object-cover transition ${svCam ? 'cursor-crosshair' : 'cursor-zoom-in hover:brightness-95'} ${svTurning ? 'opacity-60' : ''}`
+                  : 'h-28 w-44 cursor-zoom-in rounded-md border border-[#dededc] object-cover transition hover:brightness-95'}
+                draggable={false}
+              />
+              {svClick && (
+                <span
+                  className="pointer-events-none absolute block h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-emerald-500 shadow-lg ring-4 ring-emerald-400/40"
+                  style={{ left: `${svClick.x * 100}%`, top: `${svClick.y * 100}%` }}
+                />
+              )}
+              {stage === 'street' && svPick === 'locating' && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-2 mx-auto w-fit rounded-full bg-black/70 px-3 py-1 text-[11px] font-medium text-white">
+                  Finding that building…
+                </div>
+              )}
+            </div>
             {stage === 'street' ? (
               <div className="mt-2.5">
-                <p className="text-[11px] leading-relaxed text-[#6b7280]">
+                {svCam && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button type="button" onClick={() => look(-turnStep, 1)} disabled={svTurning}
+                      className="rounded-md border border-[#dededc] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[#1a1a1a] hover:bg-[#f2f2f0] disabled:opacity-50">
+                      ◀ Look left
+                    </button>
+                    <button type="button" onClick={() => look(turnStep, 1)} disabled={svTurning}
+                      className="rounded-md border border-[#dededc] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[#1a1a1a] hover:bg-[#f2f2f0] disabled:opacity-50">
+                      Look right ▶
+                    </button>
+                    <button type="button" onClick={() => look(0, 0.6)} disabled={svTurning || svCam.fov <= 26}
+                      className="rounded-md border border-[#dededc] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[#1a1a1a] hover:bg-[#f2f2f0] disabled:opacity-50">
+                      ＋ Zoom in
+                    </button>
+                    <button type="button" onClick={() => look(0, 1 / 0.6)} disabled={svTurning || svCam.fov >= 99}
+                      className="rounded-md border border-[#dededc] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[#1a1a1a] hover:bg-[#f2f2f0] disabled:opacity-50">
+                      − Zoom out
+                    </button>
+                    <button type="button" onClick={() => setSvZoom(true)}
+                      className="ml-auto text-[11px] text-[#6b7280] underline decoration-dotted hover:text-[#1a1a1a]">
+                      Enlarge
+                    </button>
+                  </div>
+                )}
+                {svPick === 'miss' && (
+                  <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
+                    No mapped building lies in that direction. Click the middle of the house itself,
+                    not the yard or the sky above it, or find the roof on the satellite instead.
+                  </div>
+                )}
+                {svPick === 'off_tile' && (
+                  <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
+                    That building is outside this satellite image, so it isn&apos;t the address on this
+                    project. If it really is the house, the project&apos;s address needs correcting.
+                  </div>
+                )}
+                {svPick === 'failed' && (
+                  <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
+                    We couldn&apos;t look up the buildings here just now. Try clicking again, or find
+                    the roof on the satellite instead.
+                  </div>
+                )}
+                <p className="mt-2 text-[11px] leading-relaxed text-[#6b7280]">
                   Google&apos;s street photo closest to{' '}
                   <span className="font-medium text-[#1a1a1a]">{address || 'the address'}</span>
                   {age && <> · taken {age.label}</>}
                   {svMeta.distanceM != null && <> · ~{svMeta.distanceM} m from the house</>}.
-                  Check the house number or a feature you know before you say yes.
+                  Check the house number or a feature you know before you click.
                 </p>
                 {svDoubts.length > 0 && (
                   <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
@@ -271,49 +419,53 @@ export default function HousePicker({
                     </ul>
                   </div>
                 )}
-                {svMeta.panoUrl && (
-                  <a href={svMeta.panoUrl} target="_blank" rel="noreferrer"
-                     className="mt-1.5 inline-block text-[11px] font-medium text-emerald-800 underline decoration-dotted hover:text-emerald-900">
-                    Look around in Google Street View ↗
-                  </a>
-                )}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setStage('satellite')}
-                    className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
-                  >
-                    Yes — that&apos;s the house
-                  </button>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                  {!svCam && (
+                    // No camera details (a photo cached before click-to-pick
+                    // shipped), so the photo can't be clicked: keep the old yes.
+                    <button
+                      type="button"
+                      onClick={() => setStage('satellite')}
+                      className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                    >
+                      Yes, that&apos;s the house
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
-                      // The photo is of the geocoded address. If that's the wrong
-                      // house, the geocode is wrong, so the footprint sitting at
-                      // that same geocode is wrong too — drop it rather than
-                      // highlight a building we now know we can't trust.
+                      // Not visible from this camera means the address point is
+                      // suspect, so the footprint at that same point is too. Drop it
+                      // rather than highlight a building we can't vouch for.
                       setGeocodeRejected(true)
                       setOutline(null)
                       setAutoPicked(false)
                       setFpState('none')
                       setStage('satellite')
                     }}
-                    className="rounded-md border border-[#dededc] bg-white px-4 py-2 text-sm font-medium text-[#1a1a1a] hover:bg-[#f2f2f0]"
+                    className="text-[12px] font-medium text-[#1a1a1a] underline decoration-dotted hover:text-emerald-800"
                   >
-                    No — that&apos;s not it
+                    I can&apos;t find it from the street, use the satellite
                   </button>
+                  {svMeta.panoUrl && (
+                    <a href={svMeta.panoUrl} target="_blank" rel="noreferrer"
+                       className="text-[11px] text-[#6b7280] underline decoration-dotted hover:text-[#1a1a1a]">
+                      Open in Google Street View ↗
+                    </a>
+                  )}
                 </div>
               </div>
             ) : (
               <div className="text-[11px] leading-relaxed text-[#6b7280]">
                 <span className="font-semibold text-[#1a1a1a]">Street reference.</span>{' '}
-                The street photo you confirmed{age ? `, from ${age.label}` : ''}. Click to enlarge.
+                {streetPicked ? 'The house you clicked from the street' : 'The street photo'}
+                {age ? `, from ${age.label}` : ''}. Click to enlarge.
                 <button
                   type="button"
                   onClick={() => setStage('street')}
                   className="mt-1.5 block rounded border border-[#dededc] bg-white px-2 py-1 text-[11px] font-medium text-[#1a1a1a] hover:bg-[#f2f2f0]"
                 >
-                  Not the right house?
+                  {streetPicked ? 'Pick a different house from the street' : 'Pick the house from the street'}
                 </button>
               </div>
             )}
