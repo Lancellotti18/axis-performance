@@ -217,3 +217,20 @@ def test_the_outline_is_drawn_on_googles_own_photo(wired, monkeypatch):
     # Google's photo is used around the house (value 120 here).
     h, w = img.shape[:2]
     assert abs(int(img[h // 2, w // 2, 0]) - 120) <= 2
+
+
+def test_vents_found_at_auto_measure_are_offered_once(monkeypatch):
+    rows = [
+        {"type": "plumbing_vent", "count": 1, "pos_x_frac": 0.40, "pos_y_frac": 0.40,
+         "ai_suggested": True, "user_confirmed": False, "notes": "Found in Google 3D: a"},
+        {"type": "plumbing_vent", "count": 2, "pos_x_frac": 0.50, "pos_y_frac": 0.45,
+         "ai_suggested": True, "user_confirmed": False, "notes": "Found in Google 3D: b"},
+        # already confirmed at the first spot
+        {"type": "plumbing_vent", "count": 1, "pos_x_frac": 0.401, "pos_y_frac": 0.399,
+         "ai_suggested": True, "user_confirmed": True},
+    ]
+    monkeypatch.setattr(rv, "get_supabase", lambda: _DB({"roof_penetrations": rows,
+                                                         "roof_measurement_runs": {"id": "r1"}}))
+    monkeypatch.setattr(rv, "require_owned_run", lambda db, rid, user: {"id": rid})
+    res = asyncio.run(rv.suggest_penetrations("r1", RYAN))
+    assert [(s["count"], s["source"]) for s in res["suggestions"]] == [(2, "google_3d")]

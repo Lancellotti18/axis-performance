@@ -93,6 +93,22 @@ export function PenetrationSuggestions({ runId, imageUrl }: Props) {
 
   useEffect(() => { void refreshConfirmed() }, [refreshConfirmed])
 
+  // Vents found by auto-measure show up on their own — a list behind a button
+  // nobody presses is how every order ended up with zero pipe boots.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await api.roofing.v2.suggestPenetrations(runId, true)
+        if (!cancelled && res.suggestions?.length) {
+          setSuggestions(res.suggestions)
+          setMessage(res.message || null)
+        }
+      } catch { /* the button still works */ }
+    })()
+    return () => { cancelled = true }
+  }, [runId])
+
   const runSuggest = useCallback(async () => {
     setLoading(true)
     setError(null)

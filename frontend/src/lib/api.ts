@@ -1499,7 +1499,9 @@ export const api = {
         apiRequest<Record<string, unknown>>(`/api/v1/roofing/v2/runs/${runId}/penetrations/${pid}`, {
           method: 'DELETE',
         }),
-      suggestPenetrations: (runId: string) =>
+      // storedOnly: return what auto-measure already found (instant, free);
+      // never falls through to the whole-photo AI scan.
+      suggestPenetrations: (runId: string, storedOnly = false) =>
         apiRequest<{
           suggestions: Array<{
             type: string
@@ -1507,11 +1509,13 @@ export const api = {
             pos_y_frac: number
             confidence: number
             note: string
+            count?: number
+            source?: string
             ai_suggested: boolean
             user_confirmed: boolean
           }>
           message: string
-        }>(`/api/v1/roofing/v2/runs/${runId}/penetrations/suggest`),
+        }>(`/api/v1/roofing/v2/runs/${runId}/penetrations/suggest${storedOnly ? '?stored_only=true' : ''}`),
       // Google Solar building insights — pre-segmented roof planes with
       // measured pitch/azimuth/area. Inert (available:false) until the backend
       // GOOGLE_SOLAR_API_KEY is set or where Google has no coverage.

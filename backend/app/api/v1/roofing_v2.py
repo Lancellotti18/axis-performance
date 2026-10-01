@@ -1250,6 +1250,37 @@ async def _solar_pitch_for_polygons(
     return out
 
 
+async def _store_roof_objects(db, run_id: str, model, layers, sp: dict, req, shift_en) -> list[dict]:
+    """Find vents and chimneys on the measured roof and store them as
+    SUGGESTIONS (ai_suggested, unconfirmed) for the penetrations panel. Replaces
+    earlier unconfirmed suggestions for this run; never touches confirmed ones.
+    Best-effort: [] on any failure."""
+    try:
+        from app.services.roof_objects import find_raised_objects, classify_by_photo
+        from app.services.auto_measure import to_fraction, tap_utm
+        found = await asyncio.to_thread(
+            lambda: classify_by_photo(find_raised_objects(model, layers), layers.rgb, layers.px_m))
+        if not found:
+            return []
+        tap_en = tap_utm(layers, sp)
+        tap_xy = (float(sp["x"]), float(sp["y"]))
+        mpp = geo.metres_per_pixel(req.lat, req.zoom)
+        rows = []
+        for o in found:
+            fx, fy = to_fraction(o["col"], o["row"], layers, tap_en, tap_xy, mpp,
+                                 req.image_width_px, req.image_height_px, shift_en)
+            rows.append({"run_id": run_id, "type": o["type"], "count": int(o["count"]),
+                         "pos_x_frac": fx, "pos_y_frac": fy, "ai_suggested": True,
+                         "user_confirmed": False, "notes": f"Found in Google 3D: {o['reason']}"})
+        db.table("roof_penetrations").delete().eq("run_id", run_id) \
+            .eq("ai_suggested", True).eq("user_confirmed", False).execute()
+        db.table("roof_penetrations").insert(rows).execute()
+        return found
+    except Exception as e:
+        logger.info("roof objects not stored for %s: %s", run_id, e)
+        return []
+
+
 async def _store_google_backdrop(db, run_id: str, layers, sp: dict, tile_rgb, req) -> Optional[str]:
     """Render Google's aerial photo into the run's tile frame and store it.
     Best-effort: None (and the contractor's own photo stays) on any failure."""
@@ -1740,6 +1771,14 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     await put_edges(run_id, PutEdgesRequest(
         image_width_px=req.image_width_px, image_height_px=req.image_height_px,
         zoom=req.zoom, lat=req.lat, edges=[EdgeIn(**e) for e in edges]), user)
+    found = await _store_roof_objects(db, run_id, model, layers, sp, req, shift_en)
+    if found:
+        vents = sum(o["count"] for o in found if o["type"] == "plumbing_vent")
+        other = [o for o in found if o["type"] != "plumbing_vent"]
+        bits = ([f"{vents} likely pipe vent{'s' if vents != 1 else ''}"] if vents else []) + \
+               ([f"{len(other)} other roof object{'s' if len(other) != 1 else ''}"] if other else [])
+        warnings.append(f"Found {' and '.join(bits)} on the roof. Confirm them under Roof penetrations "
+                        "(Details) so pipe boots and flashing are ordered.")
     aggregates = _aggregate_run(run_id)
 
     frows = db.table("roof_facets").select("*").eq("run_id", run_id).execute().data or []
@@ -2515,6 +2554,7 @@ async def get_run_footprint(run_id: str, user: dict = Depends(require_user)) -> 
 @router.get("/runs/{run_id}/penetrations/suggest")
 async def suggest_penetrations(
     run_id: str, user: dict = Depends(require_user),
+    stored_only: bool = Query(False),
 ) -> dict:
     """
     Vision-based suggestion of likely penetrations on the run's satellite
@@ -2529,6 +2569,35 @@ async def suggest_penetrations(
     ).eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
+    # Found in Google's 3D data at auto-measure time: exact positions, checked
+    # against the photo. Served instead of a whole-tile vision guess. Anything
+    # the contractor already confirmed at that spot is not offered again.
+    try:
+        pen_rows = db.table("roof_penetrations").select("*").eq("run_id", run_id).execute().data or []
+    except Exception:
+        pen_rows = []
+    stored = [r for r in pen_rows if r.get("ai_suggested") and not r.get("user_confirmed")]
+    if stored:
+        confirmed = [r for r in pen_rows if r.get("user_confirmed")]
+
+        def _taken(r):
+            return any(c.get("type") == r.get("type")
+                       and abs(float(c.get("pos_x_frac") or -9) - float(r.get("pos_x_frac") or 9)) < 0.01
+                       and abs(float(c.get("pos_y_frac") or -9) - float(r.get("pos_y_frac") or 9)) < 0.01
+                       for c in confirmed)
+        out = [{"type": r["type"], "count": int(r.get("count") or 1),
+                "pos_x_frac": float(r["pos_x_frac"]) if r.get("pos_x_frac") is not None else None,
+                "pos_y_frac": float(r["pos_y_frac"]) if r.get("pos_y_frac") is not None else None,
+                "confidence": 0.7, "note": r.get("notes") or "", "source": "google_3d",
+                "ai_suggested": True, "user_confirmed": False}
+               for r in stored if not _taken(r)]
+        return {"suggestions": out,
+                "message": (f"{len(out)} found in Google's 3D data and checked against the photo. "
+                            "Confirm each one - a vent with a dark cap may still be missing; add it below.")
+                if out else "Every object found in Google's 3D data has been confirmed."}
+    if stored_only is True:
+        return {"suggestions": [], "message": ""}
+
     img_url = run.data.get("satellite_image_url")
     if not img_url:
         return {
