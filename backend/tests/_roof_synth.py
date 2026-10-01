@@ -113,6 +113,27 @@ def cross_gable_expected(W=8.0, L=16.0, wing=8.0, slope=0.5):
             "pitch_12": 12 * slope}
 
 
+def gable_with_porch(W=10.0, L=14.0, slope=0.5, depth=3.0, porch_len=8.0):
+    """A two-storey gable with a lower porch roof along part of the south side,
+    sloping the SAME way as the main south slope. Facing the same way, region
+    growing alone folds the porch into the main slope — Brookside Oaks lost
+    four of its nine roofs like that. Only the 1.3 m drop at the main eave
+    tells them apart."""
+    X, Y = _grid(L, W + depth)
+    main = gable_section(X, Y, 0, 0, L, W, slope, "x") + 1.5        # eave at 4.5 m
+    x0 = (L - porch_len) / 2
+    inside = (X >= x0) & (X < x0 + porch_len) & (Y >= W) & (Y < W + depth)
+    porch = np.where(inside, 3.2 - slope * (Y - W), np.nan)       # 3.2 m down to 1.7 m
+    return (*_finish([main, porch]), PX)
+
+
+def gable_with_porch_expected(W=10.0, L=14.0, slope=0.5, depth=3.0, porch_len=8.0):
+    k = math.sqrt(1 + slope ** 2)
+    plan = W * L + depth * porch_len
+    return {"plan_m2": plan, "true_m2": plan * k, "planes": 3, "pitch_12": 12 * slope,
+            "porch_m2": depth * porch_len * k}
+
+
 # ── Real-world roughness ─────────────────────────────────────────────────
 
 def rotate(dsm, mask, degrees):

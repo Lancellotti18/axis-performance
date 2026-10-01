@@ -128,6 +128,14 @@ def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
     labels = _assign_remaining(dsm, labels, bldg, planes, px_m)
     labels = _sharpen_creases(dsm, labels, bldg, planes, px_m)
     planes = _fit_planes(dsm, labels, px_m)          # refit on the final regions
+    for _ in range(3):
+        labels, split = _split_lower_roofs(dsm, normals, curvature, labels, planes, px_m, bldg)
+        if not split:
+            break
+        planes = _fit_planes(dsm, labels, px_m)
+        labels = _assign_remaining(dsm, labels, bldg, planes, px_m)
+        labels = _sharpen_creases(dsm, labels, bldg, planes, px_m)
+        planes = _fit_planes(dsm, labels, px_m)
     labels, planes = _merge_coplanar(dsm, labels, planes, px_m)
     labels = _sharpen_creases(dsm, labels, bldg, planes, px_m)
     planes = _fit_planes(dsm, labels, px_m)
@@ -223,6 +231,129 @@ def _attached_suspected(bldg, px_m) -> bool:
     return area > ATTACHED_M2 or (aspect > ATTACHED_ASPECT and area > 150.0)
 
 
+LOWER_ROOF_M = 0.30         # a patch this far BELOW its facet's plane is a separate, lower roof
+POOR_FIT_RMS_M = 0.10       # a "facet" its own plane explains this badly is several roofs
+SPLIT_INLIER_M = 0.12       # RANSAC: a pixel this close to a plane lies on it
+SPLIT_MIN_M2 = 2.0          # smallest roof the splitter will create
+SPLIT_MAX_PITCH = 2.5       # rise/run; steeper "planes" are walls and tree edges (30/12)
+
+
+def _ransac_planes(dsm, region, px_m, start_id):
+    """Carve `region` into planar roofs by their HEIGHTS: repeatedly take the
+    plane that the largest connected patch lies on, then remove it.
+
+    Region growing works from surface normals, and on roofs of a few square
+    metres those are too noisy to group (Brookside Oaks' south porch roofs
+    grew into nothing at any angle tolerance). Heights themselves are good to
+    ~5 cm, so planes fitted to them directly are reliable at that scale.
+    Deterministic: a fixed seed, so the same data always measures the same."""
+    rng = np.random.default_rng(0)
+    out = np.full(region.shape, UNASSIGNED, np.int32)
+    left = region.copy()
+    min_px = int(SPLIT_MIN_M2 / px_m ** 2)
+    nid = start_id
+    near = max(3, int(1.5 / px_m))
+    for _ in range(8):
+        rr, cc = np.nonzero(left)
+        if len(rr) < min_px:
+            break
+        x, y, z = cc * px_m, rr * px_m, dsm[rr, cc]
+        # Triples drawn close together, so each hypothesis is one LOCAL plane.
+        i0 = rng.integers(0, len(rr), 600)
+        pick = []
+        for i in i0:
+            d = np.abs(rr - rr[i]) + np.abs(cc - cc[i])
+            cand = np.nonzero((d > 2) & (d < near))[0]
+            if len(cand) >= 2:
+                j, k = rng.choice(cand, 2, replace=False)
+                pick.append((i, j, k))
+        if not pick:
+            break
+        P = np.array(pick)
+        A = np.stack([x[P], y[P], np.ones(P.shape)], axis=2)
+        ok = np.abs(np.linalg.det(A)) > 1e-9
+        A, Z = A[ok], z[P][ok]
+        coef = np.linalg.solve(A, Z[..., None])[..., 0]
+        coef = coef[np.hypot(coef[:, 0], coef[:, 1]) < SPLIT_MAX_PITCH]
+        if not len(coef):
+            break
+        score = (np.abs(z[None, :] - (coef[:, :1] * x + coef[:, 1:2] * y + coef[:, 2:])) < SPLIT_INLIER_M).sum(1)
+        best = None
+        for ci in np.argsort(-score)[:12]:            # a few best by count, judged by connectivity
+            a, b, c = coef[ci]
+            inl = np.zeros_like(left)
+            inl[rr, cc] = np.abs(z - (a * x + b * y + c)) < SPLIT_INLIER_M
+            n, comp, stats, _ = cv2.connectedComponentsWithStats(inl.astype(np.uint8), connectivity=4)
+            if n < 2:
+                continue
+            k = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+            if best is None or stats[k, cv2.CC_STAT_AREA] > best[0]:
+                best = (int(stats[k, cv2.CC_STAT_AREA]), comp == k)
+        if best is None or best[0] < min_px:
+            break
+        patch = best[1]
+        # Close pinholes and drop hairline attachments before claiming it.
+        patch = cv2.morphologyEx(patch.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)) > 0
+        patch &= left
+        if patch.sum() < min_px:
+            break
+        out[patch] = nid
+        left &= ~patch
+        nid += 1
+    return out
+
+
+def _split_lower_roofs(dsm, normals, curvature, labels, planes, px_m, bldg):
+    """Peel lower attached roofs out of the facets that swallowed them.
+
+    Region growing groups pixels by the direction they face. A porch roof or a
+    bump-out that slopes the same way as the main roof, but sits a metre or two
+    lower, therefore joins the main facet. Brookside Oaks lost four of its nine
+    roofs this way: 19% of one main facet sat more than 30 cm BELOW its own
+    plane, the main slopes came out 13-35% too large, and every eave, rake,
+    ridge and step-flashing line of the swallowed roofs vanished (perimeter
+    27% short against EagleView).
+
+    A real plane explains its pixels to ~5 cm. So:
+      * a well-fitting facet gives up the sizeable patches lying well BELOW its
+        plane (patches above are chimneys, dormers, branches — the robust fit
+        already ignores those);
+      * a facet that fits badly overall is several roofs, and is re-carved.
+    Each piece is then split into planes by _ransac_planes."""
+    H, W = labels.shape
+    cols, rows = np.meshgrid(np.arange(W), np.arange(H))
+    min_px = int(SPLIT_MIN_M2 / px_m ** 2)
+    kernel = np.ones((3, 3), np.uint8)
+    labels = labels.copy()
+    nid = (max(planes) + 1) if planes else 0
+    split = False
+    for fid, pl in sorted(planes.items()):
+        sel = labels == fid
+        if not sel.any():
+            continue
+        if pl[3] > POOR_FIT_RMS_M:
+            pieces = [sel]
+        else:
+            zp = pl[0] * cols * px_m + pl[1] * rows * px_m + pl[2]
+            below = sel & ((dsm - zp) < -LOWER_ROOF_M)
+            # Opening removes speckle and thin seams along creases.
+            below = cv2.morphologyEx(below.astype(np.uint8), cv2.MORPH_OPEN, kernel, iterations=2) > 0
+            n, comp = cv2.connectedComponents(below.astype(np.uint8), connectivity=4)
+            pieces = [comp == i for i in range(1, n) if (comp == i).sum() >= min_px]
+        for piece in pieces:
+            carved = _ransac_planes(dsm, piece, px_m, nid)
+            got = carved >= nid
+            if not got.any():
+                continue
+            if piece is sel and len(np.unique(carved[got])) < 2:
+                continue                      # one plane after all: leave it be
+            labels[piece] = UNASSIGNED
+            labels[got] = carved[got]
+            nid = int(carved.max()) + 1
+            split = True
+    return labels, split
+
+
 def _surface_normals(dsm, bldg, px_m):
     """Unit normals from heights smoothed ONLY within the building, so the
     ground beyond the eaves never bleeds into the roof's slope."""
@@ -238,7 +369,7 @@ def _surface_normals(dsm, bldg, px_m):
     return n, curvature
 
 
-def _grow_planes(normals, curvature, bldg, px_m):
+def _grow_planes(normals, curvature, bldg, px_m, start_id: int = 0):
     """Region growing: start from the flattest pixels, absorb neighbours that
     face the same way as the region so far. Crease pixels, whose normals are a
     blend of two planes, are left for later."""
@@ -251,7 +382,7 @@ def _grow_planes(normals, curvature, bldg, px_m):
 
     rr, cc = np.nonzero(bldg)
     order = np.argsort(curvature[rr, cc], kind="stable")
-    nid = 0
+    nid = start_id
     nx, ny, nz = normals[..., 0], normals[..., 1], normals[..., 2]
     for k in order:
         r0, c0 = int(rr[k]), int(cc[k])
@@ -370,7 +501,22 @@ def _merge_coplanar(dsm, labels, planes, px_m):
             if ang > MERGE_MAX_ANGLE_DEG:
                 continue
             sel = (labels == ia) | (labels == ib)
-            _, _, _, rms, frac = _robust_plane(cols[sel] * px_m, rows[sel] * px_m, dsm[sel])
+            a_, b_, c_, rms, frac = _robust_plane(cols[sel] * px_m, rows[sel] * px_m, dsm[sel])
+            # Each half must lie on the joint plane, not just the pair overall: a
+            # porch roof a metre below a big main slope is only ~15% of their
+            # pixels, so "75% of the pair fits" merged it straight back in.
+            # Judged on the half's own SURFACE (pixels on its own plane), so a
+            # dormer standing on one half — Buch Ave's east wing — does not
+            # count against rejoining the two halves of one slope.
+            small = ia if (labels == ia).sum() <= (labels == ib).sum() else ib
+            ss = labels == small
+            ps = planes[small]
+            xs, ys, zs = cols[ss] * px_m, rows[ss] * px_m, dsm[ss]
+            own = np.abs(zs - (ps[0] * xs + ps[1] * ys + ps[2])) < INLIER_M
+            if own.sum() >= 3:
+                joint = np.abs(zs - (a_ * xs + b_ * ys + c_)) < max(INLIER_M, 2 * rms)
+                if float(joint[own].mean()) < 0.75:
+                    continue
             worse = max(planes[ia][3], planes[ib][3])
             # One plane must explain both halves about as well as each alone did,
             # using most of their pixels (not just a sliver that happens to fit).

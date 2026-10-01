@@ -81,6 +81,28 @@ def test_totals_use_the_keys_axis_stores():
     assert t["squares"] == pytest.approx(178.89 * 10.7639 / 100, rel=AREA_TOL)
 
 
+@pytest.mark.parametrize("angle,noisy", VARIANTS)
+def test_a_lower_porch_roof_is_its_own_facet(angle, noisy):
+    """Same direction as the main slope, a metre lower: one facet hid its
+    eave, rakes and the wall flashing above it."""
+    m, exp = _run("gable_with_porch", angle, noisy)
+    assert m.available, m.reason
+    assert len(m.facets) == exp["planes"]
+    assert m.true_m2 == pytest.approx(exp["true_m2"], rel=AREA_TOL)
+    assert min(f.true_m2 for f in m.facets) == pytest.approx(exp["porch_m2"], rel=0.05)
+    assert all(f.pitch_12 == pytest.approx(exp["pitch_12"], abs=0.3) for f in m.facets)
+    # The drop between them is a wall (step flashing), not a ridge or a hip.
+    assert m.lengths_m.get("wall_intersection", 0.0) == pytest.approx(8.0, rel=0.1)   # the porch's top edge
+    assert m.lengths_m.get("hip", 0.0) <= LINE_ABS_M
+
+
+def test_a_dormer_does_not_split_its_slope():
+    """The splitter must not cut a slope in two around something standing on it."""
+    dsm, mask, px = S.gable()
+    m = extract_roof(S.add_chimney(dsm, mask, 4.0, 2.0), mask, px)
+    assert len(m.facets) == 2
+
+
 # ── Picking the right building ────────────────────────────────────────────
 
 def _two_houses():
