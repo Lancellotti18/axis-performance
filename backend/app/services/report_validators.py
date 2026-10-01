@@ -104,7 +104,11 @@ def partial_outline_signals(aggregates: dict) -> list[str]:
 COVERAGE_TRUST_RADIUS_M = 30.0
 # Below this, Solar has likely found a shed or a fragment, not the house.
 COVERAGE_MIN_REFERENCE_SQFT = 300.0
-# Ratio bands (traced / reference). Provisional until tuned on real runs.
+# Ratio bands (traced / reference). Checked 2026-09-30 on the 30 latest runs
+# (scripts/validate_coverage.py): every complete measurement read 0.99-1.04
+# (the auto-measured ones, and Buch Ave, which matches Aspen's squares), while
+# Buch Ave hand traces Aspen proved ~30% short read 0.76-0.82 and were all
+# reported High (97%). Revisit once complete HAND traces are in the sample.
 COVERAGE_LOW = 0.80          # under: most likely a partial trace
 COVERAGE_MODERATE = 0.92     # under: possibly a missed section
 COVERAGE_OVER = 1.35         # over: traced beyond this building

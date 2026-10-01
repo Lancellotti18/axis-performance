@@ -1,7 +1,8 @@
 # Usage (from backend/): docker run --rm -v "$PWD":/app -v ~/buildai/backend/.env:/env/.env:ro \
 #   -v <dir with runs.json>:/data -w /app axis-backend-test python scripts/validate_coverage.py
 # runs.json = roof_measurement_runs rows (select id,total_plan_sqft,total_roof_sqft,confidence,
-#   satellite_lat,satellite_zoom,subject_point,measurement_scope) fetched with the service key."""Tune trace-coverage thresholds on real runs. Read-only against Supabase;
+#   satellite_lat,satellite_zoom,subject_point,measurement_scope) fetched with the service key.
+"""Tune trace-coverage thresholds on real runs. Read-only against Supabase;
 one Solar call per run (~$0.01 each). Never prints the key."""
 import asyncio, json, os, sys
 
