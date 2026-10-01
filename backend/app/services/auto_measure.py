@@ -89,6 +89,7 @@ def build_payload(model: RoofModel, layers: LayerSet, subject_point: dict, *,
     mpp = geo.metres_per_pixel(lat, zoom)
     afs: list[AxisFacet] = axis_facets(model)
     label_of = {a.fid: a.label for a in afs}
+    facing = {f.id: f.azimuth_deg for f in model.facets}
     facets, edges = [], []
     for a in afs:
         poly = [to_fraction(c, r, layers, (tap_e, tap_n), tap_xy, mpp, width_px, height_px, shift_en)
@@ -99,6 +100,8 @@ def build_payload(model: RoofModel, layers: LayerSet, subject_point: dict, *,
             # One decimal: a 10.6/12 roof stored as 11/12 is ~2% of its area.
             "pitch": f"{a.pitch_12:.1f}/12",
             "pitch_source": "solar_3d",
+            # The way the plane faces, from its fit — what "Direction" means.
+            "azimuth_deg": round(float(facing[a.fid]) % 360.0, 1) if a.fid in facing else None,
             "confidence": 0.9,
             "user_confirmed": False,
             "ai_suggested": True,

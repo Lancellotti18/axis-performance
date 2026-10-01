@@ -119,6 +119,9 @@ def test_a_gable_is_measured_and_stored_like_a_trace(wired, monkeypatch):
     # The outline sits around the tap (the image centre here), in image fractions.
     xs = [p[0] for f in fr.facets for p in f.polygon]
     assert min(xs) < 0.5 < max(xs)
+    # An east-west ridge: one slope faces north, the other south. The longest
+    # edge (what Direction used to show) runs east-west for BOTH of them.
+    assert sorted(round(f.azimuth_deg) % 360 for f in fr.facets) == [0, 180]
 
 
 # ── The AI labeller on a measured roof ────────────────────────────────────

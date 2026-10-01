@@ -847,6 +847,10 @@ class FacetIn(BaseModel):
     # Phase 1: where this facet's pitch came from. Kept so the report/editor can
     # show a MEASURED pitch as measured, not as a guess. See _resolve_pitch.
     pitch_source: Optional[str] = None
+    # Compass bearing the slope FACES (downhill), when it was measured — the
+    # auto-measure engine knows it from the fitted plane. Without it the facet's
+    # direction falls back to its longest edge, which is a line, not a facing.
+    azimuth_deg: Optional[float] = Field(None, ge=0.0, le=360.0)
 
     @field_validator("polygon")
     @classmethod
@@ -1173,7 +1177,7 @@ async def put_facets(
         )
         mult = geo.slope_multiplier(f.pitch)
         deg = geo.pitch_string_to_degrees(f.pitch)
-        orient = geo.longest_edge_orientation_deg(f.polygon)
+        orient = f.azimuth_deg if f.azimuth_deg is not None else geo.longest_edge_orientation_deg(f.polygon)
         # Phase 1: never lose pitch provenance. Trust an explicit source from the
         # client; otherwise infer — a non-default pitch that arrives without a
         # source was set by the contractor ('manual'); the bare 6/12 is 'default'.
@@ -1748,7 +1752,12 @@ def _aggregate_run(run_id: str) -> dict:
             res = imagery_resolution(tile.get("satellite_lat"), tile.get("satellite_zoom"))
         except Exception:
             res = None
-        if res is not None:
+        # An auto-measured roof's geometry comes from Google's height data, not
+        # from the photo: a coarse tile changes nothing about it, and capping it
+        # (Brookside Oaks: High 97% -> Moderate 70%) punished the one kind of
+        # measurement the photo cannot have spoiled.
+        measured_3d = bool(facets) and all(f.get("pitch_source") == "solar_3d" for f in facets)
+        if res is not None and not measured_3d:
             aggregates["imagery_ft_per_px"] = res.ft_per_px
             if res.coarse:
                 confirmed = cov is not None and cov.cap is None

@@ -147,7 +147,10 @@ def _normalize_address(address, city, state, zipc) -> str:
         parts.append(address)
     if city and city.lower() not in al:
         parts.append(city)
-    tail = state if (zipc and zipc in address) else f"{state} {zipc}".strip()
+    tokens = set(re.findall(r"[a-z0-9]+", al))
+    have_state = bool(state) and state.lower() in tokens
+    have_zip = bool(zipc) and zipc in address
+    tail = " ".join(x for x, have in ((state, have_state), (zipc, have_zip)) if x and not have)
     if tail:
         parts.append(tail)
     return ", ".join(p for p in parts if p)
@@ -462,7 +465,13 @@ def _render_pitch_diagram(facets: list[dict]) -> bytes | None:
 
 
 def _section_header(text: str, n: int, styles: dict) -> Paragraph:
-    return Paragraph(f"<font color='#1e40af'><b>Section {n}.</b></font> &nbsp; {text}", styles["h2"])
+    """Numbered in the order sections actually print. The fixed numbers each
+    section used to carry skipped every hidden one (2, 3, 5, 7, 9, 10), which
+    reads as missing pages. `n` is kept for callers; the count lives in styles,
+    which every section already receives."""
+    counter = styles.setdefault("_section_no", [0])
+    counter[0] += 1
+    return Paragraph(f"<font color='#1e40af'><b>Section {counter[0]}.</b></font> &nbsp; {text}", styles["h2"])
 
 
 def _table_style(header_color=BRAND, alt_row=True) -> TableStyle:
@@ -490,144 +499,6 @@ def _table_style(header_color=BRAND, alt_row=True) -> TableStyle:
 # Section builders
 # ----------------------------------------------------------------------------
 
-def _section_1_executive(
-    project: dict, run: dict, aggregates: dict, facet_count: int,
-    styles: dict, facets: list[dict] | None = None,
-    contractor: dict | None = None,
-) -> list:
-    """Executive Summary — top of the report."""
-    flow: list = []
-    full_address = _normalize_address(project.get("address"), project.get("city"),
-                                      project.get("state"), project.get("zip"))
-    if not full_address:
-        full_address = project.get("name") or "Property"
-
-    # Branded header: the contractor's brand on the LEFT (logo bigger + name),
-    # "Powered by Axis" credited on the RIGHT — both marks visible, not a tiny
-    # corner logo with Axis buried in a footnote.
-    c = contractor or {}
-    company = c.get("company_name") or "Axis Roofing Performance"
-    logo_bytes = c.get("logo_bytes")
-    brand_hex = f"#{BRAND.hexval()[2:]}"
-    muted_hex = f"#{MUTED.hexval()[2:]}"
-
-    # Left-aligned clone of the title so the company name lines up under the
-    # logo (the base "title" style inherits center alignment).
-    from reportlab.lib.styles import ParagraphStyle
-    title_left = ParagraphStyle("TitleLeft", parent=styles["title"], alignment=0)
-    muted_left = ParagraphStyle("MutedLeft", parent=styles["muted"], alignment=0)
-
-    left_stack: list = []
-    if logo_bytes:
-        try:
-            img = Image(io.BytesIO(logo_bytes))
-            ratio = img.imageWidth / max(1, img.imageHeight)
-            img.drawHeight = 1.6 * inch
-            img.drawWidth = min(4.4 * inch, 1.6 * inch * ratio)
-            img.hAlign = "LEFT"
-            left_stack.append(img)
-            left_stack.append(Spacer(1, 6))
-        except Exception:
-            pass
-    left_stack.append(Paragraph(company, title_left))
-    prepared_bits = [b for b in [
-        f"License {c['license_number']}" if c.get("license_number") else None,
-        _format_phone(c.get("phone")), c.get("email"),
-    ] if b]
-    if prepared_bits:
-        left_stack.append(Paragraph(" · ".join(prepared_bits), muted_left))
-
-    axis_mark = Paragraph(
-        f"<para align='right'><font size=7 color='{muted_hex}'>POWERED BY</font><br/>"
-        f"<font size=16 color='{brand_hex}'><b>Axis</b></font>"
-        f"<font size=16 color='{muted_hex}'> Performance</font><br/>"
-        f"<font size=7 color='{muted_hex}'>Satellite roof intelligence</font></para>",
-        styles["muted"],
-    )
-    header = Table([[left_stack, axis_mark]], colWidths=[4.4 * inch, 2.5 * inch])
-    header.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    flow.append(header)
-    flow.append(Spacer(1, 8))
-    flow.append(Paragraph("Roof Measurement Report", styles["subtitle"]))
-    flow.append(Paragraph(full_address, styles["muted"]))
-
-    # Hero cards
-    conf_label, conf_color = _confidence_bucket(run.get("confidence") or 0)
-    hero = [[
-        Paragraph(_sqft(aggregates.get("total_roof_sqft")), styles["hero_num"]),
-        Paragraph(_sq(aggregates.get("squares")), styles["hero_num"]),
-        Paragraph(str(aggregates.get("predominant_pitch") or "—"), styles["hero_num"]),
-        Paragraph(f"<font color='{conf_color.hexval()}'>{conf_label}</font>", styles["hero_num"]),
-    ], [
-        Paragraph("True Roof Area", styles["hero_label"]),
-        Paragraph("Roofing Squares", styles["hero_label"]),
-        Paragraph("Predominant Pitch", styles["hero_label"]),
-        Paragraph("Measurement Confidence", styles["hero_label"]),
-    ]]
-    t = Table(hero, colWidths=[1.7 * inch] * 4)
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-    ]))
-    flow.append(t)
-    flow.append(Spacer(1, 12))
-
-    # Quick facts
-    facts = [
-        ["Facets", str(facet_count)],
-        ["Complexity", f"{aggregates.get('complexity_score', 0):.2f} / 1.00"],
-        ["Recommended waste", f"{int(aggregates.get('waste_pct_default') or 12)}%"],
-        ["Source", str(run.get("source") or "—")],
-        ["Report generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
-    ]
-    ft = Table(facts, colWidths=[2.0 * inch, 4.5 * inch])
-    ft.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("TEXTCOLOR", (0, 0), (0, -1), MUTED),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("LINEBELOW", (0, 0), (-1, -1), 0.25, BORDER),
-    ]))
-    flow.append(ft)
-    flow.append(Spacer(1, 12))
-
-    # DEFECT-09: the measurement/adjuster report cover must show the SUBJECT property
-    # or nothing — never an AI "after" render (those are homeowner/sales assets and
-    # read as a stock photo to an adjuster). The satellite crop below is always the
-    # real house. The Roof Visualizer render lives only on the homeowner report.
-
-    # Satellite image (if available)
-    img_url = run.get("satellite_image_url")
-    if img_url:
-        data = _fetch_satellite_image(img_url)
-        if data:
-            try:
-                # Crop to the subject roof so the report shows only THIS house,
-                # not the neighbors (the contractor already confirmed the house).
-                cropped = _crop_image_to_facets(data, facets or [], subject_point=run.get("subject_point"))
-                shown = cropped or data
-                flow.append(Image(io.BytesIO(shown), width=6.5 * inch, height=4.0 * inch, kind="proportional"))
-                provider = (run.get("satellite_provider") or "satellite").lower()
-                note = "Subject roof" if cropped else "Aerial"
-                flow.append(Paragraph(
-                    f"{note} — {provider} imagery (Web Mercator, zoom {run.get('satellite_zoom') or '—'})",
-                    styles["muted"],
-                ))
-            except Exception:
-                logger.debug("v2 report: image render failed", exc_info=True)
-    return flow
-
-
 # Phase 1: human-readable pitch provenance for the report. A MEASURED pitch reads
 # as measured; a default guess reads as one — never presented interchangeably.
 _PITCH_SOURCE_LABELS = {
@@ -651,40 +522,56 @@ def _pitch_source_label(source) -> str:
     return _PITCH_SOURCE_LABELS.get(s, s)
 
 
-def _section_2_roof_summary(aggregates: dict, facets: list[dict], styles: dict) -> list:
-    flow = [_section_header("Roof Summary", 2, styles)]
+def _section_2_roof_summary(aggregates: dict, facets: list[dict], styles: dict,
+                            run: dict | None = None) -> list:
+    flow = [_section_header("Roof Summary", 1, styles)]
 
     # The outline is NOT redrawn here. It has a full page of its own earlier —
     # the Length Diagram and the Pitch Diagram — each larger and carrying more
     # than this thumbnail ever did. A third copy read as padding.
-
+    measured = bool(facets) and all(f.get("pitch_source") == "solar_3d" for f in facets)
+    waste = int(aggregates.get("waste_pct_default") or 12)
     rows = [
         ["Metric", "Value", "Method"],
         ["Total roof area (true)", _sqft(aggregates.get("total_roof_sqft")),
          "Σ plan area × slope multiplier per facet"],
-        ["Total plan area (footprint)", _sqft(aggregates.get("total_plan_sqft")), "Σ shoelace polygon area"],
+        ["Total plan area (footprint)", _sqft(aggregates.get("total_plan_sqft")), "Σ facet outline areas"],
         ["Roofing squares", _sq(aggregates.get("squares")), "true area ÷ 100"],
-        ["Facet count", str(aggregates.get("facet_count") or 0), "user-traced polygons"],
+        ["Facet count", str(aggregates.get("facet_count") or 0),
+         "roof planes found in Google 3D heights" if measured else "contractor-traced outlines"],
         ["Predominant pitch", str(aggregates.get("predominant_pitch") or "—"),
-         "largest-area facet's pitch"],
+         "pitch of the largest roof area"],
         ["Pitch (degrees)",
          f"{aggregates.get('predominant_pitch_degrees') or 0:.1f}°", "atan(rise/12)"],
         ["Complexity score", f"{aggregates.get('complexity_score', 0):.2f}",
-         "deterministic from facet/valley/pitch variance"],
+         "from facet count, valleys, hips and pitch variety"],
+        # Asked on the first side-by-side: why order more than EagleView? The
+        # waste comes from complexity on a fixed 10/12/15/18% scale, never
+        # below 10%; saying so here lets a contractor see and override it.
+        ["Recommended waste", f"{waste}%", "10/12/15/18% by complexity (never below 10%)"],
     ]
-    t = Table(rows, colWidths=[2.0 * inch, 1.7 * inch, 2.8 * inch])
+    t = Table(rows, colWidths=[2.0 * inch, 1.5 * inch, 3.4 * inch])
     t.setStyle(_table_style())
     flow.append(t)
 
     # Per-facet table
     if facets:
-        flow.append(Spacer(1, 8))
+        flow.append(Spacer(1, 10))
         flow.append(Paragraph("Per-facet breakdown", styles["body"]))
-        fac_rows = [["Facet", "Pitch", "Pitch source", "Direction", "Plan ft²", "True ft²", "Conf."]]
-        for f in facets:
+        fac_rows = [["Facet", "Pitch", "Pitch source", "Faces", "Plan ft²", "True ft²", "Conf."]]
+        any_unmeasured_facing = False
+        for f in sorted(facets, key=lambda f_: (len(f_.get("facet_label") or ""), f_.get("facet_label") or "")):
             label = f.get("facet_label") or "—"
             pitch = f.get("pitch") or "—"
-            direction = f.get("slope_direction") or "—"
+            # Which way the slope FACES is only known where the plane was
+            # measured. A traced outline's stored direction is its longest
+            # edge's bearing — a line, which cannot tell a north slope from a
+            # south one — so it is not printed as if it were a facing.
+            if f.get("pitch_source") == "solar_3d" and f.get("slope_direction"):
+                direction = f.get("slope_direction")
+            else:
+                direction = "—"
+                any_unmeasured_facing = True
             plan = f.get("plan_area_sqft") or 0
             true = f.get("true_area_sqft") or 0
             conf = (f.get("confidence") or 0) * 100
@@ -692,14 +579,21 @@ def _section_2_roof_summary(aggregates: dict, facets: list[dict], styles: dict) 
                 label, pitch, _pitch_source_label(f.get("pitch_source")), direction,
                 f"{plan:,.1f}", f"{true:,.1f}", f"{conf:.0f}%",
             ])
-        ft = Table(fac_rows, colWidths=[0.6 * inch, 0.8 * inch, 1.5 * inch, 0.9 * inch, 1.0 * inch, 1.0 * inch, 0.6 * inch])
+        ft = Table(fac_rows, colWidths=[0.6 * inch, 0.8 * inch, 1.7 * inch, 0.7 * inch,
+                                         1.0 * inch, 1.0 * inch, 0.7 * inch])
         ft.setStyle(_table_style(header_color=ACCENT))
         flow.append(ft)
+        if any_unmeasured_facing:
+            flow.append(Spacer(1, 3))
+            flow.append(Paragraph(
+                "<i>Faces is the compass direction a slope drains toward. It is shown only "
+                "where the plane was measured; a hand-traced outline does not establish it.</i>",
+                styles["muted"]))
     return flow
 
 
 def _section_3_roof_lines(aggregates: dict, edges: list[dict], styles: dict) -> list:
-    flow = [_section_header("Roof Line Measurements", 3, styles)]
+    flow = [_section_header("Roof Line Measurements", 2, styles)]
 
     rows = [
         ["Type", "Total Linear Feet", "Material Implication"],
@@ -708,10 +602,12 @@ def _section_3_roof_lines(aggregates: dict, edges: list[dict], styles: dict) -> 
         ["Valleys", _ft(aggregates.get("valleys_ft")), "Drives valley metal + ice/water shield"],
         ["Eaves", _ft(aggregates.get("eaves_ft")), "Starter strip, drip edge, ice/water shield"],
         ["Rakes", _ft(aggregates.get("rakes_ft")), "Starter strip + drip edge"],
+        ["Wall / step flashing", _ft(aggregates.get("wall_intersection_ft")),
+         "Step flashing where a roof meets a wall"],
         ["Perimeter (eaves + rakes)", _ft(aggregates.get("perimeter_ft")), "Drip edge total"],
         ["Ridge total (ridges + hips)", _ft(aggregates.get("ridge_total_ft")), "Cap shingle total"],
     ]
-    t = Table(rows, colWidths=[2.0 * inch, 1.5 * inch, 3.0 * inch])
+    t = Table(rows, colWidths=[2.0 * inch, 1.5 * inch, 3.4 * inch])
     t.setStyle(_table_style())
     flow.append(t)
 
@@ -720,29 +616,30 @@ def _section_3_roof_lines(aggregates: dict, edges: list[dict], styles: dict) -> 
         "<i>All linear lengths are slope-adjusted for rakes, hips, and valleys — "
         "the figure shown is the true length along the roof surface, which is "
         "what contractors order material against. Eaves and ridges are "
-        "horizontal so plan and true lengths are equal.</i>",
+        "horizontal so plan and true lengths are equal. Every line is drawn and "
+        "labelled with its length on the Length Diagram.</i>",
         styles["muted"],
     ))
 
-    # Per-edge breakdown
-    if edges:
-        flow.append(Spacer(1, 10))
-        flow.append(Paragraph("Per-edge breakdown", styles["body"]))
-        edge_rows = [["Type", "Plan ft", "Slope-adjusted ft", "Confirmed"]]
-        for e in edges:
-            t_ = e.get("edge_type") or "—"
-            if t_ == "unlabeled":
-                continue
-            edge_rows.append([
-                t_,
-                f"{(e.get('plan_length_ft') or 0):,.1f}",
-                f"{(e.get('slope_adjusted_ft') or 0):,.1f}",
-                "Yes" if e.get("user_confirmed") else "No",
-            ])
-        if len(edge_rows) > 1:
-            et = Table(edge_rows, colWidths=[1.8 * inch, 1.5 * inch, 1.8 * inch, 1.4 * inch])
-            et.setStyle(_table_style(header_color=ACCENT))
-            flow.append(et)
+    # What the totals above do NOT contain, said plainly. The old per-edge
+    # table listed every stored row — each shared line twice, once per facet —
+    # under totals that count it once, which read as a contradiction.
+    typed = [e for e in edges if (e.get("edge_type") or "unlabeled") != "unlabeled"]
+    unconfirmed = [e for e in typed if not e.get("user_confirmed")]
+    # A shared line is stored once per facet; halve those so this is in feet of roof.
+    untyped_ft = sum(float(e.get("slope_adjusted_ft") or 0) * (0.5 if e.get("shared_with_facet") else 1.0)
+                     for e in edges if (e.get("edge_type") or "unlabeled") == "unlabeled")
+    notes = []
+    if untyped_ft >= 1.0:
+        notes.append(f"About {untyped_ft:,.0f} ft of roof line has no type and is <b>not counted</b> above. "
+                     "Set its type in the editor to include it.")
+    if typed and unconfirmed:
+        share = len(unconfirmed) / len(typed)
+        notes.append(f"{share:.0%} of the line types were set automatically and have not been "
+                     "confirmed by the contractor.")
+    for n_ in notes:
+        flow.append(Spacer(1, 4))
+        flow.append(Paragraph(f"• {n_}", styles["muted"]))
     return flow
 
 
@@ -1110,10 +1007,15 @@ def _section_7_exterior(siding: list[dict], styles: dict) -> list:
     return flow
 
 
-def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibration: dict | None = None) -> list:
+def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibration: dict | None = None,
+                           facets: list[dict] | None = None) -> list:
     flow = [_section_header("Methodology & Confidence", 9, styles)]
 
     source = run.get("source") or "unknown"
+    # An auto-measured roof is still stored under the run's tracing source;
+    # describing it as "contractor traced each facet" was simply untrue.
+    if facets and all(f.get("pitch_source") == "solar_3d" for f in facets):
+        source = "solar_3d"
     method_descriptions = {
         "aerial_outline": (
             "Contractor traced each roof facet as a polygon over a Web "
@@ -1143,10 +1045,23 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
             "All measurements were entered by the contractor without AI "
             "assistance."
         ),
+        "solar_3d": (
+            "Measured automatically from Google's 3D height data for this building "
+            "(Solar API Data Layers: a surface model at about 10 cm per pixel, from "
+            "the imagery date shown on page one). Each roof plane was fitted to the "
+            "heights, so pitch and facing are measured for every facet, not assumed. "
+            "Ridges, hips and valleys are the exact lines where two fitted planes "
+            "meet; eaves and rakes are the outer edges of each plane; a drop between "
+            "two roof levels is recorded as the upper roof's edge plus step flashing "
+            "on the lower one. The outline was then aligned to the satellite photo "
+            "the contractor confirmed the house on. A line the height data could not "
+            "type is left untyped rather than guessed, and is not counted in the "
+            "totals until the contractor sets it."
+        ),
     }
     desc = method_descriptions.get(source, "Mixed-source measurement run.")
 
-    flow.append(Paragraph(f"<b>Measurement source:</b> {source}", styles["body"]))
+    flow.append(Paragraph(f"<b>Measured by:</b> {_measured_by(run, facets or [])}", styles["body"]))
     flow.append(Paragraph(desc, styles["body"]))
     flow.append(Spacer(1, 8))
 
@@ -1397,46 +1312,101 @@ def _full_page_figure(title: str, caption: str, png: bytes | None, styles: dict,
     return flow
 
 
+def _measured_by(run: dict, facets: list[dict]) -> str:
+    """Who or what produced the geometry, in words a homeowner or adjuster reads.
+    The raw source code ("aerial_outline") was printed as-is before."""
+    if facets and all(f.get("pitch_source") == "solar_3d" for f in facets):
+        return "Google 3D height data (auto-measured)"
+    return {
+        "aerial_outline": "Contractor trace over satellite imagery",
+        "aerial_solar": "Google Solar planes + contractor trace",
+        "blueprint": "Blueprint",
+        "manual": "Entered by contractor",
+    }.get(str(run.get("source") or ""), str(run.get("source") or "—"))
+
+
+def _pitch_range(facets: list[dict]) -> str:
+    vals = []
+    for f in facets:
+        try:
+            vals.append(float(str(f.get("pitch") or "").split("/")[0]))
+        except ValueError:
+            pass
+    if not vals:
+        return "—"
+    lo, hi = min(vals), max(vals)
+    fmt = lambda v: f"{v:g}/12"
+    return fmt(lo) if abs(hi - lo) < 0.05 else f"{fmt(lo)} – {fmt(hi)}"
+
+
 def _cover_page(project: dict, run: dict, aggregates: dict, contractor: dict | None,
-                toc_entries: list[tuple[str, str]], styles: dict) -> list:
-    """Cover: who produced it, which property, when, how confident, what's inside."""
+                toc_entries: list[tuple[str, str]], styles: dict,
+                facets: list[dict] | None = None, aerial_png: bytes | None = None) -> list:
+    """Page one: who produced it, which property, the headline numbers, the roof
+    itself, and what is inside.
+
+    This used to be two pages — a cover, then an "executive summary" three
+    pages later repeating the logo, the company name, the address and the
+    satellite photo — with the photo printed a third time on its own page.
+    One page now carries all of it once."""
     from reportlab.lib.styles import ParagraphStyle
+    facets = facets or []
     c = contractor or {}
     company = c.get("company_name") or "Axis Roofing Performance"
     address = _normalize_address(project.get("address"), project.get("city"),
-                                 project.get("state"), project.get("zip")) or "Property"
+                                 project.get("state"), project.get("zip")) or (project.get("name") or "Property")
     brand_hex = f"#{BRAND.hexval()[2:]}"
     muted_hex = f"#{MUTED.hexval()[2:]}"
-
+    W = 7.3 * inch
     left = ParagraphStyle("CoverLeft", parent=styles["muted"], alignment=0)
+    name_style = ParagraphStyle("CoverName", parent=styles["title"], alignment=0,
+                                fontSize=19, leading=22, spaceAfter=2)
     flow: list = []
 
-    # Axis mark, upper LEFT, as the producing platform.
-    flow.append(Paragraph(
-        f"<para align='left'><font size=17 color='{brand_hex}'><b>Axis</b></font>"
-        f"<font size=17 color='{muted_hex}'> Performance</font><br/>"
-        f"<font size=7.5 color='{muted_hex}'>SATELLITE ROOF INTELLIGENCE</font></para>", left))
-    flow.append(Spacer(1, 34))
-
+    # ── Brand row: the contractor's report, produced on Axis ─────────────
+    left_stack: list = []
     if c.get("logo_bytes"):
         try:
             img = Image(io.BytesIO(c["logo_bytes"]))
             ratio = img.imageWidth / max(1, img.imageHeight)
-            img.drawHeight = 1.25 * inch
-            img.drawWidth = min(4.0 * inch, 1.25 * inch * ratio)
-            img.hAlign = "CENTER"
-            flow.append(img)
-            flow.append(Spacer(1, 10))
+            img.drawHeight = 0.85 * inch
+            img.drawWidth = min(3.2 * inch, 0.85 * inch * ratio)
+            img.hAlign = "LEFT"
+            left_stack += [img, Spacer(1, 4)]
         except Exception:
             pass
+    left_stack.append(Paragraph(company, name_style))
+    contact = [b_ for b_ in [
+        f"License {c['license_number']}" if c.get("license_number") else None,
+        _format_phone(c.get("phone")), c.get("email"),
+    ] if b_]
+    if contact:
+        left_stack.append(Paragraph(" · ".join(contact), left))
+    axis_mark = Paragraph(
+        f"<para align='right'><font size=7 color='{muted_hex}'>POWERED BY</font><br/>"
+        f"<font size=15 color='{brand_hex}'><b>Axis</b></font>"
+        f"<font size=15 color='{muted_hex}'> Performance</font><br/>"
+        f"<font size=7 color='{muted_hex}'>SATELLITE ROOF INTELLIGENCE</font></para>", left)
+    head = Table([[left_stack, axis_mark]], colWidths=[W - 2.4 * inch, 2.4 * inch])
+    head.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.75, BORDER),
+    ]))
+    flow += [head, Spacer(1, 12)]
 
-    flow.append(Paragraph(company, styles["title"]))
-    flow.append(Spacer(1, 4))
-    flow.append(Paragraph("Roof Measurement Report", styles["subtitle"]))
+    # ── Which property, when ─────────────────────────────────────────────
+    prepared = datetime.now().strftime("%B %-d, %Y")
+    flow.append(Paragraph(
+        f"<font size=9 color='{muted_hex}'>ROOF MEASUREMENT REPORT · {prepared.upper()}</font>", left))
+    flow.append(Spacer(1, 3))
+    flow.append(Paragraph(f"<font size=15 color='#0f172a'><b>{address}</b></font>",
+                          ParagraphStyle("CoverAddr", parent=left, leading=19)))
 
     # A partial measurement has to announce itself on the FIRST thing anyone
-    # reads. Buried on page nine it becomes a technicality someone quotes back
-    # after ordering material for a roof this report never covered.
+    # reads. Buried later it becomes a technicality someone quotes back after
+    # ordering material for a roof this report never covered.
     if (run.get("measurement_scope") or "full") == "partial":
         note = (run.get("scope_note") or "").strip()
         banner = Table([[Paragraph(
@@ -1444,68 +1414,104 @@ def _cover_page(project: dict, run: dict, aggregates: dict, contractor: dict | N
             "the roof, not the whole building. Areas, lengths and any quantities below "
             "describe that section alone."
             + (f"<br/><i>{note}</i>" if note else ""),
-            styles["body"])]], colWidths=[6.9 * inch])
+            styles["body"])]], colWidths=[W])
         banner.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FEF3C7")),
             ("BOX", (0, 0), (-1, -1), 1.0, colors.HexColor("#D97706")),
-            ("LEFTPADDING", (0, 0), (-1, -1), 12),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-            ("TOPPADDING", (0, 0), (-1, -1), 10),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ]))
-        flow.append(Spacer(1, 14))
-        flow.append(banner)
+        flow += [Spacer(1, 8), banner]
+    flow.append(Spacer(1, 10))
 
-    flow.append(Spacer(1, 22))
-
-    prepared = datetime.now().strftime("%B %-d, %Y") if hasattr(datetime.now(), "strftime") else ""
+    # ── The four numbers people come for ─────────────────────────────────
     conf_label, conf_color = _confidence_bucket(run.get("confidence") or 0)
-    # The cover is what gets read. If the trace looks like part of the building,
-    # say so here, not only on the methodology page nobody turns to.
+    # "Moderate (70%)" at headline size wrapped onto two lines; the word leads.
+    conf_word, _, conf_pct = conf_label.partition(" ")
+    hero = Table([[
+        Paragraph(_sqft(aggregates.get("total_roof_sqft")), styles["hero_num"]),
+        Paragraph(_sq(aggregates.get("squares")), styles["hero_num"]),
+        Paragraph(str(aggregates.get("predominant_pitch") or "—"), styles["hero_num"]),
+        Paragraph(f"<font color='{conf_color.hexval()}'>{conf_word}</font>"
+                  f"<font size=11 color='{conf_color.hexval()}'> {conf_pct}</font>", styles["hero_num"]),
+    ], [
+        Paragraph("TRUE ROOF AREA", styles["hero_label"]),
+        Paragraph("ROOFING SQUARES", styles["hero_label"]),
+        Paragraph("PREDOMINANT PITCH", styles["hero_label"]),
+        Paragraph("MEASUREMENT CONFIDENCE", styles["hero_label"]),
+    ]], colWidths=[W / 4] * 4)
+    hero.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+        ("LINEAFTER", (0, 0), (2, -1), 0.5, BORDER),
+        ("TOPPADDING", (0, 0), (-1, 0), 10), ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
+        ("TOPPADDING", (0, 1), (-1, 1), 2), ("BOTTOMPADDING", (0, 1), (-1, 1), 9),
+    ]))
+    flow.append(hero)
+    # Confidence is input completeness, not an accuracy guarantee — said
+    # beside the number, not only in the methodology at the back.
+    conf_note = ("Confidence measures how complete and well-grounded the measurement is. "
+                 "It is not a guarantee of accuracy — verify on site before ordering material.")
     tc = aggregates.get("trace_coverage") or {}
     if tc.get("capped") and float(tc.get("ratio") or 1) < 1:
-        conf_label += (f" — trace covers ~{float(tc['ratio']):.0%} of the building; "
-                       "see Methodology before ordering")
-    meta = [
-        ["Project", project.get("name") or "—"],
-        ["Property address", address],
-        ["Report date", prepared],
-        ["Measurement confidence", conf_label],
-    ]
-    t = Table(meta, colWidths=[2.1 * inch, 4.8 * inch])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), SURFACE),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
-        ("TEXTCOLOR", (1, 3), (1, 3), conf_color),
-    ]))
-    flow.append(t)
-    # Confidence is input completeness, not an accuracy guarantee. Saying that
-    # beside the number — not only in the methodology nine pages later — is the
-    # difference between an honest report and one that reads as a promise.
-    flow.append(Spacer(1, 5))
-    flow.append(Paragraph(
-        "Confidence measures how complete and well-grounded the measurement inputs are "
-        "(edges labelled, pitch confirmed, scale source). It is not a guarantee of "
-        "absolute accuracy — verify on site before ordering material.", styles["muted"]))
-    flow.append(Spacer(1, 24))
+        conf_note = (f"<b>Confidence was lowered: the measured outline covers about "
+                     f"{float(tc['ratio']):.0%} of the building Google sees.</b> Part of the roof may "
+                     "be missing — see Methodology before ordering. " + conf_note)
+    flow += [Spacer(1, 4), Paragraph(conf_note, styles["muted"]), Spacer(1, 10)]
 
-    flow.append(Paragraph("Contents", styles["subtitle"]))
-    flow.append(Spacer(1, 6))
-    rows = [[Paragraph(f"<b>{n}</b>", styles["body"]), Paragraph(t_, styles["body"])]
-            for n, t_ in toc_entries]
-    toc = Table(rows, colWidths=[0.5 * inch, 6.4 * inch])
+    # ── The roof itself: the report's only satellite image ───────────────
+    if aerial_png:
+        try:
+            img = Image(io.BytesIO(aerial_png))
+            ratio = img.imageWidth / max(1, img.imageHeight)
+            h = min(3.15 * inch, W / ratio)
+            img.drawHeight, img.drawWidth = h, h * ratio
+            img.hAlign = "CENTER"
+            provider = (run.get("satellite_provider") or "satellite").strip()
+            zoom = run.get("satellite_zoom")
+            cap = f"Subject roof — {provider} imagery" + (f", zoom {zoom}" if zoom else "") + \
+                  ". Photo only; nothing on it is drawn by Axis."
+            flow += [img, Spacer(1, 3), Paragraph(cap, ParagraphStyle(
+                "CoverCap", parent=styles["muted"], alignment=1, fontSize=7.5)), Spacer(1, 10)]
+        except Exception:
+            logger.debug("cover image failed", exc_info=True)
+
+    # ── Quick facts, two columns ─────────────────────────────────────────
+    waste = int(aggregates.get("waste_pct_default") or 12)
+    facts = [
+        ("Facets", str(aggregates.get("facet_count") or len(facets) or 0)),
+        ("Plan area (footprint)", _sqft(aggregates.get("total_plan_sqft"))),
+        ("Measured by", _measured_by(run, facets)),
+        ("Complexity", f"{float(aggregates.get('complexity_score') or 0):.2f} of 1.00"),
+        ("Pitch range", _pitch_range(facets)),
+        ("Recommended waste", f"{waste}%"),
+    ]
+    cells = [[Paragraph(f"<font color='{muted_hex}'>{k}</font>", styles["muted"]),
+              Paragraph(f"<b>{v}</b>", ParagraphStyle("Fact", parent=styles["body"], fontSize=9, leading=11))]
+             for k, v in facts]
+    half = (len(cells) + 1) // 2
+    grid = [cells[i] + (cells[i + half] if i + half < len(cells) else ["", ""]) for i in range(half)]
+    g = Table(grid, colWidths=[1.25 * inch, W / 2 - 1.25 * inch] * 2)
+    g.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.25, BORDER),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    flow += [g, Spacer(1, 12)]
+
+    # ── Contents, two columns ────────────────────────────────────────────
+    flow.append(Paragraph(f"<font size=9 color='{muted_hex}'><b>CONTENTS</b></font>", left))
+    flow.append(Spacer(1, 3))
+    items = [Paragraph(f"<font color='{brand_hex}'><b>{n}</b></font>&nbsp;&nbsp;{t_}",
+                       ParagraphStyle("Toc", parent=styles["body"], fontSize=8.5, leading=11))
+             for n, t_ in toc_entries]
+    half = (len(items) + 1) // 2
+    rows = [[items[i], items[i + half] if i + half < len(items) else ""] for i in range(half)]
+    toc = Table(rows, colWidths=[W / 2] * 2)
     toc.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("LINEBELOW", (0, 0), (-1, -2), 0.25, BORDER),
+        ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
     ]))
     flow.append(toc)
     flow.append(PageBreak())
@@ -1592,7 +1598,7 @@ def generate_v2_report(
 
     address = _normalize_address(project.get("address"), project.get("city"),
                                  project.get("state"), project.get("zip")) or (project.get("name") or "")
-    project_name = project.get("name") or address or "Roof Report"
+    project_name = (project.get("name") or address or "Roof Report").strip().rstrip(",").strip()
 
     # Build the three plan pages first: a page that could not be rendered must
     # not appear in the contents, so the table never promises a missing page.
@@ -1606,12 +1612,11 @@ def generate_v2_report(
     length_png = _render_length_diagram(facets, edges)
     pitch_png = _render_pitch_diagram(facets)
 
+    # The satellite photo appears ONCE, on page one. It used to have a page of
+    # its own and then be printed again on the summary page.
     plan_pages = [
-        ("Aerial View", sat_png,
-         "The imagery this measurement was traced over, cropped to the roof.",
-         "Satellite imagery, cropped to the traced roof. Nothing on this page is drawn by Axis."),
         ("Length Diagram", length_png,
-         "Every traced roof line, labelled with its measured length.",
+         "Every roof line, labelled with its measured length.",
          "Lengths are the stored per-edge measurements that the Roof Line table totals — "
          "a shared line is labelled once, from one side only."),
         ("Pitch Diagram", pitch_png,
@@ -1621,46 +1626,47 @@ def generate_v2_report(
     ]
     available = [(t, png, cap, note) for (t, png, cap, note) in plan_pages if png]
 
+    project_photo_flow_probe = bool(project_photos)
+    sections = ["Roof Summary", "Roof Line Measurements"] + \
+               (["Flashing Report"] if include_flashing else []) + \
+               ["Roof Penetrations", "Material Ordering Summary"] + \
+               (["Exterior Measurements"] if include_siding else []) + \
+               ["Methodology & Confidence", "Property Photos"] + \
+               (["Job Photos"] if project_photo_flow_probe else [])
     toc: list[tuple[str, str]] = []
-    n = 2
-    for (t, _png, _cap, _note) in available:
-        toc.append((str(n), t)); n += 1
-    for label in ["Executive Summary", "Roof Summary", "Roof Line Measurements"] + \
-                 (["Flashing Report"] if include_flashing else []) + \
-                 ["Roof Penetrations", "Field Observations", "Material Ordering Summary"] + \
-                 (["Exterior Measurements"] if include_siding else []) + \
-                 ["Methodology & Confidence", "Property Photos"]:
-        toc.append(("", label))
+    for i, (t, _png, _cap, _note) in enumerate(available):
+        toc.append((f"p.{i + 2}", t))
+    for i, label in enumerate(sections):
+        toc.append((f"§{i + 1}", label))
 
+    styles["_section_no"] = [0]
     story: list = []
-    story.extend(_cover_page(project, run, aggregates, contractor, toc, styles))
+    story.extend(_cover_page(project, run, aggregates, contractor, toc, styles,
+                             facets=facets, aerial_png=sat_png))
 
     for (t, png, cap, note) in available:
         story.extend(_full_page_figure(t, cap, png, styles, note))
         story.append(PageBreak())
 
-    story.extend(_section_1_executive(project, run, aggregates, len(facets), styles, facets, contractor))
-    story.append(Spacer(1, 12))
+    story.extend(_section_2_roof_summary(aggregates, facets, styles, run=run))
     # §4.4: surface non-blocking notices so an assumed value (e.g. zero penetrations)
     # is never presented as a reviewed fact.
-    for w in (report_warnings or []):
-        story.append(Paragraph(f"⚠ {w.get('message', '')}", styles["muted"]))
     if report_warnings:
         story.append(Spacer(1, 8))
-    story.extend(_section_2_roof_summary(aggregates, facets, styles))
-    story.append(PageBreak())
+    for w in (report_warnings or []):
+        story.append(Paragraph(f"⚠ {w.get('message', '')}", styles["muted"]))
+    story.append(Spacer(1, 16))
     story.extend(_section_3_roof_lines(aggregates, edges, styles))
     story.append(Spacer(1, 10))
     if include_flashing:
         story.extend(_section_4_flashing(aggregates, material_lines, styles, flashing))
     story.append(PageBreak())
     story.extend(_section_5_penetrations(penetrations, styles))
-    story.append(Spacer(1, 10))
     # Field Observations is omitted while nothing populates it: ground photos are
     # analysed in memory and never persisted, so the section could only ever
     # print its own heading over an empty space. Restore it when ground photos
     # are stored.
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 14))
     # A material order from a partial trace is the one output that can cost
     # real money: it looks like a complete bill of materials for a roof it
     # never measured. Replace it with what it actually is.
@@ -1678,9 +1684,9 @@ def generate_v2_report(
     story.append(PageBreak())
     if include_siding:
         story.extend(_section_7_exterior(siding_measurements, styles))
-    story.append(Spacer(1, 10))
-    story.extend(_section_8_methodology(run, aggregates, styles, calibration))
-    story.append(PageBreak())
+        story.append(Spacer(1, 10))
+    story.extend(_section_8_methodology(run, aggregates, styles, calibration, facets=facets))
+    story.append(Spacer(1, 16))
     story.extend(_section_photos(run, styles))
 
     project_photo_flow = _section_project_photos(project_photos or [], styles)
