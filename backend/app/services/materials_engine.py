@@ -38,7 +38,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,10 @@ class RoofTotals:
     valleys_ft: float
     wall_intersection_ft: float = 0.0     # walls dormers etc; drives step flashing
     stories: int = 1
+    # The SLOPED part of the wall lines, when the flashing engine has split them.
+    # The level part takes apron flashing instead; counting it as step flashing
+    # too would order it twice. None = not split: all wall length is step.
+    step_flashing_ft: Optional[float] = None
     pitch: str = "6/12"
 
     @property
@@ -211,6 +215,10 @@ def _base_quantity_for(
 
     if coverage_basis == "per_lf":
         # Step flashing follows wall intersections; if there's none we won't include the row
+        if totals.step_flashing_ft is not None:
+            lf = totals.step_flashing_ft
+            qty = lf / cov
+            return qty, f"{lf:.1f} lf sloped wall (level wall takes apron flashing) ÷ {cov:g} lf/box = {qty:.2f}"
         lf = totals.wall_intersection_ft
         qty = lf / cov
         return qty, f"{lf:.1f} lf wall ÷ {cov:g} lf/box = {qty:.2f}"
@@ -304,6 +312,18 @@ _FLASHING_QTY_SOURCE = {
     "skylight_flashing_kit": ("count", "skylight_qty"),
     "cricket":              ("count", "cricket_qty"),
 }
+
+
+def split_wall_flashing(totals: RoofTotals, catalog: list[dict], flashing: dict | None) -> None:
+    """Step flashing covers only the sloped wall lines once apron flashing is
+    orderable for the level ones. Left alone when the catalog has no apron item:
+    then the level run would be ordered as nothing at all."""
+    if not flashing:
+        return
+    has_apron = any(it.get("category") == "apron_flashing" and it.get("active", True) for it in catalog)
+    step = (flashing.get("totals") or {}).get("step_flashing_ft")
+    if has_apron and step is not None:
+        totals.step_flashing_ft = float(step)
 
 
 def compute_flashing_material_lines(

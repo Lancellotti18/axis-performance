@@ -4274,21 +4274,27 @@ async def get_run_materials(
     )
     penetrations = PenetrationSummary.from_rows(pen_rows)
 
+    # Flashing engine first: it splits the wall lines into sloped (step
+    # flashing) and level (apron), which the step flashing quantity needs.
+    flashing_m = None
+    try:
+        from app.services.flashing_engine import build_input_from_rows, compute_flashing
+        facets_m = db.table("roof_facets").select("*").eq("run_id", run_id).execute().data or []
+        edge_ids = [f["id"] for f in facets_m]
+        edges_m = (db.table("roof_edges").select("*").in_("facet_id", edge_ids).execute().data or []) if edge_ids else []
+        flashing_m = compute_flashing(build_input_from_rows(facets_m, edges_m, pen_rows)).to_dict()
+    except Exception as e:
+        logger.warning("flashing analysis failed for /materials: %s", e)
+    from app.services.materials_engine import compute_flashing_material_lines, split_wall_flashing
+    split_wall_flashing(totals, catalog, flashing_m)
+
     lines = compute_material_lines(
         catalog, totals, penetrations, default_waste_pct=waste_pct,
         state=proj_state, county=proj_county,
     )
     # Append priced flashing line items (quantities from the flashing engine).
-    try:
-        from app.services.flashing_engine import build_input_from_rows, compute_flashing
-        from app.services.materials_engine import compute_flashing_material_lines
-        facets_m = db.table("roof_facets").select("*").eq("run_id", run_id).execute().data or []
-        edge_ids = [f["id"] for f in facets_m]
-        edges_m = (db.table("roof_edges").select("*").in_("facet_id", edge_ids).execute().data or []) if edge_ids else []
-        flashing_m = compute_flashing(build_input_from_rows(facets_m, edges_m, pen_rows)).to_dict()
+    if flashing_m:
         lines = lines + compute_flashing_material_lines(catalog, flashing_m, default_waste_pct=waste_pct)
-    except Exception as e:
-        logger.warning("flashing material lines failed for /materials: %s", e)
 
     return {
         "run_id": run_id,
@@ -4612,6 +4618,14 @@ async def _build_and_store_report(run_id: str, user_id: Optional[str] = None) ->
     )
     pens = PenetrationSummary.from_rows(pens_res.data or [])
     default_waste = int(run.get("waste_pct_default") or aggregates["waste_pct_default"])
+    # Same order as /materials: split the wall lines before step flashing is counted,
+    # so the report and the panel never disagree.
+    try:
+        from app.services.flashing_engine import build_input_from_rows as _bir, compute_flashing as _cf
+        from app.services.materials_engine import split_wall_flashing
+        split_wall_flashing(totals, catalog, _cf(_bir(facets_res.data or [], edges, pens_res.data or [])).to_dict())
+    except Exception as e:
+        logger.info("wall flashing split skipped for report %s: %s", run_id, e)
     material_lines = compute_material_lines(
         catalog, totals, pens, default_waste_pct=default_waste,
         state=proj.data.get("state"), county=proj.data.get("county"),
