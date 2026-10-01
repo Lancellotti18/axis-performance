@@ -1427,6 +1427,7 @@ export const api = {
           imagery_date?: string | null
           imagery_quality?: string | null
           alignment?: string
+          imagery_url?: string | null
         }>(`/api/v1/roofing/v2/runs/${runId}/auto-measure`, {
           method: 'POST',
           body: JSON.stringify(req),

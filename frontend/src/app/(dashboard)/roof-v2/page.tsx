@@ -648,6 +648,12 @@ export default function RoofV2Page() {
       if (r.available && r.facets && r.edges) {
         const { fcts, edgs } = rowsToGeometry(r.facets, r.edges)
         cancelPending()   // a queued canvas write would overwrite the measurement
+        // Google's own photo, in the same frame: the outline sits on it exactly.
+        // Adopted as THE photo, or the next save would pin the old tile back.
+        if (r.imagery_url) {
+          const url = r.imagery_url
+          setImagery(prev => prev ? { ...prev, url, original_url: url, provider: 'Google 3D' } : prev)
+        }
         setFacets(fcts)
         setEdges(edgs)
         setEditorSyncRev(v => v + 1)

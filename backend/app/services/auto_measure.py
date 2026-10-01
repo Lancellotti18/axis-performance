@@ -117,3 +117,53 @@ def build_payload(model: RoofModel, layers: LayerSet, subject_point: dict, *,
                 "user_confirmed": False,
             })
     return facets, edges
+
+
+def google_backdrop(layers: LayerSet, subject_point: dict, tile_rgb, *,
+                    width_px: int, height_px: int, zoom: int, lat: float,
+                    max_w: int = 4096):
+    """Google's own aerial photo, drawn into the contractor's tile frame.
+
+    The outline comes from Google's height data, and Google's photo sits on the
+    very same grid (same origin, same 10 cm pixels). Drawn over THAT photo the
+    outline is on the roof by construction — no matching against another
+    provider's photo, which failed on Brookside Oaks' blurry zoom-19 winter
+    tile and is what left outlines a few metres off. It is also ~2x sharper
+    than a zoom-19 tile.
+
+    Same frame as the tile (same centre, span and aspect), so every stored
+    fraction, the tap and the area maths are unchanged. Outside the ~70 m
+    square Google returns, the contractor's tile shows through, dimmed, for
+    context. Returns an RGB uint8 array, or None when there is no photo.
+    """
+    import cv2
+    import numpy as np
+    if layers.rgb is None:
+        return None
+    te, tn = tap_utm(layers, subject_point)
+    tx, ty = float(subject_point["x"]), float(subject_point["y"])
+    mpp = geo.metres_per_pixel(lat, zoom)
+    frame_w_m = width_px * mpp
+    out_w = int(min(max_w, max(width_px, round(frame_w_m / layers.px_m))))
+    out_h = int(round(out_w * height_px / width_px))
+    u = (np.arange(out_w, dtype=np.float64) + 0.5) / out_w
+    v = (np.arange(out_h, dtype=np.float64) + 0.5) / out_h
+    east = (u - tx) * width_px * mpp
+    north = (ty - v) * height_px * mpp
+    E, N = np.meshgrid(east, north)
+    gc = ((te + E - layers.origin_e) / layers.px_m - 0.5).astype(np.float32)
+    gr = ((layers.origin_n - (tn + N)) / layers.px_m - 0.5).astype(np.float32)
+    rgb = np.ascontiguousarray(layers.rgb[..., :3]).astype(np.uint8)
+    google = cv2.remap(rgb, gc, gr, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    ones = np.ones(rgb.shape[:2], np.float32)
+    inside = cv2.remap(ones, gc, gr, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    # Feather the seam over ~2 m so the edge of Google's square is not a hard line.
+    k = max(3, int(round(2.0 / (frame_w_m / out_w))) | 1)
+    inside = cv2.GaussianBlur(cv2.erode(inside, np.ones((k, k), np.uint8)), (k, k), 0)[..., None]
+    if tile_rgb is not None:
+        base = cv2.resize(np.asarray(tile_rgb)[..., :3].astype(np.uint8), (out_w, out_h), interpolation=cv2.INTER_AREA)
+        base = base.astype(np.float32) * 0.55 + 40.0                  # dimmed: context, not the subject
+    else:
+        base = np.full((out_h, out_w, 3), 200.0, np.float32)
+    out = inside * google.astype(np.float32) + (1.0 - inside) * base
+    return np.clip(out, 0, 255).astype(np.uint8)

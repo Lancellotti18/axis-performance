@@ -191,3 +191,29 @@ def test_a_reshaped_auto_facet_gets_ai_help_again(monkeypatch):
                                        {"facet_label": "B", "vertex_index_start": 3, "vertex_index_end": 0}])
     assert res["skipped_measured"] == 1
     assert [s["facet_label"] for s in res["suggestions"]] == ["A"]
+
+
+def test_the_outline_is_drawn_on_googles_own_photo(wired, monkeypatch):
+    """With Google's photo available the editor gets it as the backdrop, and the
+    outline is NOT shifted onto the contractor's photo (it is on Google's grid)."""
+    from app.services import auto_measure as AM
+    dsm, mask, px = S.gable()
+    rgb = np.full(dsm.shape + (3,), 120, np.uint8)
+    async def layers(*a, **k):
+        ls = _layers_for(dsm, mask, px); ls.rgb = rgb; return ls
+    monkeypatch.setattr(SL, "fetch_layers", layers)
+    stored = {}
+    async def fake_store(db, run_id, layers_, sp, tile_rgb, req):
+        stored["img"] = AM.google_backdrop(layers_, sp, tile_rgb, width_px=req.image_width_px,
+                                           height_px=req.image_height_px, zoom=req.zoom, lat=req.lat)
+        return "https://proj.supabase.co/storage/v1/object/sign/blueprints/run-tiles/r1-google3d.jpg"
+    monkeypatch.setattr(rv, "_store_google_backdrop", fake_store)
+    out = _call()
+    assert out["available"] is True and out["imagery_url"].endswith("google3d.jpg")
+    assert wired["saved"]["facets"].satellite_image_url == out["imagery_url"]
+    img = stored["img"]
+    # Same aspect as the contractor's frame, so stored fractions stay valid.
+    assert abs(img.shape[1] / img.shape[0] - 2048 / 1366) < 0.002
+    # Google's photo is used around the house (value 120 here).
+    h, w = img.shape[:2]
+    assert abs(int(img[h // 2, w // 2, 0]) - 120) <= 2

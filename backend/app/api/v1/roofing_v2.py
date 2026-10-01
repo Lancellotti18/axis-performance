@@ -1250,6 +1250,39 @@ async def _solar_pitch_for_polygons(
     return out
 
 
+async def _store_google_backdrop(db, run_id: str, layers, sp: dict, tile_rgb, req) -> Optional[str]:
+    """Render Google's aerial photo into the run's tile frame and store it.
+    Best-effort: None (and the contractor's own photo stays) on any failure."""
+    if getattr(layers, "rgb", None) is None:
+        return None
+    try:
+        import cv2
+        from app.services.auto_measure import google_backdrop
+        img = await asyncio.to_thread(
+            google_backdrop, layers, sp, tile_rgb, width_px=req.image_width_px,
+            height_px=req.image_height_px, zoom=req.zoom, lat=req.lat)
+        if img is None:
+            return None
+        ok, buf = cv2.imencode(".jpg", img[..., ::-1], [cv2.IMWRITE_JPEG_QUALITY, 88])
+        if not ok:
+            return None
+        key = f"run-tiles/{run_id}-google3d.jpg"
+        bucket = db.storage.from_("blueprints")
+        bucket.upload(key, buf.tobytes(), {"content-type": "image/jpeg", "upsert": "true"})
+        signed = bucket.create_signed_url(key, 60 * 60 * 24 * 365)
+        out = None
+        if isinstance(signed, dict):
+            out = (signed.get("signedURL") or signed.get("signedUrl")
+                   or signed.get("signed_url") or signed.get("url"))
+        if out and out.startswith("/"):
+            from app.core.config import settings
+            out = settings.SUPABASE_URL.rstrip("/") + out
+        return out
+    except Exception as e:
+        logger.info("google backdrop not stored for %s: %s", run_id, e)
+        return None
+
+
 async def _cache_tile(db, run_id: str, url: str) -> str:
     """Copy the satellite tile into storage once and hand back that URL.
 
@@ -1606,6 +1639,7 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     # and if the corrected tap is on a different building, that building is
     # the one they meant.
     shift_en = (0.0, 0.0)
+    tile_rgb = None                    # the contractor's photo, kept for the Google backdrop
     align_note = "not attempted"
     try:
         from urllib.parse import urlparse
@@ -1635,6 +1669,7 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
                 import cv2 as _cv2
                 arr = _cv2.imdecode(np.frombuffer(resp.content, np.uint8), _cv2.IMREAD_COLOR)
                 tile = arr[..., ::-1] if arr is not None else None
+            tile_rgb = tile
             if tile is not None:
                 tile_px_of, google_px_of = pixel_mappers(
                     layers, sp, tile_w=tile.shape[1], tile_h=tile.shape[0],
@@ -1665,7 +1700,15 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     except Exception as e:
         logger.warning("auto-measure alignment failed for %s", run_id, exc_info=True)
         align_note = f"error: {type(e).__name__}: {str(e)[:160]}"
-    if shift_en == (0.0, 0.0):
+    # Show the roof on Google's OWN photo: same grid as the measurement, so the
+    # outline sits on the roof by construction, and ~2x sharper than a zoom-19
+    # tile. The alignment above still guards which house was tapped; it just no
+    # longer has to move the outline onto someone else's photo.
+    backdrop_url = await _store_google_backdrop(db, run_id, layers, sp, tile_rgb, req)
+    if backdrop_url:
+        shift_en = (0.0, 0.0)
+        align_note += " · outline drawn on Google's own photo"
+    elif shift_en == (0.0, 0.0):
         warnings.append("The outline couldn't be lined up with this photo and may sit a few feet "
                         f"off the roof ({align_note}). The measurements are not affected.")
 
@@ -1687,7 +1730,13 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     await put_facets(run_id, PutFacetsRequest(
         image_width_px=req.image_width_px, image_height_px=req.image_height_px,
         zoom=req.zoom, lat=req.lat, lng=req.lng, facets=[FacetIn(**f) for f in facets],
-        satellite_image_url=req.satellite_image_url), user)
+        satellite_image_url=backdrop_url or req.satellite_image_url), user)
+    if backdrop_url:
+        try:
+            db.table("roof_measurement_runs").update({"satellite_provider": "Google 3D"}) \
+                .eq("id", run_id).execute()
+        except Exception as e:
+            logger.info("provider label not updated for %s: %s", run_id, e)
     await put_edges(run_id, PutEdgesRequest(
         image_width_px=req.image_width_px, image_height_px=req.image_height_px,
         zoom=req.zoom, lat=req.lat, edges=[EdgeIn(**e) for e in edges]), user)
@@ -1707,6 +1756,9 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
         "imagery_date": layers.imagery_date,
         "imagery_quality": layers.imagery_quality,
         "alignment": align_note,
+        # Set when the editor should swap to Google's photo (same frame, so the
+        # stored fractions do not change).
+        "imagery_url": backdrop_url,
     }
 
 
