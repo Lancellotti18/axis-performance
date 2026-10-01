@@ -146,24 +146,39 @@ def google_backdrop(layers: LayerSet, subject_point: dict, tile_rgb, *,
     frame_w_m = width_px * mpp
     out_w = int(min(max_w, max(width_px, round(frame_w_m / layers.px_m))))
     out_h = int(round(out_w * height_px / width_px))
-    u = (np.arange(out_w, dtype=np.float64) + 0.5) / out_w
-    v = (np.arange(out_h, dtype=np.float64) + 0.5) / out_h
-    east = (u - tx) * width_px * mpp
-    north = (ty - v) * height_px * mpp
-    E, N = np.meshgrid(east, north)
-    gc = ((te + E - layers.origin_e) / layers.px_m - 0.5).astype(np.float32)
-    gr = ((layers.origin_n - (tn + N)) / layers.px_m - 0.5).astype(np.float32)
     rgb = np.ascontiguousarray(layers.rgb[..., :3]).astype(np.uint8)
-    google = cv2.remap(rgb, gc, gr, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-    ones = np.ones(rgb.shape[:2], np.float32)
-    inside = cv2.remap(ones, gc, gr, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-    # Feather the seam over ~2 m so the edge of Google's square is not a hard line.
-    k = max(3, int(round(2.0 / (frame_w_m / out_w))) | 1)
-    inside = cv2.GaussianBlur(cv2.erode(inside, np.ones((k, k), np.uint8)), (k, k), 0)[..., None]
+    # Where Google's photo is, at its own resolution (small: ~700x700), with
+    # the seam feathered over ~2 m so its square has no hard edge.
+    k = max(3, int(round(2.0 / layers.px_m)) | 1)
+    cover = cv2.GaussianBlur(cv2.erode(np.ones(rgb.shape[:2], np.float32), np.ones((k, k), np.uint8),
+                                       borderType=cv2.BORDER_CONSTANT, borderValue=0), (k, k), 0)
+    base = None
     if tile_rgb is not None:
-        base = cv2.resize(np.asarray(tile_rgb)[..., :3].astype(np.uint8), (out_w, out_h), interpolation=cv2.INTER_AREA)
-        base = base.astype(np.float32) * 0.55 + 40.0                  # dimmed: context, not the subject
-    else:
-        base = np.full((out_h, out_w, 3), 200.0, np.float32)
-    out = inside * google.astype(np.float32) + (1.0 - inside) * base
-    return np.clip(out, 0, 255).astype(np.uint8)
+        base = cv2.resize(np.asarray(tile_rgb)[..., :3].astype(np.uint8), (out_w, out_h),
+                          interpolation=cv2.INTER_AREA)
+    out = np.empty((out_h, out_w, 3), np.uint8)
+    # Built in strips of rows. All at once, the float working arrays for a
+    # 4096x2732 frame peaked at ~860 MB and Render's 512 MB instance killed
+    # the measurement (2026-10-01). A strip of 128 rows needs a few MB.
+    # Offsets from the raster's corner are taken in float64 FIRST: UTM northings
+    # are ~4.4 million, where float32 steps in 0.25 m (2.5 photo pixels), which
+    # made the photo blocky. The small differences are then safe in float32.
+    e0 = float(te) - float(layers.origin_e)
+    n0 = float(layers.origin_n) - float(tn)
+    east = ((np.arange(out_w, dtype=np.float64) + 0.5) / out_w - tx) * width_px * mpp
+    gcol = ((e0 + east) / layers.px_m - 0.5).astype(np.float32)
+    STRIP = 128
+    for y0 in range(0, out_h, STRIP):
+        y1 = min(out_h, y0 + STRIP)
+        north = (ty - (np.arange(y0, y1, dtype=np.float64) + 0.5) / out_h) * height_px * mpp
+        grow = ((n0 - north) / layers.px_m - 0.5).astype(np.float32)
+        gc = np.broadcast_to(gcol[None, :], (y1 - y0, out_w)).copy()
+        gr = np.broadcast_to(grow[:, None], (y1 - y0, out_w)).copy()
+        google = cv2.remap(rgb, gc, gr, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        inside = cv2.remap(cover, gc, gr, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)[..., None]
+        if base is not None:
+            ctx = base[y0:y1].astype(np.float32) * 0.55 + 40.0         # dimmed: context, not the subject
+        else:
+            ctx = np.full((y1 - y0, out_w, 3), 200.0, np.float32)
+        out[y0:y1] = np.clip(inside * google + (1.0 - inside) * ctx, 0, 255).astype(np.uint8)
+    return out
