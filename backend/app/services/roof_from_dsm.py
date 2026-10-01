@@ -1146,6 +1146,173 @@ def _intersect(a1, a2, b1, b2):
     return a1 + da * t
 
 
+LINE_MATCH_M = 0.6          # a side this close to a crease line (both ends) lies along it
+
+
+def _along(a, b, segs, px_m) -> Optional[float]:
+    """How far side a->b sits from the nearest of `segs` it runs along (metres),
+    or None if it runs along none: both ends within LINE_MATCH_M of the
+    segment's line, and at least half the side overlapping the segment.
+
+    Each crease is fitted on its own, so where three facets meet their lines
+    do not cross in one point, and a side snapped to that junction can end
+    ~0.35 m off either line while plainly lying along one of them."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    L = float(np.hypot(*(b - a)))
+    best = None
+    for q0, q1 in segs:
+        q0, q1 = np.asarray(q0, float), np.asarray(q1, float)
+        d = q1 - q0
+        dl = float(np.hypot(*d))
+        if dl < 1e-9 or L < 1e-9:
+            continue
+        u = d / dl
+        nrm = np.array([-u[1], u[0]])
+        off = max(abs(float((a - q0) @ nrm)), abs(float((b - q0) @ nrm))) * px_m
+        if off > LINE_MATCH_M:
+            continue
+        ta, tb = sorted((float((a - q0) @ u), float((b - q0) @ u)))
+        if max(0.0, min(tb, dl) - max(ta, 0.0)) < 0.5 * L:
+            continue
+        if best is None or off < best:
+            best = off
+    return best
+
+
+def _neighbours_from_lines(fid, verts, nbrs, all_lines, px_m):
+    """Re-read a side's neighbour from the engine's crease lines when the pixel
+    sample got it wrong.
+
+    The neighbour is first taken from the pixel just across the side, and each
+    facet's outline is straightened on its own, so where three facets meet the
+    sample can land in the wrong one. Brookside Oaks' garage ridge then read
+    "unlabeled" (D saw B across it, not C). Only a side whose sampled
+    neighbour has NO line along it is re-read, and never an outside edge."""
+    out = list(nbrs)
+    n = len(verts)
+    mine = [(k, segs) for k, segs in all_lines.items() if fid in k]
+    for i in range(n):
+        nb = nbrs[i]
+        if nb is None:
+            continue
+        a, b = verts[i], verts[(i + 1) % n]
+        if float(np.hypot(*(np.asarray(b) - np.asarray(a)))) * px_m < CREASE_MIN_M:
+            continue
+        if _along(a, b, all_lines.get((min(fid, nb), max(fid, nb)), []), px_m) is not None:
+            continue
+        best = None
+        for k, segs in mine:
+            off = _along(a, b, segs, px_m)
+            if off is not None and (best is None or off < best[0]):
+                best = (off, k[0] if k[1] == fid else k[1])
+        if best is not None:
+            out[i] = best[1]
+    return out
+
+
+JUNCTION_M = 1.0            # crease ends this close together are one junction
+
+
+def _join_junctions(lines, all_lines, px_m):
+    """Make crease lines that meet, meet in ONE point.
+
+    Each crease is fitted on its own, so where a ridge meets two hips their
+    three ends land up to half a metre apart. Each facet's outline then ends
+    its copy of a shared hip at a different one of those ends, the report
+    cannot tell the two copies are the same line, and counts both
+    (Wilmington: hips 103 ft against the engine's own 84). Ends within
+    JUNCTION_M are replaced by their average."""
+    ends = []
+    for segs in all_lines.values():
+        for q0, q1 in segs:
+            ends.append(np.asarray(q0, float)); ends.append(np.asarray(q1, float))
+    if not ends:
+        return lines, all_lines
+    P = np.array(ends)
+    group = list(range(len(P)))
+
+    def root(i):
+        while group[i] != i:
+            group[i] = group[group[i]]
+            i = group[i]
+        return i
+    lim = JUNCTION_M / px_m
+    for i in range(len(P)):
+        for j in range(i + 1, len(P)):
+            if float(np.hypot(*(P[i] - P[j]))) <= lim:
+                group[root(i)] = root(j)
+    centre: dict[int, list] = {}
+    for i in range(len(P)):
+        centre.setdefault(root(i), []).append(P[i])
+    centre = {k: np.mean(v, axis=0) for k, v in centre.items()}
+
+    def moved(q):
+        q = np.asarray(q, float)
+        i = int(np.argmin(np.hypot(*(P - q).T)))
+        return centre[root(i)] if float(np.hypot(*(P[i] - q))) < 1e-6 else q
+    new_all = {k: [(moved(q0), moved(q1)) for q0, q1 in segs] for k, segs in all_lines.items()}
+    new_lines = {}
+    for k, (q0, q1, plan) in lines.items():
+        new_lines[k] = (moved(q0), moved(q1), plan)
+    return new_lines, new_all
+
+
+STRAIGHTEN_M = 1.0          # a staircase this close to its crease line is that line
+
+
+def _straighten_runs(fid, verts, nbrs, all_lines, px_m):
+    """Replace each run of sides bordering one neighbour with a single side.
+
+    On a low-slope roof two planes barely differ in height near the line where
+    they meet, so the pixel boundary wanders, and each facet's outline keeps
+    its own staircase along it. Wilmington's 4/12 hips came out cut into
+    different pieces on either side, the report could not tell the copies
+    were one line, and hips totalled 128 ft against the engine's 84. The
+    crease is straight: if every vertex of the run is within STRAIGHTEN_M of
+    its line, keep only the run's two ends (the snapping that follows puts
+    them on the exact line)."""
+    n = len(verts)
+    if n < 4 or len(set(nbrs)) < 2:
+        return verts, nbrs
+    # Rotate so index 0 starts a run.
+    s0 = next(i for i in range(n) if nbrs[i] != nbrs[i - 1])
+    V = [np.asarray(verts[(s0 + i) % n], float) for i in range(n)]
+    N = [nbrs[(s0 + i) % n] for i in range(n)]
+    out_v, out_n = [], []
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and N[j + 1] == N[i]:
+            j += 1
+        nb = N[i]
+        segs = all_lines.get((min(fid, nb), max(fid, nb))) if nb is not None else None
+        if segs and j > i:
+            q0, q1 = max(segs, key=lambda s_: float(np.hypot(*(np.asarray(s_[1]) - np.asarray(s_[0])))))
+            q0, q1 = np.asarray(q0, float), np.asarray(q1, float)
+            d = q1 - q0
+            u = d / max(1e-9, float(np.hypot(*d)))
+            nrm = np.array([-u[1], u[0]])
+            dl = float(np.hypot(*d))
+            run = [V[k % n] for k in range(i, j + 2)]
+
+            def _end_ok(v):
+                # The run's ends must sit ON the segment, not just near its
+                # infinite line: Buch Ave's valley run otherwise swallowed a
+                # 5 ft side turning back past the valley's end.
+                t = float((v - q0) @ u) * px_m
+                return (abs(float((v - q0) @ nrm)) * px_m <= LINE_MATCH_M
+                        and -LINE_MATCH_M <= t <= dl * px_m + LINE_MATCH_M)
+            if (all(abs(float((v - q0) @ nrm)) * px_m <= STRAIGHTEN_M for v in run)
+                    and _end_ok(run[0]) and _end_ok(run[-1])):
+                out_v.append(V[i]); out_n.append(nb)
+                i = j + 1
+                continue
+        for k in range(i, j + 1):
+            out_v.append(V[k]); out_n.append(N[k])
+        i = j + 1
+    return out_v, out_n
+
+
 def axis_facets(model: RoofModel) -> list[AxisFacet]:
     """The engine's roof as Axis-style outlines, with every side typed."""
     if not model.available or model.labels is None:
@@ -1175,6 +1342,7 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
             lines[k] = (np.array(e.p0), np.array(e.p1), e.plan_m)
         all_lines.setdefault(k, []).append((np.array(e.p0), np.array(e.p1)))
     pair_kind = {k: max(v, key=v.get) for k, v in kinds.items()}
+    lines, all_lines = _join_junctions(lines, all_lines, px_m)
 
     min_run = max(3, int(0.5 / px_m))
     out: list[AxisFacet] = []
@@ -1212,10 +1380,15 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
         keep_v, keep_n = [], []
         for v, n in zip(verts, nbrs):
             if keep_v and float(np.hypot(*(v - keep_v[-1]))) * px_m < 0.15:
-                keep_n[-1] = keep_n[-1] if keep_n[-1] is not None else n
+                # The PREVIOUS side is the degenerate one; the side that carries
+                # on from here is this one, with this one's neighbour.
+                keep_n[-1] = n
                 continue
             keep_v.append(v); keep_n.append(n)
-        # Merge consecutive sides with the same neighbour that are nearly collinear.
+        if len(keep_v) < 3:
+            continue
+        keep_n = _neighbours_from_lines(f.id, keep_v, keep_n, all_lines, px_m)
+        keep_v, keep_n = _straighten_runs(f.id, keep_v, keep_n, all_lines, px_m)
         if len(keep_v) < 3:
             continue
 
@@ -1282,10 +1455,14 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
         pts, nbs = [], []
         for i in range(n):
             if pts and float(np.hypot(*(snapped[i] - pts[-1]))) * px_m < 0.15:
+                nbs[-1] = keep_n[i]           # the collapsed side is the previous one
                 continue
             pts.append(snapped[i]); nbs.append(keep_n[i])
         if len(pts) >= 2 and float(np.hypot(*(pts[0] - pts[-1]))) * px_m < 0.15:
             pts.pop(); nbs.pop()
+        # Again now every vertex is on its line: snapping can fold a run into
+        # an out-and-back zig-zag along the crease, which is still one line.
+        pts, nbs = _straighten_runs(f.id, pts, nbs, all_lines, px_m)
         # Merge consecutive sides with the same neighbour that run straight on.
         changed = True
         while changed and len(pts) > 3:
@@ -1318,8 +1495,7 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
                 sides.append((_outer_kind(f.plane, b - a) if upper == f.id else "wall_intersection", nb))
             elif k in pair_kind:
                 segs_ = all_lines.get(k) or [lines[k][:2]]
-                on_line = any(all(float(np.hypot(*(np.asarray(v) - _project(v, q0, q1)))) * px_m < 0.35
-                                  for v in (a, b)) for q0, q1 in segs_)
+                on_line = _along(a, b, segs_, px_m) is not None
                 sides.append((pair_kind[k], nb) if on_line else ("unlabeled", nb))
             else:
                 sides.append(("unlabeled", nb))
