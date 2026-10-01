@@ -1434,6 +1434,7 @@ export const api = {
           confidence?: number
           user_confirmed?: boolean
           ai_suggested?: boolean
+          azimuth_deg?: number
         }>
       }) =>
         apiRequest<{ facets: Array<Record<string, unknown>>; count: number }>(

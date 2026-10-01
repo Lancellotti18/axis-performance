@@ -181,3 +181,13 @@ def test_lining_up_onto_a_different_building_falls_back_to_tracing(wired, monkey
     out = _call()
     assert out["available"] is False and "disagree about which house" in out["reason"]
     assert "facets" not in wired["saved"]
+
+
+def test_a_reshaped_auto_facet_gets_ai_help_again(monkeypatch):
+    """Ryan's fallback: if auto-measure is off, the contractor fixes the outline
+    by hand and the AI labeller helps with those lines (still confirmed by them)."""
+    rows = [{"facet_label": "A", "pitch_source": "solar_3d_edited"}, {"facet_label": "B", "pitch_source": "solar_3d"}]
+    res = _suggest(monkeypatch, rows, [{"facet_label": "A", "vertex_index_start": 1, "vertex_index_end": 2},
+                                       {"facet_label": "B", "vertex_index_start": 3, "vertex_index_end": 0}])
+    assert res["skipped_measured"] == 1
+    assert [s["facet_label"] for s in res["suggestions"]] == ["A"]

@@ -421,7 +421,7 @@ def _render_pitch_diagram(facets: list[dict]) -> bytes | None:
             # deliberately CHOSE 6/12 is indistinguishable from one who never
             # touched it. Calling that "unverified" would brand a real decision
             # as a guess. user_confirmed is the signal that separates them.
-            measured = src in ("solar_measured", "solar_3d", "lidar_measured", "ground_photo")
+            measured = src in ("solar_measured", "solar_3d", "solar_3d_edited", "lidar_measured", "ground_photo")
             contractor_set = src == "manual" or (bool(f.get("user_confirmed")) and bool(f.get("pitch")))
             unverified = not measured and not contractor_set
             if unverified:
@@ -506,6 +506,8 @@ _PITCH_SOURCE_LABELS = {
     # A plane fitted to Google's 3D height map for THIS facet — the strongest
     # pitch source Axis has, so it must never render as a guess.
     "solar_3d": "Measured (Google 3D)",
+    # The contractor reshaped the outline; the plane's pitch is still measured.
+    "solar_3d_edited": "Measured (Google 3D), outline edited",
     "solar_direction": "Measured (Solar, direction)",
     "lidar_measured": "Measured (USGS LiDAR)",
     "ground_photo": "Ground photo",
@@ -567,7 +569,7 @@ def _section_2_roof_summary(aggregates: dict, facets: list[dict], styles: dict,
             # measured. A traced outline's stored direction is its longest
             # edge's bearing — a line, which cannot tell a north slope from a
             # south one — so it is not printed as if it were a facing.
-            if f.get("pitch_source") == "solar_3d" and f.get("slope_direction"):
+            if str(f.get("pitch_source") or "").startswith("solar_3d") and f.get("slope_direction"):
                 direction = f.get("slope_direction")
             else:
                 direction = "—"

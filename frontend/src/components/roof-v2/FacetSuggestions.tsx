@@ -39,6 +39,8 @@ interface Suggestion {
 function pitchSourceMeta(src?: string): { label: string; color: string } {
   switch (src) {
     case 'solar_measured': return { label: 'measured by Google Solar ✓', color: 'text-emerald-400' }
+    case 'solar_3d': return { label: 'measured by Google 3D ✓', color: 'text-emerald-400' }
+    case 'solar_3d_edited': return { label: 'Google 3D pitch ✓ (outline edited)', color: 'text-emerald-400' }
     case 'solar_direction': return { label: 'Solar pitch (same-facing plane)', color: 'text-emerald-800/80' }
     case 'ground_photo': return { label: 'from ground photo ✓', color: 'text-emerald-400' }
     case 'ai_satellite': return { label: 'AI from satellite — verify', color: 'text-[#6b7280]' }

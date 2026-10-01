@@ -104,6 +104,10 @@ function rowsToGeometry(facetRows: Record<string, unknown>[], edgeRows: Record<s
       confidence: (f.confidence as number) ?? 0.8,
       userConfirmed: !!f.user_confirmed,
       aiSuggested: !!f.ai_suggested,
+      // A measured facing survives re-saves only if it is carried back; the
+      // server otherwise falls back to the longest edge's bearing.
+      azimuthDeg: String(f.pitch_source || '').startsWith('solar_3d') && typeof f.orientation_deg === 'number'
+        ? (f.orientation_deg as number) : undefined,
     }
   })
   const edgs: LabeledEdge[] = edgeRows.map(e => ({
@@ -542,6 +546,7 @@ export default function RoofV2Page() {
           confidence: f.confidence,
           user_confirmed: f.userConfirmed,
           ai_suggested: !!f.aiSuggested,
+          azimuth_deg: f.azimuthDeg,
         })),
       })
       await api.roofing.v2.putEdges(runId, {

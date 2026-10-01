@@ -46,6 +46,7 @@ export interface Facet {
   confidence: number              // 0..1
   userConfirmed: boolean
   aiSuggested?: boolean           // true if it originated from AI (training provenance)
+  azimuthDeg?: number             // compass bearing the slope faces, when MEASURED (auto-measure)
 }
 
 export interface LabeledEdge {
@@ -79,6 +80,8 @@ const PITCH_OPTIONS = ['2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '
 function pitchSourceMeta(src?: string): { label: string; color: string } {
   switch (src) {
     case 'solar_measured': return { label: '📐 measured (Solar)', color: 'text-emerald-400' }
+    case 'solar_3d': return { label: '📐 measured (Google 3D)', color: 'text-emerald-400' }
+    case 'solar_3d_edited': return { label: '📐 Google 3D pitch · outline edited', color: 'text-emerald-400' }
     case 'solar_direction': return { label: '📐 measured (Solar dir.)', color: 'text-emerald-400' }
     case 'lidar_measured': return { label: '📐 measured (LiDAR)', color: 'text-emerald-400' }
     case 'ground_photo': return { label: '📷 ground photo', color: 'text-sky-400' }
@@ -703,7 +706,11 @@ export function RoofFacetEditor({
       setFacets(prev => prev.map((f, i) => {
         if (i !== dragVertex.facetIdx) return f
         const poly = f.polygon.map((p, j) => (j === dragVertex.vertexIdx ? pt : p))
-        return { ...f, polygon: poly }
+        // Reshaped by hand, an auto-measured facet's OUTLINE is now the
+        // contractor's: the AI labeller may help with its lines again and the
+        // report stops calling it auto-measured. Its pitch is still measured.
+        const pitchSource = f.pitchSource === 'solar_3d' ? 'solar_3d_edited' : f.pitchSource
+        return { ...f, polygon: poly, pitchSource }
       }))
     }
     const onUp = () => {
