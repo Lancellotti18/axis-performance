@@ -3411,6 +3411,8 @@ class EdgeLabelSuggestRequest(BaseModel):
 # each pass gets a slice well inside that — a pass that overruns is work nobody is
 # still waiting for, and the geometric suggestions are already a usable answer.
 _EDGE_VISION_BUDGET_S = 45.0
+_MEASURED_SKIP_NOTE = ("{n} line(s) on the 3D-measured roof showed no clear type in the height data, "
+                       "so they were not guessed. They are left out of the totals until you set them.")
 
 
 @router.post("/runs/{run_id}/edges/suggest-labels")
@@ -3429,6 +3431,25 @@ async def suggest_edge_labels(
     pre-selected dropdowns the contractor can accept or override per edge.
     """
     require_owned_run(get_supabase(), run_id, user)
+    # Lines on a roof measured from Google's 3D data are typed from real
+    # heights. One the engine left unlabeled had NO crease in the heights, so
+    # a guess from the outline's shape is a guess against the evidence: on
+    # Brookside Oaks this pass invented 55 ft of hips on a roof with none.
+    # Those lines are left for the contractor; they stay out of the totals
+    # until someone who can see the roof types them. Read from the database,
+    # not the request, so the browser cannot opt measured facets back in.
+    measured = {
+        f.get("facet_label") for f in (
+            get_supabase().table("roof_facets").select("facet_label, pitch_source")
+            .eq("run_id", run_id).execute().data or [])
+        if f.get("pitch_source") == "solar_3d"
+    }
+    skipped = [e for e in req.unlabeled_edges if e.get("facet_label") in measured]
+    if skipped:
+        req.unlabeled_edges = [e for e in req.unlabeled_edges if e.get("facet_label") not in measured]
+        if not req.unlabeled_edges:
+            return {"suggestions": [], "skipped_measured": len(skipped),
+                    "message": _MEASURED_SKIP_NOTE.format(n=len(skipped))}
     # Always available: deterministic geometry suggestion (shared edges, angles)
     geom_suggestions = geo.auto_suggest_edge_types(req.facets)
     geom_index: dict[tuple[str, int], dict] = {}
@@ -3615,13 +3636,11 @@ async def suggest_edge_labels(
                 "ai_suggested": True,
             })
 
-    return {
-        "suggestions": out,
-        "message": (
-            f"{len(out)} edge label(s) suggested. Vision suggestions have a confidence — "
-            "you should still review unfamiliar edges before continuing."
-        ),
-    }
+    msg = (f"{len(out)} edge label(s) suggested. Vision suggestions have a confidence — "
+           "you should still review unfamiliar edges before continuing.")
+    if skipped:
+        msg += " " + _MEASURED_SKIP_NOTE.format(n=len(skipped))
+    return {"suggestions": out, "skipped_measured": len(skipped), "message": msg}
 
 
 async def _fetch_run_tile(img_url: Optional[str], run_data: dict) -> tuple[Optional[bytes], str]:

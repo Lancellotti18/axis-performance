@@ -119,3 +119,33 @@ def test_a_gable_is_measured_and_stored_like_a_trace(wired, monkeypatch):
     # The outline sits around the tap (the image centre here), in image fractions.
     xs = [p[0] for f in fr.facets for p in f.polygon]
     assert min(xs) < 0.5 < max(xs)
+
+
+# ── The AI labeller on a measured roof ────────────────────────────────────
+
+def _suggest(monkeypatch, facet_rows, unlabeled):
+    monkeypatch.setattr(rv, "get_supabase", lambda: _DB({"roof_facets": facet_rows, "roof_measurement_runs": {}}))
+    monkeypatch.setattr(rv, "require_owned_run", lambda db, rid, user: {"id": rid})
+    sq = [[0.4, 0.4], [0.5, 0.4], [0.5, 0.5], [0.4, 0.5]]
+    req = rv.EdgeLabelSuggestRequest(
+        facets=[{"label": "A", "polygon": sq}, {"label": "B", "polygon": [[x + 0.1, y] for x, y in sq]}],
+        unlabeled_edges=unlabeled)
+    return asyncio.run(rv.suggest_edge_labels("r1", req, RYAN))
+
+
+def test_lines_left_unlabeled_on_a_measured_roof_are_not_guessed(monkeypatch):
+    """Brookside Oaks: the labeller turned 55 ft of untyped lines into hips on
+    a roof with none. A measured roof's untyped line had no crease in the
+    heights; guessing from the outline contradicts the measurement."""
+    rows = [{"facet_label": "A", "pitch_source": "solar_3d"}, {"facet_label": "B", "pitch_source": "solar_3d"}]
+    res = _suggest(monkeypatch, rows, [{"facet_label": "A", "vertex_index_start": 1, "vertex_index_end": 2},
+                                       {"facet_label": "B", "vertex_index_start": 3, "vertex_index_end": 0}])
+    assert res["suggestions"] == [] and res["skipped_measured"] == 2
+    assert "not guessed" in res["message"]
+
+
+def test_a_hand_traced_roof_still_gets_suggestions(monkeypatch):
+    rows = [{"facet_label": "A", "pitch_source": "manual"}, {"facet_label": "B", "pitch_source": "manual"}]
+    res = _suggest(monkeypatch, rows, [{"facet_label": "A", "vertex_index_start": 1, "vertex_index_end": 2}])
+    assert res["skipped_measured"] == 0
+    assert len(res["suggestions"]) == 1

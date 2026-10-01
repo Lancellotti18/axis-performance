@@ -72,9 +72,21 @@ export function EdgeLabelSuggestions({
     try { localStorage.setItem('axis_edge_autolabel_coach_v1', '1') } catch { /* ignore */ }
   }, [])
 
+  // Lines on a facet measured from Google's 3D data were typed from real
+  // heights; one left unlabeled showed no crease there, and the AI's guess from
+  // the outline invented hips on a roof with none. Those are for the
+  // contractor to set by eye (the backend refuses them too).
+  const measuredFacets = useMemo(
+    () => new Set(facets.filter(f => f.pitchSource === 'solar_3d').map(f => f.label)),
+    [facets],
+  )
   const unlabeledEdges = useMemo(
-    () => edges.filter(e => e.edgeType === 'unlabeled'),
-    [edges],
+    () => edges.filter(e => e.edgeType === 'unlabeled' && !measuredFacets.has(e.facetLabel)),
+    [edges, measuredFacets],
+  )
+  const measuredUnlabeled = useMemo(
+    () => distinctLines(facets, edges.filter(e => e.edgeType === 'unlabeled' && measuredFacets.has(e.facetLabel))).length,
+    [facets, edges, measuredFacets],
   )
 
   // Counted in distinct roof lines so these numbers agree with the measurements
@@ -119,7 +131,9 @@ export function EdgeLabelSuggestions({
 
   const runSuggest = useCallback(async () => {
     if (unlabeledEdges.length === 0) {
-      setMessage('All edges are already labeled.')
+      setMessage(measuredUnlabeled > 0
+        ? 'Nothing for the AI to label: the lines still open are on the 3D-measured roof (see below).'
+        : 'All edges are already labeled.')
       return
     }
     setLoading(true)
@@ -145,7 +159,7 @@ export function EdgeLabelSuggestions({
     } finally {
       setLoading(false)
     }
-  }, [runId, facets, unlabeledEdges])
+  }, [runId, facets, unlabeledEdges, measuredUnlabeled])
 
   // Auto-run when the editor's "Auto-label edges" button bumps `trigger`.
   const firstTrigger = useRef(true)
@@ -283,6 +297,14 @@ export function EdgeLabelSuggestions({
           </p>
           <button onClick={dismissHowTo} className="mt-2 w-full rounded bg-emerald-700 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-600">Got it</button>
         </div>
+      )}
+
+      {measuredUnlabeled > 0 && (
+        <p className="mt-2 text-xs text-[#6b7280]">
+          {measuredUnlabeled} short line{measuredUnlabeled === 1 ? '' : 's'} on the 3D-measured roof had no clear
+          type in the height data, so {measuredUnlabeled === 1 ? 'it was' : 'they were'} not guessed.
+          {measuredUnlabeled === 1 ? ' It is' : ' They are'} left out of the totals — tap one on the roof to set its type if you can see it.
+        </p>
       )}
 
       {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
