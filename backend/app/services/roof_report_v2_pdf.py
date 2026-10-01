@@ -338,6 +338,13 @@ def _render_length_diagram(facets: list[dict], edges: list[dict]) -> bytes | Non
             pts = [topx(p) for p in f["polygon"]]
             d.polygon(pts, fill=(241, 245, 249, 255))
 
+        # One label per physical line, matched the SAME way the roof-line table
+        # de-duplicates (geometry_service._same_segment). Keyed on the exact
+        # midpoint, two facets' copies that end a few inches apart were both
+        # labelled — "28.2' / 29.8'" on one ridge — though counted once.
+        from app.services import geometry_service as _geo
+        facet_polys = {f.get("id"): (f.get("polygon") or []) for f in polys}
+        labelled: list = []
         seen: set = set()
         drawn = 0
         for e in edges:
@@ -355,7 +362,12 @@ def _render_length_diagram(facets: list[dict], edges: list[dict]) -> bytes | Non
             d.line([a, b], fill=colour, width=7)
             if mid in seen:          # shared edge — already labelled from the other facet
                 continue
+            seg = _geo._edge_segment(e, facet_polys)
+            if seg is not None and any(_geo._same_segment(seg, s_) for s_ in labelled):
+                continue
             seen.add(mid)
+            if seg is not None:
+                labelled.append(seg)
             length = e.get("slope_adjusted_ft") or e.get("plan_length_ft")
             if length is None:
                 continue
@@ -507,7 +519,7 @@ _PITCH_SOURCE_LABELS = {
     # pitch source Axis has, so it must never render as a guess.
     "solar_3d": "Measured (Google 3D)",
     # The contractor reshaped the outline; the plane's pitch is still measured.
-    "solar_3d_edited": "Measured (Google 3D), outline edited",
+    "solar_3d_edited": "Measured (3D), edited",
     "solar_direction": "Measured (Solar, direction)",
     "lidar_measured": "Measured (USGS LiDAR)",
     "ground_photo": "Ground photo",
@@ -531,7 +543,7 @@ def _section_2_roof_summary(aggregates: dict, facets: list[dict], styles: dict,
     # The outline is NOT redrawn here. It has a full page of its own earlier —
     # the Length Diagram and the Pitch Diagram — each larger and carrying more
     # than this thumbnail ever did. A third copy read as padding.
-    measured = bool(facets) and all(f.get("pitch_source") == "solar_3d" for f in facets)
+    measured = bool(facets) and all(_is_3d(f) for f in facets)
     waste = int(aggregates.get("waste_pct_default") or 12)
     rows = [
         ["Metric", "Value", "Method"],
@@ -1016,7 +1028,7 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
     source = run.get("source") or "unknown"
     # An auto-measured roof is still stored under the run's tracing source;
     # describing it as "contractor traced each facet" was simply untrue.
-    if facets and all(f.get("pitch_source") == "solar_3d" for f in facets):
+    if facets and all(_is_3d(f) for f in facets):
         source = "solar_3d"
     method_descriptions = {
         "aerial_outline": (
@@ -1059,6 +1071,10 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
             "the contractor confirmed the house on. A line the height data could not "
             "type is left untyped rather than guessed, and is not counted in the "
             "totals until the contractor sets it."
+            + (" Where the contractor adjusted a facet's outline afterwards, the "
+               "areas and lengths follow the adjusted outline; its pitch is still "
+               "the measured one." if any(f.get("pitch_source") == "solar_3d_edited"
+                                          for f in (facets or [])) else "")
         ),
     }
     desc = method_descriptions.get(source, "Mixed-source measurement run.")
@@ -1314,10 +1330,19 @@ def _full_page_figure(title: str, caption: str, png: bytes | None, styles: dict,
     return flow
 
 
+def _is_3d(f: dict) -> bool:
+    """Measured from Google's 3D data, including a facet whose outline the
+    contractor then nudged: its plane, pitch and lines still came from 3D."""
+    return str(f.get("pitch_source") or "").startswith("solar_3d")
+
+
 def _measured_by(run: dict, facets: list[dict]) -> str:
     """Who or what produced the geometry, in words a homeowner or adjuster reads.
     The raw source code ("aerial_outline") was printed as-is before."""
-    if facets and all(f.get("pitch_source") == "solar_3d" for f in facets):
+    if facets and all(_is_3d(f) for f in facets):
+        edited = sum(1 for f in facets if f.get("pitch_source") == "solar_3d_edited")
+        if edited:
+            return f"Google 3D height data (auto-measured; {edited} outline{'s' if edited != 1 else ''} adjusted by contractor)"
         return "Google 3D height data (auto-measured)"
     return {
         "aerial_outline": "Contractor trace over satellite imagery",
@@ -1471,8 +1496,13 @@ def _cover_page(project: dict, run: dict, aggregates: dict, contractor: dict | N
             img.hAlign = "CENTER"
             provider = (run.get("satellite_provider") or "satellite").strip()
             zoom = run.get("satellite_zoom")
-            cap = f"Subject roof — {provider} imagery" + (f", zoom {zoom}" if zoom else "") + \
-                  ". Photo only; nothing on it is drawn by Axis."
+            if provider.lower() == "google 3d":
+                # Google's own aerial photo, ~10 cm per pixel; the tile's zoom
+                # number describes the frame, not this photo's sharpness.
+                cap = "Subject roof — Google's aerial photo (about 10 cm per pixel)."
+            else:
+                cap = f"Subject roof — {provider} imagery" + (f", zoom {zoom}" if zoom else "") + "."
+            cap += " Photo only; nothing on it is drawn by Axis."
             flow += [img, Spacer(1, 3), Paragraph(cap, ParagraphStyle(
                 "CoverCap", parent=styles["muted"], alignment=1, fontSize=7.5)), Spacer(1, 10)]
         except Exception:

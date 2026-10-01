@@ -75,3 +75,12 @@ def test_a_full_report_renders_without_a_photo():
          "predominant_pitch": "8.1/12", "complexity_score": 0.3, "waste_pct_default": 10},
         _MEASURED, [], [], [], [], include_flashing=False, include_siding=False)
     assert pdf[:4] == b"%PDF" and len(pdf) > 5000
+
+
+def test_a_roof_with_a_few_nudged_outlines_is_still_auto_measured():
+    """Ryan adjusted 5 of 9 auto-measured outlines; the report then said
+    'Contractor trace' and capped confidence for a coarse photo it wasn't using."""
+    facets = [{**_MEASURED[0], "pitch_source": "solar_3d_edited"}, _MEASURED[1]]
+    by = R._measured_by({"source": "aerial_outline"}, facets)
+    assert "auto-measured" in by and "1 outline adjusted" in by
+    assert R._pitch_source_label("solar_3d_edited") == "Measured (3D), edited"

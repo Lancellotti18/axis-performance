@@ -1965,7 +1965,9 @@ def _aggregate_run(run_id: str) -> dict:
         # from the photo: a coarse tile changes nothing about it, and capping it
         # (Brookside Oaks: High 97% -> Moderate 70%) punished the one kind of
         # measurement the photo cannot have spoiled.
-        measured_3d = bool(facets) and all(f.get("pitch_source") == "solar_3d" for f in facets)
+        # A facet whose outline the contractor nudged is still 3D-measured.
+        measured_3d = bool(facets) and all(
+            str(f.get("pitch_source") or "").startswith("solar_3d") for f in facets)
         if res is not None and not measured_3d:
             aggregates["imagery_ft_per_px"] = res.ft_per_px
             if res.coarse:
