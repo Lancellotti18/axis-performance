@@ -231,6 +231,8 @@ export function EdgeLabelSuggestions({
   }, [suggestions])
 
   const highConfidenceCount = suggestions.filter(s => s.confidence >= 0.7).length
+  // Distinct roof lines, the same count the editor and measurements panel show.
+  const aiLines = useMemo(() => distinctLines(facets, unlabeledEdges).length, [facets, unlabeledEdges])
 
   return (
     <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
@@ -252,7 +254,7 @@ export function EdgeLabelSuggestions({
         </div>
         {/* Primary call to action only. Once results exist this becomes noise at
             the top of the panel, and Re-analyze lives under the list instead. */}
-        {suggestions.length === 0 && (
+        {suggestions.length === 0 && aiLines > 0 && (
         <button
           onClick={runSuggest}
           disabled={loading || unlabeledEdges.length === 0}
@@ -265,8 +267,7 @@ export function EdgeLabelSuggestions({
         >
           {loading ? 'Analyzing…'
             : suggestions.length > 0 ? 'Re-analyze'
-            : unlabeledEdges.length === 0 ? 'All labeled ✓'
-            : `✨ Auto-label ${unlabeledEdges.length} edge${unlabeledEdges.length === 1 ? '' : 's'}`}
+            : `✨ AI-label ${aiLines} line${aiLines === 1 ? '' : 's'}`}
         </button>
         )}
       </div>
@@ -303,7 +304,8 @@ export function EdgeLabelSuggestions({
         <p className="mt-2 text-xs text-[#6b7280]">
           {measuredUnlabeled} short line{measuredUnlabeled === 1 ? '' : 's'} on the 3D-measured roof had no clear
           type in the height data, so {measuredUnlabeled === 1 ? 'it was' : 'they were'} not guessed.
-          {measuredUnlabeled === 1 ? ' It is' : ' They are'} left out of the totals — tap one on the roof to set its type if you can see it.
+          {measuredUnlabeled === 1 ? ' It is' : ' They are'} left out of the totals until set: press{' '}
+          <strong>🏷 Label lines</strong> above the roof and it takes you to each one.
         </p>
       )}
 
@@ -311,7 +313,7 @@ export function EdgeLabelSuggestions({
       {message && !error && <p className="mt-2 text-xs text-[#6b7280]">{message}</p>}
 
       {/* Explain a disabled button instead of looking broken. */}
-      {!loading && unlabeledEdges.length === 0 && (
+      {!loading && unlabeledEdges.length === 0 && measuredUnlabeled === 0 && (
         edges.length === 0 ? (
           <p className="mt-2 text-xs text-[#6b7280]">
             No edges to label yet — accept or draw a facet first (step ②). Edges are created automatically from each facet.
@@ -439,10 +441,10 @@ export function EdgeLabelSuggestions({
         </div>
       )}
 
-      {!suggestions.length && !loading && !error && unlabeledEdges.length > 0 && (
+      {!suggestions.length && !loading && !error && aiLines > 0 && (
         <p className="mt-3 text-xs text-[#6b7280]">
-          {unlabeledEdges.length} edge{unlabeledEdges.length === 1 ? '' : 's'} need labels.
-          Click <strong>Auto-label</strong> to have AI suggest them all at once.
+          {aiLines} line{aiLines === 1 ? '' : 's'} need{aiLines === 1 ? 's' : ''} a type.
+          Click <strong>AI-label</strong> to have AI suggest them all at once.
         </p>
       )}
 

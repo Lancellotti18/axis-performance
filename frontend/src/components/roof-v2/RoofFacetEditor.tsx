@@ -31,6 +31,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildEdgeMap, clearEdgeCache, snapToNearestEdge } from '@/lib/edgeSnap'
 import MagnifierLoupe from './MagnifierLoupe'
+import { distinctLines, labelLine } from './edgeGeometry'
 
 export type EdgeType =
   | 'eave' | 'rake' | 'ridge' | 'hip' | 'valley'
@@ -72,6 +73,17 @@ interface Props {
   onAutoLabelEdges?: () => void
 }
 
+// What each line type IS, in the words a homeowner would understand — shown
+// while walking the contractor through the lines nothing could type.
+const LINE_HINTS: Record<Exclude<EdgeType, 'unlabeled' | 'gable_end'>, string> = {
+  ridge: 'Level line along the top, where two slopes meet',
+  hip: 'Sloped line where two slopes meet and the roof falls away on both sides',
+  valley: 'Sloped line where two slopes meet in a V — water runs along it',
+  eave: 'Bottom edge of a slope, where the gutter is',
+  rake: 'Sloped outer edge at a gable end',
+  wall_intersection: 'Where the roof meets a wall or a chimney',
+}
+
 const PITCH_OPTIONS = ['2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '9/12', '10/12', '12/12']
 
 // Phase 1: label + color for a facet's pitch provenance, so a MEASURED pitch reads
@@ -99,7 +111,9 @@ const EDGE_COLORS: Record<EdgeType, string> = {
   valley: '#f87171',
   gable_end: '#fde68a',
   wall_intersection: '#9ca3af',
-  unlabeled: 'rgba(255,255,255,0.55)',
+  // Loud on purpose: a line with no type is not counted anywhere, and it was
+  // drawn faint white — on a real roof nobody could find the ones left.
+  unlabeled: '#ff1fa8',
 }
 
 const FACET_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
@@ -755,6 +769,76 @@ export function RoofFacetEditor({
     }))
   }, [facets])
 
+  // ---- Lines with no type: find them, walk through them ----
+  // Counted as distinct ROOF LINES (a shared line is one line, not one per
+  // facet), the same way the measurements panel counts — three different
+  // numbers on one screen (8, 10, "all labeled") was the confusion.
+  const blankLines = useMemo(
+    () => distinctLines(facets, edges.filter(e => e.edgeType === 'unlabeled')),
+    [facets, edges],
+  )
+  // Lines the AI may suggest for: not on a facet measured from Google 3D,
+  // where an untyped line means the heights showed no crease to guess from.
+  const aiBlankCount = useMemo(() => {
+    const measured = new Set(facets.filter(f => f.pitchSource === 'solar_3d').map(f => f.label))
+    return blankLines.filter(e => !measured.has(e.facetLabel)).length
+  }, [blankLines, facets])
+  const [guiding, setGuiding] = useState(false)
+
+  // Centre and zoom the canvas on one line, so a 4 ft line is findable.
+  const goToLine = useCallback((e: { facetLabel: string; vertexIndexStart: number }) => {
+    const fi = facets.findIndex(f => f.label === e.facetLabel)
+    const f = facets[fi]
+    const el = containerRef.current
+    if (!f || !el) return
+    const a = f.polygon[e.vertexIndexStart]; const b = f.polygon[(e.vertexIndexStart + 1) % f.polygon.length]
+    if (!a || !b) return
+    setMode('label')
+    setActiveFacetIdx(fi)
+    setSelectedEdge({ facetIdx: fi, edgeIdx: e.vertexIndexStart })
+    setGuiding(true)
+    const r = el.getBoundingClientRect()
+    // The SVG letterboxes the image inside the stage (preserveAspectRatio meet).
+    const k = Math.min(r.width / imageDims.w, r.height / imageDims.h)
+    const ox = (r.width - imageDims.w * k) / 2; const oy = (r.height - imageDims.h * k) / 2
+    const px = ox + ((a[0] + b[0]) / 2) * imageDims.w * k
+    const py = oy + ((a[1] + b[1]) / 2) * imageDims.h * k
+    const lenPx = Math.hypot((b[0] - a[0]) * imageDims.w * k, (b[1] - a[1]) * imageDims.h * k)
+    // Zoom so the line fills about a third of the canvas, within limits.
+    const S = Math.max(2, Math.min(MAX_SCALE, (Math.min(r.width, r.height) / 3) / Math.max(lenPx, 1)))
+    setView({ scale: S, x: r.width / 2 - px * S, y: r.height / 2 - py * S })
+  }, [facets, imageDims.w, imageDims.h])
+
+  const selectedRecord = useMemo(() => {
+    if (!selectedEdge) return null
+    const f = facets[selectedEdge.facetIdx]
+    return f ? edges.find(e => e.facetLabel === f.label && e.vertexIndexStart === selectedEdge.edgeIdx) ?? null : null
+  }, [selectedEdge, facets, edges])
+
+  const nextBlank = useCallback((after?: { facetLabel: string; vertexIndexStart: number } | null,
+                                 pool = blankLines) => {
+    if (pool.length === 0) return null
+    const i = after ? pool.findIndex(e => e.facetLabel === after.facetLabel && e.vertexIndexStart === after.vertexIndexStart) : -1
+    return pool[(i + 1) % pool.length]
+  }, [blankLines])
+
+  const startGuide = useCallback(() => {
+    const first = nextBlank(null)
+    if (first) goToLine(first)
+  }, [nextBlank, goToLine])
+
+  // Type the selected line (both facets' copies of it), then move on to the next blank one.
+  const typeSelectedLine = useCallback((t: EdgeType) => {
+    if (!selectedRecord) return
+    const target = { facetLabel: selectedRecord.facetLabel, vertexIndexStart: selectedRecord.vertexIndexStart }
+    const updated = labelLine(facets, edges, target, t)
+    setEdges(updated)
+    const remaining = distinctLines(facets, updated.filter(e => e.edgeType === 'unlabeled'))
+    const nxt = remaining.length ? nextBlank(target, [...remaining]) ?? remaining[0] : null
+    if (nxt) goToLine(nxt)
+    else { setGuiding(false); setSelectedEdge(null); setView({ scale: 1, x: 0, y: 0 }) }
+  }, [selectedRecord, facets, edges, nextBlank, goToLine])
+
   // ---- Facet pitch / delete ----
   const setFacetPitch = useCallback((facetIdx: number, pitch: string) => {
     // A contractor-typed pitch is provenance 'manual' — it overrides any prior
@@ -819,6 +903,7 @@ export function RoofFacetEditor({
           )
           const color = edgeRec ? EDGE_COLORS[edgeRec.edgeType] : EDGE_COLORS.unlabeled
           const isSel = selectedEdge?.facetIdx === idx && selectedEdge.edgeIdx === i
+          const blank = !edgeRec || edgeRec.edgeType === 'unlabeled'
           return (
             <g key={i}>
               {/* Pulsing white halo so the SELECTED edge is unmistakable —
@@ -833,18 +918,32 @@ export function RoofFacetEditor({
                   <animate attributeName="opacity" values="0.25;0.75;0.25" dur="1.1s" repeatCount="indefinite" />
                 </line>
               )}
+              {/* A line with no type pulses, so it can be FOUND on the roof. */}
+              {blank && (
+                <line
+                  x1={p1[0] * imageDims.w} y1={p1[1] * imageDims.h}
+                  x2={p2[0] * imageDims.w} y2={p2[1] * imageDims.h}
+                  stroke={EDGE_COLORS.unlabeled} strokeWidth={14 / view.scale} strokeLinecap="round"
+                  pointerEvents="none"
+                >
+                  <animate attributeName="opacity" values="0.1;0.45;0.1" dur="1.4s" repeatCount="indefinite" />
+                </line>
+              )}
               <line
                 x1={p1[0] * imageDims.w} y1={p1[1] * imageDims.h}
                 x2={p2[0] * imageDims.w} y2={p2[1] * imageDims.h}
                 stroke={color}
-                strokeWidth={(isSel ? 7 : 4) / view.scale}
+                strokeWidth={(isSel ? 7 : blank ? 5 : 4) / view.scale}
+                strokeDasharray={blank ? `${10 / view.scale} ${6 / view.scale}` : undefined}
                 strokeLinecap="round"
                 style={{ cursor: mode === 'label' || mode === 'select' ? 'pointer' : 'default' }}
                 onClick={(ev) => {
                   if (mode === 'label') {
                     ev.stopPropagation()
-                    cycleEdgeLabel(idx, i)
+                    // Pick the type from named buttons; cycling through seven
+                    // colours by repeated clicks was guesswork.
                     setSelectedEdge({ facetIdx: idx, edgeIdx: i })
+                    setGuiding(true)
                   } else if (mode === 'select') {
                     ev.stopPropagation()
                     setSelectedEdge({ facetIdx: idx, edgeIdx: i })
@@ -889,7 +988,13 @@ export function RoofFacetEditor({
     )
   }
 
-  const unlabeledCount = edges.filter(e => e.edgeType === 'unlabeled').length
+  const unlabeledCount = blankLines.length
+  // ONE action for "these lines need a type": the AI suggests where it is
+  // allowed to; otherwise (or after it) we walk through them on the roof.
+  const labelLines = () => {
+    if (aiBlankCount > 0 && onAutoLabelEdges) onAutoLabelEdges()
+    else startGuide()
+  }
 
   return (
     <div className="flex h-full w-full flex-col gap-3">
@@ -911,14 +1016,16 @@ export function RoofFacetEditor({
           title="How to trace the roof for the best auto-label results"
           className="rounded-md bg-[#eeeeed] px-3 py-1.5 text-xs font-medium text-blue-800 hover:bg-[#e4e4e2]"
         >? How to trace</button>
-        {onAutoLabelEdges && (
-          <button
-            onClick={onAutoLabelEdges}
-            disabled={facets.length === 0}
-            title="Recommended: AI names every edge (eave/rake/ridge/hip/valley) at once — you review and accept"
-            className={`rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40 ${ facets.length > 0 && unlabeledCount > 0 ? 'ring-2 ring-emerald-300/60 shadow-[0_0_14px_rgba(52,211,153,0.45)]' : '' }`}
-          >✨ Auto-label edges{unlabeledCount > 0 && facets.length > 0 ? ` (${unlabeledCount})` : ''}</button>
-        )}
+        <button
+          onClick={labelLines}
+          disabled={facets.length === 0 || unlabeledCount === 0}
+          title={aiBlankCount > 0
+            ? 'AI suggests a type for each line — you review and accept'
+            : 'Walks you to each line that still needs a type'}
+          className={`rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40 ${ facets.length > 0 && unlabeledCount > 0 ? 'ring-2 ring-emerald-300/60 shadow-[0_0_14px_rgba(52,211,153,0.45)]' : '' }`}
+        >{unlabeledCount > 0
+          ? `🏷 Label ${unlabeledCount} line${unlabeledCount === 1 ? '' : 's'}`
+          : '✓ Every line has a type'}</button>
         <div className="mx-2 h-5 w-px bg-[#eeeeed]" />
         {/* Undo / redo */}
         <button
@@ -993,23 +1100,23 @@ export function RoofFacetEditor({
       {/* Auto-first nudge: appears the moment there are unlabeled edges and
           steers to ✨ Auto-label before manual clicking. Session-dismissible;
           disappears on its own once everything is labeled. */}
-      {onAutoLabelEdges && facets.length > 0 && unlabeledCount > 0 && !labelNudgeDismissed && mode !== 'label' && (
+      {facets.length > 0 && unlabeledCount > 0 && !labelNudgeDismissed && mode !== 'label' && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
           <span className="text-sm">🎯</span>
           <span>
-            <strong>{unlabeledCount} edge{unlabeledCount === 1 ? '' : 's'} need{unlabeledCount === 1 ? 's' : ''} a label.</strong>{' '}
-            Fastest: let AI name them all (ridge / eave / hip / valley), then just review.
+            <strong>{unlabeledCount} line{unlabeledCount === 1 ? '' : 's'} still need{unlabeledCount === 1 ? 's' : ''} a type</strong>{' '}
+            — they&apos;re the pink dashed lines with a <strong>?</strong>, and they aren&apos;t counted until set.
           </span>
           <div className="ml-auto flex items-center gap-2">
             <button
-              onClick={onAutoLabelEdges}
+              onClick={labelLines}
               className="rounded bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-500"
-            >✨ Auto-label {unlabeledCount}</button>
+            >🏷 Label them</button>
             <button
-              onClick={() => { setLabelNudgeDismissed(true); setMode('label') }}
+              onClick={() => { setLabelNudgeDismissed(true); startGuide() }}
               className="rounded bg-[#eeeeed] px-2 py-1 text-[#2d2d2d] hover:bg-[#e4e4e2]"
               title="Click edges on the canvas and pick each type yourself"
-            >I&apos;ll label by hand</button>
+            >Walk me through them</button>
             <button
               onClick={() => setLabelNudgeDismissed(true)}
               className="rounded p-1 text-emerald-900/60 hover:text-[#1a1a1a]"
@@ -1062,7 +1169,10 @@ export function RoofFacetEditor({
             style={{
               transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
               transformOrigin: '0 0',
-              willChange: 'transform',
+              // Only while dragging. Left on permanently, the browser draws the
+              // lines and letters once at 1x and stretches that bitmap, which is
+              // why they went blurry on zoom; off, it redraws them sharp.
+              willChange: panning ? 'transform' : 'auto',
             }}
           >
             {/* Satellite tile */}
@@ -1093,6 +1203,24 @@ export function RoofFacetEditor({
               onDoubleClick={() => mode === 'draw' && finalizeDrawingPoly()}
             >
               {facets.map(renderFacetPolygon)}
+
+              {/* A "?" on every line that still needs a type, readable at any zoom. */}
+              {blankLines.map(e => {
+                const f = facets.find(ff => ff.label === e.facetLabel)
+                if (!f) return null
+                const a = f.polygon[e.vertexIndexStart]; const b = f.polygon[(e.vertexIndexStart + 1) % f.polygon.length]
+                if (!a || !b) return null
+                const mx = (a[0] + b[0]) / 2 * imageDims.w; const my = (a[1] + b[1]) / 2 * imageDims.h
+                return (
+                  <g key={`q-${e.facetLabel}-${e.vertexIndexStart}`}
+                    transform={`translate(${mx}, ${my}) scale(${1 / view.scale})`}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(ev) => { ev.stopPropagation(); goToLine(e) }}>
+                    <circle r={11} fill={EDGE_COLORS.unlabeled} stroke="white" strokeWidth={2} />
+                    <text textAnchor="middle" dominantBaseline="central" fill="white" fontSize={14} fontWeight={800}>?</text>
+                  </g>
+                )
+              })}
 
               {/* Rubber-band: dashed line from the last placed vertex to the
                   live cursor, so the contractor sees the edge BEFORE clicking. */}
@@ -1247,6 +1375,43 @@ export function RoofFacetEditor({
             >↓</button>
             <div></div>
           </div>
+
+          {/* "What is this line?" — the selected line is zoomed to and pulsing;
+              pick its type by name, and the next one that needs a type comes up. */}
+          {guiding && mode === 'label' && selectedRecord && (
+            <div className="pointer-events-auto absolute left-2 top-2 z-10 w-[300px] rounded-lg border border-[#ff1fa8]/40 bg-white/95 p-3 text-xs text-[#1a1a1a] shadow-lg">
+              <div className="mb-1 flex items-center justify-between">
+                <strong className="text-sm">What is this line?</strong>
+                <button onClick={() => { setGuiding(false); setSelectedEdge(null) }}
+                  className="rounded px-1.5 text-[#6b7280] hover:text-[#1a1a1a]" title="Close">✕</button>
+              </div>
+              <p className="mb-2 text-[11px] text-[#6b7280]">
+                {selectedRecord.edgeType === 'unlabeled'
+                  ? `${unlabeledCount} line${unlabeledCount === 1 ? '' : 's'} left. The pulsing line is the one being asked about.`
+                  : `Currently: ${selectedRecord.edgeType.replace('_', ' ')}. Pick another type to change it.`}
+                {selectedRecord.sharedWithFacetLabel ? ' It sits between two roof planes.' : ' It is on the outside edge of the roof.'}
+              </p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(Object.keys(LINE_HINTS) as (keyof typeof LINE_HINTS)[]).map(t => (
+                  <button key={t} onClick={() => typeSelectedLine(t)} title={LINE_HINTS[t]}
+                    className="flex items-center gap-1.5 rounded border border-[#dededc] bg-[#f8f8f7] px-2 py-1.5 text-left hover:border-[#1a1a1a]/30 hover:bg-white">
+                    <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: EDGE_COLORS[t] }} />
+                    <span className="font-medium capitalize">{t === 'wall_intersection' ? 'Wall / chimney' : t}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] leading-snug text-[#6b7280]">
+                Ridge: level top line · Hip: sloped, falls away both sides · Valley: sloped V · Eave: gutter edge ·
+                Rake: sloped gable edge · Wall: roof meets a wall or chimney.
+              </p>
+              {unlabeledCount > 0 && (
+                <button onClick={() => { const n = nextBlank(selectedRecord); if (n) goToLine(n) }}
+                  className="mt-2 w-full rounded bg-[#eeeeed] py-1 text-[#2d2d2d] hover:bg-[#e4e4e2]">
+                  Not sure — skip to the next line
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Floating zoom controls */}
           <div className="pointer-events-none absolute bottom-2 right-2 flex flex-col items-end gap-1">
