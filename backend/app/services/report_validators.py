@@ -82,6 +82,137 @@ def partial_outline_signals(aggregates: dict) -> list[str]:
     return out
 
 
+# ── Coverage against an outside reference ────────────────────────────────────
+#
+# The signals above only catch a trace that contradicts ITSELF. The failure
+# that actually shipped was a clean, self-consistent outline of 71% of a roof
+# (339 Buch Ave, run e420330e): perimeter fine, ridges fine, every edge
+# labelled — and 33% short, stamped High (97%). Nothing inside a trace can
+# reveal that the other 29% exists. Only an outside view of the building can.
+#
+# Google Solar supplies one: its footprint area for the building. Traced plan
+# area over that footprint is how much of the building was traced, with no
+# pitch assumption in it at all.
+#
+# Solar is a reference, not ground truth — it can pick the wrong building,
+# include a porch, or miss a low section. So it only CAPS confidence and says
+# why; it never changes a measured number, never blocks a report, and is
+# ignored entirely when it may be describing a different building.
+
+# Solar's building centre must be this close to the house the contractor
+# tapped, or the reference may be a neighbour's roof and is not used.
+COVERAGE_TRUST_RADIUS_M = 30.0
+# Below this, Solar has likely found a shed or a fragment, not the house.
+COVERAGE_MIN_REFERENCE_SQFT = 300.0
+# Ratio bands (traced / reference). Provisional until tuned on real runs.
+COVERAGE_LOW = 0.80          # under: most likely a partial trace
+COVERAGE_MODERATE = 0.92     # under: possibly a missed section
+COVERAGE_OVER = 1.35         # over: traced beyond this building
+# Caps sit inside the report's own bands: Low < 55%, Moderate 55-79%.
+CAP_LOW = 0.45
+CAP_MODERATE = 0.70
+
+
+@dataclass(frozen=True)
+class Coverage:
+    ratio: float
+    traced_sqft: float
+    reference_sqft: float
+    basis: str               # "footprint" | "roof area"
+    cap: float | None        # None = no cap: the trace matches the building
+    signal: str | None       # the sentence shown to the contractor
+
+
+def trace_coverage(aggregates: dict, reference: dict | None, *,
+                   partial: bool = False) -> Coverage | None:
+    """How much of the building the trace covers, per Google Solar.
+
+    `reference` is what was recorded when Solar was queried for this run:
+    {"ground_sqft", "roof_sqft", "distance_m"}. Returns None — no opinion —
+    whenever the comparison would not be fair: the contractor declared a
+    partial trace on purpose, there is no reference, Solar's building is not
+    the tapped house, or the reference is too small to be the whole house.
+    """
+    if partial or not reference:
+        return None
+    dist = reference.get("distance_m")
+    if dist is None or float(dist) > COVERAGE_TRUST_RADIUS_M:
+        return None
+
+    ground = float(reference.get("ground_sqft") or 0.0)
+    roof = float(reference.get("roof_sqft") or 0.0)
+    if ground >= COVERAGE_MIN_REFERENCE_SQFT:
+        # Footprint against footprint: no pitch in either number.
+        basis, ref, traced = "footprint", ground, _f(aggregates, "total_plan_sqft")
+    elif roof >= COVERAGE_MIN_REFERENCE_SQFT:
+        basis, ref, traced = "roof area", roof, _f(aggregates, "total_roof_sqft")
+    else:
+        return None
+    if traced <= 0:
+        return None
+
+    ratio = traced / ref
+    cap: float | None = None
+    signal: str | None = None
+    if ratio < COVERAGE_LOW:
+        cap = CAP_LOW
+    elif ratio < COVERAGE_MODERATE:
+        cap = CAP_MODERATE
+    elif ratio > COVERAGE_OVER:
+        cap = CAP_MODERATE
+        signal = (
+            f"The trace ({traced:,.0f} sq ft) is {ratio:.0%} of the {ref:,.0f} sq ft "
+            f"{basis} Google measures for this building — it may include a "
+            "neighbouring structure or run outside the roof edge.")
+    if cap is not None and signal is None:
+        signal = (
+            f"Google measures about {ref:,.0f} sq ft of {basis} for this building; "
+            f"the trace covers {traced:,.0f} sq ft ({ratio:.0%}). Part of the roof may "
+            "not be traced yet — check the outline before ordering, or mark the "
+            "measurement as partial if that is intended.")
+    return Coverage(round(ratio, 3), round(traced, 1), round(ref, 1), basis, cap, signal)
+
+
+# ── Imagery resolution ───────────────────────────────────────────────────────
+#
+# The tile's health score asks whether the picture is usable (not blank, not
+# cloud). It never asked how FINE the picture is. The Buch Ave tile came back at
+# zoom 19 — about 0.75 ft per pixel, twice as coarse as zoom 20 — and the
+# contractor could not see the facets, yet the report said imagery health
+# 100/100. Resolution is a separate question and is answered separately here,
+# so provider selection (which runs off the health score) is untouched.
+
+# Coarser than this, a pixel is wider than a typical shingle course is tall and
+# ridge/valley lines blur into the surrounding plane. Zoom 20 at US latitudes
+# is ~0.33-0.40; zoom 19 is ~0.66-0.80.
+COARSE_FT_PER_PX = 0.55
+
+
+@dataclass(frozen=True)
+class Resolution:
+    ft_per_px: float
+    zoom: int
+    coarse: bool
+    signal: str | None
+
+
+def imagery_resolution(lat: float | None, zoom: int | None) -> Resolution | None:
+    """Ground resolution of the run's tile, and whether it is too coarse to
+    place edges confidently. None when the run has no tile coordinates."""
+    if lat is None or zoom is None:
+        return None
+    from app.services.geometry_service import feet_per_pixel
+    ftpp = feet_per_pixel(float(lat), int(zoom))
+    coarse = ftpp > COARSE_FT_PER_PX
+    signal = None
+    if coarse:
+        signal = (
+            f"The satellite image here is coarse ({ftpp:.2f} ft per pixel, zoom {int(zoom)}), "
+            "so roof edges and facet lines are harder to place precisely. Verify key "
+            "dimensions on site before ordering.")
+    return Resolution(round(ftpp, 3), int(zoom), coarse, signal)
+
+
 def validate_report_inputs(
     aggregates: dict,
     *,

@@ -75,6 +75,7 @@ async def get_building_insights(lat: float, lng: float) -> dict:
         "center": {"lat":..,"lng":..},
         "whole_roof_area_m2": float,
         "whole_roof_area_sqft": float,
+        "whole_roof_ground_sqft": float,   # footprint; 0.0 if Google omits it
         "segments": [
           {
             "pitch_degrees": float, "pitch": "6/12",
@@ -179,6 +180,11 @@ async def get_building_insights(lat: float, lng: float) -> dict:
 
     whole = sp.get("wholeRoofStats") or {}
     whole_m2 = float(whole.get("areaMeters2") or 0.0)
+    # The FOOTPRINT (plan) area of the same roof. This is the number a trace can
+    # be checked against without assuming any pitch: traced plan area over this
+    # is simply how much of the building was traced. It was in every response
+    # and discarded, while a 71%-covered roof went out labelled High (97%).
+    ground_m2 = float(whole.get("groundAreaMeters2") or 0.0)
     center = data.get("center") or {}
     imagery_date = None
     d = data.get("imageryDate") or {}
@@ -192,6 +198,7 @@ async def get_building_insights(lat: float, lng: float) -> dict:
         "center": {"lat": center.get("latitude"), "lng": center.get("longitude")},
         "whole_roof_area_m2": round(whole_m2, 1),
         "whole_roof_area_sqft": round(whole_m2 * 10.7639, 1),
+        "whole_roof_ground_sqft": round(ground_m2 * 10.7639, 1),
         "segments": segments,
         "segment_count": len(segments),
     }

@@ -1165,12 +1165,35 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
         "on-site before ordering.",
         styles["muted"],
     ))
+    # WHY confidence is what it is, when something outside the inputs lowered
+    # it: a trace that covers less of the building than Google sees, or a
+    # coarse tile. A lowered score with no reason reads as the app being
+    # arbitrary; the reason is the part the contractor can act on.
+    reasons = [s for s in (aggregates.get("partial_signals") or []) if s]
+    if reasons:
+        flow.append(Spacer(1, 4))
+        flow.append(Paragraph("<b>Check before ordering:</b>", styles["body"]))
+        for s in reasons:
+            flow.append(Paragraph(f"• {s}", styles["muted"]))
+    tc = aggregates.get("trace_coverage") or {}
+    if tc and not tc.get("capped"):
+        # Worth saying when it passes too — it is the one independent check.
+        flow.append(Paragraph(
+            f"<b>Coverage check:</b> the trace covers {float(tc.get('ratio') or 0):.0%} of the "
+            f"{float(tc.get('reference_sqft') or 0):,.0f} sq ft {tc.get('basis') or 'footprint'} "
+            "Google Solar measures for this building.",
+            styles["muted"],
+        ))
     flow.append(Spacer(1, 6))
 
-    # Imagery health
+    # Imagery health — usability of the tile, and separately how fine it is.
+    # "100/100" on a zoom-19 tile the contractor could not see facets on was
+    # true about the first and silent about the second.
     if run.get("imagery_health") is not None:
+        ftpp = aggregates.get("imagery_ft_per_px")
+        res = f" · {float(ftpp):.2f} ft per pixel" if ftpp else ""
         flow.append(Paragraph(
-            f"<b>Imagery health:</b> {(run.get('imagery_health') or 0) * 100:.0f} / 100",
+            f"<b>Imagery health:</b> {(run.get('imagery_health') or 0) * 100:.0f} / 100{res}",
             styles["body"],
         ))
     if run.get("warnings"):
@@ -1437,6 +1460,12 @@ def _cover_page(project: dict, run: dict, aggregates: dict, contractor: dict | N
 
     prepared = datetime.now().strftime("%B %-d, %Y") if hasattr(datetime.now(), "strftime") else ""
     conf_label, conf_color = _confidence_bucket(run.get("confidence") or 0)
+    # The cover is what gets read. If the trace looks like part of the building,
+    # say so here, not only on the methodology page nobody turns to.
+    tc = aggregates.get("trace_coverage") or {}
+    if tc.get("capped") and float(tc.get("ratio") or 1) < 1:
+        conf_label += (f" — trace covers ~{float(tc['ratio']):.0%} of the building; "
+                       "see Methodology before ordering")
     meta = [
         ["Project", project.get("name") or "—"],
         ["Property address", address],
