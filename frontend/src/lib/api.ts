@@ -1329,9 +1329,26 @@ export const api = {
                      far?: boolean
                      /** Opens this exact panorama in interactive Street View. */
                      pano_url?: string
+                     /** Where the photo was taken and which way it looks, so the
+                      *  picker can turn the camera and read a click as a bearing. */
+                     pano_id?: string
+                     camera?: { lat: number; lng: number }
+                     heading?: number | null
+                     fov?: number
                      reason?: 'no_key' | 'no_coverage' | 'api_rejected' | 'error'
                      detail?: string }>(
           `/api/v1/roofing/v2/streetview?lat=${lat}&lng=${lng}`),
+      /** The same panorama, pointed somewhere else. */
+      getStreetViewLook: (pano: string, heading: number, fov: number) =>
+        apiRequest<{ available: boolean; image?: string; heading?: number; fov?: number; reason?: string }>(
+          `/api/v1/roofing/v2/streetview/look?pano=${encodeURIComponent(pano)}&heading=${Math.round(heading)}&fov=${Math.round(fov)}`),
+      /** The building a click in the street photo points at. */
+      locateFromStreetView: (cameraLat: number, cameraLng: number, bearing: number) =>
+        apiRequest<{ found: boolean; ring?: { lat: number; lng: number }[]; distance_m?: number
+                     centroid?: { lat: number; lng: number }
+                     reason?: 'lookup_failed' | 'no_buildings' | 'nothing_on_bearing' }>(
+          `/api/v1/roofing/v2/streetview/locate`,
+          { method: 'POST', body: JSON.stringify({ camera_lat: cameraLat, camera_lng: cameraLng, bearing }) }),
       locationSearch: (q: string, withGeographies = false) =>
         apiRequest<{
           matches: Array<{

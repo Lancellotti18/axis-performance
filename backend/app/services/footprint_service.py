@@ -184,3 +184,79 @@ def _ring_area_deg2(ring: list[dict]) -> float:
         a += ring[i]["lng"] * ring[j]["lat"]
         a -= ring[j]["lng"] * ring[i]["lat"]
     return abs(a) / 2.0
+
+
+# ---------------------------------------------------------------------------
+# "That one" from the street
+# ---------------------------------------------------------------------------
+# A contractor recognises a house from the road far more easily than from
+# above. When they click it in a Street View photo, the click gives a compass
+# bearing from the camera, and the house they meant is the FIRST building that
+# bearing runs into. Everything behind it is hidden from the camera anyway.
+
+_RAY_MAX_M = 150.0
+_rays_cache: dict[str, tuple[float, list[list[dict]] | None]] = {}
+
+
+async def buildings_near(lat: float, lng: float, radius_m: float = _RAY_MAX_M) -> list[list[dict]] | None:
+    """Every mapped building outline within radius_m. None means the lookup
+    itself failed (not cached, so a flaky mirror can't poison an address);
+    [] means it worked and there is nothing mapped there."""
+    key = f"{_cache_key(lat, lng)}@{radius_m:.0f}"
+    hit = _rays_cache.get(key)
+    if hit and (time.time() - hit[0]) < _CACHE_TTL_SECONDS:
+        return hit[1]
+    query = (
+        f"[out:json][timeout:15];"
+        f'(way["building"](around:{radius_m:.0f},{lat:.7f},{lng:.7f}););'
+        f"out geom;"
+    )
+    data = await _race_mirrors(query)
+    if data is None:
+        return None
+    rings = [r for r in (_ring_from_way(e) for e in (data.get("elements") or [])
+                         if e.get("type") == "way") if len(r) >= 3]
+    # Bounded like the per-address cache's neighbours: a dense block can hold a
+    # few hundred outlines, so keep only a modest number of camera positions.
+    if len(_rays_cache) >= 40:
+        for k in sorted(_rays_cache, key=lambda k: _rays_cache[k][0])[:10]:
+            _rays_cache.pop(k, None)
+    _rays_cache[key] = (time.time(), rings)
+    return rings
+
+
+def _to_local_m(lat: float, lng: float, o_lat: float, o_lng: float) -> tuple[float, float]:
+    """(east, north) metres from the origin. Flat-earth is exact enough at 150 m."""
+    return ((lng - o_lng) * 111320.0 * math.cos(math.radians(o_lat)),
+            (lat - o_lat) * 111320.0)
+
+
+def first_building_on_bearing(cam_lat: float, cam_lng: float, bearing_deg: float,
+                              rings: list[list[dict]],
+                              max_m: float = _RAY_MAX_M) -> tuple[list[dict], float] | None:
+    """The building a ray from the camera hits first, and how far away it is.
+
+    bearing_deg is a compass bearing (0 = north, 90 = east). A building the
+    camera is standing inside is skipped: that happens when a panorama was shot
+    from a driveway under a carport, and it is never the house being pointed at.
+    """
+    b = math.radians(bearing_deg)
+    dx, dy = math.sin(b), math.cos(b)            # unit ray, east/north
+    best: tuple[list[dict], float] | None = None
+    for ring in rings:
+        if _point_in_ring(cam_lat, cam_lng, ring):
+            continue
+        pts = [_to_local_m(p["lat"], p["lng"], cam_lat, cam_lng) for p in ring]
+        n = len(pts)
+        for i in range(n):
+            (ax, ay), (bx, by) = pts[i], pts[(i + 1) % n]
+            ex, ey = bx - ax, by - ay
+            den = dx * ey - dy * ex
+            if abs(den) < 1e-12:
+                continue                          # edge parallel to the ray
+            # Solve camera + t*ray == a + u*edge.
+            t = (ax * ey - ay * ex) / den
+            u = (ax * dy - ay * dx) / den
+            if 0.0 <= u <= 1.0 and 0.0 < t <= max_m and (best is None or t < best[1]):
+                best = (ring, t)
+    return best
