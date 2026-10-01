@@ -77,6 +77,7 @@ class RoofModel:
     lengths_m: dict = field(default_factory=dict)   # kind -> deduplicated total
     quality: dict = field(default_factory=dict)
     labels: Optional[np.ndarray] = None             # per-pixel facet id, for overlays
+    dsm: Optional[np.ndarray] = None                # heights, for typing leftover sides
 
     def totals(self) -> dict:
         """The same keys Axis stores for a traced run, in feet / square feet."""
@@ -174,6 +175,7 @@ def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
                  "selection": selection,
                  "attached_suspected": _attached_suspected(bldg, px_m)},
         labels=labels,
+        dsm=dsm,
     )
 
 
@@ -1147,6 +1149,55 @@ def _intersect(a1, a2, b1, b2):
 
 
 LINE_MATCH_M = 0.6          # a side this close to a crease line (both ends) lies along it
+STEP_PROBE_M = 0.8          # how far inside each facet to check the roof sits on its plane
+STEP_FIT_M = 0.2            # ...and how closely
+
+
+def _step_side_kind(f, nb_id, nb_plane, a, b, model, px_m) -> Optional[str]:
+    """Type a side between two facets that lies on no crease line, from the heights.
+
+    Where a lower roof runs into the house under a higher one (Brookside Oaks'
+    garage meeting the main roof), or a ridge jogs to a different height, the
+    boundary is not where the two planes cross: they are a metre or two apart
+    there. If the roof just inside EACH side sits on that side's own plane, the
+    surface really does break between them - a step: the upper roof's own edge,
+    and step flashing on the lower one. These were left 'unlabeled' (77 ft on
+    Brookside, most of EagleView's step flashing). Returns None when the heights
+    do not clearly say so, so the contractor decides."""
+    dsm, labels = model.dsm, model.labels
+    if dsm is None or labels is None:
+        return None
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    d = b - a
+    L = float(np.hypot(*d))
+    if L < 1e-6:
+        return None
+    u = d / L
+    n = np.array([-u[1], u[0]])
+    H, W = dsm.shape
+    off = STEP_PROBE_M / px_m
+
+    def z(p, c, r):
+        return p[0] * c * px_m + p[1] * r * px_m + p[2]
+    gaps, fit_self, fit_nb = [], [], []
+    for t in np.linspace(0.15, 0.85, 8):
+        q = a + d * t
+        gaps.append(z(f.plane, *q) - z(nb_plane, *q))
+        for sgn in (1.0, -1.0):
+            c, r = q + n * sgn * off
+            ri, ci = int(round(r)), int(round(c))
+            if not (0 <= ri < H and 0 <= ci < W):
+                continue
+            if labels[ri, ci] == f.id:
+                fit_self.append(abs(float(dsm[ri, ci]) - z(f.plane, c, r)))
+            elif labels[ri, ci] == nb_id:
+                fit_nb.append(abs(float(dsm[ri, ci]) - z(nb_plane, c, r)))
+    g = float(np.median(gaps))
+    if (abs(g) <= STEP_GAP_M or not all(np.sign(x) == np.sign(g) for x in gaps)
+            or len(fit_self) < 3 or len(fit_nb) < 3
+            or np.median(fit_self) > STEP_FIT_M or np.median(fit_nb) > STEP_FIT_M):
+        return None
+    return _outer_kind(f.plane, d) if g > 0 else "wall_intersection"
 
 
 def _along(a, b, segs, px_m) -> Optional[float]:
@@ -1493,12 +1544,14 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
             if k in steps:
                 upper = steps[k]
                 sides.append((_outer_kind(f.plane, b - a) if upper == f.id else "wall_intersection", nb))
-            elif k in pair_kind:
-                segs_ = all_lines.get(k) or [lines[k][:2]]
-                on_line = _along(a, b, segs_, px_m) is not None
-                sides.append((pair_kind[k], nb) if on_line else ("unlabeled", nb))
             else:
-                sides.append(("unlabeled", nb))
+                segs_ = all_lines.get(k) or ([lines[k][:2]] if k in lines else [])
+                on_line = k in pair_kind and _along(a, b, segs_, px_m) is not None
+                if on_line:
+                    sides.append((pair_kind[k], nb))
+                else:
+                    step = _step_side_kind(f, nb, planes[nb], a, b, model, px_m) if nb in planes else None
+                    sides.append((step or "unlabeled", nb))
         lens = [float(np.hypot(*(np.asarray(snapped[(i + 1) % n]) - np.asarray(snapped[i])))) * px_m
                 for i in range(n)]
         ks = _absorb_corner_stubs([k for k, _ in sides], lens, [nb is None for _, nb in sides])

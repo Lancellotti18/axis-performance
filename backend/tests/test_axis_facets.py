@@ -10,6 +10,8 @@ and the report use, and compare with the known answers.
 """
 import math
 
+import numpy as np
+
 import pytest
 
 from tests import _roof_synth as S
@@ -82,3 +84,37 @@ def test_a_porch_step_reaches_the_report_as_wall_and_eave():
     assert totals["wall_intersection"] == pytest.approx(8.0 * M_TO_FT, rel=0.1)
     assert totals["hip"] <= STRAY_FT
     assert unlabeled <= STRAY_FT
+
+
+# ── Sides on no crease line, typed from the heights ───────────────────────
+
+from app.services import roof_from_dsm as R  # noqa: E402
+
+
+def _two_levels(drop):
+    """Two flat-ish planes side by side, the right one `drop` metres lower,
+    meeting along column 50 — e.g. a garage roof running into the house wall
+    under the main roof's edge."""
+    H, W, px = 100, 100, 0.1
+    cols, rows = np.meshgrid(np.arange(W), np.arange(H))
+    up = (0.05, 0.0, 6.0)
+    lo = (0.05, 0.0, 6.0 - drop)
+    dsm = np.where(cols < 50, up[0] * cols * px + up[2], lo[0] * cols * px + lo[2])
+    labels = np.where(cols < 50, 0, 1).astype(np.int32)
+    fac = lambda i, pl: R.Facet(i, 25.0, 25.0, 3.0, 0.6, 270.0, pl, 0.02, [])
+    m = R.RoofModel(True, None, px, [fac(0, up), fac(1, lo)], labels=labels, dsm=dsm)
+    return m, fac(0, up), fac(1, lo), up, lo
+
+
+def test_a_real_step_between_two_roofs_is_flashing_not_blank():
+    """Brookside Oaks: 77 ft of these were left unlabeled, most of EagleView's
+    111 ft of step flashing."""
+    m, fu, fl, up, lo = _two_levels(1.2)
+    a, b = (49.5, 10.0), (49.5, 90.0)
+    assert R._step_side_kind(fl, 0, up, b, a, m, 0.1) == "wall_intersection"      # lower roof: flashing
+    assert R._step_side_kind(fu, 1, lo, a, b, m, 0.1) in ("eave", "rake")         # upper roof: its own edge
+
+
+def test_a_continuous_surface_is_not_called_a_step():
+    m, fu, fl, up, lo = _two_levels(0.0)
+    assert R._step_side_kind(fl, 0, up, (49.5, 90.0), (49.5, 10.0), m, 0.1) is None
