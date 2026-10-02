@@ -256,3 +256,16 @@ def test_a_house_newer_than_googles_data_is_not_measured(wired, monkeypatch):
     out = _call()
     assert out["available"] is False and out["reason"].startswith("Sorry")
     assert "facets" not in wired["saved"]
+
+
+def test_the_contractor_can_measure_old_data_anyway_and_it_is_noted(wired, monkeypatch):
+    dsm, mask, px = S.gable()
+    async def layers(*a, **k):
+        ls = _layers_for(dsm, mask, px); ls.imagery_date = "2017-10-20"; return ls
+    monkeypatch.setattr(SL, "fetch_layers", layers)
+    first = _call()
+    assert first["available"] is False and first["stale_imagery"] is True
+    req = REQ.model_copy(update={"allow_old_imagery": True})
+    out = asyncio.run(rv.auto_measure("r1", req, RYAN))
+    assert out["available"] is True
+    assert any("October 2017" in w and "confirmed" in w for w in out["warnings"])

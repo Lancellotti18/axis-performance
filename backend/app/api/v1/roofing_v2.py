@@ -1258,6 +1258,15 @@ async def _solar_pitch_for_polygons(
 STALE_IMAGERY_YEARS = 5
 
 
+def _imagery_month(imagery_date: Optional[str]) -> str:
+    from datetime import date as _date
+    try:
+        y, m, d = (int(x) for x in str(imagery_date)[:10].split("-"))
+        return _date(y, m, d).strftime("%B %Y")
+    except (ValueError, TypeError):
+        return str(imagery_date or "an unknown date")
+
+
 def _stale_imagery_note(imagery_date: Optional[str], today: Optional["date"] = None) -> Optional[str]:
     """An apology and the way forward when Google's data is too old to trust,
     or None. Unknown dates are not refused (most addresses report one)."""
@@ -1621,6 +1630,9 @@ class AutoMeasureRequest(BaseModel):
     lat: float
     lng: float
     satellite_image_url: Optional[str] = None
+    # The contractor has checked the house is unchanged since Google's (old)
+    # flight and wants it measured anyway. Only lifts the age check.
+    allow_old_imagery: bool = False
 
 
 @router.post("/runs/{run_id}/auto-measure")
@@ -1666,8 +1678,22 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     if not layers.available:
         return fallback(layers.reason or "Google has no 3D data for this address.")
     stale = _stale_imagery_note(layers.imagery_date)
+    if stale and not req.allow_old_imagery:
+        # stale_imagery lets the screen offer "It's the same house - measure anyway".
+        return fallback(stale, stale_imagery=True, imagery_date=layers.imagery_date)
     if stale:
-        return fallback(stale)
+        # Measured anyway on the contractor's word. Said on screen AND kept on
+        # the run, so the report's methodology carries it too.
+        note = (f"Measured from Google 3D data from {_imagery_month(layers.imagery_date)}, after the "
+                "contractor confirmed the house is unchanged since then.")
+        warnings.append(note)
+        try:
+            prior = (db.table("roof_measurement_runs").select("warnings").eq("id", run_id)
+                     .single().execute().data or {}).get("warnings") or []
+            kept = [w for w in prior if not str(w).startswith("Measured from Google 3D data from")]
+            db.table("roof_measurement_runs").update({"warnings": kept + [note]}).eq("id", run_id).execute()
+        except Exception as e:
+            logger.info("old-imagery note not stored for %s: %s", run_id, e)
 
     model = await asyncio.to_thread(roof_from_dsm.extract_roof, layers.dsm, layers.mask,
                                     layers.px_m, layers.seed_rc)

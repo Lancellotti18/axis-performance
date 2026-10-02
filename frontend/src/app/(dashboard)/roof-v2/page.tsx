@@ -179,7 +179,12 @@ export default function RoofV2Page() {
   // has it (Ryan's rule: nobody else until 5 side-by-side comparisons pass).
   const [autoMeasureOn, setAutoMeasureOn] = useState(false)
   const [autoBusy, setAutoBusy] = useState(false)
-  const [autoNote, setAutoNote] = useState<{ ok: boolean; text: string; warnings: string[] } | null>(null)
+  const [autoNote, setAutoNote] = useState<{
+    ok: boolean; text: string; warnings: string[]
+    // Google's 3D data was too old to trust on its own; the contractor may
+    // still confirm the house is unchanged and measure anyway.
+    staleDate?: string | null
+  } | null>(null)
   const [step, setStep] = useState<Step>('project')
   // Callbacks that chain into each other across a project being created a
   // moment earlier read these, not stale closures.
@@ -632,7 +637,7 @@ export default function RoofV2Page() {
   // Measure the confirmed house from Google 3D. On success the result is
   // already stored server-side exactly like a trace; load it into the editor
   // for review. On any refusal, say why and open the editor empty to trace.
-  const runAutoMeasure = useCallback(async () => {
+  const runAutoMeasure = useCallback(async (allowOldImagery = false) => {
     if (!runId || !imagery) return
     setAutoBusy(true)
     setAutoNote(null)
@@ -644,6 +649,7 @@ export default function RoofV2Page() {
         lat: imagery.lat ?? location?.lat ?? 0,
         lng: imagery.lng ?? location?.lng ?? 0,
         satellite_image_url: imagery.original_url || imagery.url,
+        allow_old_imagery: allowOldImagery,
       })
       if (r.available && r.facets && r.edges) {
         const { fcts, edgs } = rowsToGeometry(r.facets, r.edges)
@@ -667,7 +673,10 @@ export default function RoofV2Page() {
         })
       } else {
         const why = r.reason || "This roof couldn't be measured automatically."
-        setAutoNote({ ok: false, text: /by hand/i.test(why) ? why : `${why} Trace it below instead.`, warnings: [] })
+        setAutoNote({
+          ok: false, text: /by hand/i.test(why) ? why : `${why} Trace it below instead.`, warnings: [],
+          staleDate: r.stale_imagery ? (r.imagery_date ?? 'an old date') : null,
+        })
       }
     } catch (e) {
       setAutoNote({ ok: false, text: `Automatic measurement didn't finish (${e instanceof Error ? e.message : 'error'}). Trace it below instead.`, warnings: [] })
@@ -1050,6 +1059,18 @@ export default function RoofV2Page() {
               {autoNote.warnings.map(w => (
                 <div key={w} className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-amber-900">⚠️ {w}</div>
               ))}
+              {!autoNote.ok && autoNote.staleDate && (
+                <button
+                  onClick={() => {
+                    if (window.confirm(
+                      `Only continue if you're sure this house hasn't been built, added onto or reshaped since ${autoNote.staleDate}. `
+                      + 'The report will note that you confirmed it.')) void runAutoMeasure(true)
+                  }}
+                  disabled={autoBusy}
+                  className="mt-3 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50">
+                  It&apos;s the same house — measure anyway
+                </button>
+              )}
             </div>
           )}
           {/* Save state, always on screen while drawing. Tracing is the most

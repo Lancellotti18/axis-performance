@@ -1417,10 +1417,12 @@ export const api = {
         lat: number
         lng: number
         satellite_image_url?: string | null
+        allow_old_imagery?: boolean
       }) =>
         apiRequest<{
           available: boolean
           reason?: string
+          stale_imagery?: boolean
           facets?: Array<Record<string, unknown>>
           edges?: Array<Record<string, unknown>>
           warnings?: string[]
