@@ -1250,6 +1250,35 @@ async def _solar_pitch_for_polygons(
     return out
 
 
+# Google's 3D data is a snapshot from one flight. A house built, added onto or
+# re-roofed with a new shape since then is not in it, and measuring it anyway
+# reports the OLD building as if it were this one. 245 E Mountain Rd (Knoxville
+# MD) is the case that showed it: Google's data is from October 2017 and shows a
+# small farmhouse where a 4,000 sq ft house now stands.
+STALE_IMAGERY_YEARS = 5
+
+
+def _stale_imagery_note(imagery_date: Optional[str], today: Optional["date"] = None) -> Optional[str]:
+    """An apology and the way forward when Google's data is too old to trust,
+    or None. Unknown dates are not refused (most addresses report one)."""
+    from datetime import date as _date
+    if not imagery_date:
+        return None
+    try:
+        y, m, d = (int(x) for x in str(imagery_date)[:10].split("-"))
+        taken = _date(y, m, d)
+    except (ValueError, TypeError):
+        return None
+    today = today or _date.today()
+    age_years = (today - taken).days / 365.25
+    if age_years <= STALE_IMAGERY_YEARS:
+        return None
+    return (f"Sorry - we couldn't auto-measure this roof. Google's 3D data for this address is from "
+            f"{taken.strftime('%B %Y')}, over {int(age_years)} years old, so the house may have been "
+            "built, added onto or changed since, and we'd rather not measure the wrong building. "
+            "Please trace this roof by hand.")
+
+
 async def _store_roof_objects(db, run_id: str, model, layers, sp: dict, req, shift_en) -> list[dict]:
     """Find vents and chimneys on the measured roof and store them as
     SUGGESTIONS (ai_suggested, unconfirmed) for the penetrations panel. Replaces
@@ -1636,6 +1665,9 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     layers = await solar_layers_service.fetch_layers(lat, lng, settings.GOOGLE_SOLAR_API_KEY)
     if not layers.available:
         return fallback(layers.reason or "Google has no 3D data for this address.")
+    stale = _stale_imagery_note(layers.imagery_date)
+    if stale:
+        return fallback(stale)
 
     model = await asyncio.to_thread(roof_from_dsm.extract_roof, layers.dsm, layers.mask,
                                     layers.px_m, layers.seed_rc)

@@ -234,3 +234,25 @@ def test_vents_found_at_auto_measure_are_offered_once(monkeypatch):
     monkeypatch.setattr(rv, "require_owned_run", lambda db, rid, user: {"id": rid})
     res = asyncio.run(rv.suggest_penetrations("r1", RYAN))
     assert [(s["count"], s["source"]) for s in res["suggestions"]] == [(2, "google_3d")]
+
+
+# ── Google's data older than the house ────────────────────────────────────
+
+def test_old_google_data_is_refused_with_an_apology():
+    from datetime import date
+    note = rv._stale_imagery_note("2017-10-20", today=date(2026, 10, 2))
+    assert note.startswith("Sorry") and "October 2017" in note and "by hand" in note
+    assert rv._stale_imagery_note("2023-08-20", today=date(2026, 10, 2)) is None
+    assert rv._stale_imagery_note(None) is None and rv._stale_imagery_note("garbage") is None
+
+
+def test_a_house_newer_than_googles_data_is_not_measured(wired, monkeypatch):
+    """245 E Mountain Rd: Google's 2017 data shows a farmhouse where a 4,000
+    sq ft house now stands. Measuring it would report the old building."""
+    dsm, mask, px = S.gable()
+    async def layers(*a, **k):
+        ls = _layers_for(dsm, mask, px); ls.imagery_date = "2017-10-20"; return ls
+    monkeypatch.setattr(SL, "fetch_layers", layers)
+    out = _call()
+    assert out["available"] is False and out["reason"].startswith("Sorry")
+    assert "facets" not in wired["saved"]

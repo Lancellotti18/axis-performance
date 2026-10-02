@@ -666,7 +666,8 @@ export default function RoofV2Page() {
           warnings: r.warnings || [],
         })
       } else {
-        setAutoNote({ ok: false, text: `${r.reason || "This roof couldn't be measured automatically."} Trace it below instead.`, warnings: [] })
+        const why = r.reason || "This roof couldn't be measured automatically."
+        setAutoNote({ ok: false, text: /by hand/i.test(why) ? why : `${why} Trace it below instead.`, warnings: [] })
       }
     } catch (e) {
       setAutoNote({ ok: false, text: `Automatic measurement didn't finish (${e instanceof Error ? e.message : 'error'}). Trace it below instead.`, warnings: [] })
