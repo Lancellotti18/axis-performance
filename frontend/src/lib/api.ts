@@ -1479,6 +1479,42 @@ export const api = {
           `/api/v1/roofing/v2/runs/${runId}/edges`,
           { method: 'PUT', body: JSON.stringify(payload) },
         ),
+      // Facets AND edges in one request. Saving them as two requests let a closed
+      // tab between the two erase every line label (saving facets drops edges).
+      // keepalive lets a save fired while the tab is closing still reach the server.
+      putGeometry: (runId: string, payload: {
+        image_width_px: number
+        image_height_px: number
+        zoom: number
+        lat: number
+        lng: number
+        satellite_image_url?: string
+        facets: Array<{
+          facet_label: string
+          polygon: [number, number][]
+          pitch: string
+          pitch_source?: string
+          confidence?: number
+          user_confirmed?: boolean
+          ai_suggested?: boolean
+          azimuth_deg?: number
+        }>
+        edges: Array<{
+          facet_label: string
+          vertex_index_start: number
+          vertex_index_end: number
+          edge_type: 'eave' | 'rake' | 'ridge' | 'hip' | 'valley' | 'gable_end' | 'wall_intersection' | 'unlabeled'
+          shared_with_facet_label?: string
+          user_confirmed?: boolean
+        }>
+      }, opts?: { keepalive?: boolean }) => {
+        const body = JSON.stringify(payload)
+        return apiRequest<{ facets: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>>; count: number; edge_count: number }>(
+          `/api/v1/roofing/v2/runs/${runId}/geometry`,
+          // Browsers cap keepalive bodies at 64 KB; a bigger roof saves normally.
+          { method: 'PUT', body, keepalive: !!opts?.keepalive && body.length < 60000 },
+        )
+      },
       recompute: (runId: string) =>
         apiRequest<Record<string, unknown>>(`/api/v1/roofing/v2/runs/${runId}/recompute`),
       addPenetration: (runId: string, p: {

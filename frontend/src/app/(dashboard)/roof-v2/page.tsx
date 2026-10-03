@@ -18,7 +18,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { getUser } from '@/lib/auth'
 import { useRegisterChatContext } from '@/lib/chat-context'
 import LocationPicker, { type LocationSelected } from '@/components/roof-v2/LocationPicker'
@@ -147,7 +147,7 @@ export default function RoofV2Page() {
   const [runId, setRunId] = useState<string | null>(null)
   // `startRun` runs before persistGeometry is defined and must not re-create
   // itself every time the save closure changes — a ref keeps the wiring stable.
-  const persistGeometryRef = useRef<((f: Facet[], e: LabeledEdge[]) => Promise<void>) | null>(null)
+  const persistGeometryRef = useRef<((f: Facet[], e: LabeledEdge[], opts?: { keepalive?: boolean }) => Promise<void>) | null>(null)
   // Whether the contractor's work is actually on the server. Drawing is the
   // most expensive thing they do in this app; they should never have to guess.
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -527,7 +527,7 @@ export default function RoofV2Page() {
   // Persist facets + edges to backend whenever the editor publishes them.
   // Surfaces specific errors instead of silently failing so the contractor
   // doesn't end up staring at an empty Measurements panel wondering why.
-  const persistGeometry = useCallback(async (newFacets: Facet[], newEdges: LabeledEdge[]) => {
+  const persistGeometry = useCallback(async (newFacets: Facet[], newEdges: LabeledEdge[], opts?: { keepalive?: boolean }) => {
     setFacets(newFacets)
     setEdges(newEdges)
     if (!runId) {
@@ -557,7 +557,7 @@ export default function RoofV2Page() {
       return
     }
     try {
-      await api.roofing.v2.putFacets(runId, {
+      const geometry = {
         image_width_px: imagery.width_px ?? 2048,
         image_height_px: imagery.height_px ?? 1366,
         zoom: imagery.zoom ?? 20,
@@ -575,12 +575,6 @@ export default function RoofV2Page() {
           ai_suggested: !!f.aiSuggested,
           azimuth_deg: f.azimuthDeg,
         })),
-      })
-      await api.roofing.v2.putEdges(runId, {
-        image_width_px: imagery.width_px ?? 2048,
-        image_height_px: imagery.height_px ?? 1366,
-        zoom: imagery.zoom ?? 20,
-        lat,
         edges: newEdges.map(e => ({
           facet_label: e.facetLabel,
           vertex_index_start: e.vertexIndexStart,
@@ -589,7 +583,20 @@ export default function RoofV2Page() {
           shared_with_facet_label: e.sharedWithFacetLabel,
           user_confirmed: e.userConfirmed,
         })),
-      })
+      }
+      try {
+        await api.roofing.v2.putGeometry(runId, geometry, { keepalive: !!opts?.keepalive })
+      } catch (err) {
+        // Rollout guard: the page can deploy before the server that has the
+        // one-request save. Until then, save the old way rather than not at all.
+        if (!(err instanceof ApiError && (err.status === 404 || err.status === 405))) throw err
+        const { edges: geomEdges, ...facetPayload } = geometry
+        await api.roofing.v2.putFacets(runId, facetPayload)
+        await api.roofing.v2.putEdges(runId, {
+          image_width_px: geometry.image_width_px, image_height_px: geometry.image_height_px,
+          zoom: geometry.zoom, lat: geometry.lat, edges: geomEdges,
+        })
+      }
       setGeometryStamp(s => s + 1)
       setSaveState('saved')
       setSavedAt(Date.now())
@@ -612,7 +619,8 @@ export default function RoofV2Page() {
     if (debouncedRef.t) { clearTimeout(debouncedRef.t); debouncedRef.t = null }
     const p = debouncedRef.pending
     debouncedRef.pending = null
-    if (p) void persistGeometryRef.current?.(p.facets, p.edges)
+    // The tab may be closing: keepalive lets this last save finish after it goes.
+    if (p) void persistGeometryRef.current?.(p.facets, p.edges, { keepalive: true })
   }, [debouncedRef])
 
   /** Drop a queued canvas write.

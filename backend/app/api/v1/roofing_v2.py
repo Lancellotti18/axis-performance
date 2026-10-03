@@ -1392,18 +1392,12 @@ async def _cache_tile(db, run_id: str, url: str) -> str:
         return url
 
 
-@router.put("/runs/{run_id}/facets")
-async def put_facets(
-    run_id: str, req: PutFacetsRequest, user: dict = Depends(require_user)
-) -> dict:
+async def _prepare_facets(db, run_id: str, req: PutFacetsRequest) -> tuple[list[dict], dict]:
+    """Everything slow about saving facets — the Solar pitch lookup and caching
+    the tile — done BEFORE anything is deleted. The old order deleted every
+    facet (and, by cascade, every edge) and only then called Google, so a slow
+    or interrupted save left the roof with no edges. Returns (rows, run_update).
     """
-    Replace all facets for a run. Each facet's plan_area_sqft, true_area_sqft,
-    and pitch_degrees are computed server-side so the contractor can't
-    accidentally store a wrong number.
-    """
-    require_owned_run(get_supabase(), run_id, user)
-    db = get_supabase()
-
     # Make sure the run exists (RLS will reject otherwise)
     # Pull the tile anchor too — the Solar pitch lookup below needs it. Selecting
     # only "id" here silently starved that lookup of coordinates.
@@ -1416,8 +1410,6 @@ async def put_facets(
            .eq("id", run_id).single().execute())
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
-
-    db.table("roof_facets").delete().eq("run_id", run_id).execute()
 
     solar_pitches = await _solar_pitch_for_polygons(
         run.data, [f.polygon for f in req.facets], req.zoom,
@@ -1476,16 +1468,7 @@ async def put_facets(
             "ai_suggested": f.ai_suggested,
         })
 
-    if rows:
-        ins = db.table("roof_facets").insert(rows).execute()
-        new_facets = ins.data or []
-    else:
-        new_facets = []
-
-    # Cache image params on the run so we can recompute later without the client
-    # AND so resume reloads the exact tile these facets were drawn on.
     run_update = {
-        "facet_count": len(new_facets),
         "satellite_zoom": req.zoom,
         "satellite_lat": req.lat,
         "satellite_lng": req.lng,
@@ -1493,8 +1476,34 @@ async def put_facets(
     if req.satellite_image_url:
         # Pin a stored copy, not the provider's live render endpoint.
         run_update["satellite_image_url"] = await _cache_tile(db, run_id, req.satellite_image_url)
-    db.table("roof_measurement_runs").update(run_update).eq("id", run_id).execute()
+    return rows, run_update
 
+
+def _write_facets(db, run_id: str, rows: list[dict], run_update: dict) -> list[dict]:
+    """Replace the run's facets. No network calls besides the database, so the
+    gap between the delete and the insert is as short as it can be."""
+    db.table("roof_facets").delete().eq("run_id", run_id).execute()
+    new_facets = (db.table("roof_facets").insert(rows).execute().data or []) if rows else []
+    # Cache image params on the run so we can recompute later without the client
+    # AND so resume reloads the exact tile these facets were drawn on.
+    db.table("roof_measurement_runs").update(
+        {**run_update, "facet_count": len(new_facets)}).eq("id", run_id).execute()
+    return new_facets
+
+
+@router.put("/runs/{run_id}/facets")
+async def put_facets(
+    run_id: str, req: PutFacetsRequest, user: dict = Depends(require_user)
+) -> dict:
+    """
+    Replace all facets for a run. Each facet's plan_area_sqft, true_area_sqft,
+    and pitch_degrees are computed server-side so the contractor can't
+    accidentally store a wrong number.
+    """
+    require_owned_run(get_supabase(), run_id, user)
+    db = get_supabase()
+    rows, run_update = await _prepare_facets(db, run_id, req)
+    new_facets = _write_facets(db, run_id, rows, run_update)
     return {"facets": new_facets, "count": len(new_facets)}
 
 
@@ -1522,33 +1531,11 @@ class PutEdgesRequest(BaseModel):
     edges: list[EdgeIn]
 
 
-@router.put("/runs/{run_id}/edges")
-async def put_edges(
-    run_id: str, req: PutEdgesRequest, user: dict = Depends(require_user)
-) -> dict:
-    """
-    Replace all edges for a run. Each edge's plan_length_ft and
-    slope_adjusted_ft are computed from the parent facet's polygon and pitch
-    (deterministic — no LLM, no guesses).
-    """
-    require_owned_run(get_supabase(), run_id, user)
-    db = get_supabase()
-
-    facets_res = db.table("roof_facets").select("id, facet_label, polygon, pitch").eq(
-        "run_id", run_id
-    ).execute()
-    facets = {f["facet_label"]: f for f in (facets_res.data or [])}
-    if not facets:
-        raise HTTPException(
-            status_code=422,
-            detail="Cannot put edges before any facets exist for this run.",
-        )
-
-    facet_ids = [f["id"] for f in facets.values()]
-    db.table("roof_edges").delete().in_("facet_id", facet_ids).execute()
-
+def _edge_rows(facets: dict[str, dict], edges: list, req) -> list[dict]:
+    """Edge rows for the given facets (keyed by label). Lengths come from the
+    parent facet's polygon and pitch — deterministic, nothing estimated."""
     rows: list[dict] = []
-    for e in req.edges:
+    for e in edges:
         facet = facets.get(e.facet_label)
         if not facet:
             continue
@@ -1578,6 +1565,36 @@ async def put_edges(
             "user_confirmed": e.user_confirmed,
         })
 
+    return rows
+
+
+@router.put("/runs/{run_id}/edges")
+async def put_edges(
+    run_id: str, req: PutEdgesRequest, user: dict = Depends(require_user)
+) -> dict:
+    """
+    Replace all edges for a run. Each edge's plan_length_ft and
+    slope_adjusted_ft are computed from the parent facet's polygon and pitch
+    (deterministic — no LLM, no guesses).
+    """
+    require_owned_run(get_supabase(), run_id, user)
+    db = get_supabase()
+
+    facets_res = db.table("roof_facets").select("id, facet_label, polygon, pitch").eq(
+        "run_id", run_id
+    ).execute()
+    facets = {f["facet_label"]: f for f in (facets_res.data or [])}
+    if not facets:
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot put edges before any facets exist for this run.",
+        )
+
+    facet_ids = [f["id"] for f in facets.values()]
+    db.table("roof_edges").delete().in_("facet_id", facet_ids).execute()
+
+    rows = _edge_rows(facets, req.edges, req)
+
     if rows:
         ins = db.table("roof_edges").insert(rows).execute()
         new_edges = ins.data or []
@@ -1585,6 +1602,34 @@ async def put_edges(
         new_edges = []
 
     return {"edges": new_edges, "count": len(new_edges)}
+
+
+class PutGeometryRequest(PutFacetsRequest):
+    edges: list[EdgeIn] = []
+
+
+@router.put("/runs/{run_id}/geometry")
+async def put_geometry(
+    run_id: str, req: PutGeometryRequest, user: dict = Depends(require_user)
+) -> dict:
+    """Replace a run's facets AND edges in one request.
+
+    The editor used to save with two requests (facets, then edges). Saving
+    facets deletes every edge with them, so anything that stopped the second
+    request — a closed tab, a dropped signal on a roof, a navigation — left a
+    measured roof with all of its line labels gone. Here the slow work is done
+    first and the delete/insert/insert runs back to back on the server, where a
+    client that goes away cannot split it.
+    """
+    require_owned_run(get_supabase(), run_id, user)
+    db = get_supabase()
+    rows, run_update = await _prepare_facets(db, run_id, req)
+    new_facets = _write_facets(db, run_id, rows, run_update)
+    by_label = {f["facet_label"]: f for f in new_facets}
+    edge_rows = _edge_rows(by_label, req.edges, req) if by_label else []
+    new_edges = (db.table("roof_edges").insert(edge_rows).execute().data or []) if edge_rows else []
+    return {"facets": new_facets, "edges": new_edges,
+            "count": len(new_facets), "edge_count": len(new_edges)}
 
 
 # ----------------------------------------------------------------------------
