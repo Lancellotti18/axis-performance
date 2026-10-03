@@ -388,7 +388,7 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
             <div>
               <div className="text-sm font-semibold text-amber-900">Crunching the latest measurements…</div>
               <p className="mt-0.5 text-xs leading-relaxed text-amber-900/80">
-                Roof area, roof-line lengths, confidence, and the material list are updating from your last edit.
+                Roof area, roof-line lengths, completeness, and the material list are updating from your last edit.
                 Hang tight — the numbers below settle the moment this finishes.
               </p>
             </div>
@@ -396,7 +396,7 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
             <div>
               <div className="text-sm font-semibold text-amber-900">These numbers aren&apos;t final yet</div>
               <p className="mt-0.5 text-xs leading-relaxed text-amber-900/80">
-                Roof-line lengths, true roof area, confidence, and the material list stay <strong>provisional</strong> until
+                Roof-line lengths, true roof area, completeness, and the material list stay <strong>provisional</strong> until
                 you confirm the edges. Trace every plane, then hit <strong>✨ Auto-label edges</strong> and accept or fix
                 each one — the totals lock in the moment you do.
                 <span className="mt-1 block text-amber-800/90"><EdgeWorkRemaining unlabeled={unlabeledCount} unconfirmed={unconfirmedCount} /></span>
@@ -411,7 +411,7 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
         <Card label="True roof area" value={fmtSf(aggregates?.total_roof_sqft)} sub="(slope-adjusted)" />
         <Card label="Roofing squares" value={aggregates?.squares != null ? `${aggregates.squares.toFixed(2)} sq` : '—'} sub="area ÷ 100" />
         <Card label="Predominant pitch" value={aggregates?.predominant_pitch ?? '—'} sub={aggregates?.predominant_pitch_degrees ? `${aggregates.predominant_pitch_degrees.toFixed(1)}°` : ''} />
-        <Card label="Confidence" value={<span className={`inline-block rounded border px-2 py-0.5 text-xs ${conf.cls}`}>{conf.label} ({((aggregates?.confidence ?? 0) * 100).toFixed(0)}%)</span>} sub="area-weighted across facets" />
+        <Card label="Completeness" value={<span className={`inline-block rounded border px-2 py-0.5 text-xs ${conf.cls}`}>{conf.label} ({((aggregates?.confidence ?? 0) * 100).toFixed(0)}%)</span>} sub="how complete the inputs are — not accuracy" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -1023,7 +1023,7 @@ def _section_7_exterior(siding: list[dict], styles: dict) -> list:
 
 def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibration: dict | None = None,
                            facets: list[dict] | None = None) -> list:
-    flow = [_section_header("Methodology & Confidence", 9, styles)]
+    flow = [_section_header("Methodology & Completeness", 9, styles)]
 
     source = run.get("source") or "unknown"
     # An auto-measured roof is still stored under the run's tracing source;
@@ -1086,11 +1086,11 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
     # Confidence breakdown
     conf_label, conf_color = _confidence_bucket(run.get("confidence") or 0)
     flow.append(Paragraph(
-        f"<b>Overall confidence:</b> <font color='{conf_color.hexval()}'>{conf_label}</font>",
+        f"<b>Measurement completeness:</b> <font color='{conf_color.hexval()}'>{conf_label}</font>",
         styles["body"],
     ))
     flow.append(Paragraph(
-        "Confidence reflects how complete and well-grounded the measurement "
+        "Completeness reflects how complete and well-grounded the measurement "
         "inputs are — weighted across: edges labeled (ridge/hip/valley/eave/"
         "rake/wall), roof pitch confirmed, scale source (reference object &gt; "
         "satellite tile &gt; estimated), and facet geometry. It is a measure of "
@@ -1465,7 +1465,7 @@ def _cover_page(project: dict, run: dict, aggregates: dict, contractor: dict | N
         Paragraph("TRUE ROOF AREA", styles["hero_label"]),
         Paragraph("ROOFING SQUARES", styles["hero_label"]),
         Paragraph("PREDOMINANT PITCH", styles["hero_label"]),
-        Paragraph("MEASUREMENT CONFIDENCE", styles["hero_label"]),
+        Paragraph("MEASUREMENT COMPLETENESS", styles["hero_label"]),
     ]], colWidths=[W / 4] * 4)
     hero.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
@@ -1477,11 +1477,11 @@ def _cover_page(project: dict, run: dict, aggregates: dict, contractor: dict | N
     flow.append(hero)
     # Confidence is input completeness, not an accuracy guarantee — said
     # beside the number, not only in the methodology at the back.
-    conf_note = ("Confidence measures how complete and well-grounded the measurement is. "
-                 "It is not a guarantee of accuracy — verify on site before ordering material.")
+    conf_note = ("Completeness measures how complete and well-grounded the measurement inputs are. "
+                 "It is not a measure of accuracy — verify on site before ordering material.")
     tc = aggregates.get("trace_coverage") or {}
     if tc.get("capped") and float(tc.get("ratio") or 1) < 1:
-        conf_note = (f"<b>Confidence was lowered: the measured outline covers about "
+        conf_note = (f"<b>Completeness was lowered: the measured outline covers about "
                      f"{float(tc['ratio']):.0%} of the building Google sees.</b> Part of the roof may "
                      "be missing — see Methodology before ordering. " + conf_note)
     flow += [Spacer(1, 4), Paragraph(conf_note, styles["muted"]), Spacer(1, 10)]
@@ -1663,7 +1663,7 @@ def generate_v2_report(
                (["Flashing Report"] if include_flashing else []) + \
                ["Roof Penetrations", "Material Ordering Summary"] + \
                (["Exterior Measurements"] if include_siding else []) + \
-               ["Methodology & Confidence", "Property Photos"] + \
+               ["Methodology & Completeness", "Property Photos"] + \
                (["Job Photos"] if project_photo_flow_probe else [])
     toc: list[tuple[str, str]] = []
     for i, (t, _png, _cap, _note) in enumerate(available):

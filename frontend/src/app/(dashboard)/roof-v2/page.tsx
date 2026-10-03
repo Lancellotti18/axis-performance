@@ -1350,14 +1350,14 @@ export default function RoofV2Page() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Stat label="Facets" value={facets.length.toString()} />
               <Stat label="Edges labeled" value={edges.filter(e => e.edgeType !== 'unlabeled').length.toString()} />
-              <Stat label="Confidence"
+              <Stat label="Completeness"
                 value={edges.some(e => e.edgeType === 'unlabeled') ? '…' : `${Math.round(confidence * 100)}%`}
                 color={blockingIssues.length ? 'text-rose-800' : undefined} />
               <Stat label="Imagery" value={`${Math.round((imagery?.health_score ?? 0) * 100)}%`} />
             </div>
             {blockingIssues.length > 0 && (
               <div role="alert" className="mt-3 rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900">
-                <strong>Confidence is capped because this roof&apos;s measurements don&apos;t add up.</strong>
+                <strong>Completeness is capped because this roof&apos;s measurements don&apos;t add up.</strong>
                 <ul className="mt-1.5 list-disc space-y-1 pl-5">
                   {blockingIssues.map(c => <li key={c}>{ISSUE_TEXT[c] ?? c}</li>)}
                 </ul>
