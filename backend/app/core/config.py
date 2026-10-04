@@ -56,12 +56,10 @@ class Settings(BaseSettings):
     # Comma-separated Supabase user ids, or "*" for everyone. Ryan's rule: no
     # contractor gets it until 5 side-by-side comparisons pass, so it defaults
     # to his own accounts only. Ids, not emails, so no address lives in code.
-    AUTO_MEASURE_USER_IDS: str = (
-        "f9dafe47-810a-4c72-81c6-dbe2d9baf64b,"
-        "f096fd85-1541-4b1b-a491-1bc8c966afca,"
-        "7b92b4aa-4187-4ff8-9014-46702b65986b,"
-        "37ff7be5-b75c-402c-aa42-8061e9b23783"
-    )
+    # Ryan opened it to every account on 2026-10-04 (few accounts exist; it is
+    # tuned as more reference reports come in). "*" = everyone; a comma list of
+    # user ids restricts it again, e.g. if a problem needs containing.
+    AUTO_MEASURE_USER_IDS: str = "*"
 
     # Stripe — checkout is only offered when the secret key AND all price IDs
     # are configured; otherwise /billing/subscribe returns 503 and the pricing

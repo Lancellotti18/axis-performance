@@ -19,10 +19,10 @@ REQ = rv.AutoMeasureRequest(image_width_px=2048, image_height_px=1366, zoom=20, 
 
 
 def test_only_listed_accounts_get_it(monkeypatch):
+    assert rv._auto_measure_allowed(OTHER)                 # default "*": every account
+    monkeypatch.setattr(settings, "AUTO_MEASURE_USER_IDS", RYAN["id"])
     assert rv._auto_measure_allowed(RYAN)
-    assert not rv._auto_measure_allowed(OTHER)
-    monkeypatch.setattr(settings, "AUTO_MEASURE_USER_IDS", "*")
-    assert rv._auto_measure_allowed(OTHER)                 # "*" switches it on for everyone
+    assert not rv._auto_measure_allowed(OTHER)             # a list restricts it again
 
 
 class _Q:
@@ -73,7 +73,8 @@ def _call(user=RYAN):
     return asyncio.run(rv.auto_measure("r1", REQ, user))
 
 
-def test_an_account_not_on_the_list_is_refused(wired):
+def test_an_account_not_on_the_list_is_refused(wired, monkeypatch):
+    monkeypatch.setattr(settings, "AUTO_MEASURE_USER_IDS", RYAN["id"])
     with pytest.raises(rv.HTTPException) as e:
         _call(OTHER)
     assert e.value.status_code == 403
