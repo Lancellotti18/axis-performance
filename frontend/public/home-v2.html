@@ -262,6 +262,44 @@
   .card{scroll-margin-top:110px}
   .card:target{border-color:rgba(140,190,255,.55);box-shadow:0 0 0 1px rgba(140,190,255,.25),0 20px 60px -30px rgba(107,178,255,.5)}
 
+  /* ---- pricing ----
+     Plans are written into the page (see #plansData) so they show instantly,
+     even while the backend is cold-starting, which used to leave /pricing a
+     wall of grey skeletons for over a minute. The script then refreshes them
+     from /api/v1/billing/plans, and the daily health check fails if the two
+     ever disagree. */
+  .pricing{position:relative;padding:clamp(80px,13vh,130px) clamp(20px,5vw,40px);border-top:1px solid var(--line);
+    background:radial-gradient(90% 60% at 50% 0%,rgba(30,60,110,.22),transparent 70%),var(--ink);scroll-margin-top:40px}
+  .pricing .ey{text-align:center;font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--cad-bright);margin:0 0 18px}
+  .pricing .ttl{text-align:center;font-family:var(--serif);font-weight:400;font-size:clamp(28px,4vw,46px);line-height:1.1;color:#EEF4FA;margin:0 auto;max-width:22ch;letter-spacing:-.012em;text-wrap:balance}
+  .pricing .lede{text-align:center;margin:18px auto 0;max-width:56ch;font-size:15px;line-height:1.65;color:var(--haze)}
+  .billing{display:flex;justify-content:center;gap:4px;margin:32px auto 0;padding:4px;width:max-content;border:1px solid var(--line);border-radius:999px;background:rgba(18,28,42,.5)}
+  .billing button{appearance:none;border:0;cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:600;color:#B6C6D8;background:none;padding:8px 18px;border-radius:999px;transition:background .25s,color .25s}
+  .billing button[aria-pressed="true"]{background:var(--paper);color:#0A0F16}
+  .billing .save{margin-left:6px;font-size:10px;font-weight:700;color:#7ee2b8}
+  .billing button[aria-pressed="true"] .save{color:#0b6b53}
+  .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px;margin:36px 0 0}
+  .plan{display:flex;flex-direction:column;padding:28px 26px;border-radius:18px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(18,28,42,.6),rgba(10,16,24,.55))}
+  .plan h3{margin:0;font-size:19px;font-weight:650;color:#EEF4FA}
+  .plan .tag{margin:6px 0 0;font-size:13px;line-height:1.5;color:var(--mute);min-height:39px}
+  .plan .price{margin:20px 0 0;display:flex;align-items:baseline;gap:6px}
+  .plan .price b{font-family:var(--serif);font-weight:400;font-size:46px;color:#F3F7FC;letter-spacing:-.02em}
+  .plan .price span{font-size:13px;color:var(--mute)}
+  .plan .billed{margin:4px 0 0;font-size:12px;color:var(--mute);min-height:18px}
+  .plan ul{list-style:none;margin:22px 0 0;padding:0;display:grid;gap:10px}
+  .plan li{display:flex;gap:10px;font-size:14px;color:#D6E2EF}
+  .plan li::before{content:"";flex-shrink:0;width:16px;height:16px;margin-top:2px;border-radius:50%;
+    background:rgba(107,178,255,.16) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 8.2l2.2 2.2 4.8-4.8' fill='none' stroke='%23BFE0FF' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/16px no-repeat}
+  .plan .go{margin-top:26px;text-align:center;text-decoration:none;font-weight:600;font-size:14px;padding:12px 18px;border-radius:999px;
+    color:#EAF2FB;border:1px solid rgba(180,205,235,.28);background:rgba(120,175,255,.10);transition:background .25s}
+  .plan .go:hover{background:rgba(120,175,255,.2)}
+  .included{margin:28px auto 0;padding:22px 26px;border-radius:18px;border:1px solid var(--line);background:rgba(18,28,42,.35)}
+  .included h4{margin:0 0 14px;font-size:12px;font-family:var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--cad)}
+  .included ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px 24px}
+  .included li{font-size:14px;color:#D6E2EF;padding-left:18px;position:relative}
+  .included li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:6px;border-radius:50%;background:var(--cad)}
+  .fine{text-align:center;margin:22px auto 0;font-size:13px;color:var(--mute);max-width:64ch;line-height:1.6}
+
   /* ---- about ---- */
   .about{position:relative;padding:clamp(80px,13vh,130px) clamp(20px,5vw,40px);border-top:1px solid var(--line);
     background:radial-gradient(90% 70% at 50% 0%,rgba(30,60,110,.16),transparent 70%),var(--ink);scroll-margin-top:40px}
@@ -320,7 +358,7 @@
         <a href="#f-crm"><span class="k">CRM</span><span class="t">A CRM built for roofers</span><span class="d">Leads to signed contract in one pipeline.</span></a>
       </div></div>
     </div>
-    <a href="/pricing">Pricing</a>
+    <a href="#pricing">Pricing</a>
     <a href="#about">About</a>
   </nav>
   <div class="actions">
@@ -341,7 +379,7 @@
   <a class="sub" href="#f-visualizer">Roof Visualizer</a>
   <a class="sub" href="#f-dispatch">Dispatch</a>
   <a class="sub" href="#f-crm">CRM</a>
-  <a href="/pricing">Pricing</a>
+  <a href="#pricing">Pricing</a>
   <a href="#about">About</a>
   <a href="/login">Sign In</a>
 </div>
@@ -424,6 +462,37 @@
   </div>
 </section>
 
+<section class="pricing" id="pricing">
+  <div class="wrap">
+    <p class="ey">Pricing</p>
+    <h2 class="ttl">Every tool on every plan.</h2>
+    <p class="lede">You only choose how many roof reports and crews you need. Month to month, cancel anytime.</p>
+    <div class="billing" role="group" aria-label="Billing period">
+      <button type="button" data-interval="month" aria-pressed="true">Monthly</button>
+      <button type="button" data-interval="year" aria-pressed="false">Annual<span class="save" id="annualSave">2 months free</span></button>
+    </div>
+    <div class="plans" id="plans"></div>
+    <div class="included">
+      <h4>Included on every plan</h4>
+      <ul id="included"></ul>
+    </div>
+    <p class="fine" id="pricingFine"></p>
+  </div>
+</section>
+
+<!-- Snapshot of GET /api/v1/billing/plans (app/core/plans.py), 2026-10-04.
+     Shown immediately; replaced by the live answer when the backend responds.
+     The health check's homepage job fails if these numbers drift from the API. -->
+<script type="application/json" id="plansData">
+{"plans":[
+ {"key":"solo","name":"Solo","tagline":"For an owner-operator running their own jobs.","monthly_usd":299,"annual_usd":2990,"annual_monthly_equivalent":249,"annual_months_free":2,"reports":15,"reports_unlimited":false,"crews":3,"crews_unlimited":false},
+ {"key":"crew","name":"Crew","tagline":"For a growing shop with several crews in the field.","monthly_usd":449,"annual_usd":4490,"annual_monthly_equivalent":374,"annual_months_free":2,"reports":30,"reports_unlimited":false,"crews":6,"crews_unlimited":false},
+ {"key":"fleet","name":"Fleet","tagline":"For established contractors who measure every roof they bid.","monthly_usd":599,"annual_usd":5990,"annual_monthly_equivalent":499,"annual_months_free":2,"reports":null,"reports_unlimited":true,"crews":null,"crews_unlimited":true}
+],
+"included":["Instant quote widget for your website","Full CRM — unlimited customers and jobs","Dispatch board and scheduling","Material compliance checks","Storm risk reports","Roof visualizer","Homeowner proposals and share links"],
+"overage_report_usd":35,"promo":{"reports":1}}
+</script>
+
 <!-- Founder note: Ryan's summer helping his friend's uncle, a roofer. The
      specific tasks below are Ryan to confirm before this ships. -->
 <section class="about" id="about">
@@ -474,7 +543,7 @@
     <span>Axis Roofing Performance — AI-powered roofing intelligence.</span>
     <nav aria-label="Footer">
       <a href="#platform">Features</a>
-      <a href="/pricing">Pricing</a>
+      <a href="#pricing">Pricing</a>
       <a href="#about">About</a>
       <a href="/portal">Homeowner sign in</a>
       <a href="/legal/privacy">Privacy</a>
@@ -796,7 +865,15 @@
     } else {
       low.seek(t);
     }
+    // At the very start of the film the poster IS the picture: it is frame 1
+    // of the reel, at full 1920x1080. Swapping it for the 426x240 preview there
+    // gains nothing and blurs the hero to an ~8x upscale on a Retina screen,
+    // which is what every visitor saw for the 5-10 s before the HD tier
+    // arrived (and why it "fixed itself" after a scroll down and back). So the
+    // preview only takes over once the film is actually moving.
+    const atStart = t < 1.5/FPS;
     if(hdActive && hd.hasPainted()) setStage('hd');
+    else if(atStart) setStage('still');
     else if(low.hasPainted()) setStage('low');
   }
 
@@ -894,6 +971,52 @@
     if(!drawer.contains(e.target)) setDrawer(false);
   });
   addEventListener('keydown',e=>{ if(e.key==='Escape'){ setDd(false); setDrawer(false); } });
+})();
+
+// ── Pricing ─────────────────────────────────────────────────────────────
+// Renders from the snapshot in #plansData straight away, then refreshes from
+// the live plans endpoint. The fetch is time-boxed: a cold backend must never
+// leave the section empty, which is exactly how /pricing used to fail.
+(() => {
+  const API='https://build-backend-jcp9.onrender.com/api/v1/billing/plans';
+  const plansEl=document.getElementById('plans'), incEl=document.getElementById('included');
+  const fineEl=document.getElementById('pricingFine');
+  let data=JSON.parse(document.getElementById('plansData').textContent);
+  let interval='month';
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const money=n=>'$'+Number(n).toLocaleString('en-US');
+  function render(){
+    plansEl.innerHTML=data.plans.map(p=>{
+      const yr=interval==='year';
+      const price=yr?p.annual_monthly_equivalent:p.monthly_usd;
+      const billed=yr?`Billed ${money(p.annual_usd)} a year`:'Billed monthly';
+      const reports=p.reports_unlimited?'Unlimited roof reports':`${p.reports} roof reports a month`;
+      const crews=p.crews_unlimited?'Unlimited crews':`Up to ${p.crews} crews`;
+      return `<article class="plan"><h3>${esc(p.name)}</h3><p class="tag">${esc(p.tagline||'')}</p>
+        <p class="price"><b>${money(price)}</b><span>/ month</span></p><p class="billed">${billed}</p>
+        <ul><li>${reports}</li><li>${crews}</li><li>Every Axis tool included</li></ul>
+        <a class="go" href="/checkout?plan=${encodeURIComponent(p.key)}&interval=${interval}">Choose ${esc(p.name)}</a></article>`;
+    }).join('');
+    incEl.innerHTML=(data.included||[]).map(i=>`<li>${esc(i)}</li>`).join('');
+    const free=data.promo&&data.promo.reports;
+    fineEl.textContent=[free?`New accounts get ${free===1?'one free roof report':free+' free roof reports'} to try it.`:'',
+      data.overage_report_usd?`Need more reports in a month? Extra reports are ${money(data.overage_report_usd)} each.`:'']
+      .filter(Boolean).join(' ');
+    const m=data.plans[0]&&data.plans[0].annual_months_free;
+    document.getElementById('annualSave').textContent=m?`${m} months free`:'';
+  }
+  document.querySelectorAll('.billing button').forEach(b=>b.addEventListener('click',()=>{
+    interval=b.dataset.interval;
+    document.querySelectorAll('.billing button').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));
+    render();
+  }));
+  render();
+  if(typeof fetch!=='function') return;
+  const ctl=('AbortController' in window)?new AbortController():null;
+  const timer=setTimeout(()=>ctl&&ctl.abort(),8000);
+  fetch(API,{credentials:'omit',signal:ctl&&ctl.signal}).then(r=>r.ok?r.json():null).then(live=>{
+    if(live&&Array.isArray(live.plans)&&live.plans.length){ data=live; render(); }
+  }).catch(()=>{}).finally(()=>clearTimeout(timer));
 })();
 </script>
 </body>

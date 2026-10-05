@@ -42,12 +42,29 @@ export default function PricingTables() {
   const [data, setData] = useState<PlansResponse | null>(null)
   const [annual, setAnnual] = useState(false)
   const [failed, setFailed] = useState(false)
+  // The backend sleeps when idle and takes over a minute to wake. A single
+  // fetch with no feedback left this page as pulsing grey boxes for that whole
+  // time, which reads as broken. Say what is happening, and keep trying.
+  const [slow, setSlow] = useState(false)
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/v1/billing/plans`)
-      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then(setData)
-      .catch(() => setFailed(true))
+    let cancelled = false
+    const slowTimer = setTimeout(() => { if (!cancelled) setSlow(true) }, 3000)
+    const deadline = Date.now() + 90_000
+    const attempt = async (): Promise<void> => {
+      try {
+        const r = await fetch(`${API_BASE}/api/v1/billing/plans`, { signal: AbortSignal.timeout(20_000) })
+        if (!r.ok) throw new Error(String(r.status))
+        const json = await r.json()
+        if (!cancelled) setData(json)
+      } catch {
+        if (cancelled) return
+        if (Date.now() < deadline) { setTimeout(attempt, 3000); return }
+        setFailed(true)
+      }
+    }
+    attempt()
+    return () => { cancelled = true; clearTimeout(slowTimer) }
   }, [])
 
   if (failed) {
@@ -67,6 +84,11 @@ export default function PricingTables() {
   if (!data) {
     return (
       <Shell>
+        {slow && (
+          <p className="mb-5 text-center text-sm text-[#6b7280]">
+            Loading prices… the server is waking up, which can take up to a minute.
+          </p>
+        )}
         <div className="grid gap-5 md:grid-cols-3">
           {[0, 1, 2].map(i => (
             <div key={i} className="h-[520px] animate-pulse rounded-2xl bg-[#e9ecf1]" />

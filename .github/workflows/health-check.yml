@@ -143,6 +143,11 @@ jobs:
           BASE=https://www.axisroofingperformance.com
           code=$(curl -sS -o home.html -w '%{http_code}' --max-time 60 -D head.txt "$BASE/" || echo 000)
           echo "home=$code" > status.txt
+          # The homepage carries a snapshot of the plans so pricing shows while
+          # the backend is cold; compare it with the real thing below. 120s
+          # because the free Render instance can take ~75s to wake.
+          curl -sS -o plans.json --max-time 120 \
+            https://build-backend-jcp9.onrender.com/api/v1/billing/plans || echo '{}' > plans.json
           # Range request: the reel is fetched as a blob, but 206 support is
           # what lets the browser stream it at all if that path ever fails.
           for f in reel-hd.mp4 reel-sd.mp4 reel-preview.mp4 reel-poster.jpg; do
@@ -208,6 +213,40 @@ jobs:
           if "scroll-snap-type" in bare:
               problems.append("HIGH  an active scroll-snap rule is back on the homepage: "
                               "it fights the gesture and drags the scrubbed reel with it")
+
+          # Homepage pricing snapshot vs the plans the backend actually charges.
+          # Visitors see the snapshot first (and only, if the backend is slow),
+          # so a price change in plans.py that skips the homepage would show
+          # one price on the page and charge another at checkout.
+          import json
+          m = re.search(r'<script type="application/json" id="plansData">(.*?)</script>', html, re.S)
+          try:
+              live = json.load(open("plans.json"))
+          except Exception:
+              live = {}
+          if not m:
+              problems.append("HIGH  the homepage pricing snapshot (#plansData) is missing — "
+                              "the Pricing section will render empty")
+          elif live.get("plans"):
+              snap = json.loads(m.group(1))
+              fields = ("monthly_usd", "annual_usd", "annual_monthly_equivalent",
+                        "reports", "reports_unlimited", "crews", "crews_unlimited")
+              s_by = {p["key"]: p for p in snap.get("plans", [])}
+              l_by = {p["key"]: p for p in live["plans"]}
+              drift = []
+              if set(s_by) != set(l_by):
+                  drift.append(f"plans {sorted(s_by)} on the page vs {sorted(l_by)} live")
+              for k in set(s_by) & set(l_by):
+                  for f in fields:
+                      if s_by[k].get(f) != l_by[k].get(f):
+                          drift.append(f"{k}.{f}: page {s_by[k].get(f)} vs live {l_by[k].get(f)}")
+              if snap.get("overage_report_usd") != live.get("overage_report_usd"):
+                  drift.append(f"overage: page {snap.get('overage_report_usd')} vs live {live.get('overage_report_usd')}")
+              if drift:
+                  problems.append("HIGH  homepage pricing is out of date with app/core/plans.py — "
+                                  "update #plansData in home-v2.html: " + "; ".join(drift))
+          else:
+              notes.append("plans endpoint did not answer, so homepage pricing was not compared")
 
           # Every tier must still be there, and still be big enough to be the
           # quality it claims. A shrunken reel-hd is how 'it went blurry' would
