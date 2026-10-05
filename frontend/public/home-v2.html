@@ -995,7 +995,7 @@
       return `<article class="plan"><h3>${esc(p.name)}</h3><p class="tag">${esc(p.tagline||'')}</p>
         <p class="price"><b>${money(price)}</b><span>/ month</span></p><p class="billed">${billed}</p>
         <ul><li>${reports}</li><li>${crews}</li><li>Every Axis tool included</li></ul>
-        <a class="go" href="/checkout?plan=${encodeURIComponent(p.key)}&interval=${interval}">Choose ${esc(p.name)}</a></article>`;
+        <a class="go" href="/register?plan=${encodeURIComponent(p.key)}&interval=${interval}">Choose ${esc(p.name)}</a></article>`;
     }).join('');
     incEl.innerHTML=(data.included||[]).map(i=>`<li>${esc(i)}</li>`).join('');
     const free=data.promo&&data.promo.reports;

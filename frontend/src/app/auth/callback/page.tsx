@@ -4,11 +4,20 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Suspense } from 'react'
 import type { EmailOtpType } from '@supabase/supabase-js'
+import { postAuthDestination, seedProfileFromSignup } from '@/lib/auth'
 
 function CallbackHandler() {
   const router = useRouter()
   const params = useSearchParams()
   const [error, setError] = useState('')
+
+  // Signed in by the link: fill their profile from the signup details, then
+  // on to checkout if they picked a plan before signing up, else the dashboard.
+  async function arrive() {
+    const { data } = await supabase.auth.getUser()
+    await seedProfileFromSignup(data.user)
+    router.replace(postAuthDestination(data.user))
+  }
 
   useEffect(() => {
     async function handle() {
@@ -40,7 +49,8 @@ function CallbackHandler() {
           router.replace('/login?expired=1')
           return
         }
-        router.replace(otpType === 'recovery' ? '/reset-password' : '/dashboard')
+        if (otpType === 'recovery') router.replace('/reset-password')
+        else await arrive()
         return
       }
 
@@ -64,7 +74,7 @@ function CallbackHandler() {
         if (type === 'recovery') {
           router.replace('/reset-password')
         } else {
-          router.replace('/dashboard')
+          await arrive()
         }
         return
       }
@@ -82,7 +92,7 @@ function CallbackHandler() {
           if (hashType === 'recovery') {
             router.replace('/reset-password')
           } else {
-            router.replace('/dashboard')
+            await arrive()
           }
           return
         }
@@ -93,7 +103,7 @@ function CallbackHandler() {
     }
 
     handle()
-  }, [params, router])
+  }, [params, router])   // eslint-disable-line react-hooks/exhaustive-deps -- arrive only reads router
 
   if (error) {
     return (

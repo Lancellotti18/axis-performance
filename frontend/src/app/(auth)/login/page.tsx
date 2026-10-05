@@ -2,7 +2,7 @@
 import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { signIn, resendConfirmation } from '@/lib/auth'
+import { signIn, resendConfirmation, postAuthDestination, seedProfileFromSignup } from '@/lib/auth'
 import { Button, Input, Label } from '@/components/ui'
 import { AuthShell, AuthAlert } from '@/components/auth/AuthShell'
 
@@ -24,7 +24,7 @@ function LoginForm() {
     setError('')
     setUnconfirmed(false)
     setLoading(true)
-    const { error } = await signIn(email, password)
+    const { data, error } = await signIn(email, password)
     if (error) {
       if (/not confirmed/i.test(error.message)) {
         setUnconfirmed(true); setResent('idle')
@@ -33,7 +33,10 @@ function LoginForm() {
       }
       setLoading(false)
     } else {
-      router.push('/dashboard')
+      // Confirmed on another device and signing in here: the plan they picked
+      // at signup still sends them to checkout.
+      await seedProfileFromSignup(data.user)
+      router.push(postAuthDestination(data.user))
     }
   }
 

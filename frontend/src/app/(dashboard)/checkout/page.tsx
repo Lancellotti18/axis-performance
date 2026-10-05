@@ -24,6 +24,7 @@ import {
 import toast from 'react-hot-toast'
 
 import { api } from '@/lib/api'
+import { clearPlanIntent } from '@/lib/auth'
 
 type PlanSummary = {
   name: string
@@ -75,6 +76,7 @@ function Checkout() {
         const sub = await api.billing.subscribe(planKey, interval)
         if (cancelled) return
         if (!sub.requires_payment) {
+          await clearPlanIntent()
           toast.success('You’re all set.')
           window.location.href = '/dashboard?subscribed=1'
           return
@@ -83,10 +85,17 @@ function Checkout() {
       } catch (e) {
         if (!cancelled) {
           const msg = e instanceof Error ? e.message : 'Could not start checkout.'
-          // 409: they already have a plan. Not an error worth a red box.
-          setError(msg.includes('already have an active plan')
-            ? 'You already have a plan. Manage it in Settings → Payments.'
-            : msg)
+          // 409: they already have a plan. Not an error worth a red box, and
+          // the plan they picked at signup is done: stop routing them here
+          // (this is also where a 3-D Secure redirect that skipped our own
+          // success step ends up on their next sign-in).
+          if (msg.includes('already have an active plan')) {
+            await clearPlanIntent()
+            toast.success('You’re already on a plan.')
+            window.location.href = '/dashboard'
+            return
+          }
+          setError(msg)
         }
       }
     })()
@@ -191,6 +200,9 @@ function PayForm({ planName }: { planName: string }) {
       setSubmitting(false)
       return
     }
+
+    // Paid: the plan picked at signup is taken care of.
+    await clearPlanIntent()
 
     if (paymentIntent && paymentIntent.status === 'succeeded') {
       toast.success(`You’re on ${planName}.`)
