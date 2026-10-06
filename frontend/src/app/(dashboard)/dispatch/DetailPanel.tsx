@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import type { BoardData, CrewDaysBreakdown, ProjectSearchResult, RoofLinear } from './lib/board'
-import { num, patchAppointment, previewMove, fetchAudit, fetchJobProject, searchProjects, linkJobProject, mediaUrl } from './lib/board'
+import { num, patchAppointment, previewMove, fetchAudit, fetchJobProject, searchProjects, linkJobProject, mediaUrl, deleteJob } from './lib/board'
 
 const STATUSES = ['SCHEDULED', 'DISPATCHED', 'WORKING', 'PAUSED', 'DONE', 'HOLD', 'CANCELED', 'UNASSIGNED']
 
@@ -161,6 +161,8 @@ export default function DetailPanel({
               ))}
             </div>
           </section>
+
+          <DeleteJob jobId={job.id} visits={series.length} onDeleted={onClose} />
 
           {job.sold_amount != null && (
             <div className="text-[12px]" style={{ color: 'var(--muted)' }}>Sold: <span className="font-semibold" style={{ color: 'var(--text)' }}>${num(job.sold_amount).toLocaleString()}</span></div>
@@ -361,5 +363,48 @@ function ProjectPicker({ busy, onPick }: { busy: boolean; onPick: (id: string) =
         ))}
       </div>
     </section>
+  )
+}
+
+/** Two-step delete so a stray click can't remove a job. */
+export function DeleteJob({ jobId, visits, onDeleted, compact = false }: {
+  jobId: string; visits: number; onDeleted?: () => void; compact?: boolean
+}) {
+  const qc = useQueryClient()
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  async function go() {
+    setBusy(true)
+    try {
+      await deleteJob(jobId)
+      toast.success('Job deleted')
+      qc.invalidateQueries({ queryKey: ['board'] })
+      qc.invalidateQueries({ queryKey: ['tray'] })
+      onDeleted?.()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not delete the job')
+      setConfirming(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation()
+  if (!confirming) {
+    return (
+      <button onPointerDown={stop} onClick={e => { stop(e); setConfirming(true) }}
+        className={compact ? 'shrink-0 rounded px-1.5 py-0.5 text-[11px] hover:bg-rose-50' : 'rounded-md border px-2.5 py-1 text-[11px] font-semibold'}
+        style={{ color: 'var(--over)', borderColor: compact ? undefined : 'var(--line)' }}
+        title="Delete this job">{compact ? '✕' : 'Delete job'}</button>
+    )
+  }
+  return (
+    <div onPointerDown={stop} onClick={stop} className="flex items-center gap-2 text-[11px]">
+      <span style={{ color: 'var(--muted)' }}>
+        Delete for good{visits > 0 ? ` (and its ${visits} visit${visits === 1 ? '' : 's'})` : ''}?
+      </span>
+      <button disabled={busy} onClick={go} className="rounded-md px-2 py-0.5 font-semibold text-white disabled:opacity-50" style={{ background: 'var(--over)' }}>
+        {busy ? 'Deleting…' : 'Delete'}</button>
+      <button disabled={busy} onClick={() => setConfirming(false)} style={{ color: 'var(--muted)' }}>Keep</button>
+    </div>
   )
 }

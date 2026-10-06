@@ -210,6 +210,13 @@ export async function deleteCrew(id: string): Promise<{ ok: boolean; archived?: 
   if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
   return res.json()
 }
+/** Delete a job (and its visits). Refused with 409 once work has started. */
+export async function deleteJob(id: string): Promise<{ ok: boolean; appointments_removed: number }> {
+  const h = await authHeaders()
+  const res = await fetch(`${API_BASE}/api/v1/scheduling/jobs/${id}`, { method: 'DELETE', headers: h })
+  if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
+  return res.json()
+}
 async function shiftCall(crewId: string, day: string, method: 'PUT' | 'DELETE') {
   const h = await authHeaders()
   const res = await fetch(`${API_BASE}/api/v1/scheduling/crews/${crewId}/shifts/${day}`, { method, headers: h })

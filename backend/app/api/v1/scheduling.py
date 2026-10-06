@@ -1981,6 +1981,58 @@ async def delete_crew(crew_id: str, user: dict = Depends(require_user)) -> dict:
     return {"ok": True, "archived": archived, "completed_jobs": finished}
 
 
+# Work that has started or finished is history: deleting the job would take the
+# record of who did what with it, so those jobs are refused (cancel instead).
+JOB_HISTORY_STATUSES = {"WORKING", "PAUSED", "DONE"}
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_job(job_id: str, user: dict = Depends(require_user)) -> dict:
+    """Delete a job a dispatcher created by mistake (or a demo job).
+
+    Until now nothing could remove a job: a quick job typed against the wrong
+    address sat in the Unassigned tray for good. Its appointments, crew
+    assignments and tag links go with it (cascade). Its customer and property
+    are removed only when no other job uses them — deleting a shared customer
+    would cascade into that customer's other jobs. A linked project is untouched.
+    """
+    db = get_supabase()
+    job = _one(db, "sched_job", job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    appts = _rows(db.table("sched_appointment").select("id,status")
+                  .eq("org_id", ORG).eq("job_id", job_id).execute())
+    started = [a for a in appts if (a.get("status") or "").upper() in JOB_HISTORY_STATUSES]
+    if started:
+        raise HTTPException(status_code=409, detail=(
+            "Work on this job has already started or finished, so it's kept for the record. "
+            "Cancel its remaining visits instead."))
+
+    db.table("sched_job").delete().eq("org_id", ORG).eq("id", job_id).execute()
+
+    removed = {"customer": False, "property": False}
+    for col, table, key in (("customer_id", "sched_customer", "customer"),
+                            ("property_id", "sched_property", "property")):
+        ref = job.get(col)
+        if not ref:
+            continue
+        still_used = _rows(db.table("sched_job").select("id").eq("org_id", ORG).eq(col, ref).limit(1).execute())
+        if not still_used:
+            db.table(table).delete().eq("org_id", ORG).eq("id", ref).execute()
+            removed[key] = True
+
+    db.table("sched_audit_event").insert({
+        "org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "job",
+        "entity_id": job_id, "action": "DELETE_JOB",
+        "before_json": {"status": job.get("status"), "job_type": job.get("job_type"),
+                        "project_id": job.get("project_id"), "appointments": len(appts)},
+        "after_json": {"removed_customer": removed["customer"], "removed_property": removed["property"]},
+        "request_id": str(uuid.uuid4())}).execute()
+
+    return {"ok": True, "appointments_removed": len(appts), **{f"removed_{k}": v for k, v in removed.items()}}
+
+
 class TimeOffInput(BaseModel):
     crew_id: str
     title: str = Field("Time off", max_length=80)

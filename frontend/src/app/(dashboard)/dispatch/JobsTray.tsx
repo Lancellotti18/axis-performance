@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useDraggable } from '@dnd-kit/core'
 import { fetchTray, type TrayRow } from './lib/board'
+import { DeleteJob } from './DetailPanel'
 
 const jobTypeLabel = (t: string) => t.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 type TabKey = 'unassigned' | 'needs_measurements' | 'conflicts' | 'on_hold' | 'canceled'
@@ -130,6 +131,7 @@ function Row({ row, tab }: { row: TrayRow; tab: TabKey }) {
         {row.deadline ? `due ${row.deadline.slice(5)}` : row.age_days != null ? `${row.age_days}d old` : ''}
         {row.sold_amount != null ? ` · $${row.sold_amount.toLocaleString()}` : ''}
       </span>
+      <DeleteJob jobId={row.job_id} visits={row.appointment_id ? 1 : 0} compact />
     </div>
   )
 }
