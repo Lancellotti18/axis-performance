@@ -121,6 +121,12 @@ function mergeAffected(old: BoardData, aff: AffectedMulti): BoardData {
   return { ...old, appointments: Array.from(byId.values()), appointment_crew, day_loads: { ...old.day_loads, ...aff.day_loads } }
 }
 const isTrayDrag = (id: string | null): boolean => !!id && id.startsWith('tray:')
+/** Scheduling onto a day that's already gone is usually a slip of the mouse,
+ *  but sometimes it's recording work already done — so ask, don't refuse. */
+function okForPastDay(dateStr: string, today: string): boolean {
+  if (dateStr >= today) return true
+  return window.confirm(`${format(parseISO(dateStr), 'EEEE, MMM d')} has already passed.\n\nPut the job there anyway?`)
+}
 
 export default function Board({
   data, today, focusDate, onFocusDate, autoOpenWeather,
@@ -155,6 +161,7 @@ export default function Board({
   }, [qc, queryKey])
 
   const addJob = useCallback(async (jobId: string, crewId: string, date: string) => {
+    if (!okForPastDay(date, today)) return
     setAssigning(true)
     try {
       const slice = await createAppointment(jobId, crewId, date)
@@ -166,7 +173,7 @@ export default function Board({
     } finally {
       setAssigning(false)
     }
-  }, [qc, queryKey, refreshBoard])
+  }, [qc, queryKey, refreshBoard, today])
 
   const removeJob = useCallback(async (appointmentId: string) => {
     const prev = qc.getQueryData<BoardData>(queryKey)
@@ -348,7 +355,10 @@ export default function Board({
     setActiveId(null); activeRef.current = null; setHoverCell(null); setDragLabel(null)
     if (!apptId || !over) { clearPreview(); return }
     const [crewId, dateStr] = over.split('|')
-    if (isTrayDrag(apptId)) { doCreate(apptId.slice(5), crewId, dateStr, traySquaresRef.current); clearPreview(); return }
+    if (isTrayDrag(apptId)) {
+      if (okForPastDay(dateStr, today)) doCreate(apptId.slice(5), crewId, dateStr, traySquaresRef.current)
+      clearPreview(); return
+    }
     const appt = data.appointments.find(a => a.id === apptId)
     if (!appt) { clearPreview(); return }
     const fromCrew = data.appointment_crew[apptId]
@@ -359,6 +369,7 @@ export default function Board({
       toast.error('Can’t drop here — ' + pv.conflicts.filter(c => c.severity === 'BLOCK').map(c => c.message).join(' '))
       clearPreview(); return
     }
+    if (!okForPastDay(dateStr, today)) { clearPreview(); return }
     doMove(apptId, crewId, dateStr, fromCrew, fromDate)
     clearPreview()
   }

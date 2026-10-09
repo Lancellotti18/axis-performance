@@ -350,7 +350,11 @@ def detect_conflicts(p: ProposedAssignment, ctx: ConflictContext) -> List[Confli
             out.append(Conflict("BLOCKED_BY_EVENT", "BLOCK", "Overlaps a blocking event (PTO, training, truck in shop)."))
             break
 
-    missing = [s for s in p.required_skills if s not in ctx.crew_skills]
+    # A crew with NO skills on file isn't tracked for skills — crews added from
+    # the board's Crews panel have no way to set any. Treating that as "can do
+    # nothing" blocked every re-roof from them. Only a crew that lists skills
+    # and lacks the one needed is a real mismatch.
+    missing = [s for s in p.required_skills if s not in ctx.crew_skills] if ctx.crew_skills else []
     if missing:
         out.append(Conflict("SKILL_MISMATCH", "BLOCK", "Crew lacks required skill(s): " + ", ".join(missing) + "."))
 

@@ -229,3 +229,10 @@ def test_local_start_time_preserved_across_dst():
     assert local_start_time_str(fall) == "07:00"
     # the offsets differ (EST vs EDT) but the wall-clock time does not
     assert spring.utcoffset() != fall.utcoffset()
+
+
+def test_crew_with_no_skills_on_file_is_not_blocked_for_skills():
+    """Crews made from the Crews panel have no skills recorded; that means
+    'not tracked', not 'can do nothing'."""
+    cs = detect_conflicts(_prop(required_skills=["ASPHALT_SHINGLE"]), ConflictContext(has_shift=True, crew_skills=[]))
+    assert not any(c.code == "SKILL_MISMATCH" for c in cs)
