@@ -2,6 +2,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { PENDING_CODE_KEY } from '@/components/billing/PromoCodeBox'
 import { signUp, signIn, resendConfirmation, postAuthDestination, seedProfileFromSignup, type PlanIntent } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { Button, Input, Label } from '@/components/ui'
@@ -58,6 +59,9 @@ function RegisterForm() {
   const [fullName, setFullName] = useState('')
   const [company, setCompany] = useState('')
   const [phone, setPhone] = useState('')
+  // A company code from an outreach email (…/register?code=FORTITUDE). Kept
+  // until they are signed in, then redeemed by the dashboard's AccessGate.
+  const [promoCode, setPromoCode] = useState((params.get('code') || '').toUpperCase().slice(0, 32))
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   // Set when the account exists but Supabase is holding it until the email is
@@ -79,6 +83,9 @@ function RegisterForm() {
     e.preventDefault()
     setError('')
     setLoading(true)
+    try {
+      if (promoCode.trim()) localStorage.setItem(PENDING_CODE_KEY, promoCode.trim())
+    } catch { /* the code box on the plan screen still works */ }
 
     const { error: signUpError } = await signUp(email, password, fullName, company.trim(), phone.trim(), intent)
     if (signUpError) {
@@ -162,6 +169,11 @@ function RegisterForm() {
         <div>
           <Label htmlFor="password">Password</Label>
           <Input id="password" type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" />
+        </div>
+        <div>
+          <Label htmlFor="code">Company code <span className="font-normal text-[#9ca3af]">(optional)</span></Label>
+          <Input id="code" type="text" autoComplete="off" maxLength={32} value={promoCode}
+                 onChange={e => setPromoCode(e.target.value.toUpperCase())} placeholder="From your email, e.g. FORTITUDE" />
         </div>
         {error && <AuthAlert tone="error">{error}</AuthAlert>}
         <Button type="submit" size="lg" loading={loading} className="w-full">
