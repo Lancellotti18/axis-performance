@@ -165,20 +165,28 @@ def evaluate(sub: Optional[dict], action: Action, *, reports_used: int = 0,
         and (status in ACTIVE_STATUSES or in_grace)
     )
 
+    promo = promo_state(sub, now)
+
     if action == "access_app":
         if subscribed:
             if in_grace:
                 return decide(True, f"payment failed — {grace_left} days to update your card")
             return decide(True, "active subscription")
-        if not sub.get("trial_report_used"):
-            return decide(True, "promo: one free report not yet used")
-        return decide(False, "no active subscription — account is view-only")
+        # No subscription: only a running promo opens the app. There is no
+        # free tier and no automatic free report (Ryan, 2026-10-08): access
+        # comes from a plan or a company code, nothing else.
+        if promo["active"]:
+            return decide(True, f"promo: {promo['days_left']} days and "
+                                f"{promo['reports_left']} reports left")
+        return decide(False, promo["ended_reason"] or "no active subscription")
 
     if action == "generate_report":
         if not subscribed:
-            if not sub.get("trial_report_used"):
-                return decide(True, "promo: free report")
-            return decide(False, "free report already used — a plan is required")
+            if promo["active"] and promo["reports_left"] > 0:
+                return decide(True, f"promo: report {promo['reports_used_next']} of {promo['reports_total']}")
+            if promo["active"]:
+                return decide(False, "you've used all of your free reports — choose a plan to keep going")
+            return decide(False, promo["ended_reason"] or "a plan is required")
 
         # Everything the contractor is entitled to this period: what the plan
         # includes, plus any extra reports they have already bought and paid for.
@@ -202,6 +210,9 @@ def evaluate(sub: Optional[dict], action: Action, *, reports_used: int = 0,
 
     if action == "add_crew":
         if not subscribed:
+            # A running promo includes the app's other features, up to Solo's crews.
+            if promo["active"] and crews_used < PLANS["solo"].crews:
+                return decide(True, f"promo: crew {crews_used + 1} of {PLANS['solo'].crews}")
             return decide(False, "dispatch crews require a plan")
         if plan.crews == UNLIMITED:
             return decide(True, f"{plan.name}: unlimited crews")
@@ -222,6 +233,55 @@ def evaluate(sub: Optional[dict], action: Action, *, reports_used: int = 0,
         return decide(False, "leads are available to subscribers only")
 
     return decide(True, f"unknown action {action!r} — allowed by default")
+
+def _ts(v) -> Optional[datetime]:
+    if v is None or v == "":
+        return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    try:
+        d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def promo_state(sub: Optional[dict], now: Optional[datetime] = None) -> dict:
+    """Where this account's company-code promo stands.
+
+    Active means BOTH inside its access window AND the window exists: a code
+    gives free reports and full access for a fixed number of days from the
+    moment THIS account redeemed it. Running out of reports does not end the
+    window (the rest of the app stays open), but generating needs reports left.
+    """
+    sub = sub or {}
+    now = now or datetime.now(timezone.utc)
+    until = _ts(sub.get("promo_access_until"))
+    left = max(0, int(sub.get("promo_reports_left") or 0))
+    total = max(left, int(sub.get("promo_reports_total") or 0))
+    had_promo = until is not None
+    active = had_promo and until > now
+    # Whole days, rounded UP: 6 days and 1 hour left reads "7 days left".
+    days_left = int(-(-(until - now).total_seconds() // 86400)) if active else 0
+    if not had_promo:
+        ended = None
+    elif not active:
+        ended = "your free trial has ended — choose a plan to keep using Axis"
+    else:
+        ended = None
+    return {
+        "had_promo": had_promo,
+        "active": active,
+        "access_until": until.isoformat() if until else None,
+        "days_left": days_left,
+        "reports_left": left,
+        "reports_total": total,
+        "reports_used_next": max(1, total - left + 1),
+        "ended": had_promo and not active,
+        "ended_reason": ended,
+        "founding_member": bool(sub.get("founding_member")),
+    }
+
 
 # ── Changing plans ────────────────────────────────────────────────────────
 

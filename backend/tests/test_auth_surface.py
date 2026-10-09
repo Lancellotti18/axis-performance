@@ -21,6 +21,9 @@ from app.core.auth import get_current_user, require_user
 # bearer token. Every one is gated by an unguessable token or widget key, except
 # the tile proxy, which is gated by an SSRF host allowlist instead.
 PUBLIC = {
+    # The daily trial-ended email job, called by the health-check workflow. It
+    # authenticates with the shared X-Health-Secret header, like /health/deep.
+    ("POST", "/api/v1/ops/promo-sweep"),
     # A homeowner books from the report link they were emailed.
     ("POST", "/api/v1/appointments/book/{report_token}"),
     # Instant-quote widget, embedded on the contractor's public site.

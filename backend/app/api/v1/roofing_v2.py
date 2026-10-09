@@ -2234,11 +2234,11 @@ def _gate_and_mark_billable(db, run_id: str, user_id: str, aggregates: dict) -> 
     try:
         from app.services import llm_usage
         llm_usage.record_report(user_id, run_id, "generate", 0)
-        # An unsubscribed contractor who just billed a run used the one free
-        # report. Burn it here, at the moment it is consumed, so the promo
-        # cannot be spent twice.
+        # An unsubscribed contractor who just billed a run used one of their
+        # promo's free reports. Spend it here, at the moment it is consumed,
+        # so the same free report cannot be used twice.
         if decision is not None and decision.plan_key is None:
-            entitlement.consume_trial_report(db, user_id)
+            entitlement.consume_promo_report(db, user_id)
     except Exception as e:
         logger.info("run %s not marked billable: %s", run_id, e)
 

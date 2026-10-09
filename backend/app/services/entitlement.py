@@ -20,9 +20,15 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from app.core.plans import Action, Decision, evaluate, enforcing, period_bounds
+from app.core.plans import Action, Decision, evaluate, enforcing, period_bounds, promo_state
 
 logger = logging.getLogger(__name__)
+
+
+def is_admin(user_id: str) -> bool:
+    from app.core.config import settings
+    ids = {x.strip() for x in (settings.ADMIN_USER_IDS or "").split(",") if x.strip()}
+    return str(user_id or "") in ids
 
 
 def load_subscription(db, user_id: str) -> Optional[dict]:
@@ -107,6 +113,9 @@ def crews_used(db, user_id: str) -> int:
 def check(db, user_id: str, action: Action, *,
           sub: Optional[dict] = None) -> Decision:
     """The one entry point. Loads usage, decides, and logs a shadow denial."""
+    if is_admin(user_id):
+        # Ryan's own accounts run the business; the lock must never shut him out.
+        return Decision(allowed=True, reason="admin account", would_allow=True, plan_key="admin")
     if sub is None:
         sub = load_subscription(db, user_id)
 
@@ -155,7 +164,34 @@ def usage_summary(db, user_id: str, sub: Optional[dict] = None) -> dict:
         "plan_key": (sub or {}).get("plan_key"),
         "status": (sub or {}).get("status") or "none",
         "trial_report_used": bool((sub or {}).get("trial_report_used")),
+        "promo": promo_state(sub),
     }
+
+
+def consume_promo_report(db, user_id: str) -> None:
+    """Use one of a promo account's free reports. Called when an unsubscribed
+    contractor's run becomes billable.
+
+    Compare-and-set on the current count, so two reports finishing at once
+    cannot both spend the same free report (and the count never goes below 0).
+    """
+    for _ in range(3):
+        try:
+            rows = (db.table("subscriptions").select("promo_reports_left")
+                    .eq("user_id", user_id).limit(1).execute().data) or []
+            if not rows:
+                return
+            left = int(rows[0].get("promo_reports_left") or 0)
+            if left <= 0:
+                return
+            res = (db.table("subscriptions").update(
+                {"promo_reports_left": left - 1, "updated_at": "now()"})
+                .eq("user_id", user_id).eq("promo_reports_left", left).execute())
+            if res.data:
+                return
+        except Exception as e:
+            logger.info("could not use a promo report for %s: %s", user_id, e)
+            return
 
 
 def consume_trial_report(db, user_id: str) -> None:
