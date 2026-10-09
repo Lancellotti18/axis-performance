@@ -51,7 +51,10 @@ export default function JobsTray({ revealUnassigned = 0 }: { revealUnassigned?: 
   const attention = counts.unassigned + counts.needs_measurements + counts.conflicts
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 flex flex-col border-t shadow-2xl"
+    // Sticky inside the board's own scroll area, not fixed to the window: a
+    // window-wide bar slid under the app sidebar and hid the first tab and the
+    // start of every row (customer names) on desktop.
+    <div className="sticky bottom-0 left-0 z-30 mt-auto flex flex-col border-t shadow-2xl"
       style={{ background: 'var(--panel)', borderColor: 'var(--line)', maxHeight: open ? '42vh' : '38px' }}>
       {/* Handle */}
       <button onClick={() => setOpen(o => !o)} className="flex h-[38px] shrink-0 items-center gap-3 px-4 text-left">

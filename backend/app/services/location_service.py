@@ -82,6 +82,7 @@ class SearchResult:
 
 async def _maptiler_autocomplete(
     client: httpx.AsyncClient, query: str, *, limit: int = 5,
+    proximity: tuple[float, float] | None = None,
 ) -> list[LocationMatch]:
     """
     MapTiler geocoding suggests addresses as the user types. Unlike the
@@ -107,6 +108,10 @@ async def _maptiler_autocomplete(
         "autocomplete": "true",
         "language": "en",
     }
+    if proximity:
+        # Rank results near (lat, lng) first — "200 Market St" with no city
+        # should mean the one in the contractor's town, not Massachusetts.
+        params["proximity"] = f"{proximity[1]},{proximity[0]}"
     try:
         r = await client.get(url, params=params, timeout=5.0)
         r.raise_for_status()
@@ -315,7 +320,9 @@ async def _fcc_county_from_latlng(
 # Public API
 # ----------------------------------------------------------------------------
 
-async def search_address(query: str, *, with_geographies: bool = True) -> SearchResult:
+async def search_address(
+    query: str, *, with_geographies: bool = True, proximity: tuple[float, float] | None = None,
+) -> SearchResult:
     """
     Address search.
 
@@ -341,7 +348,7 @@ async def search_address(query: str, *, with_geographies: bool = True) -> Search
         else:
             # Autocomplete: try MapTiler first (it actually handles partial
             # typing). Census fallback only if MapTiler not configured.
-            matches = await _maptiler_autocomplete(client, query)
+            matches = await _maptiler_autocomplete(client, query, proximity=proximity)
             if not matches:
                 matches = await _census_oneline(client, query)
 

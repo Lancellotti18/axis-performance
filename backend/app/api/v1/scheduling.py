@@ -2098,6 +2098,31 @@ class QuickJob(BaseModel):
     notes: Optional[str] = None
 
 
+FAR_FROM_HOME_MILES = 150
+
+
+def _miles(a: tuple, b: tuple) -> float:
+    import math
+    la1, lo1, la2, lo2 = map(math.radians, (a[0], a[1], b[0], b[1]))
+    h = math.sin((la2 - la1) / 2) ** 2 + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
+    return 3958.8 * 2 * math.asin(math.sqrt(h))
+
+
+def _service_area_center(db) -> Optional[tuple]:
+    """Median lat/lng of the org's geocoded properties, or None with no history.
+    Median, not mean, so one stray out-of-state job can't drag the centre."""
+    try:
+        rows = _rows(db.table("sched_property").select("lat,lng").eq("org_id", ORG).execute())
+    except Exception:
+        return None
+    pts = [(_f(r.get("lat")), _f(r.get("lng"))) for r in rows]
+    pts = [p for p in pts if p[0] and p[1]]
+    if not pts:
+        return None
+    lats = sorted(p[0] for p in pts); lngs = sorted(p[1] for p in pts)
+    return (lats[len(lats) // 2], lngs[len(lngs) // 2])
+
+
 @router.post("/jobs/quick")
 async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -> dict:
     """Send a crew to an address without building a project first.
@@ -2124,11 +2149,20 @@ async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -
 
     lat = lng = None
     line1, city, state, postal = addr, "", "", ""
+    # Where this company already works: the median of its geocoded job sites.
+    # The first match used to win outright, so "200 Market St" with no city
+    # became 200 Market St, Amesbury MA for a contractor in Wilmington NC.
+    home = _service_area_center(db)
+    far_miles = None
     try:
         from app.services import location_service
-        res = await location_service.search_address(addr, with_geographies=False)
+        res = await location_service.search_address(addr, with_geographies=False, proximity=home)
         if res.matches:
             m = res.matches[0]
+            if home:
+                m = min(res.matches, key=lambda x: _miles(home, (x.lat, x.lng)))
+                d = _miles(home, (m.lat, m.lng))
+                far_miles = round(d) if d > FAR_FROM_HOME_MILES else None
             lat, lng = m.lat, m.lng
             line1 = m.street or m.matched_address or addr
             city, state, postal = m.city or "", m.state or "", m.zip or ""
@@ -2166,13 +2200,21 @@ async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -
         "after_json": {"address": line1, "geocoded": lat is not None},
         "request_id": str(uuid.uuid4())}).execute()
 
-    return {
-        "created": True, "job_id": job["id"], "geocoded": lat is not None,
+    where = ", ".join(p for p in (line1, city, state) if p)
+    if lat is None:
+        message = ("Job created and it's in the Unassigned tray below, but the address didn't geocode — "
+                   "this job won't get site weather until the address is fixed.")
+    elif far_miles:
+        message = (f"Job created at {where} — that's about {far_miles} miles from your other jobs. "
+                   "If that's the wrong town, delete it and add the city and state.")
+    else:
         # Name where it went and what to do next. "In the tray" meant nothing to
         # a first-time dispatcher, and the tray is collapsed by default.
-        "message": ("Job created — it's in the Unassigned tray below. Drag it onto a crew's day to schedule it."
-                    if lat is not None
-                    else "Job created and it's in the Unassigned tray below, but the address didn't geocode — this job won't get site weather until the address is fixed."),
+        message = f"Job created at {where} — it's in the Unassigned tray below. Drag it onto a crew's day to schedule it."
+    return {
+        "created": True, "job_id": job["id"], "geocoded": lat is not None and not far_miles,
+        "resolved_address": where,
+        "message": message,
     }
 
 
