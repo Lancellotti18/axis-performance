@@ -1760,7 +1760,9 @@ async def live_weather(start: str, end: str, user: dict = Depends(require_user))
             regional[ds] = w
         d += timedelta(days=1)
 
-    return {"crew_weather": crew_weather, "regional": regional}
+    # An empty sky used to be indistinguishable from "still loading". Say why.
+    unavailable = None if regional else (wx.last_error() or "No forecast available for these dates.")
+    return {"crew_weather": crew_weather, "regional": regional, "unavailable": unavailable}
 
 
 # ── M7: crew & time-off administration (add / edit / remove crews + PTO) ──────

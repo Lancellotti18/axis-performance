@@ -51,21 +51,54 @@ const jobTypeLabel = (t: string) => t.replace(/_/g, ' ').toLowerCase().replace(/
 const cellId = (crew: string, date: string) => `${crew}|${date}`
 
 // ── optimistic cache transforms ──────────────────────────────────────────────
-function applyMove(old: BoardData, apptId: string, crewId: string, dateStr: string, pv?: PreviewResult): BoardData {
+// Same bands as capacity.py `_load_state`, so the number the dispatcher sees the
+// instant they drop is the number the server comes back with.
+function loadState(utilPct: number): LoadState {
+  if (utilPct < 15) return 'IDLE'
+  if (utilPct < 60) return 'LIGHT'
+  if (utilPct <= 95) return 'BALANCED'
+  if (utilPct <= 110) return 'TIGHT'
+  return 'OVERBOOKED'
+}
+/** Add (or with a negative sign, take away) one appointment's squares from a
+ *  crew-day's load. The capacity header used to wait on the server — two to
+ *  six seconds on a warm backend, far longer on a cold one — so the card moved
+ *  but the "31/22 sq" stayed put until a refresh. */
+function shiftLoad(loads: Record<string, DayLoad>, crewId: string, dateStr: string, squares: number, count: 1 | -1, crew?: Crew): Record<string, DayLoad> {
+  const k = `${crewId}:${dateStr}`
+  const cur = loads[k]
+  const capacity = cur?.capacity_squares ?? num(crew?.squares_per_day)
+  const planned = Math.max(0, Math.round(((cur?.planned_squares ?? 0) + count * squares) * 100) / 100)
+  const util = capacity > 0 ? Math.round(planned / capacity * 1000) / 10 : planned > 0 ? 999 : 0
+  return { ...loads, [k]: {
+    crew_id: crewId, date: dateStr, scheduled_hours: cur?.scheduled_hours ?? 0, available_hours: cur?.available_hours ?? 0,
+    appointment_count: Math.max(0, (cur?.appointment_count ?? 0) + count),
+    planned_squares: planned, capacity_squares: capacity, utilization_pct: util, state: loadState(util),
+  } }
+}
+function applyMove(old: BoardData, apptId: string, crewId: string, dateStr: string): BoardData {
+  const appt = old.appointments.find(a => a.id === apptId)
+  const fromCrew = old.appointment_crew[apptId]
   const appointments = old.appointments.map(a =>
     a.id === apptId ? { ...a, scheduled_start: dateStr + a.scheduled_start.slice(10), scheduled_end: dateStr + a.scheduled_end.slice(10) } : a)
   const appointment_crew = { ...old.appointment_crew, [apptId]: crewId }
   let day_loads = old.day_loads
-  if (pv) {
-    const k = `${crewId}:${dateStr}`
-    const prevCount = old.day_loads[k]?.appointment_count || 0
-    day_loads = { ...old.day_loads, [k]: {
-      crew_id: crewId, date: dateStr, appointment_count: prevCount + 1, scheduled_hours: 0,
-      available_hours: old.day_loads[k]?.available_hours ?? 0, planned_squares: pv.resulting_planned_squares,
-      capacity_squares: pv.capacity_squares, utilization_pct: pv.resulting_utilization_pct, state: pv.resulting_state,
-    } }
+  if (appt) {
+    const sq = num(appt.planned_squares)
+    if (fromCrew) day_loads = shiftLoad(day_loads, fromCrew, appt.scheduled_start.slice(0, 10), sq, -1)
+    day_loads = shiftLoad(day_loads, crewId, dateStr, sq, 1, old.crews.find(c => c.id === crewId))
   }
   return { ...old, appointments, appointment_crew, day_loads }
+}
+/** Take a job off its crew-day (back to the tray) without waiting on a refetch. */
+function applyUnassign(old: BoardData, apptId: string): BoardData {
+  const appt = old.appointments.find(a => a.id === apptId)
+  const fromCrew = old.appointment_crew[apptId]
+  if (!appt || !fromCrew) return old
+  const appointment_crew = { ...old.appointment_crew }
+  delete appointment_crew[apptId]
+  return { ...old, appointment_crew,
+    day_loads: shiftLoad(old.day_loads, fromCrew, appt.scheduled_start.slice(0, 10), num(appt.planned_squares), -1) }
 }
 function mergeSlice(old: BoardData, slice: AffectedSlice, movedCrewId: string): BoardData {
   const byId = new Map(old.appointments.map(a => [a.id, a]))
@@ -100,7 +133,7 @@ export default function Board({
   autoOpenWeather?: boolean
 }) {
   const qc = useQueryClient()
-  const queryKey = ['board', data.range.start, data.range.end]
+  const queryKey = useMemo(() => ['board', data.range.start, data.range.end], [data.range.start, data.range.end])
   const days = data.range.days
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -124,24 +157,28 @@ export default function Board({
   const addJob = useCallback(async (jobId: string, crewId: string, date: string) => {
     setAssigning(true)
     try {
-      await createAppointment(jobId, crewId, date)
+      const slice = await createAppointment(jobId, crewId, date)
       setPicker(null)
+      qc.setQueryData<BoardData>(queryKey, old => old ? mergeSlice(old, slice, crewId) : old)
       refreshBoard()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not add that job')
     } finally {
       setAssigning(false)
     }
-  }, [refreshBoard])
+  }, [qc, queryKey, refreshBoard])
 
   const removeJob = useCallback(async (appointmentId: string) => {
+    const prev = qc.getQueryData<BoardData>(queryKey)
+    qc.setQueryData<BoardData>(queryKey, old => old ? applyUnassign(old, appointmentId) : old)
     try {
       await patchAppointment(appointmentId, { status: 'UNASSIGNED' })
       refreshBoard()
     } catch (e) {
+      if (prev) qc.setQueryData(queryKey, prev)
       toast.error(e instanceof Error ? e.message : 'Could not remove that job')
     }
-  }, [refreshBoard])
+  }, [qc, queryKey, refreshBoard])
   const [detailId, setDetailId] = useState<string | null>(null)
   const [view, setView] = useState<'week' | 'day' | 'map'>('week')
   const [auditOpen, setAuditOpen] = useState(false)
@@ -150,6 +187,7 @@ export default function Board({
   const [trayReveal, setTrayReveal] = useState(0)
   const activeRef = useRef<string | null>(null)
   const previewRef = useRef<Record<string, PreviewResult | 'loading'>>({})
+  const traySquaresRef = useRef<number | null>(null)
 
   // Default to the mobile-friendly day view on small screens.
   useEffect(() => { if (typeof window !== 'undefined' && window.innerWidth < 640) setView('day') }, [])
@@ -237,21 +275,36 @@ export default function Board({
 
   const applyAffected = (aff: AffectedMulti) => qc.setQueryData<BoardData>(queryKey, old => old ? mergeAffected(old, aff) : old)
 
-  function doCreate(jobId: string, crewId: string, dateStr: string) {
+  function doCreate(jobId: string, crewId: string, dateStr: string, squares: number | null) {
+    // The card itself arrives with the server's reply (the tray job isn't in
+    // the board's data yet), but the cell's load moves the moment you let go.
+    const prev = qc.getQueryData<BoardData>(queryKey)
+    if (squares != null) {
+      qc.setQueryData<BoardData>(queryKey, old => old
+        ? { ...old, day_loads: shiftLoad(old.day_loads, crewId, dateStr, squares, 1, old.crews.find(c => c.id === crewId)) }
+        : old)
+    }
     createAppointment(jobId, crewId, dateStr)
       .then(slice => {
         qc.setQueryData<BoardData>(queryKey, old => old ? mergeSlice(old, slice, crewId) : old)
         qc.invalidateQueries({ queryKey: ['tray'] })
         toast.success('Scheduled.')
       })
-      .catch(err => toast.error('Could not schedule — ' + (err instanceof Error ? err.message.replace(/\[HTTP \d+\]\s*/, '') : 'try again')))
+      .catch(err => {
+        if (prev) qc.setQueryData(queryKey, prev)
+        toast.error('Could not schedule — ' + (err instanceof Error ? err.message.replace(/\[HTTP \d+\]\s*/, '') : 'try again'))
+      })
   }
 
   // Live per-crew weather — non-blocking; the grid renders first, this fills in.
-  const { data: liveWx } = useQuery({
+  // A failed forecast used to be cached for the full 3 hours, so the board
+  // stayed blank long after the weather service came back. Retry those soon.
+  const { data: liveWx, isLoading: wxLoading } = useQuery({
     queryKey: ['weather-live', data.range.start, data.range.end],
     queryFn: () => fetchLiveWeather(data.range.start, data.range.end),
-    staleTime: 3 * 3600 * 1000, refetchOnWindowFocus: false,
+    staleTime: q => (q.state.data?.unavailable ? 0 : 3 * 3600 * 1000),
+    refetchInterval: q => (q.state.data?.unavailable ? 5 * 60 * 1000 : false),
+    refetchOnWindowFocus: false,
   })
   const crewWx = (crewId: string, d: string): LiveWx | undefined => liveWx?.crew_weather[`${crewId}:${d}`]
   const regionalPrecip = (d: string): number | null => {
@@ -271,6 +324,8 @@ export default function Board({
     const id = String(e.active.id)
     activeRef.current = id; setActiveId(id)
     setDragLabel((e.active.data.current?.label as string) ?? null)
+    const sq = e.active.data.current?.squares
+    traySquaresRef.current = sq != null ? num(sq) : null
     clearPreview(); setHoverCell(null)
   }
   const onDragOver = (e: DragOverEvent) => {
@@ -293,7 +348,7 @@ export default function Board({
     setActiveId(null); activeRef.current = null; setHoverCell(null); setDragLabel(null)
     if (!apptId || !over) { clearPreview(); return }
     const [crewId, dateStr] = over.split('|')
-    if (isTrayDrag(apptId)) { doCreate(apptId.slice(5), crewId, dateStr); clearPreview(); return }
+    if (isTrayDrag(apptId)) { doCreate(apptId.slice(5), crewId, dateStr, traySquaresRef.current); clearPreview(); return }
     const appt = data.appointments.find(a => a.id === apptId)
     if (!appt) { clearPreview(); return }
     const fromCrew = data.appointment_crew[apptId]
@@ -304,13 +359,13 @@ export default function Board({
       toast.error('Can’t drop here — ' + pv.conflicts.filter(c => c.severity === 'BLOCK').map(c => c.message).join(' '))
       clearPreview(); return
     }
-    doMove(apptId, crewId, dateStr, fromCrew, fromDate, pv && pv !== 'loading' ? pv : undefined)
+    doMove(apptId, crewId, dateStr, fromCrew, fromDate)
     clearPreview()
   }
 
-  function doMove(apptId: string, crewId: string, dateStr: string, fromCrew: string, fromDate: string, pv?: PreviewResult) {
+  function doMove(apptId: string, crewId: string, dateStr: string, fromCrew: string, fromDate: string) {
     const prev = qc.getQueryData<BoardData>(queryKey)
-    qc.setQueryData<BoardData>(queryKey, old => old ? applyMove(old, apptId, crewId, dateStr, pv) : old)
+    qc.setQueryData<BoardData>(queryKey, old => old ? applyMove(old, apptId, crewId, dateStr) : old)
     patchAppointment(apptId, { crew_id: crewId, date: dateStr, request_id: crypto.randomUUID() })
       .then(slice => {
         qc.setQueryData<BoardData>(queryKey, old => old ? mergeSlice(old, slice, crewId) : old)
@@ -368,6 +423,14 @@ export default function Board({
               className="rounded-md px-2 py-1 text-sm hover:bg-[#eeeeed]" aria-label="Next day" title="Next day (→)">→</button>
           </div>
         )}
+        {wxLoading ? (
+          <span className="text-[11px]" style={{ color: 'var(--muted)' }}>Loading forecast…</span>
+        ) : liveWx?.unavailable ? (
+          <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold" title={liveWx.unavailable}
+            style={{ background: 'color-mix(in srgb, var(--tight) 14%, transparent)', color: 'var(--tight)' }}>
+            Forecast unavailable — retrying
+          </span>
+        ) : null}
         <span className="ml-auto hidden text-[11px] sm:inline" style={{ color: 'var(--muted)' }}>{view === 'week' ? 'Drag to move · click for detail' : view === 'day' ? 'One day, every crew' : 'Stops by location, routed in order'}</span>
         <button onClick={() => setQuickJobOpen(true)}
           className="ml-auto rounded-md px-2.5 py-1 text-[12px] font-bold sm:ml-3"

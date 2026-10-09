@@ -259,7 +259,11 @@ export interface LiveWx {
   precip_probability: number | null; precip_in: number | null
   temp_high_f: number | null; temp_low_f: number | null; wind_mph: number | null
 }
-export interface LiveWeather { crew_weather: Record<string, LiveWx>; regional: Record<string, LiveWx> }
+export interface LiveWeather {
+  crew_weather: Record<string, LiveWx>; regional: Record<string, LiveWx>
+  /** Why there's no forecast (both weather sources failed), or null. */
+  unavailable?: string | null
+}
 
 export async function fetchLiveWeather(start: string, end: string): Promise<LiveWeather> {
   const h = await authHeaders()
