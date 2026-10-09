@@ -31,6 +31,9 @@ from typing import Optional
 import httpx
 
 from app.core.config import settings
+from app.services.jurisdiction import _STATE_NAMES
+
+_STATE_ABBR = {name.lower(): code for code, name in _STATE_NAMES.items()}
 
 logger = logging.getLogger(__name__)
 
@@ -136,13 +139,17 @@ async def _maptiler_autocomplete(
         for c in context:
             cid = (c.get("id") or "").lower()
             ctext = c.get("text") or ""
-            if cid.startswith("place"):
+            # Newer MapTiler responses call the town "municipality"; older ones
+            # "place". Missing both left city blank on every quick job.
+            if cid.startswith(("place", "municipality", "locality")) and not city:
                 city = ctext
             elif cid.startswith("region"):
                 # MapTiler region carries the full state name in 'text' but the
-                # 2-letter abbreviation in 'short_code' (us-tx → tx).
+                # 2-letter abbreviation in 'short_code' (us-tx → tx). Without a
+                # short_code, the name's first two letters made North Carolina
+                # "NO" — look the name up instead.
                 short = (c.get("short_code") or "").upper().split("-")[-1]
-                state = short[:2] if short else ctext[:2].upper()
+                state = short[:2] if short else _STATE_ABBR.get(ctext.strip().lower(), "")
             elif cid.startswith("postal"):
                 zip_code = ctext
 
@@ -154,8 +161,14 @@ async def _maptiler_autocomplete(
             or ""
         )
         street = props.get("name") or props.get("housenumber_street") or ""
+        if not street and f.get("place_type") and "address" in f.get("place_type") and f.get("text"):
+            # Address features keep the street in top-level `text` and the
+            # house number in `address`; without this the whole place_name
+            # ("…, Wilmington, North Carolina 28401, United States, …") became
+            # the street line.
+            street = f["text"]
         # If "name" is just a city/place and we have an address number, prefix it
-        housenumber = props.get("housenumber") or ""
+        housenumber = props.get("housenumber") or f.get("address") or ""
         if housenumber and street and not street.startswith(housenumber):
             street = f"{housenumber} {street}".strip()
 

@@ -134,8 +134,12 @@ function BoardScreen() {
         </div>
       </div>
 
-      {/* Body */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+      {/* Body. No overflow of its own: the dashboard's <main> is what really
+          scrolls (this box was never height-bound), and an overflow here made
+          it the "scroll container" for sticky children — so the day header
+          never stuck and the Jobs tray sank below the fold. The min-height
+          keeps the tray at the bottom of the screen on a short board. */}
+      <div className="flex min-h-[calc(100vh-140px)] flex-1 flex-col">
         {isLoading || !focusDate || !today ? (
           <BoardSkeleton />
         ) : error ? (
