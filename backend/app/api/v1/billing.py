@@ -19,7 +19,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.auth import require_user
-from app.core.plans import promo_state, (
+from app.core.plans import (
+    promo_state,
     enforcing,
     LEAD_EXCLUSIVITY_BODY,
     LEAD_EXCLUSIVITY_HEADLINE,
