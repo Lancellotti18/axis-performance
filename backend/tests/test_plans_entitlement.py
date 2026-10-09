@@ -43,11 +43,11 @@ def test_shadow_mode_never_blocks_anyone(shadow):
     assert d.would_allow is False, "but it must record that it would have"
 
 
-def test_a_brand_new_account_is_not_treated_as_lapsed(shadow):
-    """No subscription row means 'signed up, not yet paid' — the population the
-    promo exists for — not 'their plan ran out'."""
-    d = evaluate(None, "generate_report")
-    assert d.would_allow is True
+def test_a_brand_new_account_without_a_code_gets_nothing(enforcing):
+    """No free tier and no automatic free report (Ryan, 2026-10-08): a plan or
+    a company code is the only way in."""
+    assert evaluate(None, "access_app").would_allow is False
+    assert evaluate(None, "generate_report").would_allow is False
 
 
 def test_enforcement_off_by_default(shadow):
@@ -110,20 +110,46 @@ def test_fleet_reports_are_unlimited(enforcing):
 
 
 # ── The promo flow ────────────────────────────────────────────────────────
-def test_new_signup_gets_one_free_report(enforcing):
+def _promo(days_from_now: float, left: int = 3, total: int = 3) -> dict:
+    until = (datetime.now(timezone.utc) + timedelta(days=days_from_now)).isoformat()
+    return {"status": "none", "promo_access_until": until,
+            "promo_reports_left": left, "promo_reports_total": total}
+
+
+def test_a_redeemed_code_opens_the_app_and_gives_reports(enforcing):
+    sub = _promo(7)
+    assert evaluate(sub, "access_app").would_allow is True
+    assert evaluate(sub, "generate_report").would_allow is True
+
+
+def test_the_old_free_report_flag_grants_nothing_now(enforcing):
     d = evaluate({"status": "none", "trial_report_used": False}, "generate_report")
-    assert d.would_allow is True
-
-
-def test_second_report_needs_a_plan(enforcing):
-    d = evaluate({"status": "none", "trial_report_used": True}, "generate_report")
     assert d.would_allow is False
 
 
-def test_used_promo_becomes_view_only_not_locked_out(enforcing):
-    d = evaluate({"status": "none", "trial_report_used": True}, "access_app")
-    assert d.would_allow is False
-    assert "view-only" in d.reason
+def test_three_reports_then_reports_need_a_plan_but_the_app_stays_open(enforcing):
+    sub = _promo(5, left=0)
+    assert evaluate(sub, "generate_report").would_allow is False
+    assert evaluate(sub, "access_app").would_allow is True      # the rest of the 7 days stays open
+
+
+def test_when_the_seven_days_end_the_whole_app_locks(enforcing):
+    sub = _promo(-0.01, left=2)
+    d = evaluate(sub, "access_app")
+    assert d.would_allow is False and "trial has ended" in d.reason
+    assert evaluate(sub, "generate_report").would_allow is False
+
+
+def test_each_account_runs_on_its_own_clock(enforcing):
+    """Two companies redeeming a week apart each get a full window."""
+    early, late = _promo(-1), _promo(6.5)
+    assert evaluate(early, "access_app").would_allow is False
+    assert evaluate(late, "access_app").would_allow is True
+
+
+def test_promo_days_left_rounds_up():
+    st = plans.promo_state(_promo(6.1))
+    assert st["active"] and st["days_left"] == 7 and st["reports_left"] == 3
 
 
 # ── Expiry and limits ─────────────────────────────────────────────────────
@@ -166,11 +192,14 @@ def test_leads_blocked_for_every_non_subscriber_state(enforcing):
         assert "subscribers only" in d.reason
 
 
-def test_a_free_report_does_not_unlock_leads(enforcing):
-    """The promo grants one report, nothing else. Leads stay behind a plan."""
-    promo = {"status": "none", "trial_report_used": False}
-    assert evaluate(promo, "generate_report").would_allow is True
-    assert evaluate(promo, "buy_lead").would_allow is False
+def test_a_promo_does_not_unlock_leads(enforcing):
+    """Leads stay subscriber-only, promo or not."""
+    assert evaluate(_promo(7), "buy_lead").would_allow is False
+
+
+def test_a_promo_includes_crews_up_to_solo(enforcing):
+    assert evaluate(_promo(7), "add_crew", crews_used=0).would_allow is True
+    assert evaluate(_promo(7), "add_crew", crews_used=3).would_allow is False
 
 
 # ── Pricing constants match what was agreed ───────────────────────────────

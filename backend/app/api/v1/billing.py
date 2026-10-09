@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.auth import require_user
-from app.core.plans import (
+from app.core.plans import promo_state, (
     enforcing,
     LEAD_EXCLUSIVITY_BODY,
     LEAD_EXCLUSIVITY_HEADLINE,
@@ -146,7 +146,18 @@ async def my_billing(user: dict = Depends(require_user)) -> dict:
         "plan": _plan_json(plan_key) if plan_key in PLANS else None,
         "has_plan": bool(plan_key),
         "trial_report_used": bool((sub or {}).get("trial_report_used")),
+        # The company-code trial: days and reports left, or ended. The app
+        # shows the banner, and the "thank you, choose a plan" screen, from this.
+        "promo": promo_state(sub),
+        "founding_member": bool((sub or {}).get("founding_member")),
+        "enforcing": enforcing(),
+        "is_admin": _is_admin(user["id"]),
     }
+
+
+def _is_admin(uid: str) -> bool:
+    from app.services.entitlement import is_admin
+    return is_admin(uid)
 
 
 # ── Subscribing ───────────────────────────────────────────────────────────

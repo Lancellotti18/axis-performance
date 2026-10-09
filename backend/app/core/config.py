@@ -73,6 +73,20 @@ class Settings(BaseSettings):
     # Public site origin used for Stripe redirects + links in outbound SMS.
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Transactional email (promo welcome / promo ended) through Resend.
+    # Inert until the key is set: emails are logged, not sent.
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "Ryan at Axis <ryan@axisroofingperformance.com>"
+    EMAIL_REPLY_TO: str = ""
+    # Who can see the Founders & Trials page and create promo codes. Ids, not
+    # emails, so no address lives in code. Ryan's accounts by default.
+    ADMIN_USER_IDS: str = (
+        "f9dafe47-810a-4c72-81c6-dbe2d9baf64b,"
+        "f096fd85-1541-4b1b-a491-1bc8c966afca,"
+        "7b92b4aa-4187-4ff8-9014-46702b65986b,"
+        "37ff7be5-b75c-402c-aa42-8061e9b23783"
+    )
+
     # Twilio — speed-to-lead SMS. All three must be set or SMS quietly no-ops.
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""

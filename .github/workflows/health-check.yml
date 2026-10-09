@@ -64,6 +64,17 @@ jobs:
             exit 1
           fi
 
+      - name: Send trial-ended emails
+        # Promo trials end on their own clock; this emails anyone whose trial
+        # ended without subscribing, once each. Never fails the health check.
+        continue-on-error: true
+        env:
+          SECRET: ${{ secrets.HEALTH_CHECK_SECRET }}
+          BACKEND: https://build-backend-jcp9.onrender.com
+        run: |
+          curl -s --max-time 120 -X POST -H "X-Health-Secret: $SECRET" \
+            "$BACKEND/api/v1/ops/promo-sweep" || true
+
       - name: Report findings
         run: |
           python3 - <<'PY'
