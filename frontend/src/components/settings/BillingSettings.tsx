@@ -13,6 +13,7 @@ import { loadStripe, type Stripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import toast from 'react-hot-toast'
 
+import PromoCodeBox from '@/components/billing/PromoCodeBox'
 import { api, type UsageSummary } from '@/lib/api'
 
 type Card = {
@@ -109,6 +110,11 @@ export default function BillingSettings() {
                className="mt-4 inline-block rounded-xl bg-[#0068d6] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#01498f]">
               See plans
             </a>
+            {!sub?.promo_access_until && (
+              <div className="mt-5">
+                <PromoCodeBox onRedeemed={refresh} />
+              </div>
+            )}
           </>
         ) : (
           <>

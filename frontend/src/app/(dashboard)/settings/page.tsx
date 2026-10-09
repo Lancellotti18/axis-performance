@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
@@ -29,6 +30,12 @@ export default function SettingsPage() {
   // page, and money. Tabs beat one long scroll: nobody edits their logo
   // and their card in the same sitting.
   const [tab, setTab] = useState<'business' | 'quote' | 'billing'>('business')
+  // Only Ryan's accounts see the Founders & Trials link (the page itself is
+  // refused server-side to everyone else).
+  const [isAdmin, setIsAdmin] = useState(false)
+  useEffect(() => {
+    api.billing.me().then(m => setIsAdmin(!!m.is_admin)).catch(() => {})
+  }, [])
   const logoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -105,7 +112,14 @@ export default function SettingsPage() {
 
       <div className="relative p-8 max-w-2xl mx-auto">
         <div className="mb-7">
-          <h1 className="text-2xl font-bold text-[#1a1a1a]">Settings</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-[#1a1a1a]">Settings</h1>
+            {isAdmin && (
+              <Link href="/founders" className="rounded-md border border-[#dededc] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a1a1a] hover:bg-[#f8f8f7]">
+                Founders &amp; Trials →
+              </Link>
+            )}
+          </div>
 
         <div className="mt-5 flex gap-1 border-b border-[#e3e8ef]">
           {([

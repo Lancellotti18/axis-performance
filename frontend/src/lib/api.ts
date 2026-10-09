@@ -328,6 +328,34 @@ export class ApiError extends Error {
   }
 }
 
+export interface PromoState {
+  had_promo: boolean
+  active: boolean
+  access_until: string | null
+  days_left: number
+  reports_left: number
+  reports_total: number
+  ended: boolean
+  ended_reason: string | null
+  founding_member: boolean
+}
+
+export interface FounderRow {
+  code: string
+  company: string
+  free_reports: number
+  access_days: number
+  created_at: string | null
+  expires_at: string | null
+  redeemed_at: string | null
+  state: 'unused' | 'expired' | 'trial' | 'trial ended' | 'subscribed'
+  account_email: string | null
+  promo: PromoState | null
+  subscribed: boolean
+  plan_key: string | null
+  reports: { run_id: string; address: string; created_at: string }[]
+}
+
 export type EntitlementAction =
   'access_app' | 'generate_report' | 'add_crew' | 'buy_lead'
 
@@ -897,7 +925,19 @@ export const api = {
         `/api/v1/billing/config`),
     me: () =>
       apiRequest<{ subscription: Record<string, unknown> | null; has_plan: boolean;
-                   trial_report_used: boolean }>(`/api/v1/billing/me`),
+                   trial_report_used: boolean; promo?: PromoState; founding_member?: boolean;
+                   enforcing?: boolean; is_admin?: boolean }>(`/api/v1/billing/me`),
+    // Company codes: 3 free reports + 7 days of full access, founding member.
+    redeemCode: (code: string) =>
+      apiRequest<{ redeemed: boolean; code: string; free_reports: number; access_days: number;
+                   access_until: string; founding_member: boolean }>(`/api/v1/billing/promo/redeem`,
+        { method: 'POST', body: JSON.stringify({ code }) }),
+    founders: () =>
+      apiRequest<{ codes: FounderRow[]; enforcing: boolean }>(`/api/v1/billing/promo/admin/founders`),
+    createCode: (body: { code: string; company: string; free_reports?: number; access_days?: number;
+                         expires_in_days?: number; notes?: string }) =>
+      apiRequest<Record<string, unknown>>(`/api/v1/billing/promo/admin/codes`,
+        { method: 'POST', body: JSON.stringify(body) }),
     paymentMethods: () =>
       apiRequest<{ payment_methods: Array<{ id: string; brand: string | null; last4: string | null;
                    exp_month: number | null; exp_year: number | null; is_default: boolean }> }>(
