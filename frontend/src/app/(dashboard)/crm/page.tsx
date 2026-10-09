@@ -1,10 +1,12 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import RoofIQTools from '@/components/RoofIQTools'
 import InspectionsPanel from '@/components/InspectionsPanel'
 import { useRouter } from 'next/navigation'
 import { getUser } from '@/lib/auth'
 import { api } from '@/lib/api'
+import toast from 'react-hot-toast'
 
 type Stage = 'new' | 'contacted' | 'site_visit' | 'estimate_sent' | 'won' | 'lost'
 type ViewMode = 'kanban' | 'list'
@@ -105,6 +107,15 @@ const EMPTY_FORM = { name: '', phone: '', email: '', address: '', city: '', stat
 const inputCls = 'w-full bg-[#eeeeed] border border-[#dededc] focus:border-blue-400 focus:bg-[#eeeeed] rounded-xl px-4 py-2.5 text-[#1a1a1a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-colors text-sm [&>option]:bg-[#f8f8f7] [&>option]:text-[#1a1a1a]'
 const labelCls = 'block text-xs font-semibold text-[#2d2d2d] uppercase tracking-wider mb-1.5'
 
+// The dashboard's content column is its own stacking context (z-index 1), so a
+// drawer or dialog rendered in place sat UNDER the floating "Ask Axis" button —
+// which covered the drawer's Add-note button. Rendering into <body> lifts them
+// above it without touching the shared layout.
+// Only ever rendered after a click (drawer / form open), never during SSR.
+function Portal({ children }: { children: React.ReactNode }) {
+  return createPortal(children, document.body)
+}
+
 // ── Kanban card ───────────────────────────────────────────────────────────────
 function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete, onMove }: {
   lead: Lead; isDragging: boolean
@@ -166,7 +177,8 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd, onOpen, onDelete
             </button>
           )}
         </div>
-        <button onClick={e => { e.stopPropagation(); onDelete() }} className="p-1 rounded hover:bg-rose-500/10 text-[#9ca3af] hover:text-red-400 transition-colors">
+        <button onClick={e => { e.stopPropagation(); onDelete() }} title="Delete lead" aria-label={`Delete ${lead.name}`}
+          className="p-1 rounded hover:bg-rose-500/10 text-[#9ca3af] hover:text-red-400 transition-colors">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
         </button>
       </div>
@@ -200,7 +212,8 @@ function ListRow({ lead, onStageChange, onOpen, onDelete }: { lead: Lead; onStag
       >
         {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
       </select>
-      <button onClick={e => { e.stopPropagation(); onDelete(lead.id) }} className="text-xs text-red-400 font-medium px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-red-100 transition-all"></button>
+      <button onClick={e => { e.stopPropagation(); onDelete(lead.id) }} aria-label={`Delete ${lead.name}`}
+        className="text-xs text-red-500 font-semibold px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-red-100 transition-all">Delete</button>
     </div>
   )
 }
@@ -278,6 +291,12 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [notes])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !recording) onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, recording])
 
   // Stop any in-flight recording when the drawer unmounts so we don't leak
   // the user's microphone stream.
@@ -366,17 +385,24 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
       const note = await api.crm.addNote(lead.id, noteText.trim(), userId)
       setNotes(prev => [...prev, note])
       setNoteText('')
-    } catch {}
+    } catch {
+      // Keep the typed text so nothing is lost; just say it didn't save.
+      toast.error('Could not save that note — try again.')
+    }
     setAddingNote(false)
   }
 
   async function handleDeleteNote(noteId: string) {
+    const before = notes
     setNotes(prev => prev.filter(n => n.id !== noteId))
-    try { await api.crm.deleteNote(lead.id, noteId) } catch {}
+    try { await api.crm.deleteNote(lead.id, noteId) } catch {
+      setNotes(before)
+      toast.error('Could not delete that note — try again.')
+    }
   }
 
   return (
-    <>
+    <Portal>
       {/* Backdrop */}
       <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
 
@@ -395,11 +421,11 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
               className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 hover:bg-blue-100 transition-all">
               Edit
             </button>
-            <button onClick={() => { onDelete(lead.id); onClose() }}
+            <button onClick={() => onDelete(lead.id)}
               className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-500/10 text-red-500 hover:bg-red-100 transition-all">
               Delete
             </button>
-            <button onClick={onClose} className="text-[#6b7280] hover:text-[#9ca3af] transition-colors ml-1">
+            <button onClick={onClose} aria-label="Close" className="text-[#6b7280] hover:text-[#9ca3af] transition-colors ml-1">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
@@ -612,7 +638,7 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
           </div>
         </div>
       </div>
-    </>
+    </Portal>
   )
 }
 
@@ -627,6 +653,7 @@ export default function CRMPage() {
   const [openLead, setOpenLead]   = useState<Lead | null>(null)
   const [form, setForm]           = useState({ ...EMPTY_FORM })
   const [saving, setSaving]       = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   const [viewMode, setViewMode]   = useState<ViewMode>('kanban')
   const [search, setSearch]       = useState('')
   const [draggingId, setDraggingId]     = useState<string | null>(null)
@@ -643,13 +670,22 @@ export default function CRMPage() {
     load()
   }, [router])
 
+  useEffect(() => {
+    if (!showForm) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) setShowForm(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showForm, saving])
+
   function openNew(defaultStage?: Stage) {
+    setFormError(null)
     setEditingLead(null)
     setForm({ ...EMPTY_FORM, stage: defaultStage || 'new' })
     setShowForm(true)
   }
 
   function openEdit(lead: Lead) {
+    setFormError(null)
     setEditingLead(lead)
     setForm({
       name: lead.name, phone: lead.phone || '', email: lead.email || '',
@@ -662,9 +698,16 @@ export default function CRMPage() {
 
   async function handleSave() {
     if (!form.name.trim() || !user) return
+    // A negative value used to save and quietly subtract from the pipeline
+    // total, and any text was accepted as an email.
+    const value = form.estimated_value === '' ? 0 : parseFloat(form.estimated_value as string)
+    if (!Number.isFinite(value) || value < 0) { setFormError('Estimated value must be zero or more.'); return }
+    const email = form.email.trim()
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setFormError('That email address doesn\u2019t look right — check it, or leave it blank.'); return }
+    setFormError(null)
     setSaving(true)
     try {
-      const payload = { ...form, estimated_value: parseFloat(form.estimated_value as string) || 0 }
+      const payload = { ...form, email, estimated_value: value }
       if (editingLead) {
         const updated = await api.crm.updateLead(editingLead.id, payload)
         setLeads(prev => prev.map(l => l.id === editingLead.id ? updated : l))
@@ -674,20 +717,39 @@ export default function CRMPage() {
         setLeads(prev => [created, ...prev])
       }
       setShowForm(false)
-    } catch {}
+    } catch (e) {
+      // Keep the form open with everything typed, and say so — this used to
+      // fail silently and look like the button did nothing.
+      setFormError(e instanceof Error ? e.message.replace(/\[HTTP \d+\]\s*/, '').slice(0, 160) : 'Could not save — try again.')
+    }
     setSaving(false)
   }
 
   async function handleStageChange(id: string, stage: Stage) {
+    const before = leads.find(l => l.id === id)?.stage
     setLeads(prev => prev.map(l => l.id === id ? { ...l, stage } : l))
     if (openLead?.id === id) setOpenLead(prev => prev ? { ...prev, stage } : prev)
-    try { await api.crm.updateLead(id, { stage }) } catch {}
+    try { await api.crm.updateLead(id, { stage }) } catch {
+      // Put the card back where it was rather than show a move that never saved.
+      if (before) {
+        setLeads(prev => prev.map(l => l.id === id ? { ...l, stage: before } : l))
+        if (openLead?.id === id) setOpenLead(prev => prev ? { ...prev, stage: before } : prev)
+      }
+      toast.error('Could not move that lead — try again.')
+    }
   }
 
   async function handleDelete(id: string) {
+    const lead = leads.find(l => l.id === id)
+    // Every delete button used to remove the lead (and its notes) on one click,
+    // with no undo — and the list view's button had no label at all.
+    if (!window.confirm(`Delete ${lead?.name || 'this lead'}?\n\nThis removes the lead and its notes. This can't be undone.`)) return
     setLeads(prev => prev.filter(l => l.id !== id))
     if (openLead?.id === id) setOpenLead(null)
-    try { await api.crm.deleteLead(id) } catch {}
+    try { await api.crm.deleteLead(id) } catch {
+      if (lead) setLeads(prev => prev.some(l => l.id === id) ? prev : [lead, ...prev])
+      toast.error('Could not delete that lead — it\u2019s been put back.')
+    }
   }
 
   function handleMove(lead: Lead, dir: 'left' | 'right') {
@@ -713,13 +775,14 @@ export default function CRMPage() {
     ? leads.filter(l =>
         l.name.toLowerCase().includes(search.toLowerCase()) ||
         l.city?.toLowerCase().includes(search.toLowerCase()) ||
+        l.address?.toLowerCase().includes(search.toLowerCase()) ||
         l.email?.toLowerCase().includes(search.toLowerCase()) ||
         l.phone?.includes(search)
       )
     : leads
 
-  const pipelineValue = leads.filter(l => !['won', 'lost'].includes(l.stage)).reduce((s, l) => s + (l.estimated_value || 0), 0)
-  const wonValue      = leads.filter(l => l.stage === 'won').reduce((s, l) => s + (l.estimated_value || 0), 0)
+  const pipelineValue = leads.filter(l => !['won', 'lost'].includes(l.stage)).reduce((s, l) => s + Math.max(0, l.estimated_value || 0), 0)
+  const wonValue      = leads.filter(l => l.stage === 'won').reduce((s, l) => s + Math.max(0, l.estimated_value || 0), 0)
   const wonCount      = leads.filter(l => l.stage === 'won').length
   const convRate      = leads.length > 0 ? Math.round((wonCount / leads.length) * 100) : 0
 
@@ -793,7 +856,7 @@ export default function CRMPage() {
             <div className="flex gap-4 h-full min-w-full">
               {STAGES.map(stage => {
                 const stageLeads = filtered.filter(l => l.stage === stage.key)
-                const stageValue = stageLeads.reduce((s, l) => s + (l.estimated_value || 0), 0)
+                const stageValue = stageLeads.reduce((s, l) => s + Math.max(0, l.estimated_value || 0), 0)
                 const isOver = dragOverStage === stage.key
                 return (
                   <div key={stage.key}
@@ -839,7 +902,6 @@ export default function CRMPage() {
           <div className="space-y-3 overflow-y-auto h-full">
             {filtered.length === 0 ? (
               <div className="text-center py-24">
-                <div className="text-4xl mb-3"></div>
                 <div className="text-[#9ca3af] font-semibold">No leads yet</div>
                 <div className="text-[#6b7280] text-sm mt-1">Click "+ Add Lead" to add your first prospect.</div>
               </div>
@@ -868,11 +930,14 @@ export default function CRMPage() {
 
       {/* Add / Edit modal */}
       {showForm && (
+        <Portal>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.4)', backdropFilter: 'blur(4px)' }}>
           <div className="bg-[#f8f8f7] rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh] ring-1 ring-[#dededc]">
             <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
               <h2 className="text-lg font-bold text-[#1a1a1a]">{editingLead ? 'Edit Lead' : 'New Lead'}</h2>
-              <button onClick={() => setShowForm(false)} className="text-[#6b7280] hover:text-[#1a1a1a] transition-colors text-xl leading-none"></button>
+              <button onClick={() => setShowForm(false)} aria-label="Close" className="text-[#6b7280] hover:text-[#1a1a1a] transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
             </div>
             <div className="p-6 space-y-4">
               <div>
@@ -909,6 +974,9 @@ export default function CRMPage() {
               <div><label className={labelCls}>Estimated Value ($)</label><input value={form.estimated_value} onChange={e => setForm(f => ({ ...f, estimated_value: e.target.value }))} className={inputCls} placeholder="15000" type="number" min="0" /></div>
               <div><label className={labelCls}>Description / Notes</label><textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className={`${inputCls} resize-none`} rows={3} placeholder="Job details, source, any relevant context…" /></div>
             </div>
+            {formError && (
+              <div className="mx-6 mb-0 rounded-lg border border-red-200 bg-rose-500/10 px-3 py-2 text-xs font-medium text-red-600">{formError}</div>
+            )}
             <div className="flex gap-3 p-6 border-t" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
               <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-[#9ca3af] bg-[#f8f8f7] hover:bg-[#eeeeed] transition-all">Cancel</button>
               <button onClick={handleSave} disabled={saving || !form.name.trim()}
@@ -919,6 +987,7 @@ export default function CRMPage() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </div>
   )

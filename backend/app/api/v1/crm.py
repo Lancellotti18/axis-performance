@@ -16,7 +16,7 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from app.core.auth import require_user
 from app.core.ownership import require_owned_crm_lead
@@ -39,7 +39,7 @@ class LeadCreate(BaseModel):
     job_type: Optional[str] = "residential"
     stage: Optional[str] = "new"
     notes: Optional[str] = ""
-    estimated_value: Optional[float] = 0.0
+    estimated_value: Optional[float] = Field(0.0, ge=0)   # negatives subtracted from the pipeline
 
 
 class LeadUpdate(BaseModel):
@@ -52,7 +52,7 @@ class LeadUpdate(BaseModel):
     job_type: Optional[str] = None
     stage: Optional[str] = None
     notes: Optional[str] = None
-    estimated_value: Optional[float] = None
+    estimated_value: Optional[float] = Field(None, ge=0)
 
 
 class NoteCreate(BaseModel):
