@@ -5,9 +5,12 @@ own job site, not one regional number. Cached in-memory with a short TTL so the
 board re-pulls through the day as forecasts change, without hammering the API.
 Best-effort throughout: any failure yields no weather, never an error.
 
-Two sources. Open-Meteo first; if it fails (it rate-limits per IP, and Render's
-free tier shares its outbound IPs with everyone else on it) the US National
-Weather Service fills in. Both failing is remembered for a few minutes so the
+Three sources, in order. Google's Weather API first: it runs on the same Google
+Cloud project and key as Solar, which Render reaches reliably. Then the US
+National Weather Service, then Open-Meteo. The free two are reached only
+intermittently from Render (Open-Meteo rate-limits per IP, and Render's free
+tier shares its outbound IPs with everyone else on it; measured 2026-10-08/09:
+Open-Meteo failed every time, NWS timed out about half the time). Both failing is remembered for a few minutes so the
 board stops waiting out two timeouts on every load. `last_error()` says what
 went wrong so the board can show it instead of an empty sky.
 """
@@ -57,9 +60,11 @@ async def forecast_by_date(lat: float, lng: float, days: int = _MAX_FORECAST_DAY
         return {}
 
     global _LAST_ERROR
-    out = await _open_meteo(lat, lng, days)
+    out = await _google(lat, lng, days)
     if out is None:
         out = await _nws(lat, lng)
+    if out is None:
+        out = await _open_meteo(lat, lng, days)
     if not out:
         _FAILED[key] = time.time()
         return {}
@@ -79,6 +84,92 @@ def _note_failure(source: str, e: Exception) -> None:
         why = f"{source} failed: {type(e).__name__}"
     _LAST_ERROR = why
     logger.warning("weather: %s", why)
+
+
+_GOOGLE_ENDPOINT = "https://weather.googleapis.com/v1/forecast/days:lookup"
+_GOOGLE_MAX_DAYS = 10              # Google's daily forecast horizon
+
+
+def _google_key() -> str:
+    from app.core.config import settings
+    return (getattr(settings, "GOOGLE_WEATHER_API_KEY", "") or settings.GOOGLE_SOLAR_API_KEY or "").strip()
+
+
+def _num(v) -> Optional[float]:
+    return float(v) if isinstance(v, (int, float)) else None
+
+
+def _google_day(d: dict) -> Optional[tuple[str, dict]]:
+    """One Google forecastDay -> (date_iso, our per-day shape). Day and night are
+    folded together the way NWS's two periods are: the wetter and windier half wins,
+    rainfall adds up."""
+    dd = d.get("displayDate") or {}
+    try:
+        ds = f"{int(dd['year']):04d}-{int(dd['month']):02d}-{int(dd['day']):02d}"
+    except (KeyError, TypeError, ValueError):
+        return None
+    halves = [d.get("daytimeForecast") or {}, d.get("nighttimeForecast") or {}]
+
+    probs, rain, winds = [], [], []
+    for h in halves:
+        pr = h.get("precipitation") or {}
+        p = _num((pr.get("probability") or {}).get("percent"))
+        if p is not None:
+            probs.append(p)
+        q = pr.get("qpf") or {}
+        qv = _num(q.get("quantity"))
+        if qv is not None:
+            rain.append(qv / 25.4 if (q.get("unit") or "").upper().startswith("MILLI") else qv)
+        sp = (h.get("wind") or {}).get("speed") or {}
+        wv = _num(sp.get("value"))
+        if wv is not None:
+            winds.append(wv * 0.621371 if (sp.get("unit") or "").upper().startswith("KILO") else wv)
+
+    def temp(t: Optional[dict]) -> Optional[float]:
+        if not t:
+            return None
+        v = _num(t.get("degrees"))
+        if v is None:
+            return None
+        return v * 9 / 5 + 32 if (t.get("unit") or "").upper() == "CELSIUS" else v
+
+    return ds, {
+        "precip_probability": max(probs) if probs else None,
+        "precip_in": round(sum(rain), 2) if rain else None,
+        "temp_high_f": temp(d.get("maxTemperature")),
+        "temp_low_f": temp(d.get("minTemperature")),
+        "wind_mph": round(max(winds), 1) if winds else None,
+    }
+
+
+async def _google(lat: float, lng: float, days: int) -> Optional[dict]:
+    """Google Weather API daily forecast (up to 10 days). None when there is no
+    key, the API is not enabled for it (403), or the call fails."""
+    key = _google_key()
+    if not key:
+        return None
+    params = {
+        "key": key, "location.latitude": round(lat, 4), "location.longitude": round(lng, 4),
+        "days": min(max(days, 1), _GOOGLE_MAX_DAYS), "pageSize": _GOOGLE_MAX_DAYS,
+        "unitsSystem": "IMPERIAL",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            r = await client.get(_GOOGLE_ENDPOINT, params=params)
+            r.raise_for_status()
+            days_in = r.json().get("forecastDays") or []
+    except Exception as e:
+        _note_failure("Google Weather", e)
+        return None
+    out: dict = {}
+    for d in days_in:
+        parsed = _google_day(d)
+        if parsed:
+            out[parsed[0]] = parsed[1]
+    if not out:
+        _note_failure("Google Weather", ValueError("no forecast days"))
+        return None
+    return out
 
 
 async def _open_meteo(lat: float, lng: float, days: int) -> Optional[dict]:
