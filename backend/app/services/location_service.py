@@ -136,14 +136,19 @@ async def _maptiler_autocomplete(
         # MapTiler context lists state, postal_code, etc. Walk it to extract.
         context = f.get("context") or []
         city = state = zip_code = ""
+        # The town: prefer "municipality", then "locality", then "place" —
+        # "place" can be a landmark ("The Cotton Exchange") sitting in front
+        # of the actual town in the context list.
+        towns = {}
+        for c in context:
+            kind = (c.get("id") or "").lower().split(".")[0]
+            if kind in ("municipality", "locality", "place") and kind not in towns:
+                towns[kind] = c.get("text") or ""
+        city = towns.get("municipality") or towns.get("locality") or towns.get("place") or ""
         for c in context:
             cid = (c.get("id") or "").lower()
             ctext = c.get("text") or ""
-            # Newer MapTiler responses call the town "municipality"; older ones
-            # "place". Missing both left city blank on every quick job.
-            if cid.startswith(("place", "municipality", "locality")) and not city:
-                city = ctext
-            elif cid.startswith("region"):
+            if cid.startswith("region"):
                 # MapTiler region carries the full state name in 'text' but the
                 # 2-letter abbreviation in 'short_code' (us-tx → tx). Without a
                 # short_code, the name's first two letters made North Carolina
