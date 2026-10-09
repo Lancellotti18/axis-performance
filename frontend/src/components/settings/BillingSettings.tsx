@@ -70,6 +70,15 @@ export default function BillingSettings() {
   const status = (sub?.status as string | undefined) ?? 'none'
   const current = plans.find(p => p.key === planKey) ?? null
   const scheduled = (sub?.scheduled_plan_key as string | undefined) ?? null
+  const scheduledInterval = (sub?.scheduled_interval as string | undefined) ?? null
+  const interval = ((sub?.billing_interval as string | undefined) === 'year' ? 'year' : 'month') as 'month' | 'year'
+  // A plan change answers with when it takes effect; say exactly that rather
+  // than "Switched" for a downgrade that only lands at renewal.
+  const changeTo = (planKey: string, nextInterval?: 'month' | 'year') => act(async () => {
+    const r = await api.billing.changePlan(planKey, nextInterval)
+    if (r.warning) toast(r.warning, { duration: 9000, icon: '⚠️' })
+    toast.success(r.reason)
+  }, '')
   const cancelling = Boolean(sub?.cancel_at_period_end)
   const periodEnd = sub?.current_period_end as string | undefined
   const active = ['active', 'trialing', 'past_due'].includes(status)
@@ -89,7 +98,7 @@ export default function BillingSettings() {
 
   const act = useCallback(async (fn: () => Promise<unknown>, ok: string) => {
     setBusy(true)
-    try { await fn(); toast.success(ok); await refresh() }
+    try { await fn(); if (ok) toast.success(ok); await refresh() }
     catch (e) { toast.error(e instanceof Error ? e.message : 'That didn’t work.') }
     finally { setBusy(false) }
   }, [refresh])
@@ -187,6 +196,7 @@ export default function BillingSettings() {
             {scheduled && (
               <Notice tone="info">
                 Switching to <strong>{plans.find(p => p.key === scheduled)?.name ?? scheduled}</strong>
+                {scheduledInterval ? `, billed ${scheduledInterval === 'year' ? 'annually' : 'monthly'},` : ''}
                 {periodEnd ? ` on ${new Date(periodEnd).toLocaleDateString()}` : ''}. Nothing changes until then.
               </Notice>
             )}
@@ -202,13 +212,29 @@ export default function BillingSettings() {
               </Notice>
             )}
 
+            {current && !cancelling && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dededc] px-4 py-3">
+                <p className="text-sm text-[#1a1a1a]">
+                  {interval === 'month'
+                    ? <>Pay annually and get <strong>{Math.round(12 - current.annual_usd / current.monthly_usd)} months free</strong>: ${current.annual_usd.toLocaleString()}/year instead of ${(current.monthly_usd * 12).toLocaleString()}.</>
+                    : <>You’re billed annually. Switching to monthly takes effect when this year ends.</>}
+                </p>
+                <button disabled={busy}
+                  onClick={() => {
+                    if (interval === 'month' && !confirm(
+                      `Switch to annual billing? Your card is charged $${current.annual_usd.toLocaleString()} now, minus credit for the unused part of this month.`)) return
+                    changeTo(planKey!, interval === 'month' ? 'year' : 'month')
+                  }}
+                  className="rounded-xl bg-[#0068d6] px-4 py-2 text-sm font-bold text-white hover:bg-[#01498f] disabled:opacity-50">
+                  {interval === 'month' ? 'Switch to annual' : 'Switch to monthly'}
+                </button>
+              </div>
+            )}
+
             <div className="mt-5 flex flex-wrap gap-2">
               {plans.filter(p => p.key !== planKey).map(p => (
                 <button key={p.key} disabled={busy}
-                  onClick={() => act(async () => {
-                    const r = await api.billing.changePlan(p.key)
-                    if (r.warning) toast(r.warning, { duration: 9000, icon: '⚠️' })
-                  }, `Switched to ${p.name}.`)}
+                  onClick={() => changeTo(p.key)}
                   className="rounded-xl border border-[#dededc] bg-white px-4 py-2 text-sm font-medium text-[#1a1a1a] hover:border-[#0068d6] disabled:opacity-50">
                   Switch to {p.name}
                 </button>

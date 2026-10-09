@@ -380,6 +380,12 @@ def main() -> int:
     check("change date is the period end",
           row.get("scheduled_change_at") == row.get("current_period_end"),
           f"{row.get('scheduled_change_at')} vs {row.get('current_period_end')}")
+    # REGRESSION: the downgrade must reach STRIPE. It used to live only in Axis,
+    # so renewal handed out Solo's limits while Stripe charged Fleet's price.
+    upcoming = stripe.Invoice.upcoming(subscription=sub_id)
+    check("Stripe's next invoice is the solo price",
+          upcoming["total"] / 100 == PLANS["solo"].monthly_usd,
+          f"${upcoming['total'] / 100:.0f} vs ${PLANS['solo'].monthly_usd}")
 
     # ── Cancel keeps access to the end of the paid period, and is reversible.
     section("CANCEL AND RESUME")

@@ -956,11 +956,12 @@ export const api = {
     removeCard: (id: string) =>
       apiRequest<{ ok: boolean }>(`/api/v1/billing/payment-methods/remove`,
         { method: 'POST', body: JSON.stringify({ id }) }),
-    changePlan: (planKey: string) =>
-      apiRequest<{ ok: boolean; effective: string; reason: string; warning: string | null;
-                   action_needed: string | null; effective_at: string | null }>(
+    /** interval omitted keeps the current billing period. */
+    changePlan: (planKey: string, interval?: 'month' | 'year') =>
+      apiRequest<{ ok: boolean; effective: 'now' | 'period_end'; reason: string; warning: string | null;
+                   action_needed: string | null; effective_at: string | null; interval: string }>(
         `/api/v1/billing/change-plan`,
-        { method: 'POST', body: JSON.stringify({ plan_key: planKey }) }),
+        { method: 'POST', body: JSON.stringify({ plan_key: planKey, ...(interval ? { interval } : {}) }) }),
     cancel: () =>
       apiRequest<{ ok: boolean; access_until: string | null }>(`/api/v1/billing/cancel`,
         { method: 'POST' }),

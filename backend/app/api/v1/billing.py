@@ -433,17 +433,101 @@ def _owned_payment_method(db, user_id: str, row_id: str) -> dict:
 
 class ChangePlanRequest(BaseModel):
     plan_key: str
+    # Optional: "month" or "year". Omitted keeps the current billing period.
+    interval: str | None = None
+
+
+# ── Stripe-side plumbing for plan changes ─────────────────────────────────
+# A change that waits for the renewal (a downgrade, or annual -> monthly) has to
+# be told to STRIPE, not just recorded in Axis. It used to be recorded only
+# here: the renewal webhook flipped plan_key to the smaller plan while Stripe
+# went on charging the old, bigger price, so a Fleet customer who downgraded
+# to Solo got Solo's limits at Fleet's $599. A subscription schedule is how
+# Stripe defers a price change to a period boundary, including a change of
+# billing interval, which a plain Subscription.modify cannot defer.
+
+def _price_id_of(item_price) -> str | None:
+    if isinstance(item_price, str):
+        return item_price
+    return (item_price or {}).get("id")
+
+
+def _release_schedule(stripe, remote) -> None:
+    """Drop any pending deferred change so the subscription can be modified
+    directly again (Stripe refuses cancel_at_period_end and most edits on a
+    subscription a schedule controls)."""
+    sched = remote.get("schedule") if hasattr(remote, "get") else None
+    sched_id = sched.get("id") if isinstance(sched, dict) else sched
+    if sched_id:
+        try:
+            stripe.SubscriptionSchedule.release(sched_id)
+        except Exception as e:
+            # Already released or completed: nothing left to undo.
+            logger.info("schedule %s release skipped: %s", sched_id, e)
+
+
+def _schedule_at_period_end(stripe, remote, *, current_plan: str, new_plan: str,
+                            new_price: str) -> None:
+    """At the next renewal, switch the subscription to new_price and stay there.
+
+    Phase 1 is the period already paid for, unchanged. Phase 2 starts at its
+    end on the new price; end_behavior=release hands the subscription back to
+    ordinary renewals afterwards. The phase metadata is copied onto the
+    subscription when the phase starts, which is how the webhook learns the
+    new plan_key from Stripe itself."""
+    sched = remote.get("schedule")
+    sched_id = sched.get("id") if isinstance(sched, dict) else sched
+    if sched_id:
+        schedule = stripe.SubscriptionSchedule.retrieve(sched_id)
+    else:
+        schedule = stripe.SubscriptionSchedule.create(from_subscription=remote["id"])
+    now_phase = schedule["phases"][0]
+    stripe.SubscriptionSchedule.modify(
+        schedule["id"],
+        end_behavior="release",
+        phases=[
+            {"items": [{"price": _price_id_of(now_phase["items"][0]["price"]), "quantity": 1}],
+             "start_date": now_phase["start_date"], "end_date": now_phase["end_date"],
+             "metadata": {"axis_plan_key": current_plan}},
+            {"items": [{"price": new_price, "quantity": 1}], "iterations": 1,
+             "proration_behavior": "none",
+             "metadata": {"axis_plan_key": new_plan}},
+        ],
+    )
+
+
+def _write_schedule(db, user_id: str, fields: dict) -> None:
+    """scheduled_interval arrived in a later migration. Until it has been run,
+    drop it and write the rest, so a missing column degrades the Settings
+    banner instead of failing a change Stripe has already accepted."""
+    try:
+        db.table("subscriptions").update(fields).eq("user_id", user_id).execute()
+    except Exception as e:
+        if "scheduled_interval" in str(e) and "scheduled_interval" in fields:
+            logger.warning("subscriptions.scheduled_interval missing — run "
+                           "20261009_scheduled_interval.sql")
+            rest = {k: v for k, v in fields.items() if k != "scheduled_interval"}
+            db.table("subscriptions").update(rest).eq("user_id", user_id).execute()
+        else:
+            raise
 
 
 @router.post("/change-plan")
 async def change_plan(body: ChangePlanRequest, user: dict = Depends(require_user)) -> dict:
-    """Upgrade now, downgrade at period end. The rules live in plans.py so the
-    warning shown here and the limit enforced later cannot disagree."""
+    """Change plan and/or billing period.
+
+    Upgrades and monthly -> annual apply now (Stripe prorates and charges the
+    difference straight away). Downgrades and annual -> monthly wait for the
+    end of the period already paid for, and are handed to Stripe as a
+    schedule so the price really changes at renewal. The plan rules live in
+    plans.py so the warning shown here and the limit enforced later agree."""
     from app.core.plans import can_change_plan
     from app.services import stripe_service
 
     if body.plan_key not in PLANS:
         raise HTTPException(status_code=400, detail=f"Unknown plan {body.plan_key!r}.")
+    if body.interval not in (None, "month", "year"):
+        raise HTTPException(status_code=400, detail="Interval must be month or year.")
 
     db = get_supabase()
     rows = (db.table("subscriptions").select("*").eq("user_id", user["id"])
@@ -452,47 +536,84 @@ async def change_plan(body: ChangePlanRequest, user: dict = Depends(require_user
     if not sub or not sub.get("stripe_subscription_id"):
         raise HTTPException(status_code=409, detail="You do not have a plan to change.")
 
-    crews_used = _crew_count(db, user["id"])
-    decision = can_change_plan(sub.get("plan_key"), body.plan_key, crews_used=crews_used)
-    if not decision.allowed:
-        raise HTTPException(status_code=409, detail=decision.reason)
+    cur_plan = sub.get("plan_key")
+    cur_interval = sub.get("billing_interval") or "month"
+    new_interval = body.interval or cur_interval
+    if body.plan_key == cur_plan and new_interval == cur_interval:
+        raise HTTPException(status_code=400, detail="That is already your plan.")
 
-    interval = sub.get("billing_interval") or "month"
+    crews_used = _crew_count(db, user["id"])
+    if body.plan_key == cur_plan:
+        decision = None                     # interval-only change
+    else:
+        decision = can_change_plan(cur_plan, body.plan_key, crews_used=crews_used)
+        if not decision.allowed:
+            raise HTTPException(status_code=409, detail=decision.reason)
+
+    # When does it take effect? Annual -> monthly always waits: the year is
+    # paid for. Monthly -> annual always applies now. Otherwise the plan rule.
+    if cur_interval == "year" and new_interval == "month":
+        effective = "period_end"
+    elif cur_interval == "month" and new_interval == "year":
+        effective = "now"
+    else:
+        effective = decision.effective if decision else "now"
+
+    name = PLANS[body.plan_key].name
+    period_word = "annual" if new_interval == "year" else "monthly"
     try:
         stripe = stripe_service.client()
-        price = stripe_service.price_id(body.plan_key, interval)
+        price = stripe_service.price_id(body.plan_key, new_interval)
         remote = stripe.Subscription.retrieve(sub["stripe_subscription_id"])
         item_id = remote["items"]["data"][0]["id"]
 
-        if decision.effective == "now":
-            # Upgrade: swap immediately and let Stripe prorate the difference.
-            stripe.Subscription.modify(
-                sub["stripe_subscription_id"],
-                items=[{"id": item_id, "price": price}],
-                proration_behavior="create_prorations",
-                metadata={"axis_plan_key": body.plan_key},
-            )
-            db.table("subscriptions").update(
-                {"plan_key": body.plan_key, "scheduled_plan_key": None,
-                 "scheduled_change_at": None, "updated_at": "now()"}
-            ).eq("user_id", user["id"]).execute()
+        if effective == "now":
+            # Whatever was waiting for the renewal is superseded by this.
+            _release_schedule(stripe, remote)
+            kwargs = dict(items=[{"id": item_id, "price": price}],
+                          proration_behavior="create_prorations")
+            if new_interval != cur_interval:
+                # Monthly -> annual bills the year now (less the unused month).
+                # If the card is declined, Stripe leaves the subscription as it
+                # was instead of half-switching it.
+                kwargs.update(proration_behavior="always_invoice",
+                              payment_behavior="pending_if_incomplete")
+            updated = stripe.Subscription.modify(sub["stripe_subscription_id"], **kwargs)
+            if updated.get("pending_update"):
+                raise HTTPException(
+                    status_code=402,
+                    detail="Your card was declined, so nothing changed. Update your card "
+                           "under Payment methods and try again.")
+            # pending_if_incomplete does not accept metadata in the same call.
+            stripe.Subscription.modify(sub["stripe_subscription_id"],
+                                       metadata={"axis_plan_key": body.plan_key})
+            _write_schedule(db, user["id"], {
+                "plan_key": body.plan_key, "billing_interval": new_interval,
+                "scheduled_plan_key": None, "scheduled_change_at": None,
+                "scheduled_interval": None, "updated_at": "now()"})
+            reason = (decision.reason if decision and new_interval == cur_interval
+                      else f"You're now on {name}, billed {period_word}.")
         else:
-            # Downgrade: recorded as a promise, applied by the renewal webhook.
-            # Nothing shrinks inside a period they already paid for.
-            db.table("subscriptions").update(
-                {"scheduled_plan_key": body.plan_key,
-                 "scheduled_change_at": sub.get("current_period_end"),
-                 "updated_at": "now()"}
-            ).eq("user_id", user["id"]).execute()
+            _schedule_at_period_end(stripe, remote, current_plan=cur_plan,
+                                    new_plan=body.plan_key, new_price=price)
+            _write_schedule(db, user["id"], {
+                "scheduled_plan_key": body.plan_key,
+                "scheduled_change_at": sub.get("current_period_end"),
+                "scheduled_interval": new_interval, "updated_at": "now()"})
+            reason = (decision.reason if decision and new_interval == cur_interval
+                      else f"Switching to {name}, billed {period_word}, when your current "
+                           f"period ends.")
     except HTTPException:
         raise
     except Exception as e:
         logger.error("plan change failed for %s: %s", user["id"], e)
         raise HTTPException(status_code=502, detail="Could not change your plan.")
 
-    return {"ok": True, "effective": decision.effective, "reason": decision.reason,
-            "warning": decision.warning, "action_needed": decision.action_needed,
-            "effective_at": sub.get("current_period_end") if decision.effective == "period_end" else None}
+    return {"ok": True, "effective": effective, "reason": reason,
+            "interval": new_interval,
+            "warning": decision.warning if decision else None,
+            "action_needed": decision.action_needed if decision else None,
+            "effective_at": sub.get("current_period_end") if effective == "period_end" else None}
 
 
 @router.post("/cancel")
@@ -506,14 +627,19 @@ async def cancel_plan(user: dict = Depends(require_user)) -> dict:
     if not sub or not sub.get("stripe_subscription_id"):
         raise HTTPException(status_code=409, detail="You do not have a plan to cancel.")
     try:
-        stripe_service.client().Subscription.modify(
+        stripe = stripe_service.client()
+        # A pending downgrade is a schedule, and Stripe will not set
+        # cancel_at_period_end on a subscription a schedule controls. Cancelling
+        # supersedes the pending change anyway.
+        _release_schedule(stripe, stripe.Subscription.retrieve(sub["stripe_subscription_id"]))
+        stripe.Subscription.modify(
             sub["stripe_subscription_id"], cancel_at_period_end=True)
     except Exception as e:
         logger.error("cancel failed for %s: %s", user["id"], e)
         raise HTTPException(status_code=502, detail="Could not cancel your plan.")
-    db.table("subscriptions").update(
-        {"cancel_at_period_end": True, "updated_at": "now()"}
-    ).eq("user_id", user["id"]).execute()
+    _write_schedule(db, user["id"], {
+        "cancel_at_period_end": True, "scheduled_plan_key": None,
+        "scheduled_change_at": None, "scheduled_interval": None, "updated_at": "now()"})
     return {"ok": True, "access_until": sub.get("current_period_end")}
 
 
@@ -873,6 +999,7 @@ async def _apply_event(db, event) -> None:
                 update["plan_key"] = row["scheduled_plan_key"]
                 update["scheduled_plan_key"] = None
                 update["scheduled_change_at"] = None
+                update["scheduled_interval"] = None
                 logger.info("applied scheduled plan change for %s -> %s",
                             row["user_id"], update["plan_key"])
             else:
@@ -885,7 +1012,9 @@ async def _apply_event(db, event) -> None:
                     row["user_id"], row["scheduled_plan_key"],
                     row.get("scheduled_change_at"))
 
-        db.table("subscriptions").update(update).eq("user_id", row["user_id"]).execute()
+        # Through _write_schedule so a not-yet-migrated scheduled_interval
+        # column can never make a billing webhook fail.
+        _write_schedule(db, row["user_id"], update)
         return
 
     if etype in ("setup_intent.succeeded", "payment_method.attached"):
