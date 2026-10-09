@@ -363,28 +363,40 @@ export default function Board({
     clearPreview()
   }
 
-  function doMove(apptId: string, crewId: string, dateStr: string, fromCrew: string, fromDate: string) {
-    const prev = qc.getQueryData<BoardData>(queryKey)
+  // Render can take several seconds to answer a move. Drag the same job twice
+  // quickly and the first reply can land after the second drop, snapping the
+  // card back to where it was a moment ago. Only the latest move of a job may
+  // write its reply into the board.
+  const moveSeq = useRef<Record<string, number>>({})
+  function doMove(apptId: string, crewId: string, dateStr: string, fromCrew: string, fromDate: string, undoable = true) {
+    const seq = (moveSeq.current[apptId] || 0) + 1
+    moveSeq.current[apptId] = seq
+    const latest = () => moveSeq.current[apptId] === seq
     qc.setQueryData<BoardData>(queryKey, old => old ? applyMove(old, apptId, crewId, dateStr) : old)
     patchAppointment(apptId, { crew_id: crewId, date: dateStr, request_id: crypto.randomUUID() })
       .then(slice => {
+        if (!latest()) return
         qc.setQueryData<BoardData>(queryKey, old => old ? mergeSlice(old, slice, crewId) : old)
+        if (!undoable) return
         toast((t) => (
           <span className="flex items-center gap-3 text-[13px]">
             Job moved.
             <button className="font-bold underline" onClick={() => {
               toast.dismiss(t.id)
-              if (prev) qc.setQueryData(queryKey, prev)
-              patchAppointment(apptId, { crew_id: fromCrew, date: fromDate, request_id: crypto.randomUUID() }).catch(() => {})
+              // Reverse just this job, not the whole board as it was — other
+              // moves made since then stay put.
+              doMove(apptId, fromCrew, fromDate, crewId, dateStr, false)
             }}>Undo</button>
           </span>
         ), { duration: 15000 })
       })
       .catch(err => {
-        if (prev) qc.setQueryData(queryKey, prev)
+        if (!latest()) return
+        qc.setQueryData<BoardData>(queryKey, old => old ? applyMove(old, apptId, fromCrew, fromDate) : old)
         toast.error('Move failed — ' + (err instanceof Error ? err.message.replace(/\[HTTP \d+\]\s*/, '') : 'try again'))
       })
   }
+
 
   const activeAppt = activeId ? data.appointments.find(a => a.id === activeId) : undefined
   const activeJob = activeAppt ? idx.jobs.get(activeAppt.job_id) : undefined
