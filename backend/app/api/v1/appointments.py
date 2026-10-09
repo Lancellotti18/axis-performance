@@ -66,6 +66,19 @@ async def book_inspection(report_token: str, payload: BookRequest, request: Requ
         raise HTTPException(status_code=404, detail="Report not found.")
     lead = lead_res.data[0]
 
+    # Same report, same day, still open: that's a double-click or a second
+    # visit to the page, not a second inspection. Answer as if it booked, but
+    # don't create another row, ping the bell or text the contractor again.
+    try:
+        dup = (db.table("inspection_appointments").select("id,time_window")
+               .eq("report_token", report_token).eq("preferred_date", d.isoformat())
+               .in_("status", ["requested", "confirmed"]).limit(1).execute().data)
+    except Exception:
+        dup = None
+    if dup:
+        return {"ok": True, "status": "requested", "preferred_date": d.isoformat(),
+                "time_window": dup[0].get("time_window") or window, "duplicate": True}
+
     # Look up the linked CRM lead (system of record) to advance its stage.
     crm_lead_id = None
     try:

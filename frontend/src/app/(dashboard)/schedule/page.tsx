@@ -16,7 +16,7 @@ const STATUS_STYLE: Record<AppointmentStatus, { label: string; dot: string; chip
   requested: { label: 'Requested', dot: 'bg-amber-400',   chip: 'bg-amber-50 text-amber-800 ring-amber-500/30' },
   confirmed: { label: 'Confirmed', dot: 'bg-blue-400',    chip: 'bg-blue-50 text-blue-800 ring-blue-500/30' },
   completed: { label: 'Completed', dot: 'bg-emerald-400', chip: 'bg-emerald-50 text-emerald-800 ring-emerald-500/30' },
-  cancelled: { label: 'Cancelled', dot: 'bg-[#9ca3af]',   chip: 'bg-[#9ca3af] text-[#6b7280] ring-[#dededc]' },
+  cancelled: { label: 'Cancelled', dot: 'bg-[#9ca3af]',   chip: 'bg-[#eeeeed] text-[#6b7280] ring-[#dededc]' },
   no_show:   { label: 'No-show',   dot: 'bg-rose-400',    chip: 'bg-rose-50 text-rose-800 ring-rose-500/30' },
 }
 const WINDOW_LABEL: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', anytime: 'Anytime' }
@@ -98,6 +98,13 @@ export default function SchedulePage() {
 
   const monthLabel = cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
   const dayAppts = (byDay.get(selected) || []).slice().sort((a, b) => a.time_window.localeCompare(b.time_window))
+  const overdue = (appts || [])
+    .filter(a => a.status === 'requested' && a.preferred_date < todayKey)
+    .sort((a, b) => a.preferred_date.localeCompare(b.preferred_date))
+  const jumpTo = (iso: string) => {
+    const d = new Date(iso + 'T00:00:00')
+    setSelected(iso); setCursor(new Date(d.getFullYear(), d.getMonth(), 1))
+  }
   const upcoming = (appts || [])
     .filter(a => a.preferred_date >= todayKey && a.status !== 'cancelled' && a.status !== 'completed' && a.status !== 'no_show')
     .sort((a, b) => a.preferred_date.localeCompare(b.preferred_date))
@@ -125,7 +132,7 @@ export default function SchedulePage() {
                 <button onClick={() => setCursor(c => new Date(c.getFullYear(), c.getMonth() - 1, 1))}
                   className="rounded-lg bg-[#eeeeed] px-3 py-1.5 text-sm text-[#2d2d2d] ring-1 ring-[#dededc] hover:bg-[#eeeeed]">‹</button>
                 <button onClick={() => { const d = new Date(); setCursor(new Date(d.getFullYear(), d.getMonth(), 1)); setSelected(todayKey) }}
-                  className="rounded-lg bg-blue-600/20 px-3 py-1.5 text-xs font-semibold text-blue-300 ring-1 ring-blue-500/30 hover:bg-blue-600/30">Today</button>
+                  className="rounded-lg bg-blue-600/20 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-500/30 hover:bg-blue-600/30">Today</button>
                 <button onClick={() => setCursor(c => new Date(c.getFullYear(), c.getMonth() + 1, 1))}
                   className="rounded-lg bg-[#eeeeed] px-3 py-1.5 text-sm text-[#2d2d2d] ring-1 ring-[#dededc] hover:bg-[#eeeeed]">›</button>
               </div>
@@ -165,11 +172,32 @@ export default function SchedulePage() {
 
           {/* Right rail: reminders + day panel */}
           <div className="space-y-5">
+            {overdue.length > 0 && (
+              <div className="rounded-2xl border border-amber-400/40 bg-amber-50 p-4">
+                <div className="mb-1 text-sm font-semibold text-amber-900">⚠️ Needs a reply ({overdue.length})</div>
+                <p className="mb-2 text-[11px] text-amber-800">These homeowners asked for a day that has already passed and were never confirmed or declined.</p>
+                <div className="space-y-1.5">
+                  {overdue.map(a => (
+                    <button key={a.id} onClick={() => jumpTo(a.preferred_date)}
+                      className="flex w-full items-center gap-2 rounded-lg bg-white px-2.5 py-2 text-left ring-1 ring-amber-300 hover:bg-amber-100/40">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-semibold text-[#1a1a1a]">{a.homeowner_name || 'Homeowner'}</div>
+                        <div className="truncate text-[11px] text-[#6b7280]">{a.homeowner_phone || a.address || '—'}</div>
+                      </div>
+                      <div className="shrink-0 text-[11px] font-semibold text-amber-800">
+                        Asked for {new Date(a.preferred_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Upcoming reminders widget */}
             <div className="rounded-2xl border border-blue-400/20 bg-blue-500/[0.06] p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-sm font-semibold text-[#1a1a1a]">🔔 Upcoming inspections</span>
-                {upcoming.length > 0 && <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[11px] font-semibold text-blue-300">{upcoming.length}</span>}
+                {upcoming.length > 0 && <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[11px] font-semibold text-blue-700">{upcoming.length}</span>}
               </div>
               {upcoming.length === 0 ? (
                 <p className="py-2 text-xs text-[#6b7280]">No upcoming inspections booked.</p>
@@ -184,7 +212,7 @@ export default function SchedulePage() {
                         <div className="truncate text-[11px] text-[#6b7280]">{a.address || '—'}</div>
                       </div>
                       <div className="shrink-0 text-right">
-                        <div className="text-[11px] font-semibold text-blue-300">{relDay(a.preferred_date)}</div>
+                        <div className="text-[11px] font-semibold text-blue-700">{relDay(a.preferred_date)}</div>
                         <div className="text-[10px] text-[#6b7280]">{WINDOW_LABEL[a.time_window]}</div>
                       </div>
                     </button>
@@ -212,7 +240,7 @@ export default function SchedulePage() {
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-bold text-[#1a1a1a]">{a.homeowner_name || 'Homeowner'}</span>
                               {L?.lead_score != null && (
-                                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${L.lead_score >= 70 ? 'bg-orange-500/15 text-orange-300' : L.lead_score >= 40 ? 'bg-amber-50 text-amber-800' : 'bg-[#eeeeed] text-[#6b7280]'}`}>
+                                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${L.lead_score >= 70 ? 'bg-orange-500/15 text-orange-700' : L.lead_score >= 40 ? 'bg-amber-50 text-amber-800' : 'bg-[#eeeeed] text-[#6b7280]'}`}>
                                   {L.lead_score >= 70 ? '🔥 ' : ''}{L.lead_score}
                                 </span>
                               )}
@@ -243,7 +271,7 @@ export default function SchedulePage() {
                           </div>
                         )}
                         {a.homeowner_note && <div className="mt-2 text-[11px] italic text-[#6b7280]">“{a.homeowner_note}”</div>}
-                        {a.contractor_note && <div className="mt-1 text-[11px] text-blue-300/80">{a.contractor_note}</div>}
+                        {a.contractor_note && <div className="mt-1 text-[11px] text-blue-700">{a.contractor_note}</div>}
 
                         {/* Actions */}
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -255,7 +283,7 @@ export default function SchedulePage() {
                           )}
                           {ACTIONS[a.status].map(act => (
                             <button key={act.to} onClick={() => setStatus(a.id, act.to)} disabled={busyId === a.id}
-                              className={`rounded-lg px-2.5 py-1 text-[11px] font-medium ring-1 disabled:opacity-40 ${act.tone === 'emerald' ? 'bg-emerald-600/20 text-emerald-300 ring-emerald-500/30 hover:bg-emerald-600/30' : 'bg-[#eeeeed] text-[#1a1a1a] ring-[#dededc] hover:bg-[#eeeeed]'}`}>
+                              className={`rounded-lg px-2.5 py-1 text-[11px] font-medium ring-1 disabled:opacity-40 ${act.tone === 'emerald' ? 'bg-emerald-600 text-white ring-emerald-600 hover:bg-emerald-700' : 'bg-[#eeeeed] text-[#1a1a1a] ring-[#dededc] hover:bg-[#eeeeed]'}`}>
                               {act.label}
                             </button>
                           ))}
@@ -270,12 +298,12 @@ export default function SchedulePage() {
                         {/* Propose alternative days */}
                         {proposeFor === a.id && (
                           <div className="mt-2.5 rounded-lg border border-blue-400/20 bg-blue-500/[0.06] p-2.5">
-                            <div className="mb-1.5 text-[11px] font-semibold text-blue-200">Propose days that work for you — we’ll text them to {(a.homeowner_name || 'the homeowner').split(' ')[0]}</div>
+                            <div className="mb-1.5 text-[11px] font-semibold text-blue-800">Propose days that work for you — we’ll text them to {(a.homeowner_name || 'the homeowner').split(' ')[0]}</div>
                             <div className="flex flex-wrap gap-1.5">
                               {proposeDates.map((d, i) => (
                                 <input key={i} type="date" value={d} min={todayKey}
                                   onChange={e => setProposeDates(prev => prev.map((x, j) => j === i ? e.target.value : x))}
-                                  className="rounded-lg border border-[#dededc] bg-[#eeeeed] px-2 py-1.5 text-[11px] text-[#1a1a1a] [color-scheme:dark]" />
+                                  className="rounded-lg border border-[#dededc] bg-[#eeeeed] px-2 py-1.5 text-[11px] text-[#1a1a1a]" />
                               ))}
                             </div>
                             <button onClick={() => sendPropose(a.id)} disabled={busyId === a.id}
