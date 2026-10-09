@@ -1548,7 +1548,11 @@ async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(r
     kept: dict = {}
     relocated: dict | None = None
     if body.project_id:  # verify the project is the caller's before linking
-        pr = _rows(db.table("projects").select("id,user_id").eq("id", body.project_id).limit(1).execute())
+        # The address/location columns are read below to move the job to the
+        # project's house; selecting only id,user_id wrote "Address TBD" over the
+        # job's address on every link.
+        pr = _rows(db.table("projects").select("id,user_id,name,address,city,state,zip_code,lat,lng")
+                   .eq("id", body.project_id).limit(1).execute())
         if not pr or pr[0].get("user_id") != user.get("id"):
             raise HTTPException(status_code=404, detail="Project not found.")
         measured = _measurements_from_run(_latest_run(db, body.project_id))
