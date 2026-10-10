@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, useCallback } from 'react'
+import { useRegisterChatContext } from '@/lib/chat-context'
 import { api } from '@/lib/api'
 import { STATES, COUNTIES, CITIES } from '@/lib/jurisdictions'
 import { CitationInline, CitationBibliography, ComplianceLimitations } from '@/components/MaterialComplianceCitations'
@@ -279,6 +280,26 @@ export default function MaterialCheckPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<any>(null)
+
+  // Give the Ask Axis chat what is on screen — the list, where it is being
+  // built, and the check's verdict — so "why do I need to add this?" gets an
+  // answer about THIS order instead of a generic one about blueprints.
+  const trim = (t: unknown, n = 220) => (typeof t === 'string' && t.length > n ? t.slice(0, n) + '…' : t)
+  useRegisterChatContext('compliance', {
+    location: { state: selectedState, county: selectedCounty, city: selectedCity },
+    project_type: projectType,
+    material_list: result?.parsed_materials ?? (rawText ? rawText.split('\n').filter(Boolean).slice(0, 40) : []),
+    result: result ? {
+      overall_status: result.overall_status,
+      summary: trim(result.summary, 600),
+      checklist: (result.checklist || []).slice(0, 25).map((c: any) => ({
+        item: c.item_name, status: c.status, rule: trim(c.rule_quote || c.rule_text), note: trim(c.notes || c.reason),
+      })),
+      missing_required_items: (result.missing_required_items || []).slice(0, 15).map((m: any) => ({
+        item: m.item_name, why: trim(m.reason_required || m.rule_text),
+      })),
+    } : null,
+  })
 
   const counties = selectedState ? (COUNTIES[selectedState] || []) : []
   const cities = (selectedState && selectedCounty && CITIES[selectedState])
