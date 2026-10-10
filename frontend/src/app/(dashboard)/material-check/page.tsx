@@ -151,10 +151,19 @@ function ComplianceResults({ result }: { result: any }) {
                 <div className="text-[#6b7280] text-[10px] mt-0.5">Warn</div>
               </div>
             )}
+            {/* A required item that isn't on the list is something to ADD, not a
+                failure of anything that is — counting it as "Fail" made a clean
+                5-item list read "5 pass / 4 fail". */}
             <div>
-              <div className="text-red-500 font-bold text-lg leading-none">{failCount + missing.length}</div>
+              <div className="text-red-500 font-bold text-lg leading-none">{failCount}</div>
               <div className="text-[#6b7280] text-[10px] mt-0.5">Fail</div>
             </div>
+            {missing.length > 0 && (
+              <div>
+                <div className="text-amber-600 font-bold text-lg leading-none">{missing.length}</div>
+                <div className="text-[#6b7280] text-[10px] mt-0.5">To add</div>
+              </div>
+            )}
           </div>
         </div>
         {result.summary && (
