@@ -83,7 +83,7 @@ function TrialBanner({ promo }: { promo: PromoState }) {
         <strong>Free trial:</strong> {days} and {reports} left
         {promo.founding_member && <span className="ml-2 rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">Founding member</span>}
       </span>
-      <Link href="/settings" className="font-semibold underline underline-offset-2">Choose a plan</Link>
+      <Link href="/settings?tab=billing" className="font-semibold underline underline-offset-2">Choose a plan</Link>
     </div>
   )
 }
@@ -161,7 +161,7 @@ function PlanScreen({ promo, onRedeemed }: { promo?: PromoState; onRedeemed: () 
         </div>
       )}
       <p className="mt-8 text-center text-xs text-[#6b7280]">
-        Questions? Reply to any email from me, or manage billing in <Link href="/settings" className="underline">Settings</Link>.
+        Questions? Reply to any email from me, or manage billing in <Link href="/settings?tab=billing" className="underline">Settings</Link>.
       </p>
     </div>
   )

@@ -30,6 +30,11 @@ export default function SettingsPage() {
   // page, and money. Tabs beat one long scroll: nobody edits their logo
   // and their card in the same sitting.
   const [tab, setTab] = useState<'business' | 'quote' | 'billing'>('business')
+  // Deep link from the trial banner / plan screen: /settings?tab=billing.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    if (t === 'billing' || t === 'quote' || t === 'business') setTab(t)
+  }, [])
   // Only Ryan's accounts see the Founders & Trials link (the page itself is
   // refused server-side to everyone else).
   const [isAdmin, setIsAdmin] = useState(false)
