@@ -230,3 +230,94 @@ def test_a_crew_cannot_be_attached_to_another_orgs_business_unit():
     src = inspect.getsource(sc.create_crew)
     assert '_one(db, "sched_business_unit", body.business_unit_id)' in src
     assert inspect.getsource(sc.update_crew).count('"sched_business_unit"') == 1
+
+
+# ── A brand-new account's board, end to end ──────────────────────────────────
+
+class _AnyQ:
+    """Tolerant stand-in for a Supabase table query: accepts any chain of
+    filters and returns whatever the store holds for that table."""
+    def __init__(self, db, t): self.db, self.t, self.f = db, t, []
+    def select(self, *a, **k): return self
+    def order(self, *a, **k): return self
+    def limit(self, *a, **k): return self
+    def eq(self, c, v): self.f.append((c, v)); return self
+    def gte(self, *a, **k): return self
+    def lte(self, *a, **k): return self
+    def lt(self, *a, **k): return self
+    def gt(self, *a, **k): return self
+    def in_(self, *a, **k): return self
+    def upsert(self, rows, **k):
+        rows = rows if isinstance(rows, list) else [rows]
+        have = {r["id"] for r in self.db.store.setdefault(self.t, [])}
+        self.db.store[self.t].extend(dict(r) for r in rows if r["id"] not in have)
+        self.written = rows
+        return self
+    def insert(self, rows, **k): return self.upsert(rows)
+    def execute(self):
+        data = getattr(self, "written", None)
+        if data is None:
+            data = [r for r in self.db.store.get(self.t, [])
+                    if all(r.get(c) == v for c, v in self.f)]
+        return type("R", (), {"data": data})()
+
+
+class _AnyDB:
+    def __init__(self): self.store = {}
+    def table(self, t): return _AnyQ(self, t)
+
+
+def test_a_brand_new_account_can_load_its_board(monkeypatch):
+    """The actual bug Ryan hit: a new account's board was empty and the first
+    crew could not be created. Drive the real endpoint through a real request
+    as a non-legacy user and check the board comes back with units to pick."""
+    import httpx
+    from fastapi import FastAPI
+    from app.core.auth import require_user
+
+    db = _AnyDB()
+    monkeypatch.setattr(sc, "get_supabase", lambda: db)
+
+    app = FastAPI()
+    app.include_router(sc.router, prefix="/scheduling")
+    app.dependency_overrides[require_user] = lambda: {"id": OTHER}
+
+    async def hit():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                     base_url="http://t") as c:
+            return await c.get("/scheduling/board", params={"start": "2026-10-12", "end": "2026-10-18"})
+
+    r = asyncio.run(hit())
+    assert r.status_code == 200, r.text
+    body = r.json()
+    names = [b["name"] for b in body["business_units"]]
+    assert names == [n for n, _, _ in sc.DEFAULT_BUSINESS_UNITS]
+    # The rest of a new board really is empty — and that is fine.
+    assert body["crews"] == [] and body["appointments"] == []
+    # The units were persisted under the CALLER's org, not the shared board.
+    assert {u["org_id"] for u in db.store["sched_business_unit"]} == {OTHER}
+    assert sc.ORG not in {u["org_id"] for u in db.store["sched_business_unit"]}
+
+
+def test_a_second_board_load_reuses_the_same_units(monkeypatch):
+    """Two loads must not leave the account with four columns."""
+    import httpx
+    from fastapi import FastAPI
+    from app.core.auth import require_user
+
+    db = _AnyDB()
+    monkeypatch.setattr(sc, "get_supabase", lambda: db)
+    app = FastAPI()
+    app.include_router(sc.router, prefix="/scheduling")
+    app.dependency_overrides[require_user] = lambda: {"id": OTHER}
+
+    async def hit():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                     base_url="http://t") as c:
+            return [(await c.get("/scheduling/board",
+                                 params={"start": "2026-10-12", "end": "2026-10-18"})).json()
+                    for _ in range(3)]
+
+    boards = asyncio.run(hit())
+    assert all(len(b["business_units"]) == len(sc.DEFAULT_BUSINESS_UNITS) for b in boards)
+    assert len(db.store["sched_business_unit"]) == len(sc.DEFAULT_BUSINESS_UNITS)
