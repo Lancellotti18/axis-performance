@@ -50,6 +50,18 @@ LEGACY_ORG_USERS = frozenset(
 )
 _ORG_CTX: ContextVar[Optional[str]] = ContextVar("sched_org", default=None)
 
+# A brand-new account's board starts empty, and neither a crew nor a job can be
+# created without a business unit, so every org gets these on first use. The
+# original board was seeded with four; Gutters and Siding are left out here
+# because a new roofing company should not open the board onto two trades it
+# may not run — it can still take gutter and siding JOBS, which land on the
+# first unit by sort order.
+DEFAULT_BUSINESS_UNITS = (("Roofing Service", "bu-service", 0), ("Roofing Install", "bu-install", 1))
+# Same namespace the seed generator uses, so an id is a pure function of
+# (org, unit): two requests bootstrapping at once collide on the primary key
+# instead of giving the org duplicate columns.
+_BU_NS = uuid.UUID("11111111-2222-3333-4444-555555555555")
+
 
 def org_for(user: dict) -> str:
     uid = str((user or {}).get("id") or "")
@@ -109,6 +121,28 @@ def _rows(res) -> list:
     return res.data or []
 
 
+def _ensure_business_units(db, org: Optional[str] = None) -> list:
+    """Give an org its default business units the first time it needs one.
+
+    Idempotent: an org that already has ANY unit (even deactivated) is left
+    alone, so the original board and anyone who renamed or retired a unit are
+    untouched. Race-safe: the ids are deterministic, so a second concurrent
+    bootstrap is ignored rather than doubling the columns.
+    """
+    org = org or _org()
+    existing = _rows(db.table("sched_business_unit").select("*").eq("org_id", org).execute())
+    if existing:
+        return existing
+    rows = [{"id": str(uuid.uuid5(_BU_NS, f"bu:{org}:{token}")), "org_id": org,
+             "name": name, "color_token": token, "sort_order": order}
+            for name, token, order in DEFAULT_BUSINESS_UNITS]
+    try:
+        db.table("sched_business_unit").upsert(rows, ignore_duplicates=True).execute()
+    except Exception as e:   # a lost race, or the row already exists
+        logger.info("business-unit bootstrap for org %s: %s", org, e)
+    return _rows(db.table("sched_business_unit").select("*").eq("org_id", org).execute())
+
+
 @router.get("/board")
 async def get_board(
     start: str = Query(..., description="YYYY-MM-DD (inclusive)"),
@@ -135,8 +169,11 @@ async def get_board(
     def tbl(name: str):
         return db.table(name).select("*").eq("org_id", _org())
 
-    business_units = sorted(_rows(tbl("sched_business_unit").eq("is_active", True).execute()),
-                            key=lambda b: b.get("sort_order", 0))
+    bu_rows = _rows(tbl("sched_business_unit").eq("is_active", True).execute())
+    if not bu_rows:
+        # A new account opening the board for the first time.
+        bu_rows = [b for b in _ensure_business_units(db) if b.get("is_active", True)]
+    business_units = sorted(bu_rows, key=lambda b: b.get("sort_order", 0))
     if bu_filter:
         business_units = [b for b in business_units if b["id"] in bu_filter]
     bu_ids = {b["id"] for b in business_units}
@@ -1905,6 +1942,10 @@ class CrewInput(BaseModel):
 @router.post("/crews")
 async def create_crew(body: CrewInput, user: dict = Depends(require_sched_user)) -> dict:
     db = get_supabase()
+    # The id comes from the client, so check it is one of THIS org's units —
+    # the foreign key only proves the unit exists somewhere.
+    if not _one(db, "sched_business_unit", body.business_unit_id):
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
     ins = db.table("sched_crew").insert({
         "org_id": _org(), "name": body.name, "business_unit_id": body.business_unit_id,
         "squares_per_day": body.squares_per_day, "tear_off_squares_per_day": body.tear_off_squares_per_day,
@@ -1936,6 +1977,8 @@ async def update_crew(crew_id: str, body: CrewPatch, user: dict = Depends(requir
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if not patch:
         raise HTTPException(status_code=422, detail="Nothing to update.")
+    if "business_unit_id" in patch and not _one(db, "sched_business_unit", patch["business_unit_id"]):
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
     db.table("sched_crew").update(patch).eq("org_id", _org()).eq("id", crew_id).execute()
     return _one(db, "sched_crew", crew_id)
 
@@ -2190,6 +2233,8 @@ async def create_quick_job(body: QuickJob, user: dict = Depends(require_sched_us
     db = get_supabase()
     bu = _rows(db.table("sched_business_unit").select("id").eq("org_id", _org()).order("sort_order").limit(1).execute())
     if not bu:
+        bu = sorted(_ensure_business_units(db), key=lambda b: b.get("sort_order", 0))[:1]
+    if not bu:
         raise HTTPException(status_code=409, detail="No business unit is configured for scheduling yet.")
 
     lat = lng = None
@@ -2300,6 +2345,8 @@ async def create_job_from_project(body: ProjectToDispatch, user: dict = Depends(
         raise HTTPException(status_code=422, detail="This project has no location yet — add an address before scheduling it.")
 
     bu = _rows(db.table("sched_business_unit").select("id").eq("org_id", _org()).order("sort_order").limit(1).execute())
+    if not bu:
+        bu = sorted(_ensure_business_units(db), key=lambda b: b.get("sort_order", 0))[:1]
     if not bu:
         raise HTTPException(status_code=409, detail="No business unit is configured for scheduling yet.")
 

@@ -118,3 +118,115 @@ def test_every_scheduling_endpoint_pins_the_org():
     body = src.split("async def require_sched_user", 1)[1].split("\n\n\n", 1)[1]   # after the dependency itself
     assert "Depends(require_user)" not in body
     assert '"org_id", ORG' not in body and '"org_id": ORG' not in body   # no raw shared-org queries
+
+
+# ── Default business units for a new account ─────────────────────────────────
+# A new org's board was empty AND unusable: creating a crew or a job returned
+# 409 "No business unit is configured for scheduling yet," with no way in the
+# product to configure one. Every org now gets its units on first use.
+
+class _BuQ:
+    """Minimal table stub that also records writes (the _Q above is read-only)."""
+    def __init__(self, db, t): self.db, self.t, self.f = db, t, []
+    def select(self, *a, **k): return self
+    def limit(self, *a, **k): return self
+    def order(self, *a, **k): return self
+    def eq(self, c, v): self.f.append((c, v)); return self
+    def insert(self, rows, **k): return self._write(rows)
+    def upsert(self, rows, **k):
+        self.db.upserts += 1
+        return self._write(rows, ignore_existing=True)
+    def _write(self, rows, ignore_existing=False):
+        rows = rows if isinstance(rows, list) else [rows]
+        have = {r["id"] for r in self.db.rows.setdefault(self.t, [])}
+        for r in rows:
+            if r["id"] in have:
+                if not ignore_existing:
+                    raise RuntimeError(f"duplicate key {r['id']}")
+                continue
+            self.db.rows[self.t].append(dict(r))
+        self.written = rows
+        return self
+    def execute(self):
+        data = getattr(self, "written", None)
+        if data is None:
+            data = [r for r in self.db.rows.get(self.t, []) if all(r.get(c) == v for c, v in self.f)]
+        return type("R", (), {"data": data})()
+
+
+class _BuDB:
+    def __init__(self, rows=None): self.rows, self.upserts = dict(rows or {}), 0
+    def table(self, t): return _BuQ(self, t)
+
+
+def test_a_new_org_gets_its_default_business_units():
+    db = _BuDB()
+    sc._ORG_CTX.set(OTHER)
+    units = sc._ensure_business_units(db)
+    assert [u["name"] for u in sorted(units, key=lambda u: u["sort_order"])] == [
+        n for n, _, _ in sc.DEFAULT_BUSINESS_UNITS]
+    assert {u["org_id"] for u in units} == {OTHER}
+    # Not Gutters or Siding: a new roofing company should not open onto trades
+    # it may not run.
+    assert not any(u["color_token"] in ("bu-gutter", "bu-siding") for u in units)
+
+
+def test_bootstrapping_twice_does_not_duplicate_the_columns():
+    db = _BuDB()
+    sc._ORG_CTX.set(OTHER)
+    first = sc._ensure_business_units(db)
+    second = sc._ensure_business_units(db)
+    assert len(first) == len(second) == len(sc.DEFAULT_BUSINESS_UNITS)
+    assert db.upserts == 1          # the second call saw the rows and wrote nothing
+
+
+def test_two_concurrent_bootstraps_collide_instead_of_doubling():
+    """Two tabs opening a new board at once. The ids are a pure function of
+    (org, unit), so the loser's rows are ignored rather than appended."""
+    db = _BuDB()
+    sc._ORG_CTX.set(OTHER)
+    rows = [{"id": str(sc.uuid.uuid5(sc._BU_NS, f"bu:{OTHER}:{tok}")), "org_id": OTHER,
+             "name": name, "color_token": tok, "sort_order": order}
+            for name, tok, order in sc.DEFAULT_BUSINESS_UNITS]
+    db.rows["sched_business_unit"] = [dict(r) for r in rows]   # the winner already wrote
+    db.table("sched_business_unit").upsert(rows, ignore_duplicates=True).execute()
+    assert len(db.rows["sched_business_unit"]) == len(sc.DEFAULT_BUSINESS_UNITS)
+
+
+def test_an_org_that_already_has_units_is_left_alone():
+    """The original board, and anyone who renamed or retired a unit: no
+    defaults are re-added on top."""
+    existing = [{"id": "bu-x", "org_id": sc.ORG, "name": "Metal Roofing",
+                 "color_token": "bu-service", "sort_order": 0, "is_active": False}]
+    db = _BuDB({"sched_business_unit": [dict(existing[0])]})
+    sc._ORG_CTX.set(sc.ORG)
+    assert sc._ensure_business_units(db) == existing
+    assert db.upserts == 0
+
+
+def test_each_org_gets_its_own_unit_ids():
+    a, b = _BuDB(), _BuDB()
+    sc._ORG_CTX.set(OTHER)
+    ids_a = {u["id"] for u in sc._ensure_business_units(a)}
+    sc._ORG_CTX.set("99999999-8888-7777-6666-555555555555")
+    ids_b = {u["id"] for u in sc._ensure_business_units(b)}
+    assert ids_a.isdisjoint(ids_b)
+
+
+def test_bootstrap_needs_a_scoped_request_like_every_other_query():
+    db = _BuDB()
+    token = sc._ORG_CTX.set(None)
+    try:
+        with pytest.raises(RuntimeError):
+            sc._ensure_business_units(db)
+    finally:
+        sc._ORG_CTX.reset(token)
+
+
+def test_a_crew_cannot_be_attached_to_another_orgs_business_unit():
+    """business_unit_id arrives from the client and the foreign key only
+    proves the unit exists — it must be one of the caller's own."""
+    import inspect
+    src = inspect.getsource(sc.create_crew)
+    assert '_one(db, "sched_business_unit", body.business_unit_id)' in src
+    assert inspect.getsource(sc.update_crew).count('"sched_business_unit"') == 1
