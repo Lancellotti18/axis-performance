@@ -46,7 +46,7 @@ export default function PromoCodeBox({ onRedeemed, compact = false }: {
           value={code}
           onChange={e => setCode(e.target.value.toUpperCase())}
           onKeyDown={e => { if (e.key === 'Enter') void redeem() }}
-          placeholder="e.g. FORTITUDE"
+          placeholder="e.g. FORTITUDE-K7Q2M"
           aria-label="Company code"
           maxLength={32}
           className="min-w-0 flex-1 rounded-md border border-[#dededc] bg-[#f8f8f7] px-3 py-2 text-sm uppercase tracking-wide text-[#1a1a1a] placeholder:normal-case placeholder:tracking-normal focus:border-blue-400 focus:outline-none"

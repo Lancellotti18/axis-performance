@@ -173,7 +173,7 @@ function RegisterForm() {
         <div>
           <Label htmlFor="code">Company code <span className="font-normal text-[#9ca3af]">(optional)</span></Label>
           <Input id="code" type="text" autoComplete="off" maxLength={32} value={promoCode}
-                 onChange={e => setPromoCode(e.target.value.toUpperCase())} placeholder="From your email, e.g. FORTITUDE" />
+                 onChange={e => setPromoCode(e.target.value.toUpperCase())} placeholder="From your email, e.g. FORTITUDE-K7Q2M" />
         </div>
         {error && <AuthAlert tone="error">{error}</AuthAlert>}
         <Button type="submit" size="lg" loading={loading} className="w-full">
