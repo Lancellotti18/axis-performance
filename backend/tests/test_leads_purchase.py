@@ -92,14 +92,36 @@ class _FakeStripe:
     being charged as easily as on the amount."""
     def __init__(self, status="succeeded", boom=False):
         self.calls, self.status, self.boom = [], status, boom
+        self.intents: dict = {}
+        self.canceled: list = []
+        self.unreachable = False
+        self.refuse_cancel = False
         self.PaymentIntent = self
+
+    def __init_intents__(self):
+        pass
 
     def create(self, **kw):
         self.calls.append(kw)
         if self.boom:
             raise RuntimeError("card_declined")
-        return {"id": f"pi_{len(self.calls)}", "status": self.status,
-                "client_secret": "cs_test"}
+        pi = {"id": f"pi_{len(self.calls)}", "status": self.status, "client_secret": "cs_test"}
+        self.intents[pi["id"]] = pi
+        return pi
+
+    def retrieve(self, intent_id):
+        if self.unreachable:
+            raise RuntimeError("stripe unreachable")
+        return self.intents.get(intent_id) or {"id": intent_id, "status": "requires_payment_method"}
+
+    def cancel(self, intent_id):
+        if self.unreachable:
+            raise RuntimeError("stripe unreachable")
+        if self.refuse_cancel:
+            raise RuntimeError("intent cannot be canceled")
+        self.canceled.append(intent_id)
+        self.intents.setdefault(intent_id, {"id": intent_id})["status"] = "canceled"
+        return self.intents[intent_id]
 
 
 @pytest.fixture
@@ -128,10 +150,15 @@ def env(monkeypatch):
     db.stripe = stripe
     db.rows = [_row("P1"), _row("P2"), _row("P3")]
 
-    async def _fetch(county, city=None, zip_code=None, owner_occupied_only=False, limit=60):
-        return {"name": "New Hanover County, NC", "f": {"year_built": "YR", "owner": "OWN"}}, db.rows[:limit]
+    async def _fetch(county, city=None, zip_code=None, owner_occupied_only=False,
+                     limit=60, pin=None):
+        if db.county_down:
+            raise HTTPException(status_code=502, detail="Couldn't reach the county data service.")
+        rows = db.rows if pin is None else [r for r in db.rows if str(r.get("pin")) == str(pin)]
+        return {"name": "New Hanover County, NC", "f": {"year_built": "YR", "owner": "OWN"}}, rows[:limit]
     monkeypatch.setattr(prospecting, "fetch_prospects", _fetch)
     monkeypatch.setattr("app.api.v1.prospecting.fetch_prospects", _fetch)
+    db.county_down = False
     prospecting._searches.clear()
     return db
 
@@ -424,19 +451,47 @@ def test_a_matching_record_goes_to_review_rather_than_being_refused(env):
     assert env.tables["subscriptions"][0].get("lead_credits") in (None, 0)
 
 
-def test_a_sale_that_predates_the_purchase_is_confirmed(env):
+def test_a_sale_the_county_published_after_the_fact_is_confirmed(env):
     pid = _bought(env)
-    # Bought moments ago; the county now shows the house sold 5 months back.
-    env.rows = [_row("P1", sold_months=5)]
+    # Sold as a 2009-sale record; the county has since published a sale 5
+    # months ago, which is what made the owner on the record wrong.
+    env.rows = [_row("P1", sold_months=5, sold_year=2026)]
     assert _report(U1, pid, "sold_before_purchase")["status"] == "approved"
+
+
+def test_a_sale_that_was_already_on_the_record_is_not_a_dud(env):
+    """The exploit the security review found: sellable() refuses a sale inside
+    2 months and the claim window used to start at 2 months, so every lead
+    sold 3-12 months ago was both sold as good and auto-certified as a dud —
+    $50 of free leads per claim, three a month."""
+    env.rows = [_row("P1", sold_months=4, sold_year=2026)]
+    pid = _bought(env)                              # bought knowing it sold 4 months ago
+    out = _report(U1, pid, "sold_before_purchase")
+    assert out["status"] == "open", "a visible sale must not auto-approve"
+    assert out["auto_verified"] is False
+    assert env.tables["subscriptions"][0].get("lead_credits") in (None, 0)
+    assert "visible at purchase" in env.tables["lead_problem_reports"][0]["evidence"]["note"]
 
 
 def test_an_ancient_sale_is_not_a_dud(env):
     pid = _bought(env)
-    env.rows = [_row("P1", sold_months=200)]
+    env.rows = [_row("P1", sold_months=200, sold_year=1998)]   # a new-to-us but old sale
     out = _report(U1, pid, "sold_before_purchase")
     assert out["status"] == "open"
     assert "too old" in env.tables["lead_problem_reports"][0]["evidence"]["note"]
+
+
+def test_a_county_outage_is_not_evidence_that_it_isnt_a_home(env):
+    """The second exploit the review found: a failed county query left
+    current=None, and absence was read as proof for not_a_home — so any
+    outage, which find-roofs itself reports as a 502, minted free leads."""
+    pid = _bought(env)
+    env.county_down = True
+    out = _report(U1, pid, "not_a_home")
+    assert out["status"] == "open" and out["auto_verified"] is False
+    assert env.tables["subscriptions"][0].get("lead_credits") in (None, 0)
+    ev = env.tables["lead_problem_reports"][0]["evidence"]
+    assert ev["county_checked"] is False and "could not be reached" in ev["note"]
 
 
 def test_not_interested_is_not_a_reason(env):
@@ -485,7 +540,7 @@ def test_someone_elses_lead_cannot_be_reported(env):
 
 def test_a_credit_buys_the_next_lead_without_touching_the_card(env):
     pid = _bought(env, U1, "P1")
-    env.rows = []
+    env.rows = []                                    # the parcel is genuinely gone
     _report(U1, pid, "not_a_home")                   # approved -> 1 credit
     env.rows = [_row("P2")]
     charges = len(env.stripe.calls)
@@ -558,3 +613,119 @@ def test_my_claims_shows_the_balance_and_what_is_left_this_month(env):
     out = asyncio.run(billing.my_lead_problems(U1))
     assert out["credits"] == 1 and out["claims_used_this_month"] == 1
     assert out["claims_per_month"] == 3
+
+
+# ── a reservation must never be released while its money is in flight ──────
+# The security review's Vuln 3: expiry was keyed on (county, pin) alone and
+# never touched the PaymentIntent, so a buyer sitting in their banking app
+# could be charged while the lead was resold to somebody else — and the
+# webhook settling their row would then collide on the unique index silently.
+
+def _stale(env, minutes=None):
+    mins = minutes if minutes is not None else billing.RESERVATION_TTL_MIN + 1
+    old = datetime.now(timezone.utc) - timedelta(minutes=mins)
+    env.tables["purchased_leads"][0]["created_at"] = old.isoformat()
+
+
+def test_a_paid_reservation_is_never_resold_however_stale(env, monkeypatch):
+    """The intent succeeded while the row still said pending (a late webhook).
+    The clock must not give that lead away."""
+    challenge = _FakeStripe(status="requires_action")
+    monkeypatch.setattr(stripe_service, "client", lambda: challenge)
+    token = leads_svc.token_for(COUNTY, "P1")
+    _buy(U1, token)
+    challenge.intents["pi_1"]["status"] = "succeeded"      # the bank came good
+    _stale(env)
+
+    monkeypatch.setattr(stripe_service, "client", lambda: challenge)
+    with pytest.raises(HTTPException) as e:
+        _buy(U2, token)
+    assert e.value.status_code == 409, "a paid lead was resold"
+    assert env.tables["purchased_leads"][0]["status"] == "succeeded"
+    assert env.tables["purchased_leads"][0]["user_id"] == U1["id"]
+
+
+def test_releasing_a_reservation_cancels_its_payment_first(env, monkeypatch):
+    challenge = _FakeStripe(status="requires_action")
+    monkeypatch.setattr(stripe_service, "client", lambda: challenge)
+    token = leads_svc.token_for(COUNTY, "P1")
+    _buy(U1, token)                                   # abandoned at the bank
+    _stale(env)
+    challenge.status = "succeeded"                    # U2's own card clears
+                                                      # (pi_1 keeps the status it was created with)
+    assert _buy(U2, token)["ok"], "an abandoned reservation should free the lead"
+    assert "pi_1" in challenge.canceled, "the abandoned payment was left live"
+    assert env.tables["purchased_leads"][0]["status"] == "expired"
+
+
+def test_a_reservation_stays_put_when_stripe_cannot_be_reached(env, monkeypatch):
+    challenge = _FakeStripe(status="requires_action")
+    monkeypatch.setattr(stripe_service, "client", lambda: challenge)
+    _buy(U1, leads_svc.token_for(COUNTY, "P1"))
+    _stale(env)
+    challenge.unreachable = True                      # cannot prove the money is dead
+
+    with pytest.raises(HTTPException) as e:
+        _buy(U2, leads_svc.token_for(COUNTY, "P1"))
+    assert e.value.status_code == 409
+    assert env.tables["purchased_leads"][0]["status"] == "pending"
+
+
+def test_a_payment_that_refuses_to_cancel_keeps_its_lead(env, monkeypatch):
+    challenge = _FakeStripe(status="requires_action")
+    monkeypatch.setattr(stripe_service, "client", lambda: challenge)
+    _buy(U1, leads_svc.token_for(COUNTY, "P1"))
+    _stale(env)
+    challenge.refuse_cancel = True                    # e.g. 'processing'
+
+    with pytest.raises(HTTPException) as e:
+        _buy(U2, leads_svc.token_for(COUNTY, "P1"))
+    assert e.value.status_code == 409
+    assert env.tables["purchased_leads"][0]["status"] == "pending"
+
+
+def test_a_buyer_retrying_after_a_bank_challenge_is_not_charged_twice(env, monkeypatch):
+    challenge = _FakeStripe(status="requires_action")
+    monkeypatch.setattr(stripe_service, "client", lambda: challenge)
+    token = leads_svc.token_for(COUNTY, "P1")
+    _buy(U1, token)
+    _stale(env)
+    challenge.status = "succeeded"                    # second attempt goes through
+
+    out = _buy(U1, token)
+    assert out["ok"]
+    assert "pi_1" in challenge.canceled, "the first payment was left chargeable"
+
+
+# ── what a browsing contractor can correlate ───────────────────────────────
+# Vuln 4: the roof tile comes from a public imagery endpoint, so an exact bbox
+# could be reproduced per candidate parcel and byte-compared. These narrow the
+# candidate set and stop the tile being reproducible.
+
+def test_browsing_gives_away_neither_zip_nor_sale_year(env):
+    env.rows = [_row("P1", sold_year=2026, sold_months=5,
+                     why="Built in 1958 — near replacement age. Recently sold (2026) — new owners often re-roof.")]
+    p = _search(U1)["prospects"][0]
+    assert "zip" not in p
+    assert "2026" not in p["why"] and "Recently sold" not in p["why"]
+    assert "Built in 1958" in p["why"], "the scoring reason itself must survive"
+
+
+def test_the_buyer_still_gets_the_sale_year_they_paid_for(env):
+    env.rows = [_row("P1", sold_year=2026, sold_months=5,
+                     why="Built in 1958. Recently sold (2026) — new owners often re-roof.")]
+    out = _buy(U1, leads_svc.token_for(COUNTY, "P1"))
+    assert "Recently sold (2026)" in out["lead"]["why"]
+    assert out["lead"]["zip"] == "28403"
+
+
+def test_the_roof_tile_is_not_a_reproducible_lookup(env, imagery):
+    """A caller who guesses the coordinates must not be able to confirm the
+    guess by fetching the identical tile."""
+    dx, dy = leads_svc.thumb_jitter(leads_svc.token_for(COUNTY, "P1"))
+    assert (dx, dy) != (0.0, 0.0)
+    # Stable per lead, so the image doesn't jump between loads...
+    assert leads_svc.thumb_jitter(leads_svc.token_for(COUNTY, "P1")) == (dx, dy)
+    # ...different per lead, and small enough to keep the roof in frame.
+    assert leads_svc.thumb_jitter(leads_svc.token_for(COUNTY, "P2")) != (dx, dy)
+    assert abs(dx) < 0.0002 and abs(dy) < 0.0002

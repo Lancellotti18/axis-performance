@@ -60,8 +60,9 @@ const isGone = (e: unknown) => e instanceof Error && /\[HTTP 409\]/.test(e.messa
  * on a search would be sixty round trips nobody asked for. The observer means
  * a contractor who looks at the top four pays for four.
  */
-function RoofView({ county, token, owned, lat, lng }: {
+function RoofView({ county, token, owned, lat, lng, area }: {
   county: string; token: string; owned: boolean; lat?: number; lng?: number
+  area: { city?: string; zip?: string }
 }) {
   const [img, setImg] = useState<string | null>(null)
   const [state, setState] = useState<'idle' | 'loading' | 'failed'>('idle')
@@ -76,12 +77,14 @@ function RoofView({ county, token, owned, lat, lng }: {
       if (!entries.some(e => e.isIntersecting)) return
       io.disconnect()
       setState('loading')
-      api.prospecting.leadThumb(county, token)
+      api.prospecting.leadThumb(county, token, area)
         .then(r => { setImg(r.image); setState('idle') })
         .catch(() => setState('failed'))
     }, { rootMargin: '200px' })
     io.observe(el)
     return () => io.disconnect()
+    // `area` is the search that produced this card and cannot change under it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [county, token, state])
 
   // Street view is for leads this account owns. On an unbought lead it would
@@ -143,7 +146,7 @@ function BuyDialog({ lead, price, busy, onConfirm, onCancel }: {
           every other contractor&apos;s Find Roofs for good.
         </p>
         <div className="mt-3 rounded-xl bg-[#f8f8f7] px-3 py-2 text-[12px] text-[#4b5563]">
-          <div><span className="text-[#6b7280]">Area:</span> {lead.city || '—'}{lead.zip ? ` ${lead.zip}` : ''}</div>
+          <div><span className="text-[#6b7280]">Area:</span> {lead.city || '—'}</div>
           {lead.year_built && <div><span className="text-[#6b7280]">Built:</span> {lead.year_built}</div>}
           <div><span className="text-[#6b7280]">Score:</span> {lead.score} ({lead.tier})</div>
         </div>
@@ -180,6 +183,10 @@ export default function FindRoofsPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.prospecting.findRoofs>> | null>(null)
   const [converting, setConverting] = useState<string | null>(null)
+  // The filter these results came from. Buying and the roof view re-query the
+  // county server-side, and a lead found by ZIP would fall outside a
+  // county-wide query — so they must use the search, not the live inputs.
+  const [area, setArea] = useState<{ city?: string; zip?: string }>({})
 
   // Buying
   const [pending, setPending] = useState<Lead | null>(null)
@@ -200,11 +207,12 @@ export default function FindRoofsPage() {
   const search = useCallback(async () => {
     if (!county) return
     setLoading(true); setResult(null)
+    const searched = { city: city.trim() || undefined, zip: zip.trim() || undefined }
     try {
       setResult(await api.prospecting.findRoofs({
-        county, city: city.trim() || undefined, zip: zip.trim() || undefined,
-        ownerOccupiedOnly: ownerOnly, limit: 60,
+        county, ...searched, ownerOccupiedOnly: ownerOnly, limit: 60,
       }))
+      setArea(searched)
     } catch (e) {
       toast.error(clean(e, 'Search failed'))
     } finally { setLoading(false) }
@@ -223,7 +231,7 @@ export default function FindRoofsPage() {
     if (!pending || !result) return
     setBuying(true)
     try {
-      const out = await api.billing.purchaseLead(county, pending.token)
+      const out = await api.billing.purchaseLead(county, pending.token, area)
       if (out.requires_action) {
         toast.error(out.message || 'Your bank needs to confirm this payment.')
         return
@@ -252,7 +260,7 @@ export default function FindRoofsPage() {
       }
       toast.error(clean(e, 'Could not buy that lead.'))
     } finally { setBuying(false) }
-  }, [pending, result, county])
+  }, [pending, result, county, area])
 
   const measure = useCallback(async (p: Lead) => {
     if (!p.address) return
@@ -357,11 +365,11 @@ export default function FindRoofsPage() {
                     <div key={p.token}
                       className={`group flex flex-col overflow-hidden rounded-2xl border bg-[#f8f8f7] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_12px_30px_rgba(59,130,246,0.15)] ${p.owned ? 'border-emerald-300' : 'border-[#dededc] hover:border-blue-400/30'}`}>
                       <div className="flex gap-3 p-3">
-                        <RoofView county={county} token={p.token} owned={p.owned} lat={p.lat} lng={p.lng} />
+                        <RoofView county={county} token={p.token} owned={p.owned} lat={p.lat} lng={p.lng} area={area} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <div className="truncate text-sm font-semibold text-[#1a1a1a]">
-                              {p.owned ? p.address : `${p.city || 'This area'}${p.zip ? ` ${p.zip}` : ''}`}
+                              {p.owned ? p.address : (p.city || 'This area')}
                             </div>
                             <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${TIER[p.tier] || TIER.Cool}`}>{p.tier}</span>
                           </div>

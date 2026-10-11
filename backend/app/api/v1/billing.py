@@ -727,9 +727,18 @@ async def my_entitlement(action: str = "generate_report",
 class PurchaseLeadRequest(BaseModel):
     """No price and no address. The county and the opaque token are enough to
     re-find the parcel server-side; a body that could name its own price, or
-    its own address, would be a body worth forging."""
+    its own address, would be a body worth forging.
+
+    `city` and `zip_code` are the area the buyer was browsing. They only narrow
+    the county query that re-finds the parcel — the token still has to match,
+    and it is bound to county|pin, so widening or changing them cannot buy a
+    different lead. Without them a lead found by ZIP would often fall outside
+    the county-wide 200-row cap and the purchase would 404.
+    """
     county: str
     token: str
+    city: Optional[str] = None
+    zip_code: Optional[str] = None
 
 
 # A reservation that never got paid for must not hold a lead forever. Fifteen
@@ -743,15 +752,61 @@ def _release_stale_reservations(db, county: str, pin: str) -> None:
 
     Done on demand rather than by a sweep: the only moment a stale reservation
     actually matters is when somebody is trying to buy that exact parcel.
+
+    A reservation is NEVER released while its payment might still land. The
+    reason the TTL exists at all is the bank challenge — someone sitting in
+    their banking app with a requires_action intent — and simply flipping that
+    row to expired would resell the lead while their payment was still in
+    flight. They would then be charged for a lead somebody else owns, and the
+    webhook's attempt to settle their row would collide with the new owner's on
+    the unique index and be swallowed. So:
+
+      * a succeeded intent means the lead was paid for: settle it and keep it
+        theirs, whatever the clock says;
+      * an intent still in flight is cancelled first, and only then is the row
+        released;
+      * anything we cannot prove is safe — Stripe unreachable, a cancel that
+        failed, a 'processing' intent that cannot be cancelled — is left
+        pending, and this caller is told the lead is taken.
     """
     from datetime import datetime, timedelta, timezone
+
+    from app.services import stripe_service
+
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=RESERVATION_TTL_MIN)).isoformat()
     try:
-        db.table("purchased_leads").update({"status": "expired", "updated_at": "now()"}) \
-          .eq("source_county", county).eq("prospect_pin", pin) \
-          .eq("status", "pending").lt("created_at", cutoff).execute()
+        stale = (db.table("purchased_leads").select("id,stripe_payment_intent_id")
+                 .eq("source_county", county).eq("prospect_pin", pin)
+                 .eq("status", "pending").lt("created_at", cutoff).execute().data) or []
     except Exception as e:
-        logger.info("could not release stale reservations for %s/%s: %s", county, pin, e)
+        logger.info("could not list stale reservations for %s/%s: %s", county, pin, e)
+        return
+
+    for row in stale:
+        intent_id = row.get("stripe_payment_intent_id")
+        if intent_id:
+            try:
+                stripe = stripe_service.client()
+                intent = stripe.PaymentIntent.retrieve(intent_id)
+                status = (intent or {}).get("status")
+                if status == "succeeded":
+                    # Paid. The clock is irrelevant; this lead is theirs.
+                    db.table("purchased_leads").update(
+                        {"status": "succeeded", "updated_at": "now()"}
+                    ).eq("id", row["id"]).eq("status", "pending").execute()
+                    continue
+                if status not in ("canceled", "requires_payment_method"):
+                    stripe.PaymentIntent.cancel(intent_id)
+            except Exception as e:
+                # Cannot prove the money is dead, so the lead stays reserved.
+                logger.info("leaving reservation %s pending: %s", row.get("id"), e)
+                continue
+        try:
+            db.table("purchased_leads").update(
+                {"status": "expired", "updated_at": "now()"}
+            ).eq("id", row["id"]).eq("status", "pending").execute()
+        except Exception as e:
+            logger.info("could not expire reservation %s: %s", row.get("id"), e)
 
 
 @router.post("/purchase-lead")
@@ -804,7 +859,8 @@ async def purchase_lead(body: PurchaseLeadRequest,
 
     # 1. Fresh data for the parcel this token refers to.
     try:
-        src, rows = await fetch_prospects(body.county, limit=200)
+        src, rows = await fetch_prospects(body.county, city=body.city,
+                                          zip_code=body.zip_code, limit=200)
     except HTTPException:
         raise
     except Exception as e:
@@ -1088,18 +1144,25 @@ async def report_lead_problem(purchase_id: str, body: LeadProblemRequest,
 
     snapshot = purchase.get("snapshot") or {}
     county = purchase.get("source_county") or ""
+    pin = str(purchase.get("prospect_pin") or "")
     current = None
+    checked = False
     try:
-        _src, fresh = await fetch_prospects(county, limit=200)
-        current = next((r for r in fresh
-                        if str(r.get("pin")) == str(purchase.get("prospect_pin"))), None)
+        # Ask about this ONE parcel. Every other county query here is capped at
+        # 200 rows, so a parcel missing from a county-wide result set proves
+        # nothing — and "not a home" is approved on absence.
+        _src, fresh = await fetch_prospects(county, pin=pin, limit=5)
+        checked = True
+        current = next((r for r in fresh if str(r.get("pin")) == pin), None)
     except Exception as e:
         # The county service being down is not the contractor's problem: file
-        # the claim for review rather than failing their request.
+        # the claim for review rather than failing their request. `checked`
+        # stays False so the outage is never mistaken for evidence.
         logger.info("claim check could not reach %s: %s", county, e)
 
     verified, evidence = leads_svc.verify_claim(
-        body.reason, snapshot, current, _months_since(purchase.get("created_at")))
+        body.reason, snapshot, current, _months_since(purchase.get("created_at")),
+        checked=checked)
 
     try:
         rec = (db.table("lead_problem_reports").insert({

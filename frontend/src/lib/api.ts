@@ -585,7 +585,6 @@ export type LegalAcknowledgmentStatus = {
 export type Lead = {
   token: string
   city: string | null
-  zip?: string | null
   year_built: number | null
   owner_occupied: boolean | null
   score: number
@@ -593,7 +592,10 @@ export type Lead = {
   confidence: string
   why: string
   owned: boolean
-  // Present only once this account has bought the lead.
+  // Present only once this account has bought the lead. ZIP and the sale year
+  // are in here rather than above because they narrow down WHICH parcel a
+  // listing is against the county's public layer.
+  zip?: string | null
   address?: string
   owner?: string | null
   owner_mail?: string | null
@@ -1025,11 +1027,16 @@ export const api = {
       apiRequest<UsageSummary>(`/api/v1/billing/usage`),
     // Exclusive leads. The body names no price and no address: the server
     // re-finds the parcel from the token and prices it from the plan table.
-    purchaseLead: (county: string, token: string) =>
-      apiRequest<{ ok: boolean; charged_usd?: number; requires_action?: boolean
+    // city/zip are the area being browsed. They only narrow the county query
+    // that re-finds the parcel; the token still has to match, so they cannot
+    // buy a different lead.
+    purchaseLead: (county: string, token: string, area?: { city?: string; zip?: string }) =>
+      apiRequest<{ ok: boolean; charged_usd?: number; used_credit?: boolean
+                   credits_left?: number; requires_action?: boolean
                    client_secret?: string; lead?: Lead; message: string }>(
         `/api/v1/billing/purchase-lead`,
-        { method: 'POST', body: JSON.stringify({ county, token }) }),
+        { method: 'POST', body: JSON.stringify({
+            county, token, city: area?.city || null, zip_code: area?.zip || null }) }),
     myLeads: () =>
       apiRequest<{ count: number; leads: PurchasedLead[] }>(`/api/v1/billing/my-leads`),
     // Duds. The reason is a fixed set: a claim is either corroborated by the
@@ -1093,10 +1100,13 @@ export const api = {
       }>(`/api/v1/prospecting/find-roofs?${q}`)
     },
     // The roof view for a lead whose coordinates the browser isn't given.
-    leadThumb: (county: string, token: string) =>
-      apiRequest<{ image: string }>(
-        `/api/v1/prospecting/lead-thumb?county=${encodeURIComponent(county)}`
-        + `&token=${encodeURIComponent(token)}`, undefined, 90000, 10 * 60 * 1000),
+    leadThumb: (county: string, token: string, area?: { city?: string; zip?: string }) => {
+      const q = new URLSearchParams({ county, token })
+      if (area?.city) q.set('city', area.city)
+      if (area?.zip) q.set('zip', area.zip)
+      return apiRequest<{ image: string }>(
+        `/api/v1/prospecting/lead-thumb?${q}`, undefined, 90000, 10 * 60 * 1000)
+    },
     censusHeat: (county: string, limit = 40) =>
       apiRequest<{
         available: boolean; county: string; count?: number; note: string

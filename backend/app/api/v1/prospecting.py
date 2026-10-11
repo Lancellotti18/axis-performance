@@ -274,12 +274,18 @@ async def fetch_prospects(
     zip_code: Optional[str] = None,
     owner_occupied_only: bool = False,
     limit: int = 60,
+    pin: Optional[str] = None,
 ) -> tuple[dict, list[dict]]:
     """Query a county and return (source, rows) with every field populated.
 
     Separate from the endpoint because two callers need it: browsing, which
     strips the rows before they leave the server, and buying, which re-queries
     so the sale is settled against fresh data rather than a stale browser tab.
+
+    `pin` asks the county about ONE parcel. A dud claim needs that: every other
+    query here is capped at 200 rows, so a parcel's absence from the result set
+    would otherwise prove nothing, and "not a home" would auto-approve for any
+    parcel that simply fell off the end of the list.
     """
     src = PARCEL_SOURCES.get(county)
     if not src:
@@ -295,13 +301,22 @@ async def fetch_prospects(
                 status_code=400,
                 detail="This county's public data doesn't carry ZIP codes — filter by city instead.")
         where += f" AND {f['zip']} LIKE '{_safe_val(zip_code)}%'"
+    if pin is not None:
+        if "pin" not in f:
+            raise HTTPException(status_code=400, detail="This county publishes no parcel id.")
+        # Parcel ids are numeric in some counties (OBJECTID) and strings in
+        # others, and ArcGIS will not compare a quoted literal to a numeric
+        # field. The value came from our own stored row, and is sanitised
+        # anyway because it is going into a query string.
+        val = _safe_val(pin)
+        where += f" AND {f['pin']} = " + (val if val.isdigit() else f"'{val}'")
 
     out_fields = ",".join(sorted(set(f.values())))
     params = {
         "where": where, "outFields": out_fields, "returnGeometry": "true", "outSR": "4326",
         "resultRecordCount": str(min(limit * 3, 200)), "f": "json",
     }
-    if "year_built" in f:  # oldest first — roofs most likely due surface at the top
+    if "year_built" in f and pin is None:  # oldest first — likeliest roofs on top
         params["orderByFields"] = f"{f['year_built']} ASC"
     try:
         async with httpx.AsyncClient(timeout=25) as client:
@@ -452,6 +467,8 @@ ESRI_EXPORT = ("https://services.arcgisonline.com/ArcGIS/rest/services/World_Ima
 async def lead_thumb(
     county: str = Query(...),
     token: str = Query(...),
+    city: Optional[str] = Query(None),
+    zip_code: Optional[str] = Query(None, alias="zip"),
     user: dict = Depends(require_user),
 ) -> dict:
     """The satellite roof view for one lead, fetched through the server.
@@ -472,7 +489,7 @@ async def lead_thumb(
     if not leads_svc.valid_token(token):
         raise HTTPException(status_code=400, detail="Invalid lead reference.")
 
-    src, rows = await fetch_prospects(county, limit=200)
+    src, rows = await fetch_prospects(county, city=city, zip_code=zip_code, limit=200)
     row = leads_svc.match_token(county, token, rows)
     if not row:
         raise HTTPException(status_code=404, detail="That lead is no longer in the county's results.")
@@ -490,6 +507,12 @@ async def lead_thumb(
         raise HTTPException(status_code=404, detail="No roof view for this record.")
 
     d = 0.0006                                  # a tight crop: the roof, not the block
+    # Offset the centre a few metres, stable per token. The imagery endpoint is
+    # public, so an exact bbox could be reproduced for candidate parcels and
+    # byte-compared until one matched, which would turn this into a lookup of
+    # which parcel a listing is.
+    jx, jy = leads_svc.thumb_jitter(token)
+    lng, lat = lng + jx, lat + jy
     params = {"bbox": f"{lng - d},{lat - d},{lng + d},{lat + d}",
               "bboxSR": "4326", "imageSR": "4326", "size": "240,180",
               "format": "jpg", "f": "image"}

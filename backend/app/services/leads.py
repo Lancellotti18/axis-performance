@@ -24,6 +24,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import re
 from typing import Iterable, Optional
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,39 @@ def sellable(row: dict) -> tuple[bool, str]:
     return True, ""
 
 
+_SALE_SENTENCE = re.compile(r"\s*Recently sold \([^)]*\)[^.]*\.")
+
+
+def _why_without_sale(why: Optional[str]) -> str:
+    """The scoring sentence, minus the part that names the sale year.
+
+    `_score` appends "Recently sold (2024) — new owners often re-roof." That is
+    a useful reason to buy, and also a precise filter for matching a listing
+    against the county's public layer. Buyers get it back on the leads they own.
+    """
+    return _SALE_SENTENCE.sub("", why or "").strip()
+
+
+def thumb_jitter(token: str) -> tuple[float, float]:
+    """A small, stable offset for a lead's roof-view crop.
+
+    The roof tile comes from a public, unauthenticated imagery endpoint, so an
+    exact bbox could be reproduced for any candidate parcel and byte-compared
+    until it matched — turning the roof view into a lookup of which parcel a
+    listing is. Offsetting the centre by a few metres, deterministically per
+    token so the image is stable between loads, breaks that comparison while
+    keeping the house in frame.
+
+    This raises the cost of correlating a listing to an address; it does not
+    make it impossible, and the underlying records are public either way.
+    """
+    mac = hashlib.sha256((token + "|thumb").encode()).digest()
+    # Two signed offsets in roughly +/-15 m, well inside the ~66 m half-frame.
+    dx = (mac[0] / 255.0 - 0.5) * 0.00028
+    dy = (mac[1] / 255.0 - 0.5) * 0.00028
+    return dx, dy
+
+
 def public_row(county: str, row: dict) -> dict:
     """An unbought lead, with every identifying field removed.
 
@@ -96,13 +130,15 @@ def public_row(county: str, row: dict) -> dict:
     return {
         "token": token_for(county, str(row["pin"])),
         "city": row.get("city"),
-        "zip": row.get("zip"),
+        # No ZIP and no sale year. Both narrow the candidate set for anyone
+        # trying to work out WHICH parcel a listing is by cross-referencing the
+        # county's own free layer, which is the one thing the stripping is for.
         "year_built": row.get("year_built"),
         "owner_occupied": row.get("owner_occupied"),
         "score": row.get("score"),
         "tier": row.get("tier"),
         "confidence": row.get("confidence"),
-        "why": row.get("why"),
+        "why": _why_without_sale(row.get("why")),
         "owned": False,
     }
 
@@ -159,16 +195,26 @@ STALE_SALE_MAX_MONTHS = 12
 
 
 def verify_claim(reason: str, snapshot: dict, current: Optional[dict],
-                 purchase_age_months: float) -> tuple[bool, dict]:
+                 purchase_age_months: float, checked: bool = True) -> tuple[bool, dict]:
     """Does the county's record NOW corroborate this claim? (verified, evidence)
+
+    `checked` says whether the county actually answered. That distinction is
+    the whole safety of this function: "I looked and the parcel is gone" is
+    evidence, while "I could not look" is not, and conflating them turns every
+    county outage into free leads.
 
     Only a contradiction between what was sold and what the county says today
     counts. Anything this cannot settle goes to a human rather than being
     waved through or refused — a wrong automatic refusal is worse than a
     slower answer.
     """
-    ev: dict = {"reason": reason, "found_in_county": current is not None,
+    ev: dict = {"reason": reason, "county_checked": checked,
+                "found_in_county": current is not None,
                 "purchase_age_months": round(purchase_age_months, 1)}
+
+    if not checked:
+        ev["note"] = "the county service could not be reached, so nothing is proven either way"
+        return False, ev
 
     if reason == "not_a_home":
         # The parcel no longer comes back from the county's residential query.
@@ -196,15 +242,32 @@ def verify_claim(reason: str, snapshot: dict, current: Optional[dict],
             return False, ev
         months_before = sold_months - purchase_age_months
         ev.update({"sold_months_ago": sold_months,
-                   "months_before_purchase": round(months_before, 1)})
-        # It has to predate the purchase, and be recent enough to have made the
-        # owner data stale. The pre-sale filter already rejects sales inside two
-        # months, so a genuine miss sits between there and a year.
-        if RECENT_SALE_MONTHS < months_before <= STALE_SALE_MAX_MONTHS:
-            return True, ev
-        ev["note"] = ("the sale is after the purchase date" if months_before <= RECENT_SALE_MONTHS
-                      else "the sale is too old to have made the record stale")
-        return False, ev
+                   "months_before_purchase": round(months_before, 1),
+                   "sold_year_at_sale": snapshot.get("sold_year"),
+                   "sold_year_now": current.get("sold_year")})
+
+        # The claim is that the owner on the record was already out of date when
+        # the lead was sold. That is only true if the county has since published
+        # a sale it was not showing at the time — if the same sale was already
+        # on the record, the buyer could see it and bought anyway.
+        #
+        # Without this test the window would start exactly where the pre-sale
+        # filter stops (sellable() refuses a sale inside RECENT_SALE_MONTHS),
+        # so every lead sold 3-12 months ago would be both sold as good and
+        # auto-certified as a dud.
+        sale_is_news = (snapshot.get("sold_year") != current.get("sold_year")
+                        or (snapshot.get("sold_months") is None and sold_months is not None))
+        if not sale_is_news:
+            ev["note"] = ("the same sale was already on the record when this lead was sold, "
+                          "so it was visible at purchase")
+            return False, ev
+        if months_before <= 0:
+            ev["note"] = "the sale is dated after the purchase"
+            return False, ev
+        if months_before > STALE_SALE_MAX_MONTHS:
+            ev["note"] = "the sale is too old to have made the record stale"
+            return False, ev
+        return True, ev
 
     ev["note"] = "unknown reason"
     return False, ev
