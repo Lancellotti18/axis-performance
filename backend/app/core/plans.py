@@ -337,12 +337,15 @@ def can_change_plan(current_key: Optional[str], target_key: str, *,
         excess = crews_used - target.crews
         warning = (
             f"You have {crews_used} crews and {target.name} includes {target.crews}. "
-            f"On the change date, {excess} crew{'s' if excess > 1 else ''} will be "
-            f"switched off — their history is kept and nothing is deleted."
+            f"On the change date Axis switches off up to {excess} "
+            f"crew{'s' if excess > 1 else ''} that {'have' if excess > 1 else 'has'} "
+            f"no upcoming work. A crew with jobs still booked is left running even if "
+            f"that keeps you over the plan — nothing scheduled disappears, and no "
+            f"history is deleted."
         )
         action = (
-            f"Remove {excess} crew{'s' if excess > 1 else ''} from Dispatch before "
-            f"then to choose which ones you keep."
+            f"Retire {excess} crew{'s' if excess > 1 else ''} in Dispatch before then "
+            f"to choose which ones you keep."
         )
 
     return PlanChange(

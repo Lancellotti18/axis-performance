@@ -311,6 +311,65 @@ def _label(job_type: Optional[str]) -> str:
     return (job_type or "").replace("_", " ").title()
 
 
+def retire_crews_over_plan(db, org: str, keep: int) -> list:
+    """Bring an org down to its plan's crew allowance after a downgrade.
+
+    ONLY crews with no upcoming work are switched off. A crew with jobs still
+    booked is left alone even when that leaves the account over its plan.
+
+    That restraint is the whole point. The board shows active crews only, and
+    it keeps an appointment only if its crew is in that list — so retiring a
+    booked crew does not just hide the crew, it removes that crew's scheduled
+    jobs from the board. A contractor would come in the morning after a
+    billing date to find real work missing and no indication why. Sitting over
+    plan is recoverable and visible; vanished jobs are neither.
+
+    Takes `org` explicitly rather than reading the request ContextVar, because
+    the caller is a Stripe webhook, which has no org-scoped request.
+
+    Idempotent, and returns the crews it actually retired.
+    """
+    if keep is None or keep < 0:
+        return []
+    crews = _rows(db.table("sched_crew").select("*")
+                  .eq("org_id", org).eq("is_active", True).execute())
+    excess = len(crews) - keep
+    if excess <= 0:
+        return []
+
+    # Crews with an appointment from today onward that is still live work.
+    today = date.today().isoformat()
+    asg = _rows(db.table("sched_assignment").select("appointment_id, crew_id")
+                .eq("org_id", org).execute())
+    booked: set = set()
+    if asg:
+        appts = _rows(db.table("sched_appointment").select("id, status")
+                      .eq("org_id", org).gte("scheduled_start", today).execute())
+        live = {a["id"] for a in appts
+                if (a.get("status") or "").strip().upper() not in RELEASED_STATUSES}
+        booked = {a["crew_id"] for a in asg if a["appointment_id"] in live}
+
+    # Of the crews that are free, let the smallest go first: if some must be
+    # switched off, keep the ones that can get the most done. Name breaks ties
+    # so the choice is stable rather than dependent on row order.
+    free = [c for c in crews if c["id"] not in booked]
+    free.sort(key=lambda c: (_f(c.get("squares_per_day")) or 0.0, c.get("name") or ""))
+
+    retired = []
+    for crew in free[:excess]:
+        try:
+            db.table("sched_crew").update({"is_active": False}) \
+              .eq("org_id", org).eq("id", crew["id"]).execute()
+            retired.append(crew)
+        except Exception as e:
+            logger.warning("could not retire crew %s for org %s: %s", crew["id"], org, e)
+    if retired:
+        logger.info("retired %d crew(s) for org %s down to a plan allowance of %d; "
+                    "%d booked crew(s) were left alone",
+                    len(retired), org, keep, len(crews) - len(free))
+    return retired
+
+
 def _one(db, table, id_):
     r = db.table(table).select("*").eq("org_id", _org()).eq("id", id_).limit(1).execute()
     return (r.data or [None])[0]

@@ -1496,6 +1496,32 @@ def _period_ts(value):
         return None
 
 
+def _retire_crews_for_plan(db, user_id: str, plan_key: str) -> None:
+    """A downgrade has just taken effect — bring the dispatch board within the
+    new plan's crew allowance.
+
+    Only crews with no upcoming work are switched off; see
+    scheduling.retire_crews_over_plan for why a booked crew is left running.
+
+    Never raises. Dispatch is a different concern from billing, and a problem
+    counting crews must not fail the webhook — Stripe would retry it, and the
+    plan change itself has already been applied.
+    """
+    try:
+        from app.core.plans import PLANS, UNLIMITED
+        plan = PLANS.get((plan_key or "").strip().lower())
+        if plan is None or plan.crews == UNLIMITED:
+            return
+        from app.api.v1.scheduling import org_for, retire_crews_over_plan
+        retired = retire_crews_over_plan(db, org_for({"id": user_id}), plan.crews)
+        if retired:
+            logger.info("downgrade to %s retired %d crew(s) for %s",
+                        plan_key, len(retired), user_id)
+    except Exception as e:
+        logger.warning("could not reconcile crews after a plan change for %s: %s",
+                       user_id, e)
+
+
 def _scheduled_change_is_due(row: dict, update: dict) -> bool:
     """Has the billing period a scheduled change was promised for actually begun?
 
@@ -1563,6 +1589,7 @@ async def _apply_event(db, event) -> None:
                 update["scheduled_interval"] = None
                 logger.info("applied scheduled plan change for %s -> %s",
                             row["user_id"], update["plan_key"])
+                _retire_crews_for_plan(db, row["user_id"], update["plan_key"])
             else:
                 # Leave the promise standing, and do not let this event's row
                 # data quietly clear it either.

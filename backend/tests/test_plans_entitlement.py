@@ -261,10 +261,16 @@ def test_downgrade_is_scheduled_not_refused():
 
 
 def test_a_stranding_downgrade_warns_and_names_the_action():
+    """The copy used to promise that 3 crews "will be switched off" — which no
+    code did, and which would have been wrong anyway: a crew with booked work
+    is left running, because retiring it would take its scheduled jobs off the
+    board with it. See scheduling.retire_crews_over_plan."""
     c = plans.can_change_plan("crew", "solo", crews_used=6)
-    assert "3 crews will be switched off" in (c.warning or "")
-    assert "nothing is deleted" in (c.warning or "")
-    assert "Remove 3 crews" in (c.action_needed or "")
+    assert "up to 3 crews" in (c.warning or "")
+    assert "no upcoming work" in (c.warning or "")
+    assert "left running" in (c.warning or "")
+    assert "no history is deleted" in (c.warning or "")
+    assert "Retire 3 crews" in (c.action_needed or "")
 
 
 def test_downgrade_within_limits_carries_no_warning():

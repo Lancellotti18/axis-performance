@@ -99,16 +99,34 @@ def overage_purchased(db, user_id: str, sub: Optional[dict]) -> int:
 
 
 def crews_used(db, user_id: str) -> int:
-    """How many dispatch crews exist. Best-effort: a count that fails is better
-    than a check that raises."""
-    for table, col in (("sched_crews", "user_id"), ("crews", "user_id")):
-        try:
-            rows = (db.table(table).select("id").eq(col, user_id)
-                    .execute().data) or []
-            return len(rows)
-        except Exception:
-            continue
-    return 0
+    """How many dispatch crews this account has on its board.
+
+    This asked for a table "sched_crews" and a column "user_id"; neither has
+    ever existed (they are sched_crew and org_id), so every call raised, hit
+    the except, and returned 0 — the crew allowance counted nothing and the
+    downgrade warning never fired.
+
+    Scoped by ORG, not by user id: dispatch rows are keyed by org_id, which is
+    the caller's user id for everyone except the legacy board's owners.
+
+    ACTIVE crews only. Retiring a crew sets is_active False rather than
+    deleting it, because sched_assignment cascades and hard deletion would
+    strip the crew off historical jobs. A retired crew must not keep eating
+    the plan's allowance.
+
+    Best-effort: a count that fails is better than a check that raises, and it
+    fails to ZERO, which over-grants rather than wrongly blocking.
+    """
+    try:
+        from app.api.v1.scheduling import org_for
+        org = org_for({"id": user_id})
+        rows = (db.table("sched_crew").select("id")
+                .eq("org_id", org).eq("is_active", True)
+                .execute().data) or []
+        return len(rows)
+    except Exception as e:
+        logger.info("crew count failed for %s: %s", user_id, e)
+        return 0
 
 
 def check(db, user_id: str, action: Action, *,
