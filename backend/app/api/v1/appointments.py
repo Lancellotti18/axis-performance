@@ -141,6 +141,51 @@ async def book_inspection(report_token: str, payload: BookRequest, request: Requ
     return {"ok": True, "status": "requested", "preferred_date": d.isoformat(), "time_window": window}
 
 
+class CreateAppointment(BaseModel):
+    preferred_date: str = Field(..., min_length=8, max_length=10)   # YYYY-MM-DD
+    time_window: str = Field("anytime")
+    homeowner_name: Optional[str] = Field(None, max_length=120)
+    homeowner_phone: Optional[str] = Field(None, max_length=40)
+    homeowner_email: Optional[str] = Field(None, max_length=200)
+    address: Optional[str] = Field(None, max_length=300)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+@router.post("")
+async def create_appointment(payload: CreateAppointment, user: dict = Depends(require_user)) -> dict:
+    """The contractor puts an inspection on their own calendar — a phone call, a
+    door knock, a referral. Until now the calendar only filled from homeowner
+    bookings on a report. It's the contractor's own entry, so it starts confirmed."""
+    try:
+        d = date.fromisoformat(payload.preferred_date)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Pick a valid date.")
+    if d < date.today():
+        raise HTTPException(status_code=422, detail="Pick today or a later date.")
+    if not ((payload.address or "").strip() or (payload.homeowner_name or "").strip()):
+        raise HTTPException(status_code=422, detail="Add an address or a name so you know where you're going.")
+    email = (payload.homeowner_email or "").strip()
+    if email and "@" not in email:
+        raise HTTPException(status_code=422, detail="That email doesn't look right.")
+
+    row = {
+        "user_id": user["id"],
+        "homeowner_name": (payload.homeowner_name or "").strip() or None,
+        "homeowner_phone": (payload.homeowner_phone or "").strip() or None,
+        "homeowner_email": email or None,
+        "address": (payload.address or "").strip() or None,
+        "preferred_date": d.isoformat(),
+        "time_window": payload.time_window if payload.time_window in _WINDOWS else "anytime",
+        "contractor_note": (payload.note or "").strip() or None,
+        "status": "confirmed",
+    }
+    db = get_supabase()
+    ins = db.table("inspection_appointments").insert({k: v for k, v in row.items() if v is not None}).execute()
+    if not ins.data:
+        raise HTTPException(status_code=500, detail="Could not add the inspection — try again.")
+    return {**ins.data[0], "lead": None}
+
+
 @router.get("")
 async def list_appointments(
     upcoming: bool = Query(False),

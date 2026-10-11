@@ -874,6 +874,11 @@ export const api = {
   appointments: {
     list: (upcoming = false) =>
       apiRequest<{ appointments: Appointment[] }>(`/api/v1/appointments${upcoming ? '?upcoming=1' : ''}`),
+    create: (body: {
+      preferred_date: string; time_window?: string; homeowner_name?: string
+      homeowner_phone?: string; homeowner_email?: string; address?: string; note?: string
+    }) =>
+      apiRequest<Appointment>(`/api/v1/appointments`, { method: 'POST', body: JSON.stringify(body) }),
     update: (id: string, patch: { status?: AppointmentStatus; preferred_date?: string; time_window?: string; contractor_note?: string }) =>
       apiRequest<Appointment>(`/api/v1/appointments/${id}`, {
         method: 'PATCH', body: JSON.stringify(patch),

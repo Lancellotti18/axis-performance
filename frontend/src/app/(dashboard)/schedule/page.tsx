@@ -50,6 +50,7 @@ export default function SchedulePage() {
   const [selected, setSelected] = useState<string>(todayKey)
   const [proposeFor, setProposeFor] = useState<string | null>(null)
   const [proposeDates, setProposeDates] = useState<string[]>(['', '', ''])
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
     api.appointments.list().then(r => setAppts(r.appointments)).catch(() => setAppts([]))
@@ -115,8 +116,10 @@ export default function SchedulePage() {
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black text-[#1a1a1a]">Schedule</h1>
-          <p className="mt-0.5 text-xs text-[#6b7280]">Free inspections your homeowners booked from their roof reports.</p>
+          <p className="mt-0.5 text-xs text-[#6b7280]">Inspections homeowners booked from their roof reports, plus any you add yourself.</p>
         </div>
+        <button onClick={() => { if (selected < todayKey) setSelected(todayKey); setAdding(true) }}
+          className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">+ Add inspection</button>
       </div>
 
       {appts === null ? (
@@ -223,9 +226,20 @@ export default function SchedulePage() {
 
             {/* Selected-day detail */}
             <div className="rounded-2xl border border-[#dededc] bg-[#f8f8f7] p-4">
-              <div className="mb-3 text-sm font-semibold text-[#1a1a1a]">
-                {new Date(selected + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-[#1a1a1a]">
+                  {new Date(selected + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                </span>
+                {selected >= todayKey && !adding && (
+                  <button onClick={() => setAdding(true)}
+                    className="rounded-lg bg-[#eeeeed] px-2.5 py-1 text-[11px] font-semibold text-[#1a1a1a] ring-1 ring-[#dededc] hover:bg-white">+ Add to this day</button>
+                )}
               </div>
+              {adding && (
+                <AddInspection date={selected} minDate={todayKey}
+                  onCancel={() => setAdding(false)}
+                  onAdded={a => { setAppts(prev => [...(prev || []), a]); jumpTo(a.preferred_date); setAdding(false) }} />
+              )}
               {dayAppts.length === 0 ? (
                 <p className="py-8 text-center text-xs text-[#6b7280]">No inspections booked this day.</p>
               ) : (
@@ -321,6 +335,49 @@ export default function SchedulePage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** The contractor's own entry — a phone call, a door knock, a referral. */
+function AddInspection({ date, minDate, onCancel, onAdded }: {
+  date: string; minDate: string; onCancel: () => void; onAdded: (a: Appointment) => void
+}) {
+  const [f, setF] = useState({ preferred_date: date, time_window: 'anytime', homeowner_name: '', address: '', homeowner_phone: '', homeowner_email: '', note: '' })
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { setF(prev => ({ ...prev, preferred_date: date < minDate ? minDate : date })) }, [date, minDate])
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF(prev => ({ ...prev, [k]: e.target.value }))
+  const save = () => {
+    if (!f.address.trim() && !f.homeowner_name.trim()) { toast.error('Add an address or a name'); return }
+    setBusy(true)
+    const body = Object.fromEntries(Object.entries(f).filter(([, v]) => v.trim() !== '')) as typeof f
+    api.appointments.create(body)
+      .then(a => { toast.success('Inspection added'); onAdded(a) })
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : 'Could not add the inspection'))
+      .finally(() => setBusy(false))
+  }
+  const input = 'w-full rounded-lg border border-[#dededc] bg-white px-2.5 py-1.5 text-xs text-[#1a1a1a] placeholder-[#9ca3af] focus:border-blue-400/60 focus:outline-none'
+  return (
+    <div className="mb-3 space-y-2 rounded-xl border border-blue-400/30 bg-blue-500/[0.06] p-3">
+      <div className="text-xs font-semibold text-blue-800">New inspection</div>
+      <div className="grid grid-cols-2 gap-2">
+        <input type="date" value={f.preferred_date} min={minDate} onChange={set('preferred_date')} className={input} />
+        <select value={f.time_window} onChange={set('time_window')} className={input}>
+          {Object.entries(WINDOW_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </div>
+      <input value={f.address} onChange={set('address')} placeholder="Address" className={input} />
+      <input value={f.homeowner_name} onChange={set('homeowner_name')} placeholder="Homeowner name" className={input} />
+      <div className="grid grid-cols-2 gap-2">
+        <input value={f.homeowner_phone} onChange={set('homeowner_phone')} placeholder="Phone" inputMode="tel" className={input} />
+        <input value={f.homeowner_email} onChange={set('homeowner_email')} placeholder="Email" inputMode="email" className={input} />
+      </div>
+      <input value={f.note} onChange={set('note')} placeholder="Note (optional)" className={input} />
+      <div className="flex gap-2 pt-1">
+        <button onClick={onCancel} className="rounded-lg bg-[#eeeeed] px-3 py-1.5 text-[11px] font-semibold text-[#2d2d2d] ring-1 ring-[#dededc]">Cancel</button>
+        <button onClick={save} disabled={busy}
+          className="flex-1 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-500 disabled:opacity-50">{busy ? 'Adding…' : 'Add inspection'}</button>
+      </div>
     </div>
   )
 }
