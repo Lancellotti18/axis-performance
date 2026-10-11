@@ -145,3 +145,66 @@ def taken_pins(db, county: str, me: Optional[str] = None) -> tuple[set[str], set
     mine = {str(r["prospect_pin"]) for r in rows
             if me and str(r.get("user_id")) == str(me) and r.get("status") == "succeeded"}
     return taken, mine
+
+
+# ── Reporting a bad lead ───────────────────────────────────────────────────
+# Only reasons that can be weighed against the county's own record. "Nobody
+# answered" and "not interested" are the job, not a defect.
+CLAIM_REASONS = ("not_a_home", "sold_before_purchase", "record_wrong")
+CLAIM_WINDOW_DAYS = 7
+CLAIMS_PER_MONTH = 3
+# A sale this long before the purchase is what makes owner data stale enough to
+# count. Anything older is just a house that changed hands once.
+STALE_SALE_MAX_MONTHS = 12
+
+
+def verify_claim(reason: str, snapshot: dict, current: Optional[dict],
+                 purchase_age_months: float) -> tuple[bool, dict]:
+    """Does the county's record NOW corroborate this claim? (verified, evidence)
+
+    Only a contradiction between what was sold and what the county says today
+    counts. Anything this cannot settle goes to a human rather than being
+    waved through or refused — a wrong automatic refusal is worse than a
+    slower answer.
+    """
+    ev: dict = {"reason": reason, "found_in_county": current is not None,
+                "purchase_age_months": round(purchase_age_months, 1)}
+
+    if reason == "not_a_home":
+        # The parcel no longer comes back from the county's residential query.
+        ev["note"] = ("absent from the county's residential results"
+                      if current is None else "still listed as residential")
+        return current is None, ev
+
+    if current is None:
+        ev["note"] = "parcel not in the county's current results, so the claim can't be checked"
+        return False, ev
+
+    if reason == "record_wrong":
+        for field in ("address", "owner"):
+            was, now = snapshot.get(field), current.get(field)
+            if was and now and str(was).strip().upper() != str(now).strip().upper():
+                ev.update({"field": field, "sold_as": was, "county_now": now})
+                return True, ev
+        ev["note"] = "address and owner still match what was sold"
+        return False, ev
+
+    if reason == "sold_before_purchase":
+        sold_months = current.get("sold_months")
+        if sold_months is None:
+            ev["note"] = "this county doesn't publish sale dates"
+            return False, ev
+        months_before = sold_months - purchase_age_months
+        ev.update({"sold_months_ago": sold_months,
+                   "months_before_purchase": round(months_before, 1)})
+        # It has to predate the purchase, and be recent enough to have made the
+        # owner data stale. The pre-sale filter already rejects sales inside two
+        # months, so a genuine miss sits between there and a year.
+        if RECENT_SALE_MONTHS < months_before <= STALE_SALE_MAX_MONTHS:
+            return True, ev
+        ev["note"] = ("the sale is after the purchase date" if months_before <= RECENT_SALE_MONTHS
+                      else "the sale is too old to have made the record stale")
+        return False, ev
+
+    ev["note"] = "unknown reason"
+    return False, ev

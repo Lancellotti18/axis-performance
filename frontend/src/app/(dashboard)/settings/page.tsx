@@ -120,9 +120,14 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-[#1a1a1a]">Settings</h1>
             {isAdmin && (
-              <Link href="/founders" className="rounded-md border border-[#dededc] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a1a1a] hover:bg-[#f8f8f7]">
-                Founders &amp; Trials →
-              </Link>
+              <div className="flex gap-2">
+                <Link href="/lead-problems" className="rounded-md border border-[#dededc] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a1a1a] hover:bg-[#f8f8f7]">
+                  Lead problems →
+                </Link>
+                <Link href="/founders" className="rounded-md border border-[#dededc] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a1a1a] hover:bg-[#f8f8f7]">
+                  Founders &amp; Trials →
+                </Link>
+              </div>
             )}
           </div>
 

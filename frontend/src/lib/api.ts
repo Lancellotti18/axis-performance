@@ -606,6 +606,29 @@ export type Lead = {
   crm_lead_id?: string | null
 }
 
+export type LeadProblemReason = 'not_a_home' | 'sold_before_purchase' | 'record_wrong'
+
+export type LeadProblemReport = {
+  id: string
+  purchase_id: string
+  reason: LeadProblemReason
+  status: 'open' | 'approved' | 'rejected'
+  resolution: 'replacement' | 'refund' | 'none' | null
+  auto_verified: boolean
+  created_at: string
+  review_note?: string | null
+}
+
+export type AdminLeadProblem = LeadProblemReport & {
+  user_id: string
+  detail?: string | null
+  evidence?: Record<string, unknown> | null
+  county?: string | null
+  address?: string | null
+  owner?: string | null
+  price_usd?: number | null
+}
+
 export type PurchasedLead = Lead & {
   purchase_id: string
   county: string
@@ -1009,6 +1032,27 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ county, token }) }),
     myLeads: () =>
       apiRequest<{ count: number; leads: PurchasedLead[] }>(`/api/v1/billing/my-leads`),
+    // Duds. The reason is a fixed set: a claim is either corroborated by the
+    // county record or reviewed by a person, and neither works with free text.
+    reportLeadProblem: (purchaseId: string, reason: LeadProblemReason, detail?: string) =>
+      apiRequest<{ ok: boolean; status: 'approved' | 'open'; auto_verified: boolean
+                   credits?: number; report_id?: string; message: string }>(
+        `/api/v1/billing/leads/${purchaseId}/report-problem`,
+        { method: 'POST', body: JSON.stringify({ reason, detail }) }),
+    leadProblems: () =>
+      apiRequest<{ reports: LeadProblemReport[]; credits: number
+                   claims_used_this_month: number; claims_per_month: number }>(
+        `/api/v1/billing/leads/problems`),
+    adminLeadProblems: () =>
+      apiRequest<{ count: number; open: number; reports: AdminLeadProblem[] }>(
+        `/api/v1/billing/leads/admin/problems`),
+    resolveLeadProblem: (reportId: string, body: { approve: boolean
+                                                   resolution?: 'replacement' | 'refund' | 'none'
+                                                   note?: string }) =>
+      apiRequest<{ ok: boolean; status: string; resolution: string; credits: number | null
+                   refund_is_manual: boolean }>(
+        `/api/v1/billing/leads/admin/problems/${reportId}/resolve`,
+        { method: 'POST', body: JSON.stringify(body) }),
     entitlement: (action: EntitlementAction = 'generate_report') =>
       apiRequest<{ action: string; allowed: boolean; would_allow: boolean;
                    enforcing: boolean; reason: string; plan_key: string | null;

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -839,6 +840,30 @@ async def purchase_lead(body: PurchaseLeadRequest,
         raise HTTPException(status_code=500, detail="Couldn't reserve that lead. Try again.")
     row_id = res.get("id")
 
+    # A replacement credit from an approved dud claim pays for this one, so the
+    # contractor ends up with the lead they were trying to buy rather than cash
+    # back. Spent with a compare-and-swap on the balance we just read: if
+    # another request spends it first the update matches nothing, and we fall
+    # through to the card instead of handing out two leads for one credit.
+    credits = int(sub.get("lead_credits") or 0)
+    if credits > 0:
+        spent = (db.table("subscriptions")
+                 .update({"lead_credits": credits - 1, "updated_at": "now()"})
+                 .eq("user_id", uid).eq("lead_credits", credits).execute().data) or []
+        if spent:
+            try:
+                db.table("purchased_leads").update(
+                    {"status": "succeeded", "price_usd": 0, "updated_at": "now()"}
+                ).eq("id", row_id).execute()
+            except Exception as e:
+                logger.info("could not settle credited lead row %s: %s", row_id, e)
+            crm_id = _lead_to_crm(db, uid, row, src.get("name") or body.county)
+            return {"ok": True, "charged_usd": 0, "used_credit": True,
+                    "credits_left": credits - 1,
+                    "lead": {**leads_svc.owned_row(body.county, row),
+                             "purchase_id": row_id, "crm_lead_id": crm_id},
+                    "message": "Replacement lead claimed. Your card wasn't charged."}
+
     cards = (db.table("payment_methods").select("*")
              .eq("user_id", uid).eq("is_default", True).limit(1).execute().data) or []
     if not cards:
@@ -971,6 +996,229 @@ async def my_leads(user: dict = Depends(require_user)) -> dict:
                     "bought_at": r.get("created_at"), "price_usd": r.get("price_usd") or LEAD_USD,
                     **snap})
     return {"count": len(out), "leads": out}
+
+
+class LeadProblemRequest(BaseModel):
+    """A claim about a lead, limited to what can be checked.
+
+    `reason` is a fixed set rather than free text because the policy is that a
+    claim is either corroborated by the county record or reviewed by a person —
+    and neither is possible with "it was bad".
+    """
+    reason: str
+    detail: Optional[str] = None
+
+
+def _months_since(iso: Optional[str]) -> float:
+    from datetime import datetime, timezone
+    if not iso:
+        return 0.0
+    try:
+        t = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - t).total_seconds() / 2_629_746.0)
+    except Exception:
+        return 0.0
+
+
+def _grant_lead_credit(db, uid: str) -> int:
+    """Add one replacement lead to the account. Returns the new balance.
+
+    Read-then-write: two approvals landing in the same instant could lose one
+    credit. Claims are capped at three a month and reviewed one at a time, so
+    the race is not worth a stored procedure — but it is why this is in one
+    place rather than inline.
+    """
+    rows = (db.table("subscriptions").select("lead_credits")
+            .eq("user_id", uid).limit(1).execute().data) or []
+    have = int((rows[0] if rows else {}).get("lead_credits") or 0)
+    db.table("subscriptions").update(
+        {"lead_credits": have + 1, "updated_at": "now()"}
+    ).eq("user_id", uid).execute()
+    return have + 1
+
+
+@router.post("/leads/{purchase_id}/report-problem")
+async def report_lead_problem(purchase_id: str, body: LeadProblemRequest,
+                              user: dict = Depends(require_user)) -> dict:
+    """Report a lead as a dud.
+
+    Checked against the county's record as it reads right now. If that record
+    contradicts what was sold — the parcel is no longer residential, the owner
+    or address has changed, the house had already sold before the purchase —
+    the claim is approved immediately and a replacement lead is credited.
+    Anything the server cannot settle goes to review rather than being refused,
+    because a wrong automatic refusal is worse than a slower answer.
+    """
+    from app.services import leads as leads_svc
+    from app.api.v1.prospecting import fetch_prospects
+
+    uid = str(user["id"])
+    if body.reason not in leads_svc.CLAIM_REASONS:
+        raise HTTPException(
+            status_code=400,
+            detail="Pick one of: not a home, sold before purchase, or the record is wrong. "
+                   "No answer or not interested isn't something I can credit.")
+
+    db = get_supabase()
+    rows = (db.table("purchased_leads").select("*")
+            .eq("id", purchase_id).eq("user_id", uid).limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="That lead isn't one of yours.")
+    purchase = rows[0]
+    if purchase.get("status") != "succeeded":
+        raise HTTPException(status_code=409, detail="That lead was never completed.")
+
+    age_days = _months_since(purchase.get("created_at")) * 30.44
+    if age_days > leads_svc.CLAIM_WINDOW_DAYS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Problems can be reported within {leads_svc.CLAIM_WINDOW_DAYS} days of buying a lead. "
+                   f"This one is {int(age_days)} days old.")
+
+    # Three a month, so the policy cannot be used as a way to work leads free.
+    recent = (db.table("lead_problem_reports").select("id,created_at")
+              .eq("user_id", uid).execute().data) or []
+    if sum(1 for r in recent if _months_since(r.get("created_at")) < 1.0) >= leads_svc.CLAIMS_PER_MONTH:
+        raise HTTPException(
+            status_code=429,
+            detail=f"That's {leads_svc.CLAIMS_PER_MONTH} reports this month, which is the limit. "
+                   f"Reply to your receipt email and I'll look at it myself.")
+
+    snapshot = purchase.get("snapshot") or {}
+    county = purchase.get("source_county") or ""
+    current = None
+    try:
+        _src, fresh = await fetch_prospects(county, limit=200)
+        current = next((r for r in fresh
+                        if str(r.get("pin")) == str(purchase.get("prospect_pin"))), None)
+    except Exception as e:
+        # The county service being down is not the contractor's problem: file
+        # the claim for review rather than failing their request.
+        logger.info("claim check could not reach %s: %s", county, e)
+
+    verified, evidence = leads_svc.verify_claim(
+        body.reason, snapshot, current, _months_since(purchase.get("created_at")))
+
+    try:
+        rec = (db.table("lead_problem_reports").insert({
+            "user_id": uid,
+            "purchase_id": purchase_id,
+            "reason": body.reason,
+            "detail": (body.detail or "")[:2000] or None,
+            "status": "approved" if verified else "open",
+            "resolution": "replacement" if verified else None,
+            "auto_verified": verified,
+            "evidence": evidence,
+            "reviewed_at": "now()" if verified else None,
+        }).execute().data or [{}])[0]
+    except Exception as e:
+        if _is_unique_violation(e):
+            raise HTTPException(status_code=409,
+                                detail="You've already reported a problem with this lead.")
+        logger.warning("could not file lead problem for %s: %s", uid, e)
+        raise HTTPException(status_code=500, detail="Couldn't file that report. Try again.")
+
+    if verified:
+        credits = _grant_lead_credit(db, uid)
+        return {"ok": True, "status": "approved", "auto_verified": True,
+                "credits": credits, "report_id": rec.get("id"),
+                "message": "Confirmed against the county record — you've got a replacement lead. "
+                           "It's applied automatically next time you buy one."}
+
+    return {"ok": True, "status": "open", "auto_verified": False,
+            "report_id": rec.get("id"),
+            "message": "Reported. The county record doesn't settle this one either way, "
+                       "so I'll look at it myself and come back to you."}
+
+
+@router.get("/leads/problems")
+async def my_lead_problems(user: dict = Depends(require_user)) -> dict:
+    """This account's claims, and the replacement credits it has to spend."""
+    db = get_supabase()
+    uid = str(user["id"])
+    rows = (db.table("lead_problem_reports")
+            .select("id,purchase_id,reason,status,resolution,auto_verified,created_at,review_note")
+            .eq("user_id", uid).order("created_at", desc=True).limit(200).execute().data) or []
+    subs = (db.table("subscriptions").select("lead_credits")
+            .eq("user_id", uid).limit(1).execute().data) or []
+    used = sum(1 for r in rows if _months_since(r.get("created_at")) < 1.0)
+    from app.services import leads as leads_svc
+    return {"reports": rows,
+            "credits": int((subs[0] if subs else {}).get("lead_credits") or 0),
+            "claims_used_this_month": used,
+            "claims_per_month": leads_svc.CLAIMS_PER_MONTH}
+
+
+@router.get("/leads/admin/problems")
+async def admin_lead_problems(user: dict = Depends(require_user)) -> dict:
+    """The review queue: claims the county record could not settle."""
+    from app.services import entitlement
+    if not entitlement.is_admin(str(user["id"])):
+        raise HTTPException(status_code=403, detail="Not available on this account.")
+    db = get_supabase()
+    rows = (db.table("lead_problem_reports").select("*")
+            .order("created_at", desc=True).limit(300).execute().data) or []
+    out = []
+    for r in rows:
+        bought = (db.table("purchased_leads").select("source_county,snapshot,price_usd,created_at")
+                  .eq("id", r.get("purchase_id")).limit(1).execute().data) or []
+        snap = (bought[0] if bought else {}).get("snapshot") or {}
+        out.append({**r, "county": (bought[0] if bought else {}).get("source_county"),
+                    "address": snap.get("address"), "owner": snap.get("owner"),
+                    "price_usd": (bought[0] if bought else {}).get("price_usd")})
+    return {"count": len(out), "open": sum(1 for r in out if r.get("status") == "open"),
+            "reports": out}
+
+
+class ResolveProblemRequest(BaseModel):
+    approve: bool
+    resolution: Optional[str] = None      # replacement | refund | none
+    note: Optional[str] = None
+
+
+@router.post("/leads/admin/problems/{report_id}/resolve")
+async def resolve_lead_problem(report_id: str, body: ResolveProblemRequest,
+                               user: dict = Depends(require_user)) -> dict:
+    """Decide a claim. Approving with 'replacement' credits a lead.
+
+    A refund is recorded, not executed: issuing money back belongs in Stripe,
+    where it can be seen and reversed, not behind an endpoint that could be
+    called twice.
+    """
+    from app.services import entitlement
+    if not entitlement.is_admin(str(user["id"])):
+        raise HTTPException(status_code=403, detail="Not available on this account.")
+    resolution = body.resolution or ("replacement" if body.approve else "none")
+    if resolution not in ("replacement", "refund", "none"):
+        raise HTTPException(status_code=400, detail="Unknown resolution.")
+
+    db = get_supabase()
+    rows = (db.table("lead_problem_reports").select("*")
+            .eq("id", report_id).limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="No such report.")
+    rec = rows[0]
+    if rec.get("status") != "open":
+        raise HTTPException(status_code=409,
+                            detail=f"That report was already {rec.get('status')}.")
+
+    db.table("lead_problem_reports").update({
+        "status": "approved" if body.approve else "rejected",
+        "resolution": resolution,
+        "review_note": (body.note or "")[:1000] or None,
+        "reviewed_at": "now()",
+        "reviewed_by": str(user["id"]),
+        "updated_at": "now()",
+    }).eq("id", report_id).eq("status", "open").execute()
+
+    credits = None
+    if body.approve and resolution == "replacement":
+        credits = _grant_lead_credit(db, str(rec["user_id"]))
+    return {"ok": True, "status": "approved" if body.approve else "rejected",
+            "resolution": resolution, "credits": credits,
+            "refund_is_manual": resolution == "refund"}
 
 
 class PurchaseReportRequest(BaseModel):

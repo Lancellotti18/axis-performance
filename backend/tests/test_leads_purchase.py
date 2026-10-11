@@ -59,6 +59,12 @@ class _Q:
         if self.op == "select":
             return _Res([dict(r) for r in match])
         if self.op == "insert":
+            # lead_problem_one_per_purchase: re-reporting a lead is not a
+            # second claim, and a rejected one must not be refilable.
+            if self.name == "lead_problem_reports":
+                if [r for r in rows
+                        if str(r.get("purchase_id")) == str(self.payload.get("purchase_id"))]:
+                    raise _Unique()
             if self.name == "purchased_leads" and self.payload.get("status") in LIVE_STATUSES:
                 clash = [r for r in rows
                          if r.get("source_county") == self.payload.get("source_county")
@@ -380,3 +386,175 @@ def test_the_roof_view_refuses_a_forged_token(env, imagery):
     with pytest.raises(HTTPException) as e:
         _thumb(U1, "nope")
     assert e.value.status_code == 400
+
+
+# ── reporting a dud ────────────────────────────────────────────────────────
+
+def _report(user, purchase_id, reason, detail=None):
+    return asyncio.run(billing.report_lead_problem(
+        purchase_id, billing.LeadProblemRequest(reason=reason, detail=detail), user))
+
+
+def _bought(env, user=U1, pin="P1"):
+    out = _buy(user, leads_svc.token_for(COUNTY, pin))
+    return out["lead"]["purchase_id"]
+
+
+def test_a_claim_the_county_record_confirms_is_approved_at_once(env):
+    pid = _bought(env)
+    env.rows = []                                    # parcel gone from residential results
+    out = _report(U1, pid, "not_a_home")
+    assert out["status"] == "approved" and out["auto_verified"] and out["credits"] == 1
+    rec = env.tables["lead_problem_reports"][0]
+    assert rec["resolution"] == "replacement" and rec["evidence"]["found_in_county"] is False
+
+
+def test_a_changed_owner_proves_the_record_was_wrong(env):
+    pid = _bought(env)
+    env.rows = [_row("P1", owner="DIFFERENT OWNER LLC")]
+    out = _report(U1, pid, "record_wrong")
+    assert out["status"] == "approved"
+    assert env.tables["lead_problem_reports"][0]["evidence"]["field"] == "owner"
+
+
+def test_a_matching_record_goes_to_review_rather_than_being_refused(env):
+    pid = _bought(env)
+    out = _report(U1, pid, "record_wrong")           # nothing changed
+    assert out["status"] == "open" and out["auto_verified"] is False
+    assert env.tables["subscriptions"][0].get("lead_credits") in (None, 0)
+
+
+def test_a_sale_that_predates_the_purchase_is_confirmed(env):
+    pid = _bought(env)
+    # Bought moments ago; the county now shows the house sold 5 months back.
+    env.rows = [_row("P1", sold_months=5)]
+    assert _report(U1, pid, "sold_before_purchase")["status"] == "approved"
+
+
+def test_an_ancient_sale_is_not_a_dud(env):
+    pid = _bought(env)
+    env.rows = [_row("P1", sold_months=200)]
+    out = _report(U1, pid, "sold_before_purchase")
+    assert out["status"] == "open"
+    assert "too old" in env.tables["lead_problem_reports"][0]["evidence"]["note"]
+
+
+def test_not_interested_is_not_a_reason(env):
+    pid = _bought(env)
+    for bad in ("not_interested", "no_answer", "", "whatever"):
+        with pytest.raises(HTTPException) as e:
+            _report(U1, pid, bad)
+        assert e.value.status_code == 400
+
+
+def test_a_lead_can_only_be_reported_once(env):
+    pid = _bought(env)
+    _report(U1, pid, "record_wrong")
+    with pytest.raises(HTTPException) as e:
+        _report(U1, pid, "not_a_home")
+    assert e.value.status_code == 409 and "already reported" in e.value.detail
+
+
+def test_claims_close_after_seven_days(env):
+    pid = _bought(env)
+    old = datetime.now(timezone.utc) - timedelta(days=leads_svc.CLAIM_WINDOW_DAYS + 1)
+    env.tables["purchased_leads"][0]["created_at"] = old.isoformat()
+    with pytest.raises(HTTPException) as e:
+        _report(U1, pid, "not_a_home")
+    assert e.value.status_code == 409 and "within 7 days" in e.value.detail
+
+
+def test_three_claims_a_month_is_the_limit(env):
+    for pin in ("P1", "P2", "P3"):
+        _report(U1, _bought(env, U1, pin), "record_wrong")
+    env.rows = [_row("P4")]
+    pid = _bought(env, U1, "P4")
+    with pytest.raises(HTTPException) as e:
+        _report(U1, pid, "record_wrong")
+    assert e.value.status_code == 429
+
+
+def test_someone_elses_lead_cannot_be_reported(env):
+    pid = _bought(env, U1, "P1")
+    with pytest.raises(HTTPException) as e:
+        _report(U2, pid, "not_a_home")
+    assert e.value.status_code == 404
+
+
+# ── the replacement credit ─────────────────────────────────────────────────
+
+def test_a_credit_buys_the_next_lead_without_touching_the_card(env):
+    pid = _bought(env, U1, "P1")
+    env.rows = []
+    _report(U1, pid, "not_a_home")                   # approved -> 1 credit
+    env.rows = [_row("P2")]
+    charges = len(env.stripe.calls)
+    out = _buy(U1, leads_svc.token_for(COUNTY, "P2"))
+    assert out["ok"] and out["charged_usd"] == 0 and out["used_credit"]
+    assert out["credits_left"] == 0
+    assert len(env.stripe.calls) == charges, "the card was charged despite a credit"
+    assert env.tables["purchased_leads"][-1]["price_usd"] == 0
+
+
+def test_a_credit_is_spent_once(env):
+    pid = _bought(env, U1, "P1")
+    env.rows = []
+    _report(U1, pid, "not_a_home")
+    env.rows = [_row("P2"), _row("P3")]
+    _buy(U1, leads_svc.token_for(COUNTY, "P2"))       # uses the credit
+    out = _buy(U1, leads_svc.token_for(COUNTY, "P3"))  # must fall back to the card
+    assert out["charged_usd"] == 50 and not out.get("used_credit")
+
+
+# ── review queue ───────────────────────────────────────────────────────────
+
+def test_the_review_queue_is_admin_only(env):
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(billing.admin_lead_problems(U1))
+    assert e.value.status_code == 403
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(billing.resolve_lead_problem(
+            "x", billing.ResolveProblemRequest(approve=True), U1))
+    assert e.value.status_code == 403
+
+
+def _resolve(report_id, **kw):
+    return asyncio.run(billing.resolve_lead_problem(
+        report_id, billing.ResolveProblemRequest(**kw), U1))
+
+
+def test_approving_a_reviewed_claim_credits_a_lead(env, monkeypatch):
+    pid = _bought(env, U1, "P1")
+    rid = _report(U1, pid, "record_wrong")["report_id"]      # open
+    monkeypatch.setattr(entitlement, "is_admin", lambda uid: True)
+    out = _resolve(rid, approve=True, note="checked the deed")
+    assert out["status"] == "approved" and out["credits"] == 1
+
+
+def test_rejecting_a_claim_credits_nothing_and_cannot_be_redecided(env, monkeypatch):
+    pid = _bought(env, U1, "P1")
+    rid = _report(U1, pid, "record_wrong")["report_id"]
+    monkeypatch.setattr(entitlement, "is_admin", lambda uid: True)
+    assert _resolve(rid, approve=False)["status"] == "rejected"
+    assert env.tables["subscriptions"][0].get("lead_credits") in (None, 0)
+    with pytest.raises(HTTPException) as e:
+        _resolve(rid, approve=True)
+    assert e.value.status_code == 409
+
+
+def test_a_refund_is_recorded_not_executed(env, monkeypatch):
+    pid = _bought(env, U1, "P1")
+    rid = _report(U1, pid, "record_wrong")["report_id"]
+    monkeypatch.setattr(entitlement, "is_admin", lambda uid: True)
+    out = _resolve(rid, approve=True, resolution="refund")
+    assert out["refund_is_manual"] and out["credits"] is None
+    assert env.tables["subscriptions"][0].get("lead_credits") in (None, 0)
+
+
+def test_my_claims_shows_the_balance_and_what_is_left_this_month(env):
+    pid = _bought(env, U1, "P1")
+    env.rows = []
+    _report(U1, pid, "not_a_home")
+    out = asyncio.run(billing.my_lead_problems(U1))
+    assert out["credits"] == 1 and out["claims_used_this_month"] == 1
+    assert out["claims_per_month"] == 3

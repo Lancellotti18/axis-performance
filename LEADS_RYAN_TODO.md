@@ -6,7 +6,7 @@ items 1 and 2 must be done **before the first lead is ever sold.**
 
 ---
 
-## 1. Run the RLS migration (Supabase) — REQUIRED before the first sale
+## 1. Run the RLS migration (Supabase) — DONE 2026-10-11 ✅
 
 `purchased_leads` was created with no row-level security. Your anon key is
 public by design in the site's JS bundle, so with RLS off that key can read the
@@ -16,8 +16,8 @@ data contractors would be paying to have exclusively.
 
 Nothing is exposed today: no lead has ever been sold and the table is empty.
 
-**Do this:** Supabase dashboard → SQL Editor → New query → paste the whole
-contents of `supabase/migrations/20261011_leads_rls.sql` → Run.
+Ryan ran this and confirmed `rls_on = true` with one policy,
+`purchased_leads_select_own` / `SELECT`.
 
 It enables RLS with one owner-only SELECT policy (no client INSERT/UPDATE, or a
 client could reserve every lead in a county for free), and widens the status
@@ -75,9 +75,26 @@ forged token.
 
 ---
 
+## 4. Run the second migration (Supabase) — REQUIRED before the dud flow works
+
+The report-a-problem flow needs its table and the credit column. Same routine:
+SQL Editor → New query → paste `supabase/migrations/20261011_lead_problems.sql`
+→ Run.
+
+It creates `lead_problem_reports` (RLS on, owner-only SELECT, one claim per
+purchase enforced by a unique index) and adds `subscriptions.lead_credits`,
+which is how an approved claim pays for the next lead instead of a refund.
+
+Verify with:
+
+```sql
+SELECT relrowsecurity AS rls_on FROM pg_class WHERE relname = 'lead_problem_reports';
+SELECT column_name FROM information_schema.columns
+ WHERE table_name = 'subscriptions' AND column_name = 'lead_credits';
+```
+
+---
+
 ## Still not built
 
-- **The dud flow.** "Report a problem" with the 7-day window, verifiable
-  reasons, the 3-per-month cap, the free replacement lead, and the admin review
-  page. Needs a new table. Nothing of it exists yet.
 - **The security review** CLAUDE.md requires before merging.
