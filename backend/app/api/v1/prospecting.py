@@ -23,6 +23,7 @@ import asyncio
 import logging
 import os
 import re
+import time
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -30,6 +31,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.auth import require_user
+from app.core.supabase import get_supabase
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -117,6 +119,17 @@ COUNTY_FIPS: dict[str, tuple[str, str, str]] = {
 
 def _norm(s: Optional[str]) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().upper())
+
+
+def _safe_val(s: Optional[str]) -> str:
+    """Normalise a user-supplied filter for use inside a county where clause.
+
+    These clauses are assembled as strings because ArcGIS takes no bind
+    parameters, so anything from the query string has to be reduced to
+    characters that cannot end a literal or chain a condition. A quote in a
+    city name would otherwise rewrite the query we send to the county.
+    """
+    return re.sub(r"[^A-Z0-9 .\-]", "", _norm(s))[:40]
 
 
 def _num(v) -> Optional[float]:
@@ -255,14 +268,19 @@ async def list_sources(user: dict = Depends(require_user)) -> dict:
                         for k, v in PARCEL_SOURCES.items()]}
 
 
-@router.get("/find-roofs")
-async def find_roofs(
-    county: str = Query(...),
-    city: Optional[str] = Query(None),
-    owner_occupied_only: bool = Query(False),
-    limit: int = Query(60, ge=1, le=200),
-    user: dict = Depends(require_user),
-) -> dict:
+async def fetch_prospects(
+    county: str,
+    city: Optional[str] = None,
+    zip_code: Optional[str] = None,
+    owner_occupied_only: bool = False,
+    limit: int = 60,
+) -> tuple[dict, list[dict]]:
+    """Query a county and return (source, rows) with every field populated.
+
+    Separate from the endpoint because two callers need it: browsing, which
+    strips the rows before they leave the server, and buying, which re-queries
+    so the sale is settled against fresh data rather than a stale browser tab.
+    """
     src = PARCEL_SOURCES.get(county)
     if not src:
         raise HTTPException(status_code=404, detail=f"No free data source wired for '{county}' yet.")
@@ -270,7 +288,13 @@ async def find_roofs(
     kind = src.get("geom", "polygon")
     where = src["residential_where"]
     if city:
-        where += f" AND UPPER({src['city_field']}) LIKE '%{_norm(city)}%'"
+        where += f" AND UPPER({src['city_field']}) LIKE '%{_safe_val(city)}%'"
+    if zip_code:
+        if "zip" not in f:
+            raise HTTPException(
+                status_code=400,
+                detail="This county's public data doesn't carry ZIP codes — filter by city instead.")
+        where += f" AND {f['zip']} LIKE '{_safe_val(zip_code)}%'"
 
     out_fields = ",".join(sorted(set(f.values())))
     params = {
@@ -321,7 +345,8 @@ async def find_roofs(
             # KeyError for every county whose field map lacks it (pender,
             # york_pa), 500ing the whole search rather than one row.
             "pin": str(a.get(f["pin"])) if "pin" in f else None,
-            "address": addr, "city": city_val or None,
+            "address": addr, "city": city_val or None, "zip": zip_val or None,
+            "sold_months": sale[0] if sale else None,
             "owner": owner, "owner_mail": (owner_mail or None), "owner_occupied": occ,
             "year_built": year, "sold_year": sale[1] if sale else None,
             "tax_value": int(tax_value) if tax_value else None,
@@ -329,6 +354,77 @@ async def find_roofs(
         })
 
     out.sort(key=lambda r: r["score"], reverse=True)
+    return src, out[:limit]
+
+
+MAX_SEARCHES_PER_DAY = 30
+_SEARCH_WINDOW_S = 86400.0
+_searches: dict[str, list[float]] = {}
+
+
+def _search_quota(uid: str) -> int:
+    """Searches this account has run in the last 24h, pruned as we go.
+
+    Find Roofs turns one request into a county-wide list. Without a ceiling an
+    account on a $299 plan can mirror the whole scored dataset in an afternoon
+    and the exclusivity being sold is worth nothing.
+    """
+    now = time.monotonic()
+    recent = [t for t in _searches.get(uid, []) if now - t < _SEARCH_WINDOW_S]
+    _searches[uid] = recent
+    return len(recent)
+
+
+@router.get("/find-roofs")
+async def find_roofs(
+    county: str = Query(...),
+    city: Optional[str] = Query(None),
+    zip_code: Optional[str] = Query(None, alias="zip"),
+    owner_occupied_only: bool = Query(False),
+    limit: int = Query(60, ge=1, le=200),
+    user: dict = Depends(require_user),
+) -> dict:
+    """Leads available in one area, with nothing identifying in the response.
+
+    What comes back is Axis's own work — the score, the age band, the reason —
+    and a token to buy by. Address, owner, mailing address and coordinates stay
+    on the server until a payment for that parcel has cleared. Leads already
+    sold to anyone are dropped from the list entirely; leads this account has
+    bought come back whole.
+    """
+    from app.services import leads as leads_svc
+
+    uid = str(user["id"])
+    if _search_quota(uid) >= MAX_SEARCHES_PER_DAY:
+        raise HTTPException(
+            status_code=429,
+            detail=f"You've used today's {MAX_SEARCHES_PER_DAY} area searches. They reset on a rolling 24 hours.")
+    if len(_searches) > 20000:
+        _searches.clear()
+    _searches.setdefault(uid, []).append(time.monotonic())
+
+    src, rows = await fetch_prospects(county, city=city, zip_code=zip_code,
+                                      owner_occupied_only=owner_occupied_only, limit=limit)
+    f = src["f"]
+
+    db = get_supabase()
+    taken, mine = leads_svc.taken_pins(db, county, me=uid)
+
+    out: list[dict] = []
+    for r in rows:
+        pin = str(r.get("pin") or "")
+        if not pin:
+            continue
+        if pin in mine:
+            out.append(leads_svc.owned_row(county, r))
+            continue
+        if pin in taken:                        # sold, or reserved mid-purchase
+            continue
+        ok, _why = leads_svc.sellable(r)
+        if not ok:
+            continue
+        out.append(leads_svc.public_row(county, r))
+
     has_age = "year_built" in f
     has_owner = "owner" in f
     if has_age:
@@ -340,7 +436,12 @@ async def find_roofs(
     else:
         note = ("Address list only — this county locks owner/age behind a paid service. Use it as a "
                 "canvassing list, and use the neighborhood heat (Census) layer to target older areas.")
-    return {"county": src["name"], "count": len(out[:limit]), "prospects": out[:limit], "note": note}
+    from app.core.plans import LEAD_USD
+    for_sale = sum(1 for r in out if not r.get("owned"))
+    return {"county": src["name"], "count": len(out), "for_sale": for_sale,
+            "owned": len(out) - for_sale, "lead_price_usd": LEAD_USD,
+            "searches_left": max(0, MAX_SEARCHES_PER_DAY - _search_quota(uid)),
+            "prospects": out, "note": note}
 
 
 @router.get("/census-heat")

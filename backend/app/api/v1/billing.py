@@ -723,6 +723,256 @@ async def my_entitlement(action: str = "generate_report",
     return out
 
 
+class PurchaseLeadRequest(BaseModel):
+    """No price and no address. The county and the opaque token are enough to
+    re-find the parcel server-side; a body that could name its own price, or
+    its own address, would be a body worth forging."""
+    county: str
+    token: str
+
+
+# A reservation that never got paid for must not hold a lead forever. Fifteen
+# minutes is long enough for a 3DS challenge and short enough that a lead is
+# not parked for an afternoon by a closed tab.
+RESERVATION_TTL_MIN = 15
+
+
+def _release_stale_reservations(db, county: str, pin: str) -> None:
+    """Expire pending rows for this parcel that are older than the TTL.
+
+    Done on demand rather than by a sweep: the only moment a stale reservation
+    actually matters is when somebody is trying to buy that exact parcel.
+    """
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=RESERVATION_TTL_MIN)).isoformat()
+    try:
+        db.table("purchased_leads").update({"status": "expired", "updated_at": "now()"}) \
+          .eq("source_county", county).eq("prospect_pin", pin) \
+          .eq("status", "pending").lt("created_at", cutoff).execute()
+    except Exception as e:
+        logger.info("could not release stale reservations for %s/%s: %s", county, pin, e)
+
+
+@router.post("/purchase-lead")
+async def purchase_lead(body: PurchaseLeadRequest,
+                        user: dict = Depends(require_user)) -> dict:
+    """Buy one exclusive lead for $50.
+
+    The order of operations is the whole design:
+
+      1. Re-query the county, so what is sold is what the record says now — not
+         what the browser was holding. A house that sold last week fails the
+         dud filter here even if it was listed as available a minute ago.
+      2. Reserve by INSERT. The partial unique index on (county, pin) decides
+         who got it; the loser is told someone else bought it and is never
+         charged a cent.
+      3. Only then charge, with the reservation's id as the idempotency key, so
+         a retried request cannot bill twice.
+
+    A failed charge flips the row to failed, which drops it out of the unique
+    index and returns the lead to the pool.
+    """
+    from app.core.plans import DECLINE_MESSAGE, LEAD_USD
+    from app.services import entitlement, leads as leads_svc, stripe_service
+    from app.api.v1.prospecting import fetch_prospects
+
+    uid = str(user["id"])
+    admin = entitlement.is_admin(uid)
+
+    if not leads_svc.valid_token(body.token):
+        raise HTTPException(status_code=400, detail="That lead reference isn't valid. Refresh and try again.")
+
+    # Real owner data behind a test card is the one mistake here that cannot be
+    # undone, so purchases stay shut until Stripe is live. Admins can exercise
+    # the flow in test mode.
+    if stripe_service.is_test_mode() and not admin:
+        raise HTTPException(
+            status_code=503,
+            detail="Lead purchases aren't open yet. They go live with billing — check back shortly.")
+
+    db = get_supabase()
+    sub = entitlement.load_subscription(db, uid)
+    d = entitlement.check(db, uid, "buy_lead", sub=sub)  # type: ignore[arg-type]
+    if not d.allowed:
+        raise HTTPException(
+            status_code=402 if d.requires_purchase else 409,
+            detail=d.reason or "Exclusive leads are for contractors on a plan. Choose a plan first.")
+    if not sub or not sub.get("stripe_customer_id"):
+        raise HTTPException(status_code=409,
+                            detail="Exclusive leads are for contractors on a plan. Choose a plan first.")
+
+    # 1. Fresh data for the parcel this token refers to.
+    try:
+        src, rows = await fetch_prospects(body.county, limit=200)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("lead re-query failed for %s: %s", body.county, e)
+        raise HTTPException(status_code=502, detail="Couldn't reach the county data service — try again.")
+    row = leads_svc.match_token(body.county, body.token, rows)
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail="That lead is no longer in the county's current results. Search again for a fresh list.")
+    ok, why = leads_svc.sellable(row)
+    if not ok:
+        raise HTTPException(status_code=409, detail=f"That property is no longer a usable lead ({why}).")
+
+    pin = str(row["pin"])
+    _release_stale_reservations(db, body.county, pin)
+
+    # 2. Reserve. The unique index is the referee.
+    try:
+        res = (db.table("purchased_leads").insert({
+            "user_id": uid,
+            "source_county": body.county,
+            "prospect_pin": pin,
+            "snapshot": leads_svc.snapshot_of(row),
+            "price_usd": LEAD_USD,
+            "status": "pending",
+        }).execute().data or [{}])[0]
+    except Exception as e:
+        if _is_unique_violation(e):
+            raise HTTPException(status_code=409,
+                                detail="Someone just bought this lead. You haven't been charged.")
+        logger.warning("could not reserve lead %s/%s: %s", body.county, pin, e)
+        raise HTTPException(status_code=500, detail="Couldn't reserve that lead. Try again.")
+    row_id = res.get("id")
+
+    cards = (db.table("payment_methods").select("*")
+             .eq("user_id", uid).eq("is_default", True).limit(1).execute().data) or []
+    if not cards:
+        cards = (db.table("payment_methods").select("*")
+                 .eq("user_id", uid).limit(1).execute().data) or []
+    if not cards:
+        _fail_lead(db, row_id)
+        raise HTTPException(status_code=409, detail="No card on file. Add one in Settings first.")
+
+    # 3. Charge.
+    try:
+        stripe = stripe_service.client()
+        intent = stripe.PaymentIntent.create(
+            amount=LEAD_USD * 100,
+            currency="usd",
+            customer=sub["stripe_customer_id"],
+            payment_method=cards[0]["stripe_payment_method_id"],
+            off_session=True,
+            confirm=True,
+            description="Axis — 1 exclusive lead",
+            metadata={"axis_user_id": uid, "axis_kind": "exclusive_lead",
+                      "axis_lead_row": str(row_id or ""),
+                      "axis_county": body.county},
+            idempotency_key=f"axis-lead-{row_id}",
+        )
+    except Exception as e:
+        _fail_lead(db, row_id)
+        logger.warning("lead purchase failed for %s: %s", uid, e)
+        raise HTTPException(status_code=402, detail=DECLINE_MESSAGE)
+
+    try:
+        db.table("purchased_leads").update(
+            {"stripe_payment_intent_id": intent.get("id"), "updated_at": "now()"}
+        ).eq("id", row_id).execute()
+    except Exception as e:
+        logger.info("could not link intent to lead row %s: %s", row_id, e)
+
+    status = intent.get("status")
+    if status == "requires_action":
+        # Still reserved, still unpaid. The reservation TTL is what eventually
+        # frees it if they walk away from the bank's prompt.
+        return {"ok": False, "requires_action": True,
+                "client_secret": intent.get("client_secret"),
+                "message": "Your bank needs to confirm this payment."}
+    if status != "succeeded":
+        _fail_lead(db, row_id)
+        raise HTTPException(status_code=402, detail=DECLINE_MESSAGE)
+
+    try:
+        db.table("purchased_leads").update(
+            {"status": "succeeded", "updated_at": "now()"}
+        ).eq("id", row_id).execute()
+    except Exception as e:
+        logger.info("could not settle lead row %s locally: %s", row_id, e)
+
+    crm_id = _lead_to_crm(db, uid, row, src.get("name") or body.county)
+
+    return {"ok": True, "charged_usd": LEAD_USD, "payment_intent_id": intent.get("id"),
+            "lead": {**leads_svc.owned_row(body.county, row), "purchase_id": row_id,
+                     "crm_lead_id": crm_id},
+            "message": f"Charged ${LEAD_USD}. This lead is yours exclusively and is now in your CRM."}
+
+
+def _is_unique_violation(e: Exception) -> bool:
+    """Did the reservation lose the race for this parcel?
+
+    Postgres 23505 arrives through the Supabase client as text, so the code is
+    matched rather than an exception type.
+    """
+    blob = f"{getattr(e, 'code', '')} {getattr(e, 'message', '')} {e}".lower()
+    return "23505" in blob or "duplicate key" in blob or "unique constraint" in blob
+
+
+def _fail_lead(db, row_id) -> None:
+    """Mark a reservation failed, which drops it out of the unique index and
+    puts the lead back on the market."""
+    if not row_id:
+        return
+    try:
+        db.table("purchased_leads").update(
+            {"status": "failed", "updated_at": "now()"}
+        ).eq("id", row_id).execute()
+    except Exception as e:
+        logger.info("could not release lead row %s: %s", row_id, e)
+
+
+def _lead_to_crm(db, uid: str, row: dict, county_name: str):
+    """Put a bought lead straight into the CRM.
+
+    A lead that has to be retyped to be worked is a lead that gets lost. Never
+    fatal: the purchase has already succeeded by the time this runs, so a CRM
+    failure must not turn into an error on a charge that went through.
+    """
+    try:
+        res = db.table("crm_leads").insert({
+            "user_id": uid,
+            "name": row.get("owner") or row.get("address") or "Exclusive lead",
+            "address": row.get("address"),
+            "city": row.get("city"),
+            "job_type": "roof_replacement",
+            "stage": "new",
+            "notes": f"Axis exclusive lead — {county_name}."
+                     + (f" Built {row['year_built']}." if row.get("year_built") else "")
+                     + (f" Owner mailing address: {row['owner_mail']}." if row.get("owner_mail") else "")
+                     + f" Score {row.get('score')}. Public county record; check DNC before calling.",
+        }).execute()
+        return (res.data or [{}])[0].get("id")
+    except Exception as e:
+        logger.warning("bought lead not added to CRM for %s: %s", uid, e)
+        return None
+
+
+@router.get("/my-leads")
+async def my_leads(user: dict = Depends(require_user)) -> dict:
+    """Leads this account has paid for, served from the snapshot taken at sale.
+
+    Read from the row rather than re-queried: a contractor who paid for a lead
+    must still see exactly what they bought after the county rewrites its data.
+    """
+    from app.core.plans import LEAD_USD
+    db = get_supabase()
+    rows = (db.table("purchased_leads")
+            .select("id,source_county,prospect_pin,snapshot,price_usd,status,created_at")
+            .eq("user_id", str(user["id"])).eq("status", "succeeded")
+            .order("created_at", desc=True).limit(500).execute().data) or []
+    out = []
+    for r in rows:
+        snap = r.get("snapshot") or {}
+        out.append({"purchase_id": r["id"], "county": r["source_county"],
+                    "bought_at": r.get("created_at"), "price_usd": r.get("price_usd") or LEAD_USD,
+                    **snap})
+    return {"count": len(out), "leads": out}
+
+
 class PurchaseReportRequest(BaseModel):
     """Deliberately has no amount. The price comes from the plan table, so a
     tampered body cannot buy a report for a dollar."""
