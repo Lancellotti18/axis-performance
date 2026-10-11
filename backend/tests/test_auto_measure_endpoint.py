@@ -66,7 +66,17 @@ def wired(monkeypatch):
     monkeypatch.setattr(rv, "put_edges", put_e)
     monkeypatch.setattr(rv, "_aggregate_run", lambda rid: {"squares": 1.0})
     monkeypatch.setattr(settings, "GOOGLE_SOLAR_API_KEY", "test-key")
-    return {"run": run, "saved": saved}
+    # The imagery date is read from the metadata request, which happens BEFORE
+    # the downloads so old imagery can be refused without fetching megabytes.
+    meta = {"imagery_date": "2024-06-01", "dsmUrl": "d", "maskUrl": "m", "rgbUrl": "r"}
+    calls = {"meta": 0}
+    async def fetch_meta(lat, lng, key, **k):
+        calls["meta"] += 1
+        if meta.get("_fail"):
+            return None, meta["_fail"]
+        return meta, None
+    monkeypatch.setattr(SL, "fetch_metadata", fetch_meta)
+    return {"run": run, "saved": saved, "meta": meta, "calls": calls}
 
 
 def _call(user=RYAN):
@@ -250,18 +260,26 @@ def test_old_google_data_is_refused_with_an_apology():
 def test_a_house_newer_than_googles_data_is_not_measured(wired, monkeypatch):
     """245 E Mountain Rd: Google's 2017 data shows a farmhouse where a 4,000
     sq ft house now stands. Measuring it would report the old building."""
+    wired["meta"]["imagery_date"] = "2017-10-20"
     dsm, mask, px = S.gable()
+    downloads = {"n": 0}
     async def layers(*a, **k):
+        downloads["n"] += 1
         ls = _layers_for(dsm, mask, px); ls.imagery_date = "2017-10-20"; return ls
     monkeypatch.setattr(SL, "fetch_layers", layers)
     out = _call()
     assert out["available"] is False and out["reason"].startswith("Sorry")
     assert "facets" not in wired["saved"]
+    # The refusal is decided from the metadata alone: nothing was downloaded.
+    assert downloads["n"] == 0
 
 
 def test_the_contractor_can_measure_old_data_anyway_and_it_is_noted(wired, monkeypatch):
+    wired["meta"]["imagery_date"] = "2017-10-20"
     dsm, mask, px = S.gable()
+    downloads = {"n": 0}
     async def layers(*a, **k):
+        downloads["n"] += 1
         ls = _layers_for(dsm, mask, px); ls.imagery_date = "2017-10-20"; return ls
     monkeypatch.setattr(SL, "fetch_layers", layers)
     first = _call()
@@ -270,3 +288,16 @@ def test_the_contractor_can_measure_old_data_anyway_and_it_is_noted(wired, monke
     out = asyncio.run(rv.auto_measure("r1", req, RYAN))
     assert out["available"] is True
     assert any("October 2017" in w and "confirmed" in w for w in out["warnings"])
+    # Confirming measures ONCE. The refusal downloaded nothing, so the wait
+    # after clicking confirm is one measurement, not two.
+    assert downloads["n"] == 1
+
+
+def test_a_rate_limited_google_says_so_instead_of_no_coverage(wired):
+    """A 429 is temporary and the contractor should try again; "no 3D data"
+    reads as permanent and sends them off to measure by hand."""
+    wired["meta"]["_fail"] = ("Google's 3D service is rate-limited right now. "
+                              "Wait a few seconds and try again.")
+    out = _call()
+    assert out["available"] is False
+    assert "rate-limited" in out["reason"] and "try again" in out["reason"]

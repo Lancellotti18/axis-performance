@@ -1719,13 +1719,25 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     except Exception as e:
         logger.info("auto-measure address check skipped for %s: %s", run_id, e)
 
-    layers = await solar_layers_service.fetch_layers(lat, lng, settings.GOOGLE_SOLAR_API_KEY)
-    if not layers.available:
-        return fallback(layers.reason or "Google has no 3D data for this address.")
-    stale = _stale_imagery_note(layers.imagery_date)
+    # Ask Google for the metadata first — one small request that carries the
+    # imagery date. If the imagery is too old to use without a word from the
+    # contractor, stop HERE, before downloading several megabytes of height
+    # map and mask that would be thrown away. The metadata is cached for a few
+    # minutes, so the "measure anyway" request that follows reuses it instead
+    # of spending a second helping of a low, shared per-minute quota.
+    meta, meta_reason = await solar_layers_service.fetch_metadata(
+        lat, lng, settings.GOOGLE_SOLAR_API_KEY)
+    if meta is None:
+        return fallback(meta_reason or "Google has no 3D data for this address.")
+    stale = _stale_imagery_note(meta.get("imagery_date"))
     if stale and not req.allow_old_imagery:
         # stale_imagery lets the screen offer "It's the same house - measure anyway".
-        return fallback(stale, stale_imagery=True, imagery_date=layers.imagery_date)
+        return fallback(stale, stale_imagery=True, imagery_date=meta.get("imagery_date"))
+
+    layers = await solar_layers_service.fetch_layers(
+        lat, lng, settings.GOOGLE_SOLAR_API_KEY, meta=meta)
+    if not layers.available:
+        return fallback(layers.reason or "Google has no 3D data for this address.")
     if stale:
         # Measured anyway on the contractor's word. Said on screen AND kept on
         # the run, so the report's methodology carries it too.

@@ -1064,7 +1064,18 @@ export default function RoofV2Page() {
           )}
 
           {editorSub === 'draw' && (<>
-          {autoNote && (
+          {/* Measuring again after "it's the same house". The spinner in the
+              confirm step is gone by now — runAutoMeasure ends on 'draw' — and
+              clicking the button clears the note it sits in, so without this
+              the screen goes blank for the length of a measurement and looks
+              like the click did nothing. */}
+          {autoBusy && (
+            <div className="flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-900">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-800" />
+              Measuring this roof from Google&apos;s 3D model — usually under 30 seconds.
+            </div>
+          )}
+          {autoNote && !autoBusy && (
             <div className={`rounded-lg border p-3 text-sm ${autoNote.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
               <div>{autoNote.ok ? '✨ ' : ''}{autoNote.text}</div>
               {autoNote.warnings.map(w => (
@@ -1079,7 +1090,7 @@ export default function RoofV2Page() {
                   }}
                   disabled={autoBusy}
                   className="mt-3 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50">
-                  It&apos;s the same house — measure anyway
+                  {autoBusy ? 'Measuring…' : "It's the same house — measure anyway"}
                 </button>
               )}
             </div>

@@ -22,6 +22,7 @@ from __future__ import annotations
 import io
 import logging
 import math
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -201,11 +202,44 @@ def assemble(dsm: Raster, mask: Raster, rgb: Optional[Raster], lat: float, lng: 
     )
 
 
-async def fetch_layers(lat: float, lng: float, api_key: str, *, radius_m: float = 35.0,
-                       pixel_m: float = 0.1) -> LayerSet:
-    """Height map, roof mask and aerial image around the tapped house."""
+# The Data Layers metadata — the imagery date and the three signed download
+# URLs — kept for a few minutes per house.
+#
+# This exists for one flow: imagery older than the limit makes the screen ask
+# "it's the same house, measure anyway?", and the answer arrives as a SECOND
+# request. Without this, that second request repeats the metadata call and all
+# three downloads to reach the same answer, which is both the long wait after
+# confirming and a second helping of a per-minute quota that is low and shared.
+# Metadata is a few KB of JSON, so unlike the rasters it is safe to hold.
+_META_TTL_S = 600.0
+_meta_cache: dict[tuple, tuple[float, dict]] = {}
+
+
+def _meta_key(lat: float, lng: float, radius_m: float, pixel_m: float) -> tuple:
+    # ~1 cm of latitude: the same tap, not a nearby one.
+    return (round(lat, 7), round(lng, 7), radius_m, pixel_m)
+
+
+def forget_metadata(lat: float, lng: float, *, radius_m: float = 35.0,
+                    pixel_m: float = 0.1) -> None:
+    _meta_cache.pop(_meta_key(lat, lng, radius_m, pixel_m), None)
+
+
+async def fetch_metadata(lat: float, lng: float, api_key: str, *, radius_m: float = 35.0,
+                         pixel_m: float = 0.1) -> tuple[Optional[dict], Optional[str]]:
+    """(metadata, reason_it_failed) for one house — one cheap request.
+
+    Separate from the downloads so the imagery date can be checked before
+    committing to several megabytes of GeoTIFF.
+    """
     if not api_key:
-        return LayerSet(False, "Google Solar API key not configured")
+        return None, "Google Solar API key not configured"
+
+    key = _meta_key(lat, lng, radius_m, pixel_m)
+    hit = _meta_cache.get(key)
+    if hit and (time.monotonic() - hit[0]) < _META_TTL_S:
+        return hit[1], None
+
     params = {
         "location.latitude": f"{lat:.7f}", "location.longitude": f"{lng:.7f}",
         "radiusMeters": str(radius_m), "view": "IMAGERY_LAYERS",
@@ -214,34 +248,62 @@ async def fetch_layers(lat: float, lng: float, api_key: str, *, radius_m: float 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.get(DATA_LAYERS_URL, params=params)
-            if r.status_code == 404:
-                return LayerSet(False, "no Google 3D coverage at this address")
-            if r.status_code != 200:
-                msg = ""
-                try:
-                    msg = (r.json().get("error") or {}).get("message") or ""
-                except Exception:
-                    pass
-                return LayerSet(False, f"Google Data Layers error {r.status_code}: {msg[:200]}")
-            meta = r.json()
-            d = meta.get("imageryDate") or {}
-            if d.get("year"):
-                meta["imagery_date"] = f"{int(d['year']):04d}-{int(d.get('month', 1)):02d}-{int(d.get('day', 1)):02d}"
-            urls = {k: meta.get(k) for k in ("dsmUrl", "maskUrl", "rgbUrl")}
-            if not urls["dsmUrl"] or not urls["maskUrl"]:
-                return LayerSet(False, "Google returned no height map or roof mask here")
-            blobs = {}
-            for k, u in urls.items():
-                if not u:
-                    continue
-                # The URL already carries ?id=...; passing params= would REPLACE
-                # that query (httpx does not merge), dropping the id -> HTTP 400.
-                g = await client.get(httpx.URL(u).copy_merge_params({"key": api_key}))
-                if g.status_code != 200:
-                    return LayerSet(False, f"could not download {k} ({g.status_code})")
-                blobs[k] = g.content
+        if r.status_code == 404:
+            return None, "no Google 3D coverage at this address"
+        if r.status_code != 200:
+            msg = ""
+            try:
+                msg = (r.json().get("error") or {}).get("message") or ""
+            except Exception:
+                pass
+            if r.status_code == 429:
+                # Said plainly, because it is temporary and the contractor can
+                # simply try again — unlike "no coverage", which never changes.
+                return None, ("Google's 3D service is rate-limited right now. "
+                              "Wait a few seconds and try again.")
+            return None, f"Google Data Layers error {r.status_code}: {msg[:200]}"
+        meta = r.json()
     except Exception as e:
-        return LayerSet(False, f"Google Data Layers unreachable: {str(e)[:150]}")
+        return None, f"Google Data Layers unreachable: {str(e)[:150]}"
+
+    d = meta.get("imageryDate") or {}
+    if d.get("year"):
+        meta["imagery_date"] = f"{int(d['year']):04d}-{int(d.get('month', 1)):02d}-{int(d.get('day', 1)):02d}"
+    if not meta.get("dsmUrl") or not meta.get("maskUrl"):
+        return None, "Google returned no height map or roof mask here"
+
+    if len(_meta_cache) > 64:
+        _meta_cache.clear()
+    _meta_cache[key] = (time.monotonic(), meta)
+    return meta, None
+
+
+async def fetch_layers(lat: float, lng: float, api_key: str, *, radius_m: float = 35.0,
+                       pixel_m: float = 0.1, meta: Optional[dict] = None) -> LayerSet:
+    """Height map, roof mask and aerial image around the tapped house.
+
+    `meta` reuses a metadata response the caller already has (see
+    fetch_metadata), which is what makes "measure anyway" quick.
+    """
+    if not api_key:
+        return LayerSet(False, "Google Solar API key not configured")
+
+    if meta is None:
+        meta, reason = await fetch_metadata(lat, lng, api_key, radius_m=radius_m, pixel_m=pixel_m)
+        if meta is None:
+            return LayerSet(False, reason)
+
+    blobs, stale_urls = await _download(meta, api_key)
+    if stale_urls:
+        # The cached URLs have expired. Drop them and ask Google once more,
+        # rather than telling the contractor the house has no 3D data.
+        forget_metadata(lat, lng, radius_m=radius_m, pixel_m=pixel_m)
+        meta, reason = await fetch_metadata(lat, lng, api_key, radius_m=radius_m, pixel_m=pixel_m)
+        if meta is None:
+            return LayerSet(False, reason)
+        blobs, stale_urls = await _download(meta, api_key)
+    if isinstance(blobs, str):
+        return LayerSet(False, blobs)
 
     try:
         dsm = read_geotiff(blobs["dsmUrl"])
@@ -250,3 +312,25 @@ async def fetch_layers(lat: float, lng: float, api_key: str, *, radius_m: float 
     except Exception as e:
         return LayerSet(False, f"could not read Google's map files: {str(e)[:150]}")
     return assemble(dsm, mask, rgb, lat, lng, meta)
+
+
+async def _download(meta: dict, api_key: str):
+    """(blobs, urls_expired). `blobs` is an error string if it failed outright."""
+    urls = {k: meta.get(k) for k in ("dsmUrl", "maskUrl", "rgbUrl")}
+    blobs: dict = {}
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            for k, u in urls.items():
+                if not u:
+                    continue
+                # The URL already carries ?id=...; passing params= would REPLACE
+                # that query (httpx does not merge), dropping the id -> HTTP 400.
+                g = await client.get(httpx.URL(u).copy_merge_params({"key": api_key}))
+                if g.status_code in (400, 403, 404) and k == "dsmUrl":
+                    return None, True        # most likely an expired signed URL
+                if g.status_code != 200:
+                    return f"could not download {k} ({g.status_code})", False
+                blobs[k] = g.content
+    except Exception as e:
+        return f"Google Data Layers unreachable: {str(e)[:150]}", False
+    return blobs, False

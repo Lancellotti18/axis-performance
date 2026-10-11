@@ -126,3 +126,96 @@ def test_missing_key_is_reported():
     import asyncio
     s = asyncio.run(L.fetch_layers(40.0, -76.0, ""))
     assert not s.available and "not configured" in s.reason
+
+
+# ── the metadata request, and why it is cached ─────────────────────────────
+# Old imagery makes the screen ask "same house, measure anyway?", and the
+# answer arrives as a second request. Both requests need the same metadata, and
+# the Solar per-minute quota is low and shared, so the second one must not
+# spend another.
+
+class _FakeResp:
+    def __init__(self, status=200, payload=None):
+        self.status_code = status
+        self._payload = payload or {}
+    def json(self): return self._payload
+
+
+def _meta_payload():
+    return {"imageryDate": {"year": 2017, "month": 10, "day": 20},
+            "dsmUrl": "https://example.test/dsm?id=1",
+            "maskUrl": "https://example.test/mask?id=2",
+            "rgbUrl": "https://example.test/rgb?id=3"}
+
+
+def _patch_http(monkeypatch, counter, payload=None, status=200):
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, params=None):
+            counter["n"] += 1
+            return _FakeResp(status, payload if payload is not None else _meta_payload())
+    monkeypatch.setattr(L.httpx, "AsyncClient", _Client)
+
+
+def test_the_imagery_date_comes_back_without_downloading_anything(monkeypatch):
+    import asyncio
+    L._meta_cache.clear()
+    calls = {"n": 0}
+    _patch_http(monkeypatch, calls)
+    meta, reason = asyncio.run(L.fetch_metadata(34.2257, -77.9447, "k"))
+    assert reason is None
+    assert meta["imagery_date"] == "2017-10-20"
+    assert calls["n"] == 1, "one small request, not the three rasters"
+
+
+def test_asking_twice_for_the_same_house_costs_one_request(monkeypatch):
+    """This is the fix for the wait after clicking "measure anyway"."""
+    import asyncio
+    L._meta_cache.clear()
+    calls = {"n": 0}
+    _patch_http(monkeypatch, calls)
+    asyncio.run(L.fetch_metadata(34.2257, -77.9447, "k"))
+    asyncio.run(L.fetch_metadata(34.2257, -77.9447, "k"))
+    assert calls["n"] == 1
+
+    # A different house is a different question.
+    asyncio.run(L.fetch_metadata(34.3000, -77.9000, "k"))
+    assert calls["n"] == 2
+
+
+def test_a_rate_limit_is_reported_as_temporary(monkeypatch):
+    import asyncio
+    L._meta_cache.clear()
+    calls = {"n": 0}
+    _patch_http(monkeypatch, calls, payload={"error": {"message": "quota"}}, status=429)
+    meta, reason = asyncio.run(L.fetch_metadata(34.2257, -77.9447, "k"))
+    assert meta is None
+    assert "rate-limited" in reason and "try again" in reason
+    # A failure is not cached: trying again must actually try again.
+    asyncio.run(L.fetch_metadata(34.2257, -77.9447, "k"))
+    assert calls["n"] == 2
+
+
+def test_no_coverage_is_still_reported_as_permanent(monkeypatch):
+    import asyncio
+    L._meta_cache.clear()
+    _patch_http(monkeypatch, {"n": 0}, status=404)
+    meta, reason = asyncio.run(L.fetch_metadata(34.2257, -77.9447, "k"))
+    assert meta is None and "no Google 3D coverage" in reason
+
+
+def test_forgetting_a_house_clears_only_that_house(monkeypatch):
+    import asyncio
+    L._meta_cache.clear()
+    calls = {"n": 0}
+    _patch_http(monkeypatch, calls)
+    asyncio.run(L.fetch_metadata(34.2257, -77.9447, "k"))
+    asyncio.run(L.fetch_metadata(34.3000, -77.9000, "k"))
+    assert calls["n"] == 2
+    L.forget_metadata(34.2257, -77.9447)
+    asyncio.run(L.fetch_metadata(34.3000, -77.9000, "k"))     # still cached
+    assert calls["n"] == 2
+    asyncio.run(L.fetch_metadata(34.2257, -77.9447, "k"))     # refetched
+    assert calls["n"] == 3
