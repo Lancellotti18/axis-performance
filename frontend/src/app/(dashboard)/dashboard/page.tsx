@@ -8,6 +8,7 @@ import { api } from '@/lib/api'
 import type { Project } from '@/types'
 import { ButtonLink, CountUp, PageTransition, StatusBadge } from '@/components/ui'
 import MorningBriefing from '@/components/MorningBriefing'
+import WeatherConflicts from '@/components/WeatherConflicts'
 import FirstRunGreeting, { WELCOME_COACH_KEY } from '@/components/FirstRunGreeting'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -280,6 +281,7 @@ export default function DashboardPage() {
             On a brand-new account it has nothing to report, so the welcome
             takes its place rather than stacking two near-empty cards. */}
         {showWelcome ? <FirstRunGreeting name={name} onDismiss={dismissWelcome} /> : <MorningBriefing />}
+        {!showWelcome && <WeatherConflicts />}
 
         {/* Stats bar */}
         <div className="grid grid-cols-2 gap-4 mb-9 sm:grid-cols-4">
