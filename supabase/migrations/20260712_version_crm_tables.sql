@@ -52,6 +52,11 @@ CREATE TABLE IF NOT EXISTS crm_lead_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_crm_lead_notes_lead ON crm_lead_notes(lead_id, created_at);
 
+-- NOTE: the live tables were made by hand in the dashboard and their user_id
+-- is TEXT, not the UUID declared above, so auth.uid() = user_id raised
+-- "operator does not exist: uuid = text" when this was finally applied on
+-- 2026-10-11. Both sides are cast, which is correct for either type.
+--
 -- Service-role only (the backend enforces JWT + ownership in
 -- app/core/ownership.py; RLS is defense-in-depth if a user-scoped client
 -- ever talks to these tables directly).
@@ -61,15 +66,15 @@ ALTER TABLE crm_lead_notes      ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   CREATE POLICY contractor_profiles_owner ON contractor_profiles
-    FOR ALL USING (auth.uid() = user_id);
+    FOR ALL USING (auth.uid()::text = user_id::text);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE POLICY crm_leads_owner ON crm_leads
-    FOR ALL USING (auth.uid() = user_id);
+    FOR ALL USING (auth.uid()::text = user_id::text);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE POLICY crm_lead_notes_owner ON crm_lead_notes
-    FOR ALL USING (auth.uid() = user_id);
+    FOR ALL USING (auth.uid()::text = user_id::text);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;

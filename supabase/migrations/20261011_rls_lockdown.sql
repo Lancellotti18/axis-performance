@@ -9,6 +9,8 @@
 --     crm_lead_notes        3 rows — private notes about homeowners
 --     contractor_profiles   1 row  — company name, license, phone, email
 --     legal_acknowledgments 3 rows — user_id, IP address, user agent
+-- Applied to production 2026-10-11 and re-probed with the anon key: all four
+-- now return zero rows to an anonymous caller.
 -- The first three are already fixed by 20260712_version_crm_tables.sql, which
 -- was written but never applied to production — APPLY THAT ONE TOO.
 --
@@ -41,7 +43,13 @@ BEGIN
     'legal_acknowledgments', 'marketing_consent', 'notifications',
     'project_photos', 'project_photo_shares',
     -- internal telemetry
-    'briefing_snoozes', 'entitlement_denials', 'llm_usage', 'report_events'
+    'briefing_snoozes', 'entitlement_denials', 'llm_usage', 'report_events',
+    -- in production but in NO migration: made by hand in the dashboard, or
+    -- (roof_measurements_legacy) renamed out of the way by
+    -- 20260604_roof_v2_data_model.sql and never re-secured. regional_pricing
+    -- was the only one with rows (12, reference pricing — no customer data)
+    -- and no code references it at all.
+    'project_reports', 'regional_pricing', 'roof_measurements_legacy'
   ])
   LOOP
     -- ENABLE only, never FORCE: FORCE would apply to the table owner too, and
