@@ -444,6 +444,67 @@ async def find_roofs(
             "prospects": out, "note": note}
 
 
+ESRI_EXPORT = ("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery"
+               "/MapServer/export")
+
+
+@router.get("/lead-thumb")
+async def lead_thumb(
+    county: str = Query(...),
+    token: str = Query(...),
+    user: dict = Depends(require_user),
+) -> dict:
+    """The satellite roof view for one lead, fetched through the server.
+
+    Judging a roof from the satellite view is the reason to buy a lead at all,
+    so hiding the coordinates cannot mean hiding the roof. The server resolves
+    the token, fetches the tile itself, and returns the image inline — the
+    browser gets a picture of a roof and never the point it was taken from.
+
+    Returned as a data URL to match how street view is already served, and so
+    the request carries the caller's token like every other API call: an <img>
+    tag cannot send an Authorization header.
+    """
+    import base64
+
+    from app.services import leads as leads_svc
+
+    if not leads_svc.valid_token(token):
+        raise HTTPException(status_code=400, detail="Invalid lead reference.")
+
+    src, rows = await fetch_prospects(county, limit=200)
+    row = leads_svc.match_token(county, token, rows)
+    if not row:
+        raise HTTPException(status_code=404, detail="That lead is no longer in the county's results.")
+
+    # A lead somebody else bought is off the market and off the page: no roof
+    # view either, or the listing becomes a way to keep watching it.
+    db = get_supabase()
+    taken, mine = leads_svc.taken_pins(db, county, me=str(user["id"]))
+    pin = str(row["pin"])
+    if pin in taken and pin not in mine:
+        raise HTTPException(status_code=404, detail="That lead has been bought.")
+
+    lat, lng = row.get("lat"), row.get("lng")
+    if lat is None or lng is None:
+        raise HTTPException(status_code=404, detail="No roof view for this record.")
+
+    d = 0.0006                                  # a tight crop: the roof, not the block
+    params = {"bbox": f"{lng - d},{lat - d},{lng + d},{lat + d}",
+              "bboxSR": "4326", "imageSR": "4326", "size": "240,180",
+              "format": "jpg", "f": "image"}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(ESRI_EXPORT, params=params)
+        if r.status_code >= 300 or not r.content:
+            raise RuntimeError(f"imagery {r.status_code}")
+    except Exception as e:
+        logger.info("roof thumb failed for %s/%s: %s", county, pin, e)
+        raise HTTPException(status_code=502, detail="Couldn't load the roof view — try again.")
+
+    return {"image": "data:image/jpeg;base64," + base64.b64encode(r.content).decode()}
+
+
 @router.get("/census-heat")
 async def census_heat(
     county: str = Query(..., description="County key from COUNTY_FIPS, or 'STATE:COUNTY' FIPS pair"),

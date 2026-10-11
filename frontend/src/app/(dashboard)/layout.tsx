@@ -30,6 +30,7 @@ const NAV_GROUPS: { title: string; items: { href: string; label: string; icon: (
     items: [
       { href: '/roof-v2',         label: 'Roof Report',         icon: IconAerial },
       { href: '/find-roofs',      label: 'Find Roofs',          icon: IconFindRoofs },
+      { href: '/my-leads',        label: 'My Leads',            icon: IconFindRoofs },
       // Exterior Measurement Module hidden until it's past MVP — kept routable.
       // { href: '/exterior',     label: 'Exterior Module',     icon: IconAerial },
       { href: '/material-check',  label: 'Material Compliance', icon: IconMaterialCheck },

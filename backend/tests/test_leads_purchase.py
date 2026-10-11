@@ -331,3 +331,52 @@ def test_a_city_filter_cannot_rewrite_the_county_query(env):
         assert not set(out) & set("'\"%_;()"), f"{hostile!r} -> {out!r}"
     assert prospecting._safe_val("Winston-Salem") == "WINSTON-SALEM"
     assert prospecting._safe_val("x" * 90) == "X" * 40          # and it cannot be huge
+
+
+# ── the roof view ──────────────────────────────────────────────────────────
+
+class _FakeImgResponse:
+    status_code = 200
+    content = b"\xff\xd8\xff\xe0jpegbytes"
+
+
+class _FakeClient:
+    def __init__(self, *a, **k): pass
+    async def __aenter__(self): return self
+    async def __aexit__(self, *a): return False
+    async def get(self, url, params=None): return _FakeImgResponse()
+
+
+@pytest.fixture
+def imagery(monkeypatch):
+    monkeypatch.setattr(prospecting.httpx, "AsyncClient", _FakeClient)
+
+
+def _thumb(user, token, county=COUNTY):
+    return asyncio.run(prospecting.lead_thumb(county=county, token=token, user=user))
+
+
+def test_the_roof_view_is_served_without_handing_over_coordinates(env, imagery):
+    out = _thumb(U1, leads_svc.token_for(COUNTY, "P1"))
+    assert out["image"].startswith("data:image/jpeg;base64,")
+    # The point it was taken from is exactly what must not come back.
+    for leaked in ("lat", "lng", "bbox", "address"):
+        assert leaked not in out
+
+
+def test_the_roof_view_stops_once_someone_else_owns_the_lead(env, imagery):
+    token = leads_svc.token_for(COUNTY, "P1")
+    _buy(U2, token)
+    with pytest.raises(HTTPException) as e:
+        _thumb(U1, token)
+    assert e.value.status_code == 404
+    assert _thumb(U2, token)["image"], "the buyer keeps their roof view"
+
+
+def test_the_roof_view_refuses_a_forged_token(env, imagery):
+    with pytest.raises(HTTPException) as e:
+        _thumb(U1, "lp_" + "A" * 22)
+    assert e.value.status_code == 404
+    with pytest.raises(HTTPException) as e:
+        _thumb(U1, "nope")
+    assert e.value.status_code == 400

@@ -582,6 +582,37 @@ export type LegalAcknowledgmentStatus = {
   accepted_at: string | null
 }
 
+export type Lead = {
+  token: string
+  city: string | null
+  zip?: string | null
+  year_built: number | null
+  owner_occupied: boolean | null
+  score: number
+  tier: string
+  confidence: string
+  why: string
+  owned: boolean
+  // Present only once this account has bought the lead.
+  address?: string
+  owner?: string | null
+  owner_mail?: string | null
+  sold_year?: number | null
+  tax_value?: number | null
+  lat?: number
+  lng?: number
+  reasons?: string[]
+  purchase_id?: string
+  crm_lead_id?: string | null
+}
+
+export type PurchasedLead = Lead & {
+  purchase_id: string
+  county: string
+  bought_at: string
+  price_usd: number
+}
+
 export const api = {
   projects: {
     list: (userId: string) =>
@@ -969,6 +1000,15 @@ export const api = {
       apiRequest<{ ok: boolean }>(`/api/v1/billing/resume`, { method: 'POST' }),
     usage: () =>
       apiRequest<UsageSummary>(`/api/v1/billing/usage`),
+    // Exclusive leads. The body names no price and no address: the server
+    // re-finds the parcel from the token and prices it from the plan table.
+    purchaseLead: (county: string, token: string) =>
+      apiRequest<{ ok: boolean; charged_usd?: number; requires_action?: boolean
+                   client_secret?: string; lead?: Lead; message: string }>(
+        `/api/v1/billing/purchase-lead`,
+        { method: 'POST', body: JSON.stringify({ county, token }) }),
+    myLeads: () =>
+      apiRequest<{ count: number; leads: PurchasedLead[] }>(`/api/v1/billing/my-leads`),
     entitlement: (action: EntitlementAction = 'generate_report') =>
       apiRequest<{ action: string; allowed: boolean; would_allow: boolean;
                    enforcing: boolean; reason: string; plan_key: string | null;
@@ -995,21 +1035,24 @@ export const api = {
   prospecting: {
     sources: () =>
       apiRequest<{ sources: Array<{ key: string; name: string; has_age: boolean; has_owner: boolean }> }>(`/api/v1/prospecting/sources`),
-    findRoofs: (params: { county: string; city?: string; ownerOccupiedOnly?: boolean; limit?: number }) => {
+    findRoofs: (params: { county: string; city?: string; zip?: string
+                          ownerOccupiedOnly?: boolean; limit?: number }) => {
       const q = new URLSearchParams({ county: params.county })
       if (params.city) q.set('city', params.city)
+      if (params.zip) q.set('zip', params.zip)
       if (params.ownerOccupiedOnly) q.set('owner_occupied_only', 'true')
       if (params.limit) q.set('limit', String(params.limit))
       return apiRequest<{
-        county: string; count: number; note: string
-        prospects: Array<{
-          pin: string; address: string; city: string; owner: string | null; owner_mail: string | null
-          owner_occupied: boolean | null; year_built: number | null; sold_year: number | null
-          tax_value: number | null; lat: number; lng: number
-          score: number; tier: string; reasons: string[]; confidence: string; why: string
-        }>
+        county: string; count: number; for_sale: number; owned: number
+        lead_price_usd: number; searches_left: number; note: string
+        prospects: Lead[]
       }>(`/api/v1/prospecting/find-roofs?${q}`)
     },
+    // The roof view for a lead whose coordinates the browser isn't given.
+    leadThumb: (county: string, token: string) =>
+      apiRequest<{ image: string }>(
+        `/api/v1/prospecting/lead-thumb?county=${encodeURIComponent(county)}`
+        + `&token=${encodeURIComponent(token)}`, undefined, 90000, 10 * 60 * 1000),
     censusHeat: (county: string, limit = 40) =>
       apiRequest<{
         available: boolean; county: string; count?: number; note: string

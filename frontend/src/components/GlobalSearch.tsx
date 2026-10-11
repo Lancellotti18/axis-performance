@@ -14,6 +14,7 @@ const PAGES: { label: string; href: string }[] = [
   { label: 'Projects', href: '/projects' },
   { label: 'Roof Report', href: '/roof-v2' },
   { label: 'Find Roofs', href: '/find-roofs' },
+  { label: 'My Leads', href: '/my-leads' },
   { label: 'Material Compliance', href: '/material-check' },
   { label: 'Roof Visualizer', href: '/home-visualizer' },
   { label: 'Storm Risk Report', href: '/storm-report' },
