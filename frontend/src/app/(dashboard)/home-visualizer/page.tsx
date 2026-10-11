@@ -41,6 +41,7 @@ export default function HomeVisualizerPage() {
   useEffect(() => { fetch(`${BACKEND}/health`).catch(() => {}) }, [])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver]       = useState(false)
   const [file, setFile]               = useState<File | null>(null)
   const [preview, setPreview]         = useState<string | null>(null)
@@ -191,9 +192,9 @@ export default function HomeVisualizerPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,.heic,.heif,application/pdf,.pdf"
+                accept="image/*,.heic,.heif,.HEIC,.HEIF,application/pdf,.pdf"
                 className="hidden"
-                onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.currentTarget.value = '' }}
               />
               {docName && !preview ? (
                 <div className="flex flex-col items-center justify-center p-10 space-y-1.5">
@@ -213,27 +214,36 @@ export default function HomeVisualizerPage() {
               ) : (
                 <div className="flex flex-col items-center justify-center p-10 space-y-2">
                   <div className="text-4xl"></div>
-                  <div className="text-[#9ca3af] font-semibold text-sm">Drop a photo or click to upload</div>
-                  <div className="text-[#6b7280] text-xs">Photo or PDF · JPG, PNG, HEIC, WebP and more · max 25 MB</div>
+                  <div className="text-[#9ca3af] font-semibold text-sm">Drop a photo or tap to choose one</div>
+                  <div className="text-[#6b7280] text-xs">iPhone/Android photos (HEIC, JPG), PNG, WebP or PDF · max 25 MB</div>
                 </div>
               )}
+            </div>
+            {/* On a phone, open the camera straight away — snap the house on site. */}
+            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.currentTarget.value = '' }} />
+            <div className="mt-2 flex gap-2 md:hidden">
+              <button type="button" onClick={() => cameraInputRef.current?.click()}
+                className="flex-1 rounded-xl border border-[#dededc] bg-white py-2.5 text-sm font-semibold text-[#1a1a1a]">📷 Take a photo</button>
+              <button type="button" onClick={() => fileInputRef.current?.click()}
+                className="flex-1 rounded-xl border border-[#dededc] bg-white py-2.5 text-sm font-semibold text-[#1a1a1a]">🖼 Photo library</button>
             </div>
           </div>
 
           {/* Description */}
           <div>
             <label className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider block mb-2">
-              What changes do you want? *
+              What should the new roof look like? *
             </label>
             <textarea
               rows={3}
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Describe ONLY what to change — the original house, roofline, windows and angle will be preserved. e.g. 'repaint siding charcoal gray, add black shutters'"
+              placeholder="Describe the new roof — e.g. 'charcoal architectural shingles' or 'dark bronze standing-seam metal'. Only the roof changes; the rest of the house stays as it is."
               className="w-full border border-[#dededc] rounded-xl px-4 py-3 text-sm text-[#1a1a1a] placeholder-[#9ca3af] focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none leading-relaxed"
             />
             <p className="text-[11px] text-[#6b7280] mt-1.5">
-              Tip: the AI edits your photo — don't redescribe the whole house, just the change.
+              Tip: name the material and color. Only the roof is edited — siding, trim, windows and yard are kept as-is.
             </p>
             {/* Example prompts */}
             <div className="flex flex-wrap gap-2 mt-2">

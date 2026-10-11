@@ -53,6 +53,29 @@ def _fal_key() -> str:
 
 # ── Image generation ──────────────────────────────────────────────────────────
 
+# The Visualizer is a ROOF visualizer. Prompts used to lead with the user's text
+# and only ask to "keep the house the same", so the editors happily repainted
+# siding, swapped windows and re-landscaped. Every provider now gets the same
+# instruction: change the roof covering, and name everything that must not move.
+_KEEP_UNCHANGED = (
+    "siding, wall color, paint, brick, stone, trim, fascia, soffits, gutters, "
+    "downspouts, windows, shutters, doors, garage door, porch, chimney masonry, "
+    "driveway, landscaping, trees, sky, lighting and camera angle"
+)
+
+
+def _roof_instruction(description: str) -> str:
+    return (
+        "Edit ONLY the roof covering of the house in this photo. "
+        f"Replace the roofing material with: {description}. "
+        "Keep the exact same roof shape, pitch, ridges, valleys, edges and outline. "
+        f"Do NOT change anything that is not the roof — leave the {_KEEP_UNCHANGED} "
+        "pixel-for-pixel as they are, even if the request mentions them. "
+        "Render the new roof as brand-new and professionally installed: clean, uniform "
+        "courses with no missing, broken or curling shingles, streaks, stains or moss. "
+        "Photorealistic photograph of the same house."
+    )
+
 async def _generate_image(image_bytes: bytes, content_type: str, description: str) -> str:
     """
     Generate a visualization image by EDITING the uploaded photo.
@@ -145,16 +168,7 @@ async def _fal_img2img(image_bytes: bytes, content_type: str, description: str) 
         # Upload the source photo to fal's storage and get a URL
         image_url = fal_client.upload(image_bytes, mime)
 
-        edit_instruction = (
-            f"{description}. "
-            "Render the new roof as if it were just professionally installed: brand-new, "
-            "flawless, uniform shingles in clean straight courses. Completely replace and "
-            "REMOVE any existing roof damage — no missing, broken, cracked, curling, or "
-            "mismatched shingles, no streaks, stains, moss, patches, or wear. "
-            "Keep the rest of the house identical: same roofline shape, same windows, "
-            "same door placement, same camera angle, same lighting. "
-            "Photorealistic real-estate photograph."
-        )
+        edit_instruction = _roof_instruction(description)
 
         result = fal_client.run(
             "fal-ai/flux-pro/kontext",
@@ -195,14 +209,8 @@ def _gemini_img2img_sync(image_bytes: bytes, mime: str, description: str) -> str
 
     prompt = (
         "You are editing this real exterior photo of a house. "
-        "Keep the house EXACTLY the same: same roofline, same window layout, same door placement, "
-        "same foundation, same yard, same trees, same camera angle, same time of day, same lighting. "
-        f"Apply ONLY this change: {description}. "
-        "If the change involves the roof, render it as a brand-new, professionally installed roof — "
-        "replace and REMOVE all existing damage in that area: no missing, broken, cracked, or curling "
-        "shingles, no streaks, stains, moss, or wear; make the new shingles clean, uniform, and flawless. "
-        "Output a photorealistic real-estate photograph of the SAME house with just that change applied. "
-        "Do not invent a new house. Do not move the camera. Do not change the composition."
+        + _roof_instruction(description)
+        + " Do not invent a new house. Do not move the camera. Do not change the composition."
     )
 
     # Updated 2026-09-13 after /health/deep found every 2.5 image alias 404ing
@@ -358,12 +366,7 @@ async def _replicate_kontext(image_bytes: bytes, content_type: str, description:
     unhelpful.
     """
     image_url = await _replicate_upload(image_bytes, content_type)
-    instruction = (
-        f"{description}. Keep the house, roofline, windows, doors, landscaping, "
-        f"camera angle and lighting exactly as they are. If a new roof is shown, "
-        f"render it as brand-new uniform shingles with no damage, streaks or moss. "
-        f"Photorealistic result."
-    )
+    instruction = _roof_instruction(description)
     optional = {"safety_tolerance": 6, "output_format": "png", "prompt_upsampling": False}
 
     async with httpx.AsyncClient(timeout=30) as client:
@@ -413,13 +416,15 @@ async def _replicate_img2img(image_bytes: bytes, content_type: str, description:
 
     positive = (
         f"the exact same house photographed from the same angle, "
-        f"only modification: {description}. Render any new roof as brand-new, flawless, uniform "
+        f"only modification: new roof covering — {description}. Render the new roof as brand-new, flawless, uniform "
         f"shingles — remove all existing damage, missing/broken/curling shingles, streaks, stains, and moss. "
-        f"Identical roofline, identical window layout, identical door, identical foundation, identical yard. "
+        f"Identical roofline, identical siding and wall color, identical trim, identical window layout, "
+        f"identical door, identical foundation, identical yard. "
         f"Photorealistic, professional architectural photography, high resolution 8k, sharp focus, natural daylight."
     )
     negative = (
         "different house, different house shape, different roofline, different windows, "
+        "different siding, different wall color, repainted walls, different trim, "
         "rearranged facade, new building, damaged roof, missing shingles, broken shingles, "
         "curling shingles, roof streaks, roof stains, moss, worn roof, "
         "blurry, low quality, distorted, warped, "
