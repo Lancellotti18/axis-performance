@@ -332,6 +332,15 @@
   .site a:hover{color:#C8DAF0;border-bottom-color:rgba(180,205,235,.4)}
   .site .legal{flex-basis:100%;display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;padding-top:18px;border-top:1px solid rgba(180,205,235,.07)}
   .site .usa{color:var(--mute);font-size:12px}
+
+  .watch{position:relative;background:linear-gradient(180deg,var(--ink),#04070c);padding:clamp(64px,10vh,110px) clamp(20px,5vw,40px);border-top:1px solid var(--line)}
+  .watch .ey{text-align:center;font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:var(--cad-bright);margin:0 0 20px}
+  .watch .ttl{text-align:center;font-family:var(--serif);font-weight:400;font-size:clamp(26px,3.6vw,42px);line-height:1.1;color:#EEF4FA;margin:0 auto;max-width:22ch;letter-spacing:-.012em;text-wrap:balance}
+  .vid{position:relative;display:block;width:100%;max-width:960px;aspect-ratio:16/9;margin:clamp(32px,5vh,52px) auto 0;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:#000 center/cover no-repeat;padding:0;cursor:pointer;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+  .vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .vid .play{position:absolute;left:50%;top:50%;width:76px;height:76px;margin:-38px 0 0 -38px;border-radius:50%;background:rgba(10,16,24,.72);border:1px solid rgba(140,190,255,.5);display:grid;place-items:center;transition:transform .3s var(--ease),background .3s}
+  .vid .play::after{content:"";margin-left:5px;border-left:20px solid #EEF4FA;border-top:12px solid transparent;border-bottom:12px solid transparent}
+  .vid:hover .play,.vid:focus-visible .play{transform:scale(1.08);background:rgba(30,60,110,.85)}
 </style>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -438,6 +447,15 @@
     <div class="rail"><i id="railFill"></i></div>
   </div>
 </div>
+
+<section class="watch" id="watch">
+  <div class="wrap">
+    <p class="ey">See it work</p>
+    <h2 class="ttl">Measure a roof from satellite in minutes.</h2>
+    <button class="vid" id="vid" type="button" aria-label="Play the Axis video"
+      style="background-image:url(https://i.ytimg.com/vi/MI0SfVkwdyk/hqdefault.jpg)"><span class="play"></span></button>
+  </div>
+</section>
 
 <section class="platform" id="platform">
   <div class="wrap">
@@ -1017,6 +1035,21 @@
   fetch(API,{credentials:'omit',signal:ctl&&ctl.signal}).then(r=>r.ok?r.json():null).then(live=>{
     if(live&&Array.isArray(live.plans)&&live.plans.length){ data=live; render(); }
   }).catch(()=>{}).finally(()=>clearTimeout(timer));
+})();
+</script>
+<script>
+// Lazy facade: nothing from YouTube loads until the visitor presses play, so
+// the hero's bandwidth is untouched.
+(function(){
+  var b=document.getElementById('vid'); if(!b) return;
+  b.addEventListener('click',function(){
+    var f=document.createElement('iframe');
+    f.src='https://www.youtube-nocookie.com/embed/MI0SfVkwdyk?autoplay=1&rel=0';
+    f.title='Axis — measure a roof from satellite in minutes';
+    f.allow='autoplay; encrypted-media; picture-in-picture; fullscreen';
+    f.allowFullscreen=true;
+    b.replaceChildren(f); b.style.cursor='default'; b.style.backgroundImage='none';
+  },{once:true});
 })();
 </script>
 </body>
