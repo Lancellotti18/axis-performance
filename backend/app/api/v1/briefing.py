@@ -78,7 +78,7 @@ def _waiting(db, user_id: str, today: date) -> list[dict]:
 WEATHER_HORIZON_DAYS = 7
 
 
-async def _weather(db, tomorrow: date, days: int = WEATHER_HORIZON_DAYS) -> list[dict]:
+async def _weather(db, tomorrow: date, days: int = WEATHER_HORIZON_DAYS, *, org: str) -> list[dict]:
     """The forecast at every job site each crew is actually due at, days ahead.
 
     Earlier this took only a crew's FIRST stop, which is wrong the moment a crew
@@ -91,7 +91,10 @@ async def _weather(db, tomorrow: date, days: int = WEATHER_HORIZON_DAYS) -> list
     genuinely job-site weather rather than a city-wide average, and nearby stops
     share one upstream call.
     """
-    from app.api.v1.scheduling import ORG, _dt, _f, _rows
+    from app.api.v1.scheduling import _dt, _f, _rows
+    # The caller's own dispatch board only — this read the one shared board
+    # for every account, so any contractor's briefing listed Ryan's crews.
+    ORG = org
     from app.services.scheduling import weather_service as wx
 
     # Today onward, not tomorrow alone. Scoping this to a single day is what
@@ -261,7 +264,8 @@ async def briefing_today(user: dict = Depends(require_user)) -> dict:
 
     groups: list[list[dict]] = []
     try:
-        groups.append(await _weather(db, tomorrow))
+        from app.api.v1.scheduling import org_for
+        groups.append(await _weather(db, tomorrow, org=org_for(user)))
     except Exception:
         logger.info("briefing: weather section unavailable", exc_info=True)
         groups.append([])

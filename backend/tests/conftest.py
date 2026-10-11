@@ -34,3 +34,18 @@ def _reset_promo_and_entitlement_state():
     promo._failed_redeems.clear()
     entitlement._denial_logged.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _pin_dispatch_org():
+    """Endpoint functions are called directly in tests, which skips the
+    require_sched_user dependency that pins the per-request org. Pin the
+    original board's org here; the tenancy tests set their own."""
+    try:
+        from app.api.v1 import scheduling as sc
+    except Exception:
+        yield
+        return
+    token = sc._ORG_CTX.set(sc.ORG)
+    yield
+    sc._ORG_CTX.reset(token)

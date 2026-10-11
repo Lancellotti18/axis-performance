@@ -10,9 +10,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import uuid
 from collections import defaultdict
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta
 from typing import Optional
 
@@ -36,9 +38,39 @@ from app.services.llm import llm_text
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Single-org stub (auth is a stub per the brief). Everything keys off this so
-# multi-tenancy can be added later without a rewrite.
-ORG = "00000000-0000-0000-0000-000000000001"
+# ── Tenancy ──────────────────────────────────────────────────────────────────
+# Every sched_* row is keyed by org_id. This started as one hard-coded org, so
+# EVERY account saw and edited the same board. Now each account gets its own:
+# org = the user's id. The original board (crews, jobs, the promo-video demo
+# data) stays with the account(s) that built it, listed in LEGACY_ORG_USERS.
+ORG = "00000000-0000-0000-0000-000000000001"   # the original board's org id
+LEGACY_ORG_USERS = frozenset(
+    u.strip() for u in os.getenv("SCHED_LEGACY_ORG_USERS", "f9dafe47-810a-4c72-81c6-dbe2d9baf64b").split(",")
+    if u.strip()
+)
+_ORG_CTX: ContextVar[Optional[str]] = ContextVar("sched_org", default=None)
+
+
+def org_for(user: dict) -> str:
+    uid = str((user or {}).get("id") or "")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Sign in to use the dispatch board.")
+    return ORG if uid in LEGACY_ORG_USERS else uid
+
+
+def _org() -> str:
+    """The calling account's org. Fails closed: a query that somehow runs
+    outside a scoped request errors instead of falling back to a shared org."""
+    org = _ORG_CTX.get()
+    if not org:
+        raise RuntimeError("dispatch query outside an org-scoped request")
+    return org
+
+
+async def require_sched_user(user: dict = Depends(require_user)) -> dict:
+    """require_user + pin this request to the caller's org."""
+    _ORG_CTX.set(org_for(user))
+    return user
 
 # Job type -> the crew skill it requires (steep slope added separately by pitch).
 JOB_SKILL = {
@@ -83,7 +115,7 @@ async def get_board(
     end: str = Query(..., description="YYYY-MM-DD (inclusive)"),
     businessUnitIds: Optional[str] = Query(None),
     crewIds: Optional[str] = Query(None),
-    user: dict = Depends(require_user),
+    user: dict = Depends(require_sched_user),
 ) -> dict:
     d0 = _parse_date(start, "start")
     d1 = _parse_date(end, "end")
@@ -101,7 +133,7 @@ async def get_board(
     db = get_supabase()
 
     def tbl(name: str):
-        return db.table(name).select("*").eq("org_id", ORG)
+        return db.table(name).select("*").eq("org_id", _org())
 
     business_units = sorted(_rows(tbl("sched_business_unit").eq("is_active", True).execute()),
                             key=lambda b: b.get("sort_order", 0))
@@ -243,16 +275,16 @@ def _label(job_type: Optional[str]) -> str:
 
 
 def _one(db, table, id_):
-    r = db.table(table).select("*").eq("org_id", ORG).eq("id", id_).limit(1).execute()
+    r = db.table(table).select("*").eq("org_id", _org()).eq("id", id_).limit(1).execute()
     return (r.data or [None])[0]
 
 
 def _crew_appts_on(db, crew_id, date_str, exclude_id=None):
-    asg = db.table("sched_assignment").select("appointment_id").eq("org_id", ORG).eq("crew_id", crew_id).execute().data or []
+    asg = db.table("sched_assignment").select("appointment_id").eq("org_id", _org()).eq("crew_id", crew_id).execute().data or []
     ids = [a["appointment_id"] for a in asg]
     if not ids:
         return []
-    aps = db.table("sched_appointment").select("*").eq("org_id", ORG).in_("id", ids).execute().data or []
+    aps = db.table("sched_appointment").select("*").eq("org_id", _org()).in_("id", ids).execute().data or []
     out = []
     for ap in aps:
         if exclude_id and ap["id"] == exclude_id:
@@ -265,13 +297,13 @@ def _crew_appts_on(db, crew_id, date_str, exclude_id=None):
 
 def _day_load_dict(db, crew: dict, date_str: str) -> dict:
     d = date.fromisoformat(date_str)
-    srow = db.table("sched_shift").select("*").eq("org_id", ORG).eq("crew_id", crew["id"]).eq("date", date_str).limit(1).execute().data
+    srow = db.table("sched_shift").select("*").eq("org_id", _org()).eq("crew_id", crew["id"]).eq("date", date_str).limit(1).execute().data
     shift_in = ShiftInput(d, srow[0]["start_time"], srow[0]["end_time"]) if srow else None
     appts = _crew_appts_on(db, crew["id"], date_str)
     appt_ins = [AppointmentLoadInput(_dt(a.get("scheduled_start")) or datetime.combine(d, datetime.min.time()),
                                      _dt(a.get("scheduled_end")) or datetime.combine(d, datetime.min.time()),
                                      _f(a.get("planned_squares")) or 0.0) for a in appts]
-    events = db.table("sched_non_job_event").select("*").eq("org_id", ORG).eq("crew_id", crew["id"]).execute().data or []
+    events = db.table("sched_non_job_event").select("*").eq("org_id", _org()).eq("crew_id", crew["id"]).execute().data or []
     ev_ins = []
     for e in events:
         es, ee = _dt(e.get("start_at")), _dt(e.get("end_at"))
@@ -290,16 +322,16 @@ def _evaluate_move(db, appt: dict, job: dict, crew: dict, date_str: str) -> dict
     st = naive_dt(d, s0.strftime("%H:%M")) if s0 else datetime.combine(d, datetime.min.time())
     en = naive_dt(d, e0.strftime("%H:%M")) if e0 else datetime.combine(d, datetime.min.time())
 
-    srow = db.table("sched_shift").select("*").eq("org_id", ORG).eq("crew_id", crew["id"]).eq("date", date_str).limit(1).execute().data
+    srow = db.table("sched_shift").select("*").eq("org_id", _org()).eq("crew_id", crew["id"]).eq("date", date_str).limit(1).execute().data
     has_shift = bool(srow)
     shift_start = naive_dt(d, srow[0]["start_time"]) if has_shift else None
     shift_end = naive_dt(d, srow[0]["end_time"]) if has_shift else None
 
-    skills = [s["skill"] for s in (db.table("sched_crew_skill").select("skill").eq("org_id", ORG).eq("crew_id", crew["id"]).execute().data or [])]
+    skills = [s["skill"] for s in (db.table("sched_crew_skill").select("skill").eq("org_id", _org()).eq("crew_id", crew["id"]).execute().data or [])]
     others = _crew_appts_on(db, crew["id"], date_str, exclude_id=appt["id"])
     overlaps = [(_dt(a["scheduled_start"]), _dt(a["scheduled_end"])) for a in others if _dt(a.get("scheduled_start")) and _dt(a.get("scheduled_end"))]
 
-    events = db.table("sched_non_job_event").select("*").eq("org_id", ORG).eq("crew_id", crew["id"]).execute().data or []
+    events = db.table("sched_non_job_event").select("*").eq("org_id", _org()).eq("crew_id", crew["id"]).execute().data or []
     blocking = []
     for e in events:
         es, ee = _dt(e.get("start_at")), _dt(e.get("end_at"))
@@ -318,7 +350,7 @@ def _evaluate_move(db, appt: dict, job: dict, crew: dict, date_str: str) -> dict
 
     contiguous = True
     if int(appt.get("total_in_series") or 1) > 1:
-        sibs = db.table("sched_appointment").select("scheduled_start,id").eq("org_id", ORG).eq("job_id", appt["job_id"]).neq("id", appt["id"]).execute().data or []
+        sibs = db.table("sched_appointment").select("scheduled_start,id").eq("org_id", _org()).eq("job_id", appt["job_id"]).neq("id", appt["id"]).execute().data or []
         sib_dates = [_dt(s["scheduled_start"]).date() for s in sibs if _dt(s.get("scheduled_start"))]
         contiguous = any(abs((d - sd).days) <= 1 for sd in sib_dates) if sib_dates else True
 
@@ -350,7 +382,7 @@ def _evaluate_move(db, appt: dict, job: dict, crew: dict, date_str: str) -> dict
 
 
 @router.get("/preview")
-async def preview_move(appointment_id: str, crew_id: str, date: str, user: dict = Depends(require_user)) -> dict:
+async def preview_move(appointment_id: str, crew_id: str, date: str, user: dict = Depends(require_sched_user)) -> dict:
     """Dry-run a drop: conflicts + resulting utilization for moving an appointment
     onto (crew_id, date). Read-only; drives the drag-hover paint."""
     db = get_supabase()
@@ -376,7 +408,7 @@ VALID_STATUS = {"UNASSIGNED", "SCHEDULED", "DISPATCHED", "WORKING", "PAUSED", "D
 
 
 def _affected_slice(db, after: dict, old_cd, new_cd) -> dict:
-    siblings = db.table("sched_appointment").select("*").eq("org_id", ORG).eq("job_id", after["job_id"]).execute().data or []
+    siblings = db.table("sched_appointment").select("*").eq("org_id", _org()).eq("job_id", after["job_id"]).execute().data or []
     touched = set()
     for cd in (old_cd, new_cd):
         if cd and cd[0] and cd[1]:
@@ -390,7 +422,7 @@ def _affected_slice(db, after: dict, old_cd, new_cd) -> dict:
 
 
 @router.patch("/appointments/{appointment_id}")
-async def patch_appointment(appointment_id: str, patch: AppointmentPatch, user: dict = Depends(require_user)) -> dict:
+async def patch_appointment(appointment_id: str, patch: AppointmentPatch, user: dict = Depends(require_sched_user)) -> dict:
     """Move / reassign / restatus one appointment. Returns the full affected slice
     (the appointment, its series siblings, and recomputed dayLoads for every
     touched crew-day) so the client patches cache without refetching."""
@@ -400,14 +432,14 @@ async def patch_appointment(appointment_id: str, patch: AppointmentPatch, user: 
         raise HTTPException(status_code=404, detail="Appointment not found.")
 
     if patch.request_id:
-        prior = (db.table("sched_audit_event").select("id").eq("org_id", ORG)
+        prior = (db.table("sched_audit_event").select("id").eq("org_id", _org())
                  .eq("entity_id", appointment_id).eq("request_id", patch.request_id).limit(1).execute().data)
         if prior:
             return _affected_slice(db, appt, None, None)
 
     old_dt = _dt(appt.get("scheduled_start"))
     old_date = old_dt.date().isoformat() if old_dt else None
-    prim = (db.table("sched_assignment").select("*").eq("org_id", ORG)
+    prim = (db.table("sched_assignment").select("*").eq("org_id", _org())
             .eq("appointment_id", appointment_id).eq("is_primary", True).limit(1).execute().data or [None])[0]
     old_crew_id = prim["crew_id"] if prim else None
 
@@ -424,22 +456,22 @@ async def patch_appointment(appointment_id: str, patch: AppointmentPatch, user: 
             raise HTTPException(status_code=400, detail=f"Invalid status '{patch.status}'.")
         updates["status"] = patch.status
     if updates:
-        db.table("sched_appointment").update(updates).eq("id", appointment_id).execute()
+        db.table("sched_appointment").update(updates).eq("org_id", _org()).eq("id", appointment_id).execute()
 
     new_crew_id = old_crew_id
     if patch.crew_id and patch.crew_id != old_crew_id:
         new_crew_id = patch.crew_id
         if prim:
-            db.table("sched_assignment").update({"crew_id": new_crew_id}).eq("id", prim["id"]).execute()
+            db.table("sched_assignment").update({"crew_id": new_crew_id}).eq("org_id", _org()).eq("id", prim["id"]).execute()
         else:
-            db.table("sched_assignment").insert({"org_id": ORG, "appointment_id": appointment_id,
+            db.table("sched_assignment").insert({"org_id": _org(), "appointment_id": appointment_id,
                                                  "crew_id": new_crew_id, "is_primary": True}).execute()
 
     after = _one(db, "sched_appointment", appointment_id)
     new_date = (_dt(after.get("scheduled_start")).date().isoformat() if _dt(after.get("scheduled_start")) else old_date)
 
     db.table("sched_audit_event").insert({
-        "org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "appointment",
+        "org_id": _org(), "actor_id": str(user.get("id") or ""), "entity_type": "appointment",
         "entity_id": appointment_id, "action": "MOVE" if (patch.date or patch.crew_id) else "STATUS",
         "before_json": {"crew_id": old_crew_id, "date": old_date, "status": appt.get("status")},
         "after_json": {"crew_id": new_crew_id, "date": new_date, "status": after.get("status")},
@@ -456,7 +488,7 @@ BULK_OPS = {"REASSIGN", "MOVE_TO_DATE", "SHIFT_DAYS", "MOVE", "SET_STATUS", "ADD
 
 
 def _primary_crew(db, appointment_id):
-    r = (db.table("sched_assignment").select("*").eq("org_id", ORG)
+    r = (db.table("sched_assignment").select("*").eq("org_id", _org())
          .eq("appointment_id", appointment_id).eq("is_primary", True).limit(1).execute().data or [None])[0]
     return r
 
@@ -481,7 +513,7 @@ def _tray_row(job, appt, customers, properties, tags_by_job, tag_map, today):
 
 
 @router.get("/tray")
-async def get_tray(user: dict = Depends(require_user)) -> dict:
+async def get_tray(user: dict = Depends(require_sched_user)) -> dict:
     db = get_supabase()
     today = date.today()
 
@@ -492,7 +524,7 @@ async def get_tray(user: dict = Depends(require_user)) -> dict:
     # instead of eight. This is the tray's dominant latency; it is why opening the
     # tray felt like it was "updating" for a while.
     def _all(table: str):
-        return lambda: _rows(db.table(table).select("*").eq("org_id", ORG).execute())
+        return lambda: _rows(db.table(table).select("*").eq("org_id", _org()).execute())
 
     (jobs, appts, customer_rows, property_rows, tag_rows,
      tag_links, crew_rows, assignment_rows) = await asyncio.gather(*(
@@ -585,12 +617,12 @@ def _apply_op_single(db, aid, op, payload, actor, batch_id):
         if tgt_date != cur_date and sdt:
             edt = _dt(appt.get("scheduled_end")); nd = date.fromisoformat(tgt_date)
             st = naive_dt(nd, sdt.strftime("%H:%M")); en = naive_dt(nd, edt.strftime("%H:%M")) if edt else st
-            db.table("sched_appointment").update({"scheduled_start": st.isoformat(), "scheduled_end": en.isoformat()}).eq("id", aid).execute()
+            db.table("sched_appointment").update({"scheduled_start": st.isoformat(), "scheduled_end": en.isoformat()}).eq("org_id", _org()).eq("id", aid).execute()
         if tgt_crew and tgt_crew != cur_crew:
             if prim:
-                db.table("sched_assignment").update({"crew_id": tgt_crew}).eq("id", prim["id"]).execute()
+                db.table("sched_assignment").update({"crew_id": tgt_crew}).eq("org_id", _org()).eq("id", prim["id"]).execute()
             else:
-                db.table("sched_assignment").insert({"org_id": ORG, "appointment_id": aid, "crew_id": tgt_crew, "is_primary": True}).execute()
+                db.table("sched_assignment").insert({"org_id": _org(), "appointment_id": aid, "crew_id": tgt_crew, "is_primary": True}).execute()
         after = {"crew_id": tgt_crew, "date": tgt_date, "status": appt.get("status")}
         for cd in ((cur_crew, cur_date), (tgt_crew, tgt_date)):
             if cd[0] and cd[1]:
@@ -598,29 +630,29 @@ def _apply_op_single(db, aid, op, payload, actor, batch_id):
     elif op == "SET_STATUS":
         stt = payload.get("status")
         if stt in VALID_STATUS:
-            db.table("sched_appointment").update({"status": stt}).eq("id", aid).execute()
+            db.table("sched_appointment").update({"status": stt}).eq("org_id", _org()).eq("id", aid).execute()
             after["status"] = stt
         if cur_crew and cur_date:
             touched.add((cur_crew, cur_date))
     elif op == "UNASSIGN":
         if prim:
-            db.table("sched_assignment").delete().eq("id", prim["id"]).execute()
-        db.table("sched_appointment").update({"status": "UNASSIGNED"}).eq("id", aid).execute()
+            db.table("sched_assignment").delete().eq("org_id", _org()).eq("id", prim["id"]).execute()
+        db.table("sched_appointment").update({"status": "UNASSIGNED"}).eq("org_id", _org()).eq("id", aid).execute()
         after = {"crew_id": None, "date": cur_date, "status": "UNASSIGNED"}
         if cur_crew and cur_date:
             touched.add((cur_crew, cur_date))
     elif op == "WAIVE_TRIP":
-        db.table("sched_appointment").update({"waive_trip_fee": True}).eq("id", aid).execute()
+        db.table("sched_appointment").update({"waive_trip_fee": True}).eq("org_id", _org()).eq("id", aid).execute()
     elif op == "ADD_TAG":
         tag_id = payload.get("tag_id")
         if tag_id:
             try:
-                db.table("sched_job_tag_link").upsert({"org_id": ORG, "job_id": appt["job_id"], "tag_id": tag_id}).execute()
+                db.table("sched_job_tag_link").upsert({"org_id": _org(), "job_id": appt["job_id"], "tag_id": tag_id}).execute()
             except Exception:
                 pass
 
     db.table("sched_audit_event").insert({
-        "org_id": ORG, "actor_id": str(actor or ""), "entity_type": "appointment", "entity_id": aid,
+        "org_id": _org(), "actor_id": str(actor or ""), "entity_type": "appointment", "entity_id": aid,
         "action": "BULK_" + op, "before_json": before, "after_json": after, "request_id": batch_id,
     }).execute()
     return touched
@@ -632,17 +664,17 @@ def _affected_multi(db, touched, appt_ids):
         crew = _one(db, "sched_crew", cid)
         if crew:
             day_loads[f"{cid}:{ds}"] = _day_load_dict(db, crew, ds)
-    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG).in_("id", list(appt_ids)).execute()) if appt_ids else []
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", _org()).in_("id", list(appt_ids)).execute()) if appt_ids else []
     ac = {}
     if appt_ids:
-        for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).in_("appointment_id", list(appt_ids)).execute()):
+        for a in _rows(db.table("sched_assignment").select("*").eq("org_id", _org()).in_("appointment_id", list(appt_ids)).execute()):
             if a.get("is_primary", True):
                 ac[a["appointment_id"]] = a["crew_id"]
     return {"appointments": appts, "day_loads": day_loads, "appointment_crew": ac}
 
 
 @router.post("/bulk")
-async def bulk(body: BulkOp, user: dict = Depends(require_user)) -> dict:
+async def bulk(body: BulkOp, user: dict = Depends(require_sched_user)) -> dict:
     if body.op not in BULK_OPS:
         raise HTTPException(status_code=400, detail=f"Unknown op '{body.op}'.")
     db = get_supabase()
@@ -688,9 +720,9 @@ class BulkUndo(BaseModel):
 
 
 @router.post("/bulk/undo")
-async def bulk_undo(body: BulkUndo, user: dict = Depends(require_user)) -> dict:
+async def bulk_undo(body: BulkUndo, user: dict = Depends(require_sched_user)) -> dict:
     db = get_supabase()
-    events = _rows(db.table("sched_audit_event").select("*").eq("org_id", ORG).eq("request_id", body.batch_id).execute())
+    events = _rows(db.table("sched_audit_event").select("*").eq("org_id", _org()).eq("request_id", body.batch_id).execute())
     if not events:
         raise HTTPException(status_code=404, detail="Nothing to undo.")
     undo_batch = str(uuid.uuid4())
@@ -704,22 +736,22 @@ async def bulk_undo(body: BulkUndo, user: dict = Depends(require_user)) -> dict:
         if before.get("date") and sdt and before["date"] != sdt.date().isoformat():
             edt = _dt(appt.get("scheduled_end")); nd = date.fromisoformat(before["date"])
             st = naive_dt(nd, sdt.strftime("%H:%M")); en = naive_dt(nd, edt.strftime("%H:%M")) if edt else st
-            db.table("sched_appointment").update({"scheduled_start": st.isoformat(), "scheduled_end": en.isoformat()}).eq("id", aid).execute()
+            db.table("sched_appointment").update({"scheduled_start": st.isoformat(), "scheduled_end": en.isoformat()}).eq("org_id", _org()).eq("id", aid).execute()
         if before.get("status"):
-            db.table("sched_appointment").update({"status": before["status"]}).eq("id", aid).execute()
+            db.table("sched_appointment").update({"status": before["status"]}).eq("org_id", _org()).eq("id", aid).execute()
         bc = before.get("crew_id")
         prim = _primary_crew(db, aid)
         if bc:
             if prim and prim["crew_id"] != bc:
-                db.table("sched_assignment").update({"crew_id": bc}).eq("id", prim["id"]).execute()
+                db.table("sched_assignment").update({"crew_id": bc}).eq("org_id", _org()).eq("id", prim["id"]).execute()
             elif not prim:
-                db.table("sched_assignment").insert({"org_id": ORG, "appointment_id": aid, "crew_id": bc, "is_primary": True}).execute()
+                db.table("sched_assignment").insert({"org_id": _org(), "appointment_id": aid, "crew_id": bc, "is_primary": True}).execute()
             if before.get("date"):
                 touched.add((bc, before["date"]))
         if after.get("crew_id") and after.get("date"):
             touched.add((after["crew_id"], after["date"]))
         ids.add(aid)
-        db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "appointment",
+        db.table("sched_audit_event").insert({"org_id": _org(), "actor_id": str(user.get("id") or ""), "entity_type": "appointment",
                                               "entity_id": aid, "action": "UNDO", "before_json": after, "after_json": before, "request_id": undo_batch}).execute()
     return {"applied": True, "affected": _affected_multi(db, {t for t in touched if t[0] and t[1]}, ids)}
 
@@ -733,7 +765,7 @@ class CreateAppt(BaseModel):
 
 
 @router.post("/appointments")
-async def create_appointment(body: CreateAppt, user: dict = Depends(require_user)) -> dict:
+async def create_appointment(body: CreateAppt, user: dict = Depends(require_sched_user)) -> dict:
     db = get_supabase()
     job = _one(db, "sched_job", body.job_id)
     crew = _one(db, "sched_crew", body.crew_id)
@@ -743,17 +775,17 @@ async def create_appointment(body: CreateAppt, user: dict = Depends(require_user
     start = naive_dt(nd, "07:00"); end = naive_dt(nd, "15:00")
     ps = body.planned_squares if body.planned_squares is not None else _f(job.get("squares"))
     ins = db.table("sched_appointment").insert({
-        "org_id": ORG, "job_id": body.job_id, "sequence": 1, "total_in_series": 1,
+        "org_id": _org(), "job_id": body.job_id, "sequence": 1, "total_in_series": 1,
         "scheduled_start": start.isoformat(), "scheduled_end": end.isoformat(),
         "status": "SCHEDULED", "planned_squares": ps, "waive_trip_fee": False,
     }).execute()
     appt = (ins.data or [None])[0]
     if not appt:
         raise HTTPException(status_code=500, detail="Could not create the appointment.")
-    db.table("sched_assignment").insert({"org_id": ORG, "appointment_id": appt["id"], "crew_id": body.crew_id, "is_primary": True}).execute()
+    db.table("sched_assignment").insert({"org_id": _org(), "appointment_id": appt["id"], "crew_id": body.crew_id, "is_primary": True}).execute()
     if job.get("status") == "SOLD":
-        db.table("sched_job").update({"status": "SCHEDULED"}).eq("id", body.job_id).execute()
-    db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "appointment",
+        db.table("sched_job").update({"status": "SCHEDULED"}).eq("org_id", _org()).eq("id", body.job_id).execute()
+    db.table("sched_audit_event").insert({"org_id": _org(), "actor_id": str(user.get("id") or ""), "entity_type": "appointment",
                                           "entity_id": appt["id"], "action": "CREATE", "before_json": None,
                                           "after_json": {"crew_id": body.crew_id, "date": body.date}, "request_id": body.request_id}).execute()
     return _affected_slice(db, appt, None, (body.crew_id, body.date))
@@ -922,11 +954,11 @@ async def _compute_weather_impact(db, s: date, e: date) -> dict:
     """
     from app.services.scheduling import weather_service as wx
 
-    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG)
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", _org())
                   .gte("scheduled_start", s.isoformat()).lte("scheduled_start", (e + timedelta(days=1)).isoformat()).execute())
-    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute()) if a.get("is_primary", True)}
-    jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("*").eq("org_id", ORG).execute())}
-    props = {p["id"]: p for p in _rows(db.table("sched_property").select("id,lat,lng,line1,city").eq("org_id", ORG).execute())}
+    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", _org()).execute()) if a.get("is_primary", True)}
+    jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("*").eq("org_id", _org()).execute())}
+    props = {p["id"]: p for p in _rows(db.table("sched_property").select("id,lat,lng,line1,city").eq("org_id", _org()).execute())}
 
     # Where each appointment actually is, so the forecast is about that roof.
     loc: dict = {}
@@ -984,7 +1016,7 @@ async def _compute_weather_impact(db, s: date, e: date) -> dict:
 
 
 @router.get("/weather/impact")
-async def weather_impact(start: str, end: str, user: dict = Depends(require_user)) -> dict:
+async def weather_impact(start: str, end: str, user: dict = Depends(require_sched_user)) -> dict:
     """Which scheduled, weather-exposed jobs sit on a high-risk rain day in the
     range — and a proposed dry-day home for each. The apply path is POST /reschedule."""
     db = get_supabase()
@@ -1003,7 +1035,7 @@ class Reschedule(BaseModel):
 
 
 @router.post("/reschedule")
-async def reschedule(body: Reschedule, user: dict = Depends(require_user)) -> dict:
+async def reschedule(body: Reschedule, user: dict = Depends(require_sched_user)) -> dict:
     """Apply a set of explicit per-job moves (the weather plan, or an edited one)
     as one transaction: validate every move, and if any BLOCKs, apply none and
     return the conflicts keyed by appointment id. Undo via POST /bulk/undo."""
@@ -1071,11 +1103,11 @@ def _audit_summary(e: dict, job_number, crew_name: dict) -> str:
 
 
 @router.get("/audit")
-async def audit(limit: int = 50, appointment_id: Optional[str] = None, user: dict = Depends(require_user)) -> dict:
+async def audit(limit: int = 50, appointment_id: Optional[str] = None, user: dict = Depends(require_sched_user)) -> dict:
     """Recent scheduling changes — who moved what, when. Every board mutation
     already writes a sched_audit_event; this surfaces them with plain summaries."""
     db = get_supabase()
-    q = db.table("sched_audit_event").select("*").eq("org_id", ORG).order("created_at", desc=True).limit(min(max(limit, 1), 200))
+    q = db.table("sched_audit_event").select("*").eq("org_id", _org()).order("created_at", desc=True).limit(min(max(limit, 1), 200))
     if appointment_id:
         q = q.eq("entity_id", appointment_id)
     events = _rows(q.execute())
@@ -1083,12 +1115,12 @@ async def audit(limit: int = 50, appointment_id: Optional[str] = None, user: dic
     appt_ids = list({e["entity_id"] for e in events if e.get("entity_type") == "appointment" and e.get("entity_id")})
     job_by_appt = {}
     if appt_ids:
-        appts = _rows(db.table("sched_appointment").select("id,job_id").eq("org_id", ORG).in_("id", appt_ids).execute())
+        appts = _rows(db.table("sched_appointment").select("id,job_id").eq("org_id", _org()).in_("id", appt_ids).execute())
         jmap = {a["id"]: a["job_id"] for a in appts}
         jids = list({v for v in jmap.values() if v})
-        jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("id,job_number").eq("org_id", ORG).in_("id", jids).execute())} if jids else {}
+        jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("id,job_number").eq("org_id", _org()).in_("id", jids).execute())} if jids else {}
         job_by_appt = {aid: jobs.get(jid, {}).get("job_number") for aid, jid in jmap.items()}
-    crew_name = {c["id"]: c["name"] for c in _rows(db.table("sched_crew").select("id,name").eq("org_id", ORG).execute())}
+    crew_name = {c["id"]: c["name"] for c in _rows(db.table("sched_crew").select("id,name").eq("org_id", _org()).execute())}
 
     out = [{
         "id": e["id"], "created_at": e.get("created_at"), "action": e.get("action"),
@@ -1110,12 +1142,12 @@ async def audit(limit: int = 50, appointment_id: Optional[str] = None, user: dic
 # --- E. Throughput flywheel ---------------------------------------------------
 
 def _completed_samples(db, crew_id: str) -> list:
-    asg = _rows(db.table("sched_assignment").select("appointment_id").eq("org_id", ORG)
+    asg = _rows(db.table("sched_assignment").select("appointment_id").eq("org_id", _org())
                 .eq("crew_id", crew_id).eq("is_primary", True).execute())
     ids = [a["appointment_id"] for a in asg]
     if not ids:
         return []
-    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG).in_("id", ids).eq("status", "DONE").execute())
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", _org()).in_("id", ids).eq("status", "DONE").execute())
     samples = []
     for a in appts:
         actual = _f(a.get("actual_squares"))
@@ -1128,11 +1160,11 @@ def _completed_samples(db, crew_id: str) -> list:
 
 
 @router.get("/ai/throughput-review")
-async def throughput_review(user: dict = Depends(require_user)) -> dict:
+async def throughput_review(user: dict = Depends(require_sched_user)) -> dict:
     """The flywheel: from completed jobs' actuals, which crews' configured capacity
     the evidence says should change. Fully deterministic; needs no model."""
     db = get_supabase()
-    crews = _rows(db.table("sched_crew").select("*").eq("org_id", ORG).execute())
+    crews = _rows(db.table("sched_crew").select("*").eq("org_id", _org()).execute())
     suggestions, watching = [], []
     for c in crews:
         v = analyze_crew_throughput(c["id"], c["name"], _f(c.get("squares_per_day")) or 0.0, _completed_samples(db, c["id"]))
@@ -1152,14 +1184,14 @@ class ThroughputApply(BaseModel):
 
 
 @router.post("/ai/throughput-apply")
-async def throughput_apply(body: ThroughputApply, user: dict = Depends(require_user)) -> dict:
+async def throughput_apply(body: ThroughputApply, user: dict = Depends(require_sched_user)) -> dict:
     db = get_supabase()
     crew = _one(db, "sched_crew", body.crew_id)
     if not crew:
         raise HTTPException(status_code=404, detail="Crew not found.")
     before = _f(crew.get("squares_per_day"))
-    db.table("sched_crew").update({"squares_per_day": body.squares_per_day}).eq("id", body.crew_id).execute()
-    db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "crew",
+    db.table("sched_crew").update({"squares_per_day": body.squares_per_day}).eq("org_id", _org()).eq("id", body.crew_id).execute()
+    db.table("sched_audit_event").insert({"org_id": _org(), "actor_id": str(user.get("id") or ""), "entity_type": "crew",
         "entity_id": body.crew_id, "action": "CAPACITY_UPDATE", "before_json": {"squares_per_day": before},
         "after_json": {"squares_per_day": body.squares_per_day}, "request_id": str(uuid.uuid4())}).execute()
     return {"applied": True, "crew_id": body.crew_id, "squares_per_day": body.squares_per_day}
@@ -1181,7 +1213,7 @@ async def _narrate_brief(brief: dict) -> str:
 
 
 @router.get("/ai/brief")
-async def ai_brief(start: str, end: str, narrate: bool = True, user: dict = Depends(require_user)) -> dict:
+async def ai_brief(start: str, end: str, narrate: bool = True, user: dict = Depends(require_sched_user)) -> dict:
     """The 6:30am read: who's over/idle, what still needs placing, what breaks.
     Every fact is engine-computed; the model only turns them into a paragraph and
     degrades to a deterministic one if it's unavailable."""
@@ -1191,7 +1223,7 @@ async def ai_brief(start: str, end: str, narrate: bool = True, user: dict = Depe
     d = s
     while d <= e:
         days.append(d.isoformat()); d += timedelta(days=1)
-    crews = _rows(db.table("sched_crew").select("*").eq("org_id", ORG).execute())
+    crews = _rows(db.table("sched_crew").select("*").eq("org_id", _org()).execute())
 
     overbooked, idle = [], []
     for c in crews:
@@ -1204,12 +1236,12 @@ async def ai_brief(start: str, end: str, narrate: bool = True, user: dict = Depe
             elif load["state"] == "IDLE":
                 idle.append({"crew_id": c["id"], "crew_name": c["name"], "date": ds})
 
-    all_appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG).execute())
+    all_appts = _rows(db.table("sched_appointment").select("*").eq("org_id", _org()).execute())
     scheduled_ids = {a["job_id"] for a in all_appts}
     by_job = defaultdict(list)
     for a in all_appts:
         by_job[a["job_id"]].append(a)
-    jobs = _rows(db.table("sched_job").select("*").eq("org_id", ORG).execute())
+    jobs = _rows(db.table("sched_job").select("*").eq("org_id", _org()).execute())
 
     gaps = [{"job_id": j["id"], "job_number": j.get("job_number"), "label": _label(j.get("job_type")), "best": None}
             for j in jobs if j["id"] not in scheduled_ids and j.get("status") in ("SOLD", "SCHEDULED")]
@@ -1272,11 +1304,11 @@ PLAN_OPS = {"REASSIGN", "MOVE_TO_DATE", "MOVE", "SET_STATUS", "UNASSIGN", "RESCH
 
 
 async def _plan_snapshot(db, s: date, e: date) -> dict:
-    crews = _rows(db.table("sched_crew").select("*").eq("org_id", ORG).execute())
-    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG)
+    crews = _rows(db.table("sched_crew").select("*").eq("org_id", _org()).execute())
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", _org())
                   .gte("scheduled_start", s.isoformat()).lte("scheduled_start", (e + timedelta(days=1)).isoformat()).execute())
-    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute()) if a.get("is_primary", True)}
-    jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("*").eq("org_id", ORG).execute())}
+    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", _org()).execute()) if a.get("is_primary", True)}
+    jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("*").eq("org_id", _org()).execute())}
     crew_name = {c["id"]: c["name"] for c in crews}
     rows = []
     for a in appts:
@@ -1350,7 +1382,7 @@ class PlanReq(BaseModel):
 
 
 @router.post("/ai/plan")
-async def ai_plan(body: PlanReq, user: dict = Depends(require_user)) -> dict:
+async def ai_plan(body: PlanReq, user: dict = Depends(require_sched_user)) -> dict:
     """Compile intent into a dry-run the human approves. NEVER writes — the client
     applies the returned plan through the existing /bulk or /reschedule endpoints."""
     db = get_supabase()
@@ -1466,7 +1498,7 @@ def _signed_photo(db, path: str) -> Optional[str]:
 
 
 @router.get("/projects/search")
-async def dispatch_project_search(q: str = "", user: dict = Depends(require_user)) -> dict:
+async def dispatch_project_search(q: str = "", user: dict = Depends(require_sched_user)) -> dict:
     """The logged-in contractor's projects, for linking a dispatch job to one."""
     db = get_supabase()
     rows = _rows(db.table("projects").select("id,name,address,city,state,status,created_at")
@@ -1523,7 +1555,7 @@ def _fill_blanks(job: dict, measured: dict) -> tuple[dict, dict]:
 
 
 @router.patch("/jobs/{job_id}/link")
-async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(require_user)) -> dict:
+async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(require_sched_user)) -> dict:
     """Attach a job to a roofing project — and fill in its missing measurements.
 
     Linking is the moment the board learns the roof. The latest run's
@@ -1610,13 +1642,13 @@ async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(r
                 "lat": p_lat, "lng": p_lng,
             }
             try:
-                db.table("sched_property").update(addr_patch).eq("id", job["property_id"]).execute()
+                db.table("sched_property").update(addr_patch).eq("org_id", _org()).eq("id", job["property_id"]).execute()
                 relocated = {"to": addr_patch["line1"], "lat": p_lat, "lng": p_lng}
             except Exception as e:
                 logger.info("could not adopt project location on link: %s", e)
 
-    db.table("sched_job").update(update).eq("id", job_id).execute()
-    db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "job",
+    db.table("sched_job").update(update).eq("org_id", _org()).eq("id", job_id).execute()
+    db.table("sched_audit_event").insert({"org_id": _org(), "actor_id": str(user.get("id") or ""), "entity_type": "job",
         "entity_id": job_id, "action": "LINK_PROJECT",
         "before_json": {"project_id": job.get("project_id"),
                         **{k: job.get(k) for k in inherited}},
@@ -1628,7 +1660,7 @@ async def link_job_to_project(job_id: str, body: JobLink, user: dict = Depends(r
 
 
 @router.get("/jobs/{job_id}/project")
-async def get_job_project(job_id: str, user: dict = Depends(require_user)) -> dict:
+async def get_job_project(job_id: str, user: dict = Depends(require_sched_user)) -> dict:
     """The linked project's bundle for the job detail panel: roof tile + stats,
     recent crew photos (signed), and whether a report exists. `linked:false` when
     the job has no project attached yet."""
@@ -1708,7 +1740,7 @@ async def get_job_project(job_id: str, user: dict = Depends(require_user)) -> di
 # ── M7: live per-crew weather (each crew sees the sky at its own job site) ─────
 
 @router.get("/weather/live")
-async def live_weather(start: str, end: str, user: dict = Depends(require_user)) -> dict:
+async def live_weather(start: str, end: str, user: dict = Depends(require_sched_user)) -> dict:
     """Per-crew-day forecast from each crew's job location (Open-Meteo, free).
     Non-blocking companion to the board: the grid renders, this fills in the
     per-cell weather. Also returns a regional headline (centroid of the day's
@@ -1717,11 +1749,11 @@ async def live_weather(start: str, end: str, user: dict = Depends(require_user))
 
     db = get_supabase()
     s = _parse_date(start, "start"); e = _parse_date(end, "end")
-    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", ORG)
+    appts = _rows(db.table("sched_appointment").select("*").eq("org_id", _org())
                   .gte("scheduled_start", s.isoformat()).lte("scheduled_start", (e + timedelta(days=1)).isoformat()).execute())
-    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", ORG).execute()) if a.get("is_primary", True)}
-    jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("id,property_id").eq("org_id", ORG).execute())}
-    props = {p["id"]: p for p in _rows(db.table("sched_property").select("id,lat,lng").eq("org_id", ORG).execute())}
+    appt_crew = {a["appointment_id"]: a["crew_id"] for a in _rows(db.table("sched_assignment").select("*").eq("org_id", _org()).execute()) if a.get("is_primary", True)}
+    jobs = {j["id"]: j for j in _rows(db.table("sched_job").select("id,property_id").eq("org_id", _org()).execute())}
+    props = {p["id"]: p for p in _rows(db.table("sched_property").select("id,lat,lng").eq("org_id", _org()).execute())}
 
     # Each crew's PRIMARY (earliest) located stop per date.
     crew_loc: dict[tuple, tuple] = {}
@@ -1776,12 +1808,12 @@ def _generate_shifts(db, crew_id: str, weekdays: list, start_t: str, end_t: str,
     0=Mon..6=Sun. Idempotent-ish: clears this crew's shifts in the horizon first."""
     today = date.today()
     horizon = today + timedelta(days=max(1, weeks) * 7)
-    db.table("sched_shift").delete().eq("org_id", ORG).eq("crew_id", crew_id).gte("date", today.isoformat()).execute()
+    db.table("sched_shift").delete().eq("org_id", _org()).eq("crew_id", crew_id).gte("date", today.isoformat()).execute()
     rows = []
     d = today
     while d < horizon:
         if d.weekday() in weekdays:
-            rows.append({"org_id": ORG, "crew_id": crew_id, "date": d.isoformat(),
+            rows.append({"org_id": _org(), "crew_id": crew_id, "date": d.isoformat(),
                          "start_time": start_t, "end_time": end_t, "type": "REGULAR"})
         d += timedelta(days=1)
     for i in range(0, len(rows), 200):
@@ -1800,7 +1832,7 @@ def _crew_shift_times(db, crew_id: str) -> tuple[str, str]:
     """Reuse this crew's usual hours so an added day matches the rest."""
     try:
         r = _rows(db.table("sched_shift").select("start_time,end_time")
-                  .eq("org_id", ORG).eq("crew_id", crew_id)
+                  .eq("org_id", _org()).eq("crew_id", crew_id)
                   .order("date", desc=True).limit(1).execute())
         if r:
             return (r[0].get("start_time") or DEFAULT_SHIFT[0],
@@ -1811,7 +1843,7 @@ def _crew_shift_times(db, crew_id: str) -> tuple[str, str]:
 
 
 @router.put("/crews/{crew_id}/shifts/{day}")
-async def add_shift(crew_id: str, day: str, user: dict = Depends(require_user)) -> dict:
+async def add_shift(crew_id: str, day: str, user: dict = Depends(require_sched_user)) -> dict:
     """Give this crew a working day. Idempotent — pressing + twice is harmless."""
     db = get_supabase()
     if not _one(db, "sched_crew", crew_id):
@@ -1821,18 +1853,18 @@ async def add_shift(crew_id: str, day: str, user: dict = Depends(require_user)) 
     except ValueError:
         raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD.")
     existing = _rows(db.table("sched_shift").select("id")
-                     .eq("org_id", ORG).eq("crew_id", crew_id).eq("date", day).execute())
+                     .eq("org_id", _org()).eq("crew_id", crew_id).eq("date", day).execute())
     if existing:
         return {"ok": True, "created": False, "date": day}
     start_t, end_t = _crew_shift_times(db, crew_id)
     db.table("sched_shift").insert({
-        "org_id": ORG, "crew_id": crew_id, "date": day,
+        "org_id": _org(), "crew_id": crew_id, "date": day,
         "start_time": start_t, "end_time": end_t, "type": "REGULAR"}).execute()
     return {"ok": True, "created": True, "date": day, "start_time": start_t, "end_time": end_t}
 
 
 @router.delete("/crews/{crew_id}/shifts/{day}")
-async def remove_shift(crew_id: str, day: str, user: dict = Depends(require_user)) -> dict:
+async def remove_shift(crew_id: str, day: str, user: dict = Depends(require_sched_user)) -> dict:
     """Take a working day away — refused while work is still booked on it, since
     removing the shift would leave the job assigned to a crew that isn't working."""
     db = get_supabase()
@@ -1840,7 +1872,7 @@ async def remove_shift(crew_id: str, day: str, user: dict = Depends(require_user
         raise HTTPException(status_code=404, detail="Crew not found.")
     appt_ids = [a["appointment_id"] for a in
                 _rows(db.table("sched_assignment").select("appointment_id")
-                      .eq("org_id", ORG).eq("crew_id", crew_id).execute())
+                      .eq("org_id", _org()).eq("crew_id", crew_id).execute())
                 if a.get("appointment_id")]
     if appt_ids:
         booked = [r for r in _rows(db.table("sched_appointment")
@@ -1852,7 +1884,7 @@ async def remove_shift(crew_id: str, day: str, user: dict = Depends(require_user
             raise HTTPException(status_code=409, detail=(
                 f"{n} job{'' if n == 1 else 's'} still booked on {day}. "
                 f"Move {'it' if n == 1 else 'them'} to another day or crew first."))
-    db.table("sched_shift").delete().eq("org_id", ORG).eq("crew_id", crew_id).eq("date", day).execute()
+    db.table("sched_shift").delete().eq("org_id", _org()).eq("crew_id", crew_id).eq("date", day).execute()
     return {"ok": True, "date": day}
 
 
@@ -1871,10 +1903,10 @@ class CrewInput(BaseModel):
 
 
 @router.post("/crews")
-async def create_crew(body: CrewInput, user: dict = Depends(require_user)) -> dict:
+async def create_crew(body: CrewInput, user: dict = Depends(require_sched_user)) -> dict:
     db = get_supabase()
     ins = db.table("sched_crew").insert({
-        "org_id": ORG, "name": body.name, "business_unit_id": body.business_unit_id,
+        "org_id": _org(), "name": body.name, "business_unit_id": body.business_unit_id,
         "squares_per_day": body.squares_per_day, "tear_off_squares_per_day": body.tear_off_squares_per_day,
         "max_pitch": body.max_pitch, "max_stories": body.max_stories, "lead_id": body.lead_id or None,
     }).execute()
@@ -1897,19 +1929,19 @@ class CrewPatch(BaseModel):
 
 
 @router.patch("/crews/{crew_id}")
-async def update_crew(crew_id: str, body: CrewPatch, user: dict = Depends(require_user)) -> dict:
+async def update_crew(crew_id: str, body: CrewPatch, user: dict = Depends(require_sched_user)) -> dict:
     db = get_supabase()
     if not _one(db, "sched_crew", crew_id):
         raise HTTPException(status_code=404, detail="Crew not found.")
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if not patch:
         raise HTTPException(status_code=422, detail="Nothing to update.")
-    db.table("sched_crew").update(patch).eq("org_id", ORG).eq("id", crew_id).execute()
+    db.table("sched_crew").update(patch).eq("org_id", _org()).eq("id", crew_id).execute()
     return _one(db, "sched_crew", crew_id)
 
 
 @router.delete("/crews/{crew_id}")
-async def delete_crew(crew_id: str, user: dict = Depends(require_user)) -> dict:
+async def delete_crew(crew_id: str, user: dict = Depends(require_sched_user)) -> dict:
     """Retire a crew.
 
     The old guard refused whenever ANY sched_assignment row existed for the
@@ -1931,7 +1963,7 @@ async def delete_crew(crew_id: str, user: dict = Depends(require_user)) -> dict:
 
     appt_ids = [a["appointment_id"] for a in
                 _rows(db.table("sched_assignment").select("appointment_id")
-                      .eq("org_id", ORG).eq("crew_id", crew_id).execute())
+                      .eq("org_id", _org()).eq("crew_id", crew_id).execute())
                 if a.get("appointment_id")]
 
     upcoming: list[dict] = []
@@ -1969,16 +2001,16 @@ async def delete_crew(crew_id: str, user: dict = Depends(require_user)) -> dict:
 
     # Scheduling scaffolding is the crew's own and goes either way.
     for t in ("sched_shift", "sched_non_job_event", "sched_crew_skill", "sched_crew_membership"):
-        db.table(t).delete().eq("org_id", ORG).eq("crew_id", crew_id).execute()
+        db.table(t).delete().eq("org_id", _org()).eq("crew_id", crew_id).execute()
 
     archived = finished > 0
     if archived:
-        db.table("sched_crew").update({"is_active": False}).eq("org_id", ORG).eq("id", crew_id).execute()
+        db.table("sched_crew").update({"is_active": False}).eq("org_id", _org()).eq("id", crew_id).execute()
     else:
-        db.table("sched_crew").delete().eq("org_id", ORG).eq("id", crew_id).execute()
+        db.table("sched_crew").delete().eq("org_id", _org()).eq("id", crew_id).execute()
 
     db.table("sched_audit_event").insert({
-        "org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "crew",
+        "org_id": _org(), "actor_id": str(user.get("id") or ""), "entity_type": "crew",
         "entity_id": crew_id, "action": "ARCHIVE_CREW" if archived else "DELETE_CREW",
         "before_json": {"name": crew.get("name"), "is_active": crew.get("is_active")},
         "after_json": {"archived": archived, "completed_jobs": finished},
@@ -1993,7 +2025,7 @@ JOB_HISTORY_STATUSES = {"WORKING", "PAUSED", "DONE"}
 
 
 @router.delete("/jobs/{job_id}")
-async def delete_job(job_id: str, user: dict = Depends(require_user)) -> dict:
+async def delete_job(job_id: str, user: dict = Depends(require_sched_user)) -> dict:
     """Delete a job a dispatcher created by mistake (or a demo job).
 
     Until now nothing could remove a job: a quick job typed against the wrong
@@ -2008,14 +2040,14 @@ async def delete_job(job_id: str, user: dict = Depends(require_user)) -> dict:
         raise HTTPException(status_code=404, detail="Job not found.")
 
     appts = _rows(db.table("sched_appointment").select("id,status")
-                  .eq("org_id", ORG).eq("job_id", job_id).execute())
+                  .eq("org_id", _org()).eq("job_id", job_id).execute())
     started = [a for a in appts if (a.get("status") or "").upper() in JOB_HISTORY_STATUSES]
     if started:
         raise HTTPException(status_code=409, detail=(
             "Work on this job has already started or finished, so it's kept for the record. "
             "Cancel its remaining visits instead."))
 
-    db.table("sched_job").delete().eq("org_id", ORG).eq("id", job_id).execute()
+    db.table("sched_job").delete().eq("org_id", _org()).eq("id", job_id).execute()
 
     removed = {"customer": False, "property": False}
     for col, table, key in (("customer_id", "sched_customer", "customer"),
@@ -2023,13 +2055,13 @@ async def delete_job(job_id: str, user: dict = Depends(require_user)) -> dict:
         ref = job.get(col)
         if not ref:
             continue
-        still_used = _rows(db.table("sched_job").select("id").eq("org_id", ORG).eq(col, ref).limit(1).execute())
+        still_used = _rows(db.table("sched_job").select("id").eq("org_id", _org()).eq(col, ref).limit(1).execute())
         if not still_used:
-            db.table(table).delete().eq("org_id", ORG).eq("id", ref).execute()
+            db.table(table).delete().eq("org_id", _org()).eq("id", ref).execute()
             removed[key] = True
 
     db.table("sched_audit_event").insert({
-        "org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "job",
+        "org_id": _org(), "actor_id": str(user.get("id") or ""), "entity_type": "job",
         "entity_id": job_id, "action": "DELETE_JOB",
         "before_json": {"status": job.get("status"), "job_type": job.get("job_type"),
                         "project_id": job.get("project_id"), "appointments": len(appts)},
@@ -2048,16 +2080,16 @@ class TimeOffInput(BaseModel):
 
 
 @router.get("/timeoff")
-async def list_timeoff(crew_id: Optional[str] = None, user: dict = Depends(require_user)) -> dict:
+async def list_timeoff(crew_id: Optional[str] = None, user: dict = Depends(require_sched_user)) -> dict:
     db = get_supabase()
-    q = db.table("sched_non_job_event").select("*").eq("org_id", ORG)
+    q = db.table("sched_non_job_event").select("*").eq("org_id", _org())
     if crew_id:
         q = q.eq("crew_id", crew_id)
     return {"events": _rows(q.order("start_at", desc=True).limit(200).execute())}
 
 
 @router.post("/timeoff")
-async def add_timeoff(body: TimeOffInput, user: dict = Depends(require_user)) -> dict:
+async def add_timeoff(body: TimeOffInput, user: dict = Depends(require_sched_user)) -> dict:
     db = get_supabase()
     if not _one(db, "sched_crew", body.crew_id):
         raise HTTPException(status_code=404, detail="Crew not found.")
@@ -2065,7 +2097,7 @@ async def add_timeoff(body: TimeOffInput, user: dict = Depends(require_user)) ->
     if ed < sd:
         raise HTTPException(status_code=422, detail="End date is before start date.")
     ins = db.table("sched_non_job_event").insert({
-        "org_id": ORG, "crew_id": body.crew_id, "title": body.title,
+        "org_id": _org(), "crew_id": body.crew_id, "title": body.title,
         "start_at": naive_dt(sd, "00:00").isoformat(), "end_at": naive_dt(ed, "23:59").isoformat(),
         "blocks_capacity": body.blocks_capacity,
     }).execute()
@@ -2073,9 +2105,9 @@ async def add_timeoff(body: TimeOffInput, user: dict = Depends(require_user)) ->
 
 
 @router.delete("/timeoff/{event_id}")
-async def delete_timeoff(event_id: str, user: dict = Depends(require_user)) -> dict:
+async def delete_timeoff(event_id: str, user: dict = Depends(require_sched_user)) -> dict:
     db = get_supabase()
-    db.table("sched_non_job_event").delete().eq("org_id", ORG).eq("id", event_id).execute()
+    db.table("sched_non_job_event").delete().eq("org_id", _org()).eq("id", event_id).execute()
     return {"ok": True}
 
 
@@ -2125,7 +2157,7 @@ def _service_area_center(db) -> Optional[tuple]:
     """Median lat/lng of the org's geocoded properties, or None with no history.
     Median, not mean, so one stray out-of-state job can't drag the centre."""
     try:
-        rows = _rows(db.table("sched_property").select("lat,lng").eq("org_id", ORG).execute())
+        rows = _rows(db.table("sched_property").select("lat,lng").eq("org_id", _org()).execute())
     except Exception:
         return None
     pts = [(_f(r.get("lat")), _f(r.get("lng"))) for r in rows]
@@ -2137,7 +2169,7 @@ def _service_area_center(db) -> Optional[tuple]:
 
 
 @router.post("/jobs/quick")
-async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -> dict:
+async def create_quick_job(body: QuickJob, user: dict = Depends(require_sched_user)) -> dict:
     """Send a crew to an address without building a project first.
 
     Until now the only way a job could reach the board was Project → "Add to
@@ -2156,7 +2188,7 @@ async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -
         raise HTTPException(status_code=422, detail="An address is required to send a crew somewhere.")
 
     db = get_supabase()
-    bu = _rows(db.table("sched_business_unit").select("id").eq("org_id", ORG).order("sort_order").limit(1).execute())
+    bu = _rows(db.table("sched_business_unit").select("id").eq("org_id", _org()).order("sort_order").limit(1).execute())
     if not bu:
         raise HTTPException(status_code=409, detail="No business unit is configured for scheduling yet.")
 
@@ -2194,18 +2226,18 @@ async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -
     full = (body.customer_name or "").strip()
     first, _, last = full.partition(" ") if full else ("Customer", "", "")
     cust = (db.table("sched_customer").insert({
-        "org_id": ORG, "first_name": first or "Customer", "last_name": last or "",
+        "org_id": _org(), "first_name": first or "Customer", "last_name": last or "",
         "phone": body.phone,
     }).execute().data or [None])[0]
     prop = (db.table("sched_property").insert({
-        "org_id": ORG, "line1": line1 or addr, "city": city, "state": state,
+        "org_id": _org(), "line1": line1 or addr, "city": city, "state": state,
         "postal_code": postal, "lat": lat, "lng": lng,
     }).execute().data or [None])[0]
     if not cust or not prop:
         raise HTTPException(status_code=500, detail="Could not stage the job.")
 
     job = (db.table("sched_job").insert({
-        "org_id": ORG, "business_unit_id": bu[0]["id"], "customer_id": cust["id"],
+        "org_id": _org(), "business_unit_id": bu[0]["id"], "customer_id": cust["id"],
         "property_id": prop["id"], "project_id": None,
         "job_type": body.job_type if body.job_type in VALID_JOB_TYPES else "REROOF",
         "status": "SOLD",
@@ -2215,7 +2247,7 @@ async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -
     if not job:
         raise HTTPException(status_code=500, detail="Could not create the job.")
 
-    db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""),
+    db.table("sched_audit_event").insert({"org_id": _org(), "actor_id": str(user.get("id") or ""),
         "entity_type": "job", "entity_id": job["id"], "action": "CREATE_QUICK", "before_json": None,
         "after_json": {"address": line1, "geocoded": lat is not None},
         "request_id": str(uuid.uuid4())}).execute()
@@ -2239,7 +2271,7 @@ async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -
 
 
 @router.post("/from-project")
-async def create_job_from_project(body: ProjectToDispatch, user: dict = Depends(require_user)) -> dict:
+async def create_job_from_project(body: ProjectToDispatch, user: dict = Depends(require_sched_user)) -> dict:
     """Stage a project onto the dispatch board: creates a linked sched_job (+ its
     customer/property) so it lands in the tray, ready to assign to a crew. Idempotent
     per project. Reuses the project's address/customer/squares so nothing is retyped."""
@@ -2249,7 +2281,7 @@ async def create_job_from_project(body: ProjectToDispatch, user: dict = Depends(
         raise HTTPException(status_code=404, detail="Project not found.")
     p = pr[0]
 
-    existing = _rows(db.table("sched_job").select("id").eq("org_id", ORG).eq("project_id", body.project_id).limit(1).execute())
+    existing = _rows(db.table("sched_job").select("id").eq("org_id", _org()).eq("project_id", body.project_id).limit(1).execute())
     if existing:
         return {"created": False, "job_id": existing[0]["id"], "message": "This project is already on the dispatch board."}
 
@@ -2267,18 +2299,18 @@ async def create_job_from_project(body: ProjectToDispatch, user: dict = Depends(
     if lat is None or lng is None:
         raise HTTPException(status_code=422, detail="This project has no location yet — add an address before scheduling it.")
 
-    bu = _rows(db.table("sched_business_unit").select("id").eq("org_id", ORG).order("sort_order").limit(1).execute())
+    bu = _rows(db.table("sched_business_unit").select("id").eq("org_id", _org()).order("sort_order").limit(1).execute())
     if not bu:
         raise HTTPException(status_code=409, detail="No business unit is configured for scheduling yet.")
 
     full = (p.get("customer_name") or "").strip()
     first, _, last = full.partition(" ") if full else ((p.get("name") or "Customer"), "", "")
     cust = (db.table("sched_customer").insert({
-        "org_id": ORG, "first_name": first or "Customer", "last_name": last or "",
+        "org_id": _org(), "first_name": first or "Customer", "last_name": last or "",
         "phone": p.get("customer_phone"), "email": p.get("customer_email"),
     }).execute().data or [None])[0]
     prop = (db.table("sched_property").insert({
-        "org_id": ORG, "line1": p.get("address") or p.get("name") or "Address TBD",
+        "org_id": _org(), "line1": p.get("address") or p.get("name") or "Address TBD",
         "city": p.get("city") or "", "state": p.get("state") or "", "postal_code": p.get("zip_code") or "",
         "lat": lat, "lng": lng,
     }).execute().data or [None])[0]
@@ -2287,7 +2319,7 @@ async def create_job_from_project(body: ProjectToDispatch, user: dict = Depends(
 
     run = _latest_run(db, body.project_id)
     job = (db.table("sched_job").insert({
-        "org_id": ORG, "business_unit_id": bu[0]["id"], "customer_id": cust["id"], "property_id": prop["id"],
+        "org_id": _org(), "business_unit_id": bu[0]["id"], "customer_id": cust["id"], "property_id": prop["id"],
         "project_id": body.project_id,
         "job_type": body.job_type if body.job_type in VALID_JOB_TYPES else "REROOF",
         "status": "SOLD", "priority": body.priority if body.priority in ("ROUTINE", "HIGH", "URGENT") else "ROUTINE",
@@ -2296,7 +2328,7 @@ async def create_job_from_project(body: ProjectToDispatch, user: dict = Depends(
     if not job:
         raise HTTPException(status_code=500, detail="Could not create the job.")
 
-    db.table("sched_audit_event").insert({"org_id": ORG, "actor_id": str(user.get("id") or ""), "entity_type": "job",
+    db.table("sched_audit_event").insert({"org_id": _org(), "actor_id": str(user.get("id") or ""), "entity_type": "job",
         "entity_id": job["id"], "action": "CREATE_FROM_PROJECT", "before_json": None,
         "after_json": {"project_id": body.project_id}, "request_id": str(uuid.uuid4())}).execute()
     return {"created": True, "job_id": job["id"], "message": "Added to the dispatch board — open the tray to schedule it."}
