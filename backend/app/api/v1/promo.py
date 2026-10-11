@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -29,6 +31,39 @@ ops_router = APIRouter()
 
 CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9-]{2,31}$")
 DEFAULT_UNREDEEMED_DAYS = 60
+
+# Guessing defence. Company names are public, so a bare code like FORTITUDE is
+# guessable by anyone who knows who was emailed. Codes get a random suffix
+# (FORTITUDE-K7Q2M) and failed attempts are limited per account.
+SUFFIX_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"      # no 0/O/1/I/L
+MAX_FAILED_REDEEMS = 8
+FAILED_WINDOW_S = 3600.0
+_failed_redeems: dict[str, list[float]] = {}
+
+# The lock runs on every feature request. Its answer is kept for a few seconds
+# per account instead of costing a database read (and, in shadow mode, a log
+# write) on each call. Redeeming clears the account's entry immediately.
+ACCESS_TTL_S = 20.0
+_access_cache: dict[str, tuple[float, bool, Optional[dict]]] = {}
+
+
+def invalidate_access(uid) -> None:
+    _access_cache.pop(str(uid), None)
+
+
+def _failures(uid) -> list[float]:
+    now = time.monotonic()
+    recent = [t for t in _failed_redeems.get(str(uid), []) if now - t < FAILED_WINDOW_S]
+    _failed_redeems[str(uid)] = recent
+    return recent
+
+
+def _fail(uid, status: int, detail: str):
+    """Count a failed redeem against the account, then refuse."""
+    _failures(uid).append(time.monotonic())
+    if len(_failed_redeems) > 20000:
+        _failed_redeems.clear()
+    raise HTTPException(status_code=status, detail=detail)
 
 
 def normalize_code(raw: str) -> str:
@@ -70,20 +105,28 @@ async def require_app_access(
     except HTTPException:
         return                       # the endpoint's own auth answers this one
     from app.services import entitlement
+    uid = str(user["id"])
+    hit = _access_cache.get(uid)
+    if hit and time.monotonic() - hit[0] < ACCESS_TTL_S:
+        if hit[1]:
+            return
+        raise HTTPException(status_code=402, detail=hit[2])
     db = get_supabase()
     try:
-        decision = entitlement.check(db, user["id"], "access_app")
+        decision = entitlement.check(db, uid, "access_app")
     except Exception as e:
         # The lock must never be what takes the app down.
-        logger.warning("access check failed for %s, allowing: %s", user.get("id"), e)
+        logger.warning("access check failed for %s, allowing: %s", uid, e)
         return
+    detail = None
     if not decision.allowed:
-        sub = entitlement.load_subscription(db, user["id"])
-        raise HTTPException(status_code=402, detail={
-            "error": "access_required",
-            "reason": decision.reason,
-            "promo": promo_state(sub),
-        })
+        sub = entitlement.load_subscription(db, uid)
+        detail = {"error": "access_required", "reason": decision.reason, "promo": promo_state(sub)}
+    if len(_access_cache) > 5000:
+        _access_cache.clear()
+    _access_cache[uid] = (time.monotonic(), decision.allowed, detail)
+    if detail is not None:
+        raise HTTPException(status_code=402, detail=detail)
 
 
 # ── Redeeming ─────────────────────────────────────────────────────────────
@@ -99,23 +142,25 @@ async def redeem(body: RedeemRequest, user: dict = Depends(require_user)) -> dic
     Claimed with a conditional update (only while redeemed_by is still empty),
     so if two people race for one code exactly one of them gets it.
     """
+    uid = user["id"]
+    if len(_failures(uid)) >= MAX_FAILED_REDEEMS:
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again in an hour.")
     code = normalize_code(body.code)
     if not CODE_RE.match(code):
-        raise HTTPException(status_code=400, detail="That doesn't look like a valid code.")
+        _fail(uid, 400, "That doesn't look like a valid code.")
     db = get_supabase()
-    uid = user["id"]
 
     rows = db.table("promo_codes").select("*").eq("code", code).limit(1).execute().data or []
     if not rows:
-        raise HTTPException(status_code=404, detail="That code wasn't found. Check the spelling and try again.")
+        _fail(uid, 404, "That code wasn't found. Check the spelling and try again.")
     pc = rows[0]
     if pc.get("redeemed_by"):
         if str(pc["redeemed_by"]) == str(uid):
             raise HTTPException(status_code=409, detail="You've already redeemed this code.")
-        raise HTTPException(status_code=409, detail="This code has already been used.")
+        _fail(uid, 409, "This code has already been used.")
     exp = _parse(pc.get("expires_at"))
     if exp is not None and exp <= _now():
-        raise HTTPException(status_code=410, detail="This code has expired.")
+        _fail(uid, 410, "This code has expired.")
 
     sub_rows = (db.table("subscriptions").select("*").eq("user_id", uid).limit(1)
                 .execute().data) or []
@@ -127,13 +172,12 @@ async def redeem(body: RedeemRequest, user: dict = Depends(require_user)) -> dic
     claimed = (db.table("promo_codes").update({"redeemed_by": uid, "redeemed_at": now.isoformat()})
                .eq("id", pc["id"]).is_("redeemed_by", "null").execute().data)
     if not claimed:
-        raise HTTPException(status_code=409, detail="This code has already been used.")
+        _fail(uid, 409, "This code has already been used.")
 
     reports = int(pc.get("free_reports") or 0)
     days = int(pc.get("access_days") or 0)
     until = now + timedelta(days=days)
-    db.table("subscriptions").upsert({
-        "user_id": uid,
+    fields = {
         "promo_code": code,
         "promo_reports_left": reports,
         "promo_reports_total": reports,
@@ -141,7 +185,29 @@ async def redeem(body: RedeemRequest, user: dict = Depends(require_user)) -> dic
         "founding_member": True,
         "founder_since": now.isoformat(),
         "updated_at": "now()",
-    }, on_conflict="user_id").execute()
+    }
+    # Applied only if the account has no promo yet, in one conditional write, so
+    # two codes entered at once on one account cannot both land. If anything
+    # fails after the code was claimed, the claim is released: a code must never
+    # be burned without giving the account what it promised.
+    try:
+        if sub_rows:
+            applied = (db.table("subscriptions").update(fields).eq("user_id", uid)
+                       .is_("promo_access_until", "null").execute().data)
+        else:
+            applied = db.table("subscriptions").insert({"user_id": uid, **fields}).execute().data
+    except Exception as e:
+        logger.warning("promo apply failed for %s: %s", uid, e)
+        applied = None
+    if not applied:
+        try:
+            db.table("promo_codes").update({"redeemed_by": None, "redeemed_at": None}) \
+                .eq("id", pc["id"]).eq("redeemed_by", uid).execute()
+        except Exception as e:
+            logger.error("promo code %s claimed by %s but not released: %s", code, uid, e)
+        raise HTTPException(status_code=409,
+                            detail="We couldn't apply this code to your account. Please try again.")
+    invalidate_access(uid)
 
     _send_welcome(db, uid, user.get("email") or "", pc.get("company"), reports, days, until)
     return {"redeemed": True, "code": code, "free_reports": reports, "access_days": days,
@@ -225,12 +291,18 @@ class CreateCode(BaseModel):
 
 @router.post("/admin/codes")
 async def create_code(body: CreateCode, admin: dict = Depends(require_admin)) -> dict:
-    code = normalize_code(body.code)
-    if not CODE_RE.match(code):
-        raise HTTPException(status_code=400, detail="Codes are 3-32 letters, numbers or dashes.")
+    base = re.sub(r"[^A-Z0-9]", "", normalize_code(body.code))[:20]
+    if len(base) < 3:
+        raise HTTPException(status_code=400, detail="Use at least 3 letters or numbers for the name.")
     db = get_supabase()
-    if db.table("promo_codes").select("id").eq("code", code).limit(1).execute().data:
-        raise HTTPException(status_code=409, detail="That code already exists.")
+    code = ""
+    for _ in range(8):
+        cand = f"{base}-" + "".join(secrets.choice(SUFFIX_ALPHABET) for _ in range(5))
+        if not db.table("promo_codes").select("id").eq("code", cand).limit(1).execute().data:
+            code = cand
+            break
+    if not code:
+        raise HTTPException(status_code=500, detail="Could not generate a unique code. Try again.")
     row = {"code": code, "company": body.company.strip(), "free_reports": body.free_reports,
            "access_days": body.access_days, "notes": body.notes,
            "expires_at": (_now() + timedelta(days=body.expires_in_days)).isoformat()}

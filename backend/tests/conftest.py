@@ -9,6 +9,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # Ensure backend/ is on sys.path so `import app.*` resolves without installing the package
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -21,3 +23,14 @@ os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 os.environ.setdefault("GEMINI_API_KEY", "test-key")
 os.environ.setdefault("GROQ_API_KEY", "test-key")
+
+
+@pytest.fixture(autouse=True)
+def _reset_promo_and_entitlement_state():
+    """Process-wide throttles and caches must not leak between tests."""
+    from app.api.v1 import promo
+    from app.services import entitlement
+    promo._access_cache.clear()
+    promo._failed_redeems.clear()
+    entitlement._denial_logged.clear()
+    yield

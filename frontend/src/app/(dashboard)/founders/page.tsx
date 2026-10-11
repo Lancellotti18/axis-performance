@@ -48,8 +48,8 @@ export default function FoundersPage() {
     if (!code.trim() || !company.trim()) { toast.error('Enter a code and the company it is for.'); return }
     setBusy(true)
     try {
-      await api.billing.createCode({ code: code.trim(), company: company.trim() })
-      toast.success(`${code.trim().toUpperCase()} created`)
+      const r = await api.billing.createCode({ code: code.trim(), company: company.trim() })
+      toast.success(`${String(r.code)} created — copy its sign-up link from the list`)
       setCode(''); setCompany('')
       await load()
     } catch (e) {
@@ -73,6 +73,7 @@ export default function FoundersPage() {
         <p className="mt-1 text-sm text-[#6b7280]">
           Each code works once: 3 free reports and 7 days of full access from the moment it&apos;s redeemed,
           and that account becomes a founding member. Unused codes expire after 60 days.
+          A random suffix is added to every name (FORTITUDE-K7Q2M) so codes can&apos;t be guessed.
           {!enforcing && <strong className="text-amber-700"> Billing enforcement is OFF — nothing is locked yet.</strong>}
         </p>
       </header>
@@ -90,7 +91,7 @@ export default function FoundersPage() {
         <h2 className="mb-3 text-sm font-semibold text-[#1a1a1a]">New code</h2>
         <div className="flex flex-wrap gap-2">
           <input value={code} onChange={e => setCode(e.target.value.toUpperCase())} maxLength={32}
-            placeholder="CODE (e.g. FORTITUDE)" aria-label="Code"
+            placeholder="NAME (e.g. FORTITUDE)" aria-label="Code name"
             className="w-48 rounded-md border border-[#dededc] bg-[#f8f8f7] px-3 py-2 text-sm uppercase" />
           <input value={company} onChange={e => setCompany(e.target.value)} maxLength={120}
             placeholder="Company it's for" aria-label="Company"

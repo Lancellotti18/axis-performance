@@ -18,6 +18,7 @@ have locked out somebody who should have access?" before anyone is locked out.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Optional
 
 from app.core.plans import Action, Decision, evaluate, enforcing, period_bounds, promo_state
@@ -210,9 +211,25 @@ def consume_trial_report(db, user_id: str) -> None:
         logger.info("could not mark the trial report used for %s: %s", user_id, e)
 
 
+_denial_logged: dict[tuple[str, str], float] = {}
+DENIAL_LOG_EVERY_S = 3600.0
+
+
 def _record_denial(db, user_id: str, action: str, decision: Decision) -> None:
     """Write what enforcement would have done. Best-effort by design: losing a
-    shadow log must never change what the contractor experiences."""
+    shadow log must never change what the contractor experiences.
+
+    At most once an hour per account and action: the app-wide access check can
+    fire on every request, and a log row per request from every non-subscriber
+    would swamp the table with repeats of one fact."""
+    key = (str(user_id), action)
+    now = time.monotonic()
+    last = _denial_logged.get(key)
+    if last is not None and now - last < DENIAL_LOG_EVERY_S:
+        return
+    if len(_denial_logged) > 20000:
+        _denial_logged.clear()
+    _denial_logged[key] = now
     try:
         db.table("entitlement_denials").insert({
             "user_id": user_id,

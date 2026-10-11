@@ -207,3 +207,84 @@ def _fake_user(u):
     async def f(creds):
         return u
     return f
+
+
+# ── Security hardening ────────────────────────────────────────────────────
+
+def test_new_codes_get_an_unguessable_suffix(db):
+    body = promo.CreateCode(code="Fortitude", company="Fortitude Roofing")
+    a = asyncio.run(promo.create_code(body, {"id": "admin"}))
+    b = asyncio.run(promo.create_code(body, {"id": "admin"}))
+    assert a["code"].startswith("FORTITUDE-") and len(a["code"]) == len("FORTITUDE-") + 5
+    assert a["code"] != b["code"]
+    assert promo.CODE_RE.match(a["code"])
+
+
+def test_a_bare_company_name_does_not_redeem_a_suffixed_code(db):
+    asyncio.run(promo.create_code(promo.CreateCode(code="Fortitude", company="F"), {"id": "admin"}))
+    with pytest.raises(HTTPException) as e:
+        _redeem("FORTITUDE", U2)
+    assert e.value.status_code == 404
+
+
+def test_guessing_codes_is_rate_limited_per_account(db):
+    for _ in range(promo.MAX_FAILED_REDEEMS):
+        with pytest.raises(HTTPException) as e:
+            _redeem("NOSUCHCODE", U2)
+        assert e.value.status_code == 404
+    with pytest.raises(HTTPException) as e:
+        _redeem("NOSUCHCODE", U2)
+    assert e.value.status_code == 429
+    _code(db)                                     # even a REAL code is refused while limited
+    with pytest.raises(HTTPException) as e:
+        _redeem("FORTITUDE", U2)
+    assert e.value.status_code == 429
+    assert _redeem("FORTITUDE", U1)["redeemed"]   # another account is unaffected
+
+
+def test_a_code_is_not_burned_if_applying_it_fails(db, monkeypatch):
+    _code(db)
+    orig = _Q.insert
+
+    def failing(self, row):
+        if self.name == "subscriptions":
+            raise RuntimeError("database hiccup")
+        return orig(self, row)
+    monkeypatch.setattr(_Q, "insert", failing)
+    with pytest.raises(HTTPException) as e:
+        _redeem("FORTITUDE", U1)
+    assert e.value.status_code == 409
+    assert db.tables["promo_codes"][0]["redeemed_by"] is None      # released, usable again
+    monkeypatch.setattr(_Q, "insert", orig)
+    assert _redeem("FORTITUDE", U1)["redeemed"]
+
+
+def test_the_lock_reads_the_database_once_per_few_seconds(db, monkeypatch):
+    monkeypatch.setenv("BILLING_ENFORCE", "true")
+    calls = []
+    real = entitlement.check
+    monkeypatch.setattr(entitlement, "check", lambda *a, **k: calls.append(1) or real(*a, **k))
+    monkeypatch.setattr(entitlement, "_record_denial", lambda *a, **k: None)
+    monkeypatch.setattr(promo, "get_current_user", _fake_user(U2))
+    for _ in range(5):
+        with pytest.raises(HTTPException):
+            asyncio.run(promo.require_app_access(_Creds()))
+    assert len(calls) == 1
+
+
+def test_redeeming_unlocks_immediately_not_after_the_cache_expires(db, monkeypatch):
+    monkeypatch.setenv("BILLING_ENFORCE", "true")
+    monkeypatch.setattr(entitlement, "_record_denial", lambda *a, **k: None)
+    monkeypatch.setattr(promo, "get_current_user", _fake_user(U1))
+    with pytest.raises(HTTPException):
+        asyncio.run(promo.require_app_access(_Creds()))     # locked, answer cached
+    _code(db)
+    _redeem("FORTITUDE", U1)
+    asyncio.run(promo.require_app_access(_Creds()))         # now through, no waiting
+
+
+def test_denials_are_logged_once_an_hour_not_per_request(db):
+    d = plans.evaluate(None, "access_app")
+    for _ in range(5):
+        entitlement._record_denial(db, U1["id"], "access_app", d)
+    assert len(db.tables["entitlement_denials"]) == 1
