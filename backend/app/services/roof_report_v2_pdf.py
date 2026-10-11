@@ -1027,8 +1027,13 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
 
     source = run.get("source") or "unknown"
     # An auto-measured roof is still stored under the run's tracing source;
-    # describing it as "contractor traced each facet" was simply untrue.
-    if facets and all(_is_3d(f) for f in facets):
+    # describing it as "contractor traced each facet" was simply untrue. Any
+    # 3D facet at all means the 3D method has to be described, because that is
+    # where most of the numbers came from — with the hand-traced remainder
+    # named rather than glossed over.
+    three_d = [f for f in (facets or []) if _is_3d(f)]
+    mixed = bool(three_d) and len(three_d) != len(facets or [])
+    if three_d:
         source = "solar_3d"
     method_descriptions = {
         "aerial_outline": (
@@ -1078,6 +1083,13 @@ def _section_8_methodology(run: dict, aggregates: dict, styles: dict, calibratio
         ),
     }
     desc = method_descriptions.get(source, "Mixed-source measurement run.")
+    if mixed:
+        hand = len(facets or []) - len(three_d)
+        desc += (f" {hand} facet{'s' if hand != 1 else ''} on this roof had no usable "
+                 f"3D coverage and {'were' if hand != 1 else 'was'} traced by the "
+                 f"contractor over the satellite photo instead; {'their' if hand != 1 else 'its'} "
+                 f"area and lengths come from that trace, and the pitch source is "
+                 f"stated per facet in the table above.")
 
     flow.append(Paragraph(f"<b>Measured by:</b> {_measured_by(run, facets or [])}", styles["body"]))
     flow.append(Paragraph(desc, styles["body"]))
@@ -1338,12 +1350,29 @@ def _is_3d(f: dict) -> bool:
 
 def _measured_by(run: dict, facets: list[dict]) -> str:
     """Who or what produced the geometry, in words a homeowner or adjuster reads.
-    The raw source code ("aerial_outline") was printed as-is before."""
-    if facets and all(_is_3d(f) for f in facets):
-        edited = sum(1 for f in facets if f.get("pitch_source") == "solar_3d_edited")
-        if edited:
-            return f"Google 3D height data (auto-measured; {edited} outline{'s' if edited != 1 else ''} adjusted by contractor)"
-        return "Google 3D height data (auto-measured)"
+    The raw source code ("aerial_outline") was printed as-is before.
+
+    A roof can be measured BOTH ways: most facets from Google's 3D data, one
+    the contractor drew by hand because the height data did not cover it. This
+    used to be all-or-nothing — one hand-drawn facet out of nine and the whole
+    report said "Contractor trace over satellite imagery", while the per-facet
+    table went on crediting Google 3D for the other eight. The report
+    contradicted itself and understated where the numbers came from, which is
+    the one thing this line exists to state.
+    """
+    n = len(facets or [])
+    three_d = [f for f in facets or [] if _is_3d(f)]
+    edited = sum(1 for f in three_d if f.get("pitch_source") == "solar_3d_edited")
+    adjusted = (f"; {edited} outline{'s' if edited != 1 else ''} adjusted by contractor"
+                if edited else "")
+
+    if three_d and len(three_d) == n:
+        return f"Google 3D height data (auto-measured{adjusted})"
+    if three_d:
+        hand = n - len(three_d)
+        return (f"Google 3D height data for {len(three_d)} of {n} facets "
+                f"(auto-measured{adjusted}); {hand} traced by contractor "
+                f"over satellite imagery")
     return {
         "aerial_outline": "Contractor trace over satellite imagery",
         "aerial_solar": "Google Solar planes + contractor trace",
