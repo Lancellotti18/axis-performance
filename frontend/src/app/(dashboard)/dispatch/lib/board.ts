@@ -432,6 +432,7 @@ export async function fetchWeatherImpact(start: string, end: string): Promise<We
 export async function createQuickJob(body: {
   address: string; customer_name?: string; phone?: string
   job_type?: string; priority?: string; squares?: number
+  lat?: number; lng?: number; street?: string; city?: string; state?: string; zip?: string
 }): Promise<{ created: boolean; job_id: string; geocoded: boolean; message: string }> {
   const h = await authHeaders()
   const res = await fetch(`${API_BASE}/api/v1/scheduling/jobs/quick`, {

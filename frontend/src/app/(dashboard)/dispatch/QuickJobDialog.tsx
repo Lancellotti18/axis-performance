@@ -14,6 +14,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { createQuickJob } from './lib/board'
+import { LocationPicker, type LocationSelected } from '@/components/roof-v2/LocationPicker'
 
 const JOB_TYPES = ['REROOF', 'ROOF_REPAIR', 'INSPECTION'] as const
 
@@ -21,7 +22,10 @@ export default function QuickJobDialog({ onClose, onCreated }: {
   onClose: () => void
   onCreated: () => void
 }) {
-  const [address, setAddress] = useState('')
+  // Picked from the same address lookup the roof report uses, so the job lands
+  // at the right coordinates and Google Weather reads the right sky.
+  const [loc, setLoc] = useState<LocationSelected | null>(null)
+  const address = loc?.matched_address ?? ''
   const [customer, setCustomer] = useState('')
   const [phone, setPhone] = useState('')
   const [jobType, setJobType] = useState<string>('REROOF')
@@ -29,11 +33,15 @@ export default function QuickJobDialog({ onClose, onCreated }: {
   const [busy, setBusy] = useState(false)
 
   async function submit() {
-    if (!address.trim()) { toast.error('An address is needed to send a crew somewhere.'); return }
+    if (!address.trim()) { toast.error('Pick the address from the list so the crew (and the weather) go to the right place.'); return }
     setBusy(true)
     try {
       const res = await createQuickJob({
         address: address.trim(),
+        // Manual entries carry 0,0 — let the server geocode those instead.
+        ...(loc && loc.source !== 'manual' && (loc.lat || loc.lng)
+          ? { lat: loc.lat, lng: loc.lng, street: loc.street, city: loc.city, state: loc.state, zip: loc.zip }
+          : {}),
         customer_name: customer.trim() || undefined,
         phone: phone.trim() || undefined,
         job_type: jobType,
@@ -75,12 +83,10 @@ export default function QuickJobDialog({ onClose, onCreated }: {
         </div>
 
         <div className="mt-4 space-y-3">
-          <label className="block">
+          <div>
             <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>Address</span>
-            <input value={address} onChange={e => setAddress(e.target.value)} autoFocus
-              placeholder="14 Oak St, Wilmington NC"
-              className={`${field} mt-1`} style={fieldStyle} />
-          </label>
+            <div className="mt-1"><LocationPicker onSelected={setLoc} /></div>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">

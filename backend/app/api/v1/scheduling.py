@@ -2100,6 +2100,15 @@ class QuickJob(BaseModel):
     priority: Optional[str] = "ROUTINE"
     squares: Optional[float] = None
     notes: Optional[str] = None
+    # Set when the dispatcher picked a match from the address lookup (the same
+    # one the roof report uses). Trusted over re-geocoding the free text, which
+    # is what put "200 Market St" in the wrong state.
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    street: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip: Optional[str] = None
 
 
 FAR_FROM_HOME_MILES = 150
@@ -2158,20 +2167,27 @@ async def create_quick_job(body: QuickJob, user: dict = Depends(require_user)) -
     # became 200 Market St, Amesbury MA for a contractor in Wilmington NC.
     home = _service_area_center(db)
     far_miles = None
-    try:
-        from app.services import location_service
-        res = await location_service.search_address(addr, with_geographies=False, proximity=home)
-        if res.matches:
-            m = res.matches[0]
-            if home:
-                m = min(res.matches, key=lambda x: _miles(home, (x.lat, x.lng)))
-                d = _miles(home, (m.lat, m.lng))
-                far_miles = round(d) if d > FAR_FROM_HOME_MILES else None
-            lat, lng = m.lat, m.lng
-            line1 = m.street or m.matched_address or addr
-            city, state, postal = m.city or "", m.state or "", m.zip or ""
-    except Exception as e:
-        logger.info("quick-job geocode failed for %r: %s", addr, e)
+    picked = (body.lat is not None and body.lng is not None
+              and -90 <= body.lat <= 90 and -180 <= body.lng <= 180)
+    if picked:
+        lat, lng = body.lat, body.lng
+        line1 = (body.street or "").strip() or addr
+        city, state, postal = (body.city or "").strip(), (body.state or "").strip(), (body.zip or "").strip()
+    else:
+        try:
+            from app.services import location_service
+            res = await location_service.search_address(addr, with_geographies=False, proximity=home)
+            if res.matches:
+                m = res.matches[0]
+                if home:
+                    m = min(res.matches, key=lambda x: _miles(home, (x.lat, x.lng)))
+                    d = _miles(home, (m.lat, m.lng))
+                    far_miles = round(d) if d > FAR_FROM_HOME_MILES else None
+                lat, lng = m.lat, m.lng
+                line1 = m.street or m.matched_address or addr
+                city, state, postal = m.city or "", m.state or "", m.zip or ""
+        except Exception as e:
+            logger.info("quick-job geocode failed for %r: %s", addr, e)
 
     # A job with no coordinates still schedules — it just cannot get job-site
     # weather. Refusing to create it would be worse than creating it without.
