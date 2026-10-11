@@ -48,7 +48,7 @@ export default function InspectionsPanel() {
     api.appointments.update(id, { status: to })
       .then(updated => {
         setAppts(prev => (prev || []).map(a => a.id === id ? updated : a))
-        toast.success(to === 'confirmed' ? 'Confirmed — homeowner texted' : to === 'cancelled' ? 'Declined — homeowner texted' : `Marked ${STATUS_STYLE[to].label.toLowerCase()}`)
+        toast.success(to === 'confirmed' ? 'Confirmed — give the homeowner a call to let them know' : to === 'cancelled' ? 'Declined — give the homeowner a call to let them know' : `Marked ${STATUS_STYLE[to].label.toLowerCase()}`)
       })
       .catch(e => toast.error(e instanceof Error ? e.message : 'Could not update'))
       .finally(() => setBusyId(null))

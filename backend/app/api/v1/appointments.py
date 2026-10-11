@@ -376,7 +376,7 @@ async def propose_alternative_dates(
         raise HTTPException(status_code=422, detail="Pick at least one valid future date.")
 
     days_label = ", ".join(date.fromisoformat(d).strftime("%a %b %-d") for d in valid)
-    note = f"Proposed alternative days to homeowner: {days_label}"
+    note = f"Days to offer the homeowner: {days_label}"
     if payload.note:
         note += f" — {payload.note.strip()}"
     res = (

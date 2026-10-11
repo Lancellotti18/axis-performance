@@ -70,7 +70,7 @@ export default function SchedulePage() {
     api.appointments.update(id, { status: to })
       .then(updated => {
         setAppts(prev => (prev || []).map(a => a.id === id ? { ...updated, lead: a.lead } : a))
-        toast.success(to === 'confirmed' ? 'Confirmed — homeowner texted' : `Marked ${STATUS_STYLE[to].label.toLowerCase()}`)
+        toast.success(to === 'confirmed' ? 'Confirmed — give the homeowner a call to let them know' : `Marked ${STATUS_STYLE[to].label.toLowerCase()}`)
       })
       .catch((e: unknown) => toast.error(e instanceof Error ? e.message : 'Could not update'))
       .finally(() => setBusyId(null))
@@ -82,7 +82,7 @@ export default function SchedulePage() {
     setBusyId(id)
     api.appointments.propose(id, dates)
       .then(r => {
-        toast.success(r.texted ? 'Sent your available days to the homeowner' : 'Saved — no phone on file to text')
+        toast.success('Days saved on this inspection — call the homeowner to pick one')
         setProposeFor(null); setProposeDates(['', '', ''])
       })
       .catch((e: unknown) => toast.error(e instanceof Error ? e.message : 'Could not send'))
@@ -312,7 +312,7 @@ export default function SchedulePage() {
                         {/* Propose alternative days */}
                         {proposeFor === a.id && (
                           <div className="mt-2.5 rounded-lg border border-blue-400/20 bg-blue-500/[0.06] p-2.5">
-                            <div className="mb-1.5 text-[11px] font-semibold text-blue-800">Propose days that work for you — we’ll text them to {(a.homeowner_name || 'the homeowner').split(' ')[0]}</div>
+                            <div className="mb-1.5 text-[11px] font-semibold text-blue-800">Pick days that work for you — they’re saved here so you can offer them when you call {(a.homeowner_name || 'the homeowner').split(' ')[0]}</div>
                             <div className="flex flex-wrap gap-1.5">
                               {proposeDates.map((d, i) => (
                                 <input key={i} type="date" value={d} min={todayKey}
@@ -322,7 +322,7 @@ export default function SchedulePage() {
                             </div>
                             <button onClick={() => sendPropose(a.id)} disabled={busyId === a.id}
                               className="mt-2 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
-                              {busyId === a.id ? 'Sending…' : '📲 Text these days to homeowner'}
+                              {busyId === a.id ? 'Saving…' : 'Save these days'}
                             </button>
                           </div>
                         )}
