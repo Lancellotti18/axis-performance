@@ -212,6 +212,11 @@ export default function ProjectPage() {
   const [estimate, setEstimate]       = useState<any>(null)
   const [compliance, setCompliance]   = useState<ComplianceCheck | null>(null)
   const [tab, setTab]                 = useState<Tab>('overview')
+  // ?tab=photos deep-links a tab — the photo gallery's "Copy dashboard link" uses it.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    if (t === 'photos') setTab('photos')
+  }, [])
   const [loading, setLoading]         = useState(true)
   const [blueprintStatus, setBlueprintStatus] = useState('pending')
   const [blueprintError, setBlueprintError] = useState<string | null>(null)

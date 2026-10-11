@@ -27,6 +27,11 @@ router = APIRouter()
 
 BUCKET = "blueprints"
 PHASES = ("before", "progress", "damage", "completed")
+# The table's older shape allowed only before / during / after (check constraint
+# project_photos_phase_check). Until 20261011_project_photos_phase_check runs,
+# progress/completed are stored under their legacy names and read back as ours.
+_LEGACY_TO_PHASE = {"during": "progress", "after": "completed"}
+_PHASE_TO_LEGACY = {v: k for k, v in _LEGACY_TO_PHASE.items()}
 _URL_TTL = 60 * 60 * 24 * 30  # 30 days — a job spans weeks; crew reloads refresh it
 
 
@@ -84,7 +89,7 @@ def _photo_out(db, row: dict, urls: Optional[dict] = None) -> dict:
     path = row["storage_path"]
     return {
         "id": row["id"],
-        "phase": row.get("phase") or "before",
+        "phase": _LEGACY_TO_PHASE.get(row.get("phase") or "", row.get("phase") or "before"),
         "caption": row.get("caption"),
         "annotations": row.get("annotations") or [],
         "sort_order": row.get("sort_order") or 0,
@@ -123,18 +128,24 @@ async def upload_photo(
         logger.warning("photo upload to storage failed: %s", e)
         raise HTTPException(status_code=502, detail="Could not store the photo — try again.")
 
+    record = {
+        "project_id": project_id, "user_id": user["id"], "phase": phase,
+        "storage_path": path, "caption": (caption or None),
+        # `storage_key` is the legacy column from the table's earlier shape.
+        # 20260822_project_photos_repair deliberately left the legacy columns
+        # in place, but storage_key is NOT NULL with no default and nothing
+        # wrote it — so every insert failed the constraint. It holds the same
+        # value, so anything still reading it resolves to the same object.
+        "storage_key": path,
+        "filename": file.filename or f"{photo_id}.{ext}",
+    }
     try:
-        ins = db.table("project_photos").insert({
-            "project_id": project_id, "user_id": user["id"], "phase": phase,
-            "storage_path": path, "caption": (caption or None),
-            # `storage_key` is the legacy column from the table's earlier shape.
-            # 20260822_project_photos_repair deliberately left the legacy columns
-            # in place, but storage_key is NOT NULL with no default and nothing
-            # wrote it — so every insert failed the constraint. It holds the same
-            # value, so anything still reading it resolves to the same object.
-            "storage_key": path,
-            "filename": file.filename or f"{photo_id}.{ext}",
-        }).execute()
+        try:
+            ins = db.table("project_photos").insert(record).execute()
+        except Exception as e:
+            if "project_photos_phase_check" not in str(e) or phase not in _PHASE_TO_LEGACY:
+                raise
+            ins = db.table("project_photos").insert({**record, "phase": _PHASE_TO_LEGACY[phase]}).execute()
     except Exception as e:
         # This used to escape as a bare 500. It was a schema mismatch — the
         # table pre-existed under an older shape, so `create table if not
@@ -146,6 +157,10 @@ async def upload_photo(
             raise HTTPException(status_code=500, detail=(
                 "The photo table is missing columns this app writes — run the "
                 "migration 20260822_project_photos_repair.sql, then try again."))
+        if "project_photos_phase_check" in msg:
+            raise HTTPException(status_code=500, detail=(
+                "This photo section isn't enabled yet — run the migration "
+                "20261011_project_photos_phase_check.sql, then try again."))
         raise HTTPException(status_code=500, detail=f"Could not save the photo record: {msg[:140]}")
 
     row = (ins.data or [None])[0]
@@ -227,7 +242,13 @@ async def update_photo(photo_id: str, patch: PhotoPatch, user: dict = Depends(re
     if patch.sort_order is not None:
         updates["sort_order"] = patch.sort_order
     if updates:
-        db.table("project_photos").update(updates).eq("id", photo_id).execute()
+        try:
+            db.table("project_photos").update(updates).eq("id", photo_id).execute()
+        except Exception as e:
+            if "project_photos_phase_check" not in str(e) or updates.get("phase") not in _PHASE_TO_LEGACY:
+                raise
+            db.table("project_photos").update(
+                {**updates, "phase": _PHASE_TO_LEGACY[updates["phase"]]}).eq("id", photo_id).execute()
     merged = {**row, **updates}
     return _photo_out(db, merged)
 

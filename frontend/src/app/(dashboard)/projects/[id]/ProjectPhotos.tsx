@@ -190,7 +190,7 @@ export default function ProjectPhotos({ projectId }: { projectId: string }) {
   const [uploading, setUploading] = useState<string | null>(null)  // phase currently uploading
   const [editing, setEditing] = useState<ProjectPhoto | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'crew' | 'dashboard' | null>(null)
 
   // Re-fetch the gallery, which mints fresh signed URLs. Also the retry behind
   // an expired-link tile — the photo is fine, only its URL went stale.
@@ -220,16 +220,50 @@ export default function ProjectPhotos({ projectId }: { projectId: string }) {
     } finally { setUploading(null) }
   }, [projectId])
 
-  const share = useCallback(async () => {
+  // Fetch the crew link up front. Copying used to happen AFTER awaiting this
+  // request, and Safari refuses clipboard writes that aren't inside the click
+  // itself — the button silently copied nothing.
+  useEffect(() => {
+    api.projectPhotos.getShare(projectId)
+      .then(({ token }) => setShareUrl(`${window.location.origin}/crew/${token}`))
+      .catch(() => { /* retried on click */ })
+  }, [projectId])
+
+  const copy = useCallback(async (url: string, which: 'crew' | 'dashboard') => {
+    let ok = false
+    try { await navigator.clipboard.writeText(url); ok = true } catch {
+      // Fallback for browsers without the async clipboard API (or a lost gesture).
+      const ta = document.createElement('textarea')
+      ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.select()
+      try { ok = document.execCommand('copy') } catch { ok = false }
+      ta.remove()
+    }
+    if (ok) {
+      setCopied(which); setTimeout(() => setCopied(null), 2500)
+      toast.success(which === 'crew'
+        ? 'Crew link copied — paste it in a text or email. Opens on any phone, no login.'
+        : 'Dashboard link copied — opens these photos for anyone signed in to your account.')
+    } else {
+      window.prompt('Copy this link:', url)
+    }
+  }, [])
+
+  const copyCrew = useCallback(async () => {
+    if (shareUrl) return copy(shareUrl, 'crew')
     try {
       const { token } = await api.projectPhotos.getShare(projectId)
       const url = `${window.location.origin}/crew/${token}`
       setShareUrl(url)
-      await navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500) }).catch(() => {})
+      await copy(url, 'crew')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not create the crew link')
     }
-  }, [projectId])
+  }, [copy, projectId, shareUrl])
+
+  const copyDashboard = useCallback(
+    () => copy(`${window.location.origin}/projects/${projectId}?tab=photos`, 'dashboard'),
+    [copy, projectId])
 
   if (loading) return <div className="py-16 text-center text-sm text-[#6b7280]">Loading photos…</div>
 
@@ -240,13 +274,14 @@ export default function ProjectPhotos({ projectId }: { projectId: string }) {
           <h2 className="text-lg font-bold text-[#1a1a1a]">Project photos</h2>
           <p className="text-sm text-[#6b7280]">Organize job-site photos by phase, mark them up, and share a link your crew can open on their phone.</p>
         </div>
-        <div className="flex items-center gap-2">
-          {shareUrl && (
-            <span className="max-w-[240px] truncate rounded-lg bg-[#f8f8f7] px-2.5 py-1.5 text-[11px] text-[#6b7280]">{shareUrl}</span>
-          )}
-          <button onClick={share}
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={copyDashboard} title="Link to this page in Axis — for people signed in to your account"
+            className="rounded-xl border border-[#dededc] bg-white px-4 py-2 text-sm font-semibold text-[#1a1a1a] hover:bg-[#f8f8f7]">
+            {copied === 'dashboard' ? '✓ Link copied' : 'Copy dashboard link'}
+          </button>
+          <button onClick={copyCrew} title="Read-only photo album that opens on any phone, no login"
             className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">
-            {copied ? '✓ Link copied' : '🔗 Share with crew'}
+            {copied === 'crew' ? '✓ Link copied' : '🔗 Share with crew'}
           </button>
         </div>
       </div>

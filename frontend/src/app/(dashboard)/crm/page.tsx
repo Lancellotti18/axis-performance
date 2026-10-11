@@ -239,9 +239,13 @@ function LeadDrawer({ lead, userId, onClose, onStageChange, onEdit, onDelete }: 
   // Turn this lead into a project pre-filled with their address, then jump
   // straight into measuring the roof — no re-typing the address.
   async function createProjectFromLead() {
-    const suggested = lead.name?.trim() || lead.address?.trim() || 'New roof project'
-    const name = window.prompt('Name this project', suggested)
-    if (!name || !name.trim()) return
+    // The project is named after the street address (no prompt) — that's how
+    // contractors refer to jobs. Only ask when the lead has no address yet.
+    let name = lead.address?.trim() || ''
+    if (!name) {
+      name = window.prompt('This lead has no address yet. Name this project', lead.name?.trim() || 'New roof project')?.trim() || ''
+      if (!name) return
+    }
     setCreatingProject(true)
     try {
       const st = (lead.state || '').trim().toUpperCase()

@@ -8,8 +8,8 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import type { BoardData, CrewDaysBreakdown, ProjectSearchResult, RoofLinear } from './lib/board'
-import { num, patchAppointment, previewMove, fetchAudit, fetchJobProject, searchProjects, linkJobProject, mediaUrl, deleteJob } from './lib/board'
+import type { BoardData, CrewDaysBreakdown, ProjectSearchResult, RoofLinear, TrayData } from './lib/board'
+import { num, patchAppointment, previewMove, fetchAudit, fetchJobProject, searchProjects, linkJobProject, mediaUrl, deleteJob, dropJob } from './lib/board'
 
 const STATUSES = ['SCHEDULED', 'DISPATCHED', 'WORKING', 'PAUSED', 'DONE', 'HOLD', 'CANCELED', 'UNASSIGNED']
 
@@ -375,13 +375,24 @@ export function DeleteJob({ jobId, visits, onDeleted, compact = false }: {
   const [busy, setBusy] = useState(false)
   async function go() {
     setBusy(true)
+    // Take the row out of the tray now. It used to linger until a full tray
+    // refetch finished (seconds on a cold backend), and a second click on it
+    // came back "Job not found" because the first delete had already worked.
+    const prevTray = qc.getQueryData<TrayData>(['tray'])
+    if (prevTray) qc.setQueryData<TrayData>(['tray'], dropJob(prevTray, jobId))
     try {
-      await deleteJob(jobId)
+      try {
+        await deleteJob(jobId)
+      } catch (e) {
+        // Already gone (an earlier click or another tab deleted it) — that's the goal.
+        if (!(e instanceof Error && /not found/i.test(e.message))) throw e
+      }
       toast.success('Job deleted')
       qc.invalidateQueries({ queryKey: ['board'] })
       qc.invalidateQueries({ queryKey: ['tray'] })
       onDeleted?.()
     } catch (e) {
+      if (prevTray) qc.setQueryData(['tray'], prevTray)
       toast.error(e instanceof Error ? e.message : 'Could not delete the job')
       setConfirming(false)
     } finally {

@@ -128,6 +128,14 @@ export interface TrayRow {
 export interface TrayData {
   unassigned: TrayRow[]; needs_measurements: TrayRow[]; on_hold: TrayRow[]; conflicts: TrayRow[]; canceled: TrayRow[]
 }
+/** The tray with one job removed from every queue (optimistic delete). */
+export function dropJob(tray: TrayData, jobId: string): TrayData {
+  const keep = (rows: TrayRow[]) => rows.filter(r => r.job_id !== jobId)
+  return {
+    unassigned: keep(tray.unassigned), needs_measurements: keep(tray.needs_measurements),
+    on_hold: keep(tray.on_hold), conflicts: keep(tray.conflicts), canceled: keep(tray.canceled),
+  }
+}
 export interface BulkChange {
   id: string; job_number: number | null; from: { crew_id: string | null; date: string | null }
   to: { crew_id: string | null; date: string | null }; conflicts?: Conflict[]

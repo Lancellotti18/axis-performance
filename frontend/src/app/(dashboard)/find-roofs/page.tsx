@@ -14,6 +14,10 @@ import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { getUser } from '@/lib/auth'
 
+// Hidden 2026-10-11: Axis sells roofing leads, so the Census neighborhood
+// ranking is off the page. Flip to true to bring the mode toggle back.
+const SHOW_NEIGHBORHOOD_HEAT = false
+
 type Prospect = {
   pin: string; address: string; city: string; owner: string | null; owner_mail: string | null
   owner_occupied: boolean | null; year_built: number | null; sold_year: number | null
@@ -167,18 +171,18 @@ export default function FindRoofsPage() {
       <div className="mx-auto max-w-5xl p-8">
         <div className="mb-5">
           <h1 className="text-2xl font-bold text-[#1a1a1a]">Find Roofs</h1>
-          <p className="mt-1 text-sm text-[#6b7280]">Find where the work is — rank neighborhoods, then pull real homes with a satellite view, the reasons they&apos;re a lead, and the homeowner&apos;s details.</p>
+          <p className="mt-1 text-sm text-[#6b7280]">Find where the work is — pull real homes with a satellite view, the reasons they&apos;re a lead, and the homeowner&apos;s details.</p>
         </div>
 
         {/* Mode toggle */}
-        <div className="mb-4 inline-flex rounded-xl border border-[#dededc] bg-[#f8f8f7] p-1 text-sm">
+        {SHOW_NEIGHBORHOOD_HEAT && <div className="mb-4 inline-flex rounded-xl border border-[#dededc] bg-[#f8f8f7] p-1 text-sm">
           {([['homes', 'Homes'], ['heat', 'Neighborhood heat']] as const).map(([m, label]) => (
             <button key={m} onClick={() => setMode(m)}
               className={`rounded-lg px-4 py-1.5 font-semibold transition-colors ${mode === m ? 'bg-blue-600 text-white' : 'text-[#6b7280] hover:text-[#1a1a1a]'}`}>
               {label}
             </button>
           ))}
-        </div>
+        </div>}
 
         {mode === 'homes' ? (
           <>
