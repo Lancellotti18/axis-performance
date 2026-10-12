@@ -150,11 +150,27 @@ export default function SettingsPage() {
             </button>
           ))}
         </div>
-          <p className="text-[#6b7280] text-sm mt-4">
-            {tab === 'business' && 'Your business details — these brand every report and proposal you send.'}
-            {tab === 'quote' && 'The page homeowners see when they request a quote from your website.'}
-            {tab === 'billing' && 'Your plan, what it includes, and the cards on file.'}
-          </p>
+          {tab === 'billing' && (
+            <p className="text-[#6b7280] text-sm mt-4">Your plan, what it includes, and the cards on file.</p>
+          )}
+          {/* What each tab is FOR, in a sentence or two — contractors were
+              filling these in without knowing where the details end up. */}
+          {tab === 'business' && (
+            <div className="mt-4 rounded-xl border border-[#cfe0f5] bg-[#eef5fd] px-4 py-3 text-sm leading-relaxed text-[#1a1a1a]">
+              <strong>What this does:</strong> these details brand everything a homeowner or adjuster sees
+              from you. Your logo, company name, phone, email and license number go on every roof report and
+              proposal, and your company name and phone show on your quote page. Fill it in once; every report
+              after that uses it.
+            </div>
+          )}
+          {tab === 'quote' && (
+            <div className="mt-4 rounded-xl border border-[#cfe0f5] bg-[#eef5fd] px-4 py-3 text-sm leading-relaxed text-[#1a1a1a]">
+              <strong>What this does:</strong> your quote page is a link you can put on your website, Facebook
+              or Google profile. A homeowner types their address, Axis measures their roof from satellite, and
+              &mdash; if you turn on &ldquo;Show the estimate&rdquo; &mdash; they see a price range built from
+              your rates. Every request lands in your CRM as a new lead, so you can call them back.
+            </div>
+          )}
         </div>
 
         {loading ? (
