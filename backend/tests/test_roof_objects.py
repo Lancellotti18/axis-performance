@@ -50,3 +50,42 @@ def test_a_bright_line_is_not_a_vent_cap():
 
 def test_a_plain_roof_has_nothing():
     assert _found(pipe=False, cap=False) == []
+
+
+def _roof_with_vents(spots):
+    """Several pipe vents, each a bump in the height map with a cap in the photo."""
+    dsm, mask, px = S.gable()
+    dsm = dsm.copy()
+    rgb = np.full(dsm.shape + (3,), 110, np.uint8)
+    for r, c in spots:
+        dsm[r:r + 2, c:c + 2] += 0.3
+        rgb[r - 1:r + 2, c - 1:c + 2] = 235
+    return dsm, mask, px, rgb
+
+
+def test_each_vent_is_marked_where_it_is_not_all_on_one():
+    """Three vents near each other were counted right (count=3) but all pinned
+    to one vent's position. Each is now its own suggestion at its own spot."""
+    spots = [(60, 80), (60, 84), (64, 82)]     # within one bump's search radius
+    dsm, mask, px, rgb = _roof_with_vents(spots)
+    m = extract_roof(dsm, mask, px)
+    hits = classify_by_photo(find_raised_objects(m, _Layers(dsm, rgb, px)), rgb, px)
+    vents = [h for h in hits if h["type"] == "plumbing_vent"]
+    assert sum(h["count"] for h in vents) == 3
+    assert all(h["count"] == 1 for h in vents)
+    found = sorted((round(h["row"]), round(h["col"])) for h in vents)
+    want = sorted(spots)
+    # Each suggestion sits on a different vent (cap centroids are the 3x3
+    # block centres, so allow a pixel either way).
+    assert len(set(found)) == 3
+    for (fr, fc), (wr, wc) in zip(found, want):
+        assert abs(fr - wr) <= 1 and abs(fc - wc) <= 1
+
+
+def test_vents_far_apart_are_each_found_once():
+    spots = [(60, 60), (60, 100)]
+    dsm, mask, px, rgb = _roof_with_vents(spots)
+    m = extract_roof(dsm, mask, px)
+    hits = classify_by_photo(find_raised_objects(m, _Layers(dsm, rgb, px)), rgb, px)
+    vents = [h for h in hits if h["type"] == "plumbing_vent"]
+    assert len(vents) == 2

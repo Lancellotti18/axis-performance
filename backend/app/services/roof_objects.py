@@ -80,10 +80,13 @@ SPOT_CONTRAST = 40       # grey levels brighter/darker than the shingles around 
 SPOT_MAX_M2 = 0.25       # a pipe vent cap is a few hundred cm2; bigger is something else
 SPOT_MAX_ELONG = 3.0     # long and thin is a roof edge or a ridge highlight, not a vent
 SPOT_MIN_M2 = 0.025      # smaller is a glint on the shingles
+CAP_SAME_M = 0.35        # two cap spots closer than this are the same cap (pipe vents sit further apart)
 
 
 def _spots(gray, row, col, px_m):
-    """High-contrast spots near (row, col): [(area_m2, elongation, bright)]."""
+    """High-contrast spots near (row, col): [(area_m2, elongation, bright, row, col)]
+    — each with its OWN position, so neighbouring vents are not all pinned to
+    the one bump that led us to look."""
     r = int(round(SPOT_R_M / px_m))
     H, W = gray.shape
     r0, r1 = max(0, int(row) - 3 * r), min(H, int(row) + 3 * r + 1)
@@ -106,7 +109,7 @@ def _spots(gray, row, col, px_m):
                 elong = float((ev[1] / max(ev[0], 1e-6)) ** 0.5)
             else:
                 elong = 1.0
-            out.append((area, elong, bright))
+            out.append((area, elong, bright, float(cy), float(cx)))
     return out
 
 
@@ -123,6 +126,12 @@ def classify_by_photo(objects: list[dict], rgb, px_m: float) -> list[dict]:
         return []
     gray = cv2.cvtColor(np.ascontiguousarray(np.asarray(rgb)[..., :3]).astype(np.uint8), cv2.COLOR_RGB2GRAY)
     out = []
+    vents: list[dict] = []
+
+    def near_a_vent(row: float, col: float) -> bool:
+        return any(((row - v["row"]) ** 2 + (col - v["col"]) ** 2) ** 0.5 * px_m < CAP_SAME_M
+                   for v in vents)
+
     for o in objects:
         # Sunlit pipe caps are BRIGHT; dark spots are their shadows (or the
         # shadow of something else), so only bright ones are counted - one per cap.
@@ -132,8 +141,18 @@ def classify_by_photo(objects: list[dict], rgb, px_m: float) -> list[dict]:
             out.append({**o, "type": "chimney", "count": 1, "confidence": 0.5,
                         "reason": f"{o['height_m']:.1f} m tall block on the roof — a chimney or a rooftop "
                                   "unit; check which before confirming"})
-        elif caps:
-            n = min(4, len(caps))
-            out.append({**o, "type": "plumbing_vent", "count": n, "confidence": 0.7,
-                        "reason": f"{o['height_m'] * 39.37:.0f} in tall bump with a pipe-cap spot in the photo"})
+            continue
+        # ONE suggestion per cap, each at that cap's own spot. This used to be
+        # one suggestion at the bump with count=N, so three vents near each
+        # other were counted right but all three pinned to the same vent on the
+        # roof. The same cap seen from two neighbouring bumps counts once.
+        for cap in sorted(caps, key=lambda s: -s[0])[:4]:
+            row, col = cap[3], cap[4]
+            if near_a_vent(row, col):
+                continue
+            v = {**o, "row": row, "col": col, "type": "plumbing_vent", "count": 1,
+                 "confidence": 0.7,
+                 "reason": f"{o['height_m'] * 39.37:.0f} in tall bump with a pipe-cap spot in the photo"}
+            vents.append(v)
+            out.append(v)
     return out
