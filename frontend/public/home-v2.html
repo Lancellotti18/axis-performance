@@ -293,6 +293,25 @@
   .plan .go{margin-top:26px;text-align:center;text-decoration:none;font-weight:600;font-size:14px;padding:12px 18px;border-radius:999px;
     color:#EAF2FB;border:1px solid rgba(180,205,235,.28);background:rgba(120,175,255,.10);transition:background .25s}
   .plan .go:hover{background:rgba(120,175,255,.2)}
+  /* ---- founding-member gift wrap ----
+     A red ribbon, bow and tag on every plan while today's prices are the
+     founding-member prices. One switch (FOUNDER_PRICING in the pricing script)
+     turns it off when the regular member prices take over. Static: nothing
+     here animates, so it costs the scroll nothing. */
+  .plan.gift{position:relative;overflow:visible;padding-top:58px;border-color:rgba(214,58,58,.45)}
+  .plan.gift .ribbon{position:absolute;left:-1px;right:-1px;top:16px;height:22px;
+    background:linear-gradient(180deg,#e04848 0%,#c42a2a 55%,#a81f1f 100%);
+    box-shadow:0 1px 0 rgba(255,255,255,.18) inset,0 4px 10px rgba(0,0,0,.35)}
+  .plan.gift .ribbon::before{content:"";position:absolute;inset:7px 0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.14) 0 2px,transparent 2px 9px);opacity:.5}
+  .plan.gift .bow{position:absolute;left:22px;top:2px;width:58px;height:46px;filter:drop-shadow(0 3px 4px rgba(0,0,0,.4))}
+  .plan.gift .gtag{position:absolute;right:18px;top:30px;transform:rotate(4deg);transform-origin:50% 0;
+    padding:6px 12px 6px 22px;border-radius:4px 10px 10px 4px;background:#FBF5E6;color:#8f1b1b;
+    font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;
+    box-shadow:0 4px 10px rgba(0,0,0,.35)}
+  .plan.gift .gtag::before{content:"";position:absolute;left:8px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;
+    background:#0A0F16;box-shadow:0 0 0 1.5px #c9b98f}
+  .plan.gift .gtag::after{content:"";position:absolute;left:10px;top:-14px;width:1.5px;height:16px;background:#e9dcc0;transform:rotate(-18deg)}
+  @media (max-width:380px){ .plan.gift .gtag{font-size:10px;right:10px} }
   .included{margin:28px auto 0;padding:22px 26px;border-radius:18px;border:1px solid var(--line);background:rgba(18,28,42,.35)}
   .included h4{margin:0 0 14px;font-size:12px;font-family:var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--cad)}
   .included ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px 24px}
@@ -1001,6 +1020,19 @@
   const fineEl=document.getElementById('pricingFine');
   let data=JSON.parse(document.getElementById('plansData').textContent);
   let interval='month';
+  // Founding-member pricing: today's prices are the founders' prices, locked
+  // while they stay subscribed. Set to false to take the gift wrap down when
+  // the regular member prices take over.
+  const FOUNDER_PRICING=true;
+  const GIFT=`<span class="ribbon" aria-hidden="true"></span>`+
+    `<svg class="bow" viewBox="0 0 58 46" aria-hidden="true">`+
+    `<path d="M29 23C20 8 6 6 5 15c-1 8 12 10 24 8z" fill="#d23434"/>`+
+    `<path d="M29 23C38 8 52 6 53 15c1 8-12 10-24 8z" fill="#d23434"/>`+
+    `<path d="M29 23C21 13 11 12 10 16c-1 4 9 6 19 7z" fill="#a81f1f" opacity=".55"/>`+
+    `<path d="M29 23C37 13 47 12 48 16c1 4-9 6-19 7z" fill="#a81f1f" opacity=".55"/>`+
+    `<path d="M26 25l-9 19 7-3 4 5 2-20zM32 25l9 19-7-3-4 5-2-20z" fill="#b92626"/>`+
+    `<rect x="23.5" y="17.5" width="11" height="11" rx="3.5" fill="#e65252"/></svg>`+
+    `<span class="gtag">Founding member price</span>`;
   const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const money=n=>'$'+Number(n).toLocaleString('en-US');
   function render(){
@@ -1010,7 +1042,7 @@
       const billed=yr?`Billed ${money(p.annual_usd)} a year`:'Billed monthly';
       const reports=p.reports_unlimited?'Unlimited roof reports':`${p.reports} roof reports a month`;
       const crews=p.crews_unlimited?'Unlimited crews':`Up to ${p.crews} crews`;
-      return `<article class="plan"><h3>${esc(p.name)}</h3><p class="tag">${esc(p.tagline||'')}</p>
+      return `<article class="plan${FOUNDER_PRICING?' gift':''}">${FOUNDER_PRICING?GIFT:''}<h3>${esc(p.name)}</h3><p class="tag">${esc(p.tagline||'')}</p>
         <p class="price"><b>${money(price)}</b><span>/ month</span></p><p class="billed">${billed}</p>
         <ul><li>${reports}</li><li>${crews}</li><li>Every Axis tool included</li></ul>
         <a class="go" href="/register?plan=${encodeURIComponent(p.key)}&interval=${interval}">Choose ${esc(p.name)}</a></article>`;
