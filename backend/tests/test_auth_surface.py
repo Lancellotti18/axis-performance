@@ -26,6 +26,9 @@ PUBLIC = {
     ("POST", "/api/v1/ops/promo-sweep"),
     # A homeowner books from the report link they were emailed.
     ("POST", "/api/v1/appointments/book/{report_token}"),
+    # Homepage free-trial request: honeypot + per-visitor and global hourly
+    # limits, stores nothing (tests/test_trial_request.py).
+    ("POST", "/api/v1/inquiries/trial"),
     # Instant-quote widget, embedded on the contractor's public site.
     ("GET", "/api/v1/instant-quote/w/{widget_key}"),
     ("POST", "/api/v1/instant-quote/w/{widget_key}/locate"),

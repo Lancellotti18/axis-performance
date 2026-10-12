@@ -78,6 +78,8 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "Ryan at Axis <ryan@axisroofingperformance.com>"
     EMAIL_REPLY_TO: str = ""
+    # Where homepage free-trial requests go (the public contact Ryan approved).
+    INQUIRY_TO: str = "lance@rwinfrastructure.com"
     # Who can see the Founders & Trials page and create promo codes. Ids, not
     # emails, so no address lives in code. Ryan's accounts by default.
     ADMIN_USER_IDS: str = (

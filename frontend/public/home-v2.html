@@ -312,6 +312,21 @@
     background:#0A0F16;box-shadow:0 0 0 1.5px #c9b98f}
   .plan.gift .gtag::after{content:"";position:absolute;left:10px;top:-14px;width:1.5px;height:16px;background:#e9dcc0;transform:rotate(-18deg)}
   @media (max-width:380px){ .plan.gift .gtag{font-size:10px;right:10px} }
+  .trial{margin:40px auto 0;max-width:760px;padding:28px 28px 24px;border-radius:18px;border:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(18,28,42,.55),rgba(10,16,24,.5));text-align:center}
+  .trial h3{margin:0;font-family:var(--serif);font-weight:400;font-size:clamp(22px,2.6vw,30px);color:#EEF4FA}
+  .trial>p{margin:10px auto 0;max-width:52ch;font-size:14px;line-height:1.6;color:var(--haze)}
+  .trial form{margin:22px 0 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;text-align:left}
+  .trial label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:#B6C6D8}
+  .trial input{font:inherit;font-size:15px;font-weight:400;color:#EEF4FA;background:rgba(5,9,14,.6);border:1px solid var(--line);
+    border-radius:10px;padding:11px 12px;outline:none;min-width:0}
+  .trial input:focus{border-color:rgba(140,190,255,.6)}
+  .trial .hp{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
+  .trial button{grid-column:1/-1;justify-self:center;margin-top:6px;cursor:pointer;border:0}
+  .trial button[disabled]{opacity:.6;cursor:default}
+  .trial .msg{grid-column:1/-1;margin:2px 0 0;text-align:center;font-size:14px;min-height:20px;color:var(--haze)}
+  .trial .msg.ok{color:#7ee2b8}.trial .msg.err{color:#ff9b9b}
+  @media (max-width:560px){ .trial form{grid-template-columns:1fr} .trial{padding:24px 18px 20px} }
   .included{margin:28px auto 0;padding:22px 26px;border-radius:18px;border:1px solid var(--line);background:rgba(18,28,42,.35)}
   .included h4{margin:0 0 14px;font-size:12px;font-family:var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--cad)}
   .included ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px 24px}
@@ -514,6 +529,19 @@
       <ul id="included"></ul>
     </div>
     <p class="fine" id="pricingFine"></p>
+    <div class="trial" id="trial">
+      <h3>Want to try Axis first?</h3>
+      <p>Leave your details and we&rsquo;ll send you a free trial code &mdash; a few roof reports and a week of every tool.</p>
+      <form id="trialForm" novalidate>
+        <label>Name<input name="name" autocomplete="name" required maxlength="80"></label>
+        <label>Company<input name="company" autocomplete="organization" required maxlength="120"></label>
+        <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>
+        <label>Phone<input name="phone" type="tel" autocomplete="tel" required maxlength="32"></label>
+        <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+        <button type="submit" class="btn">Request a free trial</button>
+        <p class="msg" id="trialMsg" role="status" aria-live="polite"></p>
+      </form>
+    </div>
   </div>
 </section>
 
@@ -1048,10 +1076,9 @@
         <a class="go" href="/register?plan=${encodeURIComponent(p.key)}&interval=${interval}">Choose ${esc(p.name)}</a></article>`;
     }).join('');
     incEl.innerHTML=(data.included||[]).map(i=>`<li>${esc(i)}</li>`).join('');
-    const free=data.promo&&data.promo.reports;
-    fineEl.textContent=[free?`New accounts get ${free===1?'one free roof report':free+' free roof reports'} to try it.`:'',
-      data.overage_report_usd?`Need more reports in a month? Extra reports are ${money(data.overage_report_usd)} each.`:'']
-      .filter(Boolean).join(' ');
+    // The free trial is asked for, not automatic — see the request form below.
+    fineEl.textContent=data.overage_report_usd
+      ?`Need more reports in a month? Extra reports are ${money(data.overage_report_usd)} each.`:'';
     const m=data.plans[0]&&data.plans[0].annual_months_free;
     document.getElementById('annualSave').textContent=m?`${m} months free`:'';
   }
@@ -1067,6 +1094,34 @@
   fetch(API,{credentials:'omit',signal:ctl&&ctl.signal}).then(r=>r.ok?r.json():null).then(live=>{
     if(live&&Array.isArray(live.plans)&&live.plans.length){ data=live; render(); }
   }).catch(()=>{}).finally(()=>clearTimeout(timer));
+})();
+
+// Free-trial request: emails Ryan (who replies with a code) and thanks the
+// visitor. The backend may be waking from sleep, hence the long time-box.
+(() => {
+  const form=document.getElementById('trialForm'); if(!form) return;
+  const msg=document.getElementById('trialMsg'), btn=form.querySelector('button');
+  const say=(t,cls)=>{ msg.textContent=t; msg.className='msg'+(cls?' '+cls:''); };
+  form.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const f=Object.fromEntries(new FormData(form).entries());
+    for(const k of ['name','company','email','phone']) f[k]=String(f[k]||'').trim();
+    if(!f.name||!f.company||!f.email||!f.phone){ say('Please fill in all four fields.','err'); return; }
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)){ say('Please enter a valid email address.','err'); return; }
+    btn.disabled=true; say('Sending…');
+    const ctl=('AbortController' in window)?new AbortController():null;
+    const t=setTimeout(()=>ctl&&ctl.abort(),90000);
+    try{
+      const r=await fetch('https://build-backend-jcp9.onrender.com/api/v1/inquiries/trial',{
+        method:'POST',headers:{'Content-Type':'application/json'},credentials:'omit',
+        body:JSON.stringify(f),signal:ctl&&ctl.signal});
+      if(r.ok){ form.reset(); say('Thank you! Check your email — we’ll be in touch with your trial code soon.','ok'); return; }
+      let d=''; try{ const j=await r.json(); d=typeof j.detail==='string'?j.detail:''; }catch(_){}
+      say(d||(r.status===422?'Please check your details and try again.':'Something went wrong. Please try again.'),'err');
+    }catch(_){
+      say('We couldn’t reach Axis just now. Please try again in a minute.','err');
+    }finally{ clearTimeout(t); btn.disabled=false; }
+  });
 })();
 </script>
 <script>
