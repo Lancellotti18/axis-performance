@@ -198,7 +198,14 @@ export interface CrewInput {
 export async function createCrew(body: CrewInput): Promise<Crew> {
   const h = await authHeaders()
   const res = await fetch(`${API_BASE}/api/v1/scheduling/crews`, { method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) { const t = await res.text(); let d = t; try { d = JSON.parse(t).detail ?? t } catch {} throw new Error(String(d)) }
+  if (!res.ok) {
+    const t = await res.text(); let d: unknown = t
+    try { d = JSON.parse(t).detail ?? t } catch {}
+    // Over the plan's crew allowance the server answers 402 with an object;
+    // show its sentence, not "[object Object]".
+    if (d && typeof d === 'object' && 'reason' in d) d = (d as { reason: string }).reason
+    throw new Error(String(d))
+  }
   return res.json()
 }
 export async function updateCrew(id: string, patch: Partial<CrewInput>): Promise<Crew> {

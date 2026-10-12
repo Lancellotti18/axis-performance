@@ -2005,6 +2005,20 @@ async def create_crew(body: CrewInput, user: dict = Depends(require_sched_user))
     # the foreign key only proves the unit exists somewhere.
     if not _one(db, "sched_business_unit", body.business_unit_id):
         raise HTTPException(status_code=422, detail="Unknown business unit.")
+    # The plan's crew allowance. It used to be counted only for the downgrade
+    # warning and never checked here, so any account could add unlimited crews.
+    from app.services import entitlement
+    try:
+        decision = entitlement.check(db, user["id"], "add_crew")
+    except Exception as e:
+        # Never let the gate be what breaks Dispatch; too generous beats a 500.
+        logger.warning("crew entitlement check failed for %s, allowing: %s", user["id"], e)
+        decision = None
+    if decision is not None and not decision.allowed:
+        raise HTTPException(status_code=402, detail={
+            "error": "entitlement_required", "reason": decision.reason,
+            "plan_key": decision.plan_key, "status": decision.status,
+        })
     ins = db.table("sched_crew").insert({
         "org_id": _org(), "name": body.name, "business_unit_id": body.business_unit_id,
         "squares_per_day": body.squares_per_day, "tear_off_squares_per_day": body.tear_off_squares_per_day,

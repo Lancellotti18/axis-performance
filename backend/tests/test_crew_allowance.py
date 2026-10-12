@@ -190,3 +190,62 @@ def test_the_downgrade_warning_no_longer_promises_what_nothing_did():
 
 def test_an_unlimited_plan_retires_nothing():
     assert plans.PLANS["fleet"].crews == plans.UNLIMITED
+
+
+# ── the gate at crew creation ───────────────────────────────────────────────
+# The allowance was counted but never checked when a crew was added, so any
+# account could create unlimited crews. create_crew now asks entitlement.
+
+import asyncio
+
+import pytest
+from fastapi import HTTPException
+
+
+def _create(monkeypatch, decision):
+    created = []
+
+    class _Ins:
+        def __init__(self, row): self.row = row
+        def execute(self):
+            created.append(self.row)
+            return type("R", (), {"data": [dict(self.row, id="new-crew")]})()
+
+    class _T:
+        def insert(self, row): return _Ins(row)
+
+    class _Db:
+        def table(self, t): return _T()
+
+    monkeypatch.setattr(sc, "get_supabase", lambda: _Db())
+    monkeypatch.setattr(sc, "_one", lambda db, t, i: {"id": i})
+    monkeypatch.setattr(sc, "_generate_shifts", lambda *a, **k: None)
+    monkeypatch.setattr(sc, "_org", lambda: ORG_USER)
+    monkeypatch.setattr(entitlement, "check", lambda db, uid, action: decision)
+    body = sc.CrewInput(name="Crew B", business_unit_id="bu-1")
+    return created, (lambda: asyncio.run(sc.create_crew(body, user={"id": ORG_USER})))
+
+
+def test_a_crew_over_the_allowance_is_refused(monkeypatch):
+    refused = plans.Decision(allowed=False, reason="the free trial includes 1 crew — "
+                             "choose a plan to add more", would_allow=False)
+    created, call = _create(monkeypatch, refused)
+    with pytest.raises(HTTPException) as e:
+        call()
+    assert e.value.status_code == 402
+    assert "1 crew" in e.value.detail["reason"]
+    assert created == []
+
+
+def test_a_crew_within_the_allowance_is_created(monkeypatch):
+    ok = plans.Decision(allowed=True, reason="Solo: crew 2 of 3", would_allow=True)
+    created, call = _create(monkeypatch, ok)
+    assert call()["id"] == "new-crew"
+    assert len(created) == 1
+
+
+def test_a_failing_check_never_blocks_dispatch(monkeypatch):
+    def boom(*a, **k): raise RuntimeError("db down")
+    created, call = _create(monkeypatch, None)
+    monkeypatch.setattr(entitlement, "check", boom)
+    assert call()["id"] == "new-crew"

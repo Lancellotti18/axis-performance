@@ -121,6 +121,10 @@ def period_bounds(sub: dict) -> tuple[Optional[datetime], Optional[datetime]]:
     return _parse(sub.get("current_period_start")), _parse(sub.get("current_period_end"))
 
 
+# Crews a company-code trial may run on the dispatch board (Ryan, 2026-10-12).
+PROMO_CREWS = 1
+
+
 def evaluate(sub: Optional[dict], action: Action, *, reports_used: int = 0,
              overage_purchased: int = 0, crews_used: int = 0,
              now: Optional[datetime] = None) -> Decision:
@@ -210,9 +214,13 @@ def evaluate(sub: Optional[dict], action: Action, *, reports_used: int = 0,
 
     if action == "add_crew":
         if not subscribed:
-            # A running promo includes the app's other features, up to Solo's crews.
-            if promo["active"] and crews_used < PLANS["solo"].crews:
-                return decide(True, f"promo: crew {crews_used + 1} of {PLANS['solo'].crews}")
+            # A running promo is a taste of Dispatch, not a free crew board:
+            # one crew, the most a trial needs to see how scheduling works.
+            if promo["active"] and crews_used < PROMO_CREWS:
+                return decide(True, f"promo: crew {crews_used + 1} of {PROMO_CREWS}")
+            if promo["active"]:
+                return decide(False, f"the free trial includes {PROMO_CREWS} crew — "
+                                     f"choose a plan to add more")
             return decide(False, "dispatch crews require a plan")
         if plan.crews == UNLIMITED:
             return decide(True, f"{plan.name}: unlimited crews")

@@ -197,9 +197,16 @@ def test_a_promo_does_not_unlock_leads(enforcing):
     assert evaluate(_promo(7), "buy_lead").would_allow is False
 
 
-def test_a_promo_includes_crews_up_to_solo(enforcing):
+def test_a_promo_includes_exactly_one_crew(enforcing):
+    assert plans.PROMO_CREWS == 1
     assert evaluate(_promo(7), "add_crew", crews_used=0).would_allow is True
-    assert evaluate(_promo(7), "add_crew", crews_used=3).would_allow is False
+    second = evaluate(_promo(7), "add_crew", crews_used=1)
+    assert second.would_allow is False
+    assert "plan" in second.reason
+
+
+def test_an_ended_promo_adds_no_crew(enforcing):
+    assert evaluate(_promo(-1), "add_crew", crews_used=0).would_allow is False
 
 
 # ── Pricing constants match what was agreed ───────────────────────────────

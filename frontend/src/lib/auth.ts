@@ -1,5 +1,5 @@
 'use client'
-import { supabase, getCachedSession } from './supabase'
+import { supabase, getCachedSession, confirmTabAccount } from './supabase'
 
 /** A plan picked on the homepage before the account existed. */
 export interface PlanIntent { plan: string; interval: 'month' | 'year' }
@@ -58,6 +58,9 @@ export async function getSession() {
 
 export async function getUser() {
   const { data: { user } } = await supabase.auth.getUser()
+  // getUser() reads the shared session, which another tab may have switched;
+  // never hand a page a user other than the one this tab's requests run as.
+  if (user && !confirmTabAccount(user.id)) return null
   return user
 }
 
