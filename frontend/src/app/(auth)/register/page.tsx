@@ -79,6 +79,58 @@ function RegisterForm() {
     })
   }, [intent?.plan, intent?.interval])   // eslint-disable-line react-hooks/exhaustive-deps
 
+  // While they go and click the link, this page waits for it and carries on by
+  // itself — they should never have to come back and sign in by hand.
+  //  - Same browser: the confirm link signs this browser in, and Supabase tells
+  //    every open tab, so the auth event below fires at once.
+  //  - Another device (the phone): nothing reaches this tab, so it quietly tries
+  //    the sign-in it already has the details for. Every 15 s, and at once when
+  //    they come back to the tab — slow enough to stay well inside Supabase's
+  //    sign-in rate limit. Gives up after 30 minutes; the link still works.
+  // The password only lives in this page's memory, as it already did.
+  useEffect(() => {
+    if (!awaitingEmail) return
+    let done = false
+    let busy = false
+    const go = async (user: Parameters<typeof postAuthDestination>[0]) => {
+      if (done) return
+      done = true
+      await seedProfileFromSignup(user)
+      router.replace(postAuthDestination(user))
+    }
+    const attempt = async () => {
+      if (done || busy) return
+      busy = true
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user?.email?.toLowerCase() === email.trim().toLowerCase()) {
+          await go(session.user)
+          return
+        }
+        const { data, error: e } = await signIn(email, password)
+        if (!e && data.user) await go(data.user)
+      } catch { /* try again on the next tick */ } finally { busy = false }
+    }
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user?.email?.toLowerCase() === email.trim().toLowerCase()) {
+        void go(session.user)
+      }
+    })
+    const onVisible = () => { if (document.visibilityState === 'visible') void attempt() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    const timer = setInterval(() => void attempt(), 15_000)
+    const stop = setTimeout(() => clearInterval(timer), 30 * 60_000)
+    return () => {
+      done = true
+      sub.subscription.unsubscribe()
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      clearInterval(timer)
+      clearTimeout(stop)
+    }
+  }, [awaitingEmail, email, password, router])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -115,12 +167,15 @@ function RegisterForm() {
       <AuthShell title="Confirm your email"
                  subtitle="One click and your workspace is ready">
         <AuthAlert tone="info">
-          We sent a confirmation link to <strong>{email}</strong>. Open it and
-          you&rsquo;ll be signed straight in{intent ? ' and taken to checkout' : ''}.
+          We sent a confirmation link to <strong>{email}</strong>. Click it on any
+          device &mdash; this page will carry on by itself{intent ? ' to checkout' : ''} as
+          soon as you do. You can leave it open.
         </AuthAlert>
         <p className="mt-4 text-center text-xs leading-relaxed text-[#6b7280]">
           It usually arrives within a minute. Check your spam folder before
-          resending &mdash; a second copy lands in the same place as the first.
+          resending. If you resend, use the <strong>newest</strong> email &mdash; the
+          older link stops working. In Gmail the new copy may be tucked inside the
+          same conversation: open it and click the &ldquo;&middot;&middot;&middot;&rdquo; at the bottom to see the link.
         </p>
         <div className="mt-4 space-y-3">
           <Button type="button" size="lg" variant="secondary" className="w-full"
