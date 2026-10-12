@@ -880,6 +880,66 @@ def _absorb_corner_stubs(kinds: list[str], lengths: list[float], outside: list[b
     return out
 
 
+FRAGMENT_STUB_M = 1.0       # a piece this short on a straight run belongs to the line around it
+FRAGMENT_DEV_M = 0.5        # a corner this close to the straight line is a wobble, not a corner
+
+
+def _deviation_m(p, a, b, px_m) -> float:
+    """How far p sits off the straight line a-b, in metres."""
+    d = np.asarray(b, float) - np.asarray(a, float)
+    L = float(np.hypot(*d))
+    if L < 1e-9:
+        return float(np.hypot(*(np.asarray(p, float) - np.asarray(a, float)))) * px_m
+    return abs(float(d[0] * (p[1] - a[1]) - d[1] * (p[0] - a[0]))) / L * px_m
+
+
+def _merge_fragments(pts, sides, px_m):
+    """One physical line, one side.
+
+    Google's height map gives a slightly wavy roof edge, and every wiggle used
+    to survive as a corner: a straight eave came out as six eave pieces, and a
+    hip as hip / 1.9 ft "rake" / hip where the data briefly saw nothing beside
+    it (Ryan's house, 2026-10-12). Each piece was then labelled — and reviewed —
+    on its own.
+
+    1. A piece shorter than FRAGMENT_STUB_M between two pieces of the SAME line
+       (same type, same neighbour) and in line with them takes that line's type.
+    2. Neighbouring pieces of the same type and neighbour merge wherever the
+       corner between them sits within FRAGMENT_DEV_M of the straight line —
+       real corners of a house are far bigger than that, so they stay.
+    `sides[i]` is the side from pts[i] to pts[i + 1]."""
+    pts = [np.asarray(p, float) for p in pts]
+    sides = list(sides)
+    n = len(pts)
+    if n < 4:
+        return pts, sides
+
+    lens = [float(np.hypot(*(pts[(i + 1) % n] - pts[i]))) * px_m for i in range(n)]
+    for i in range(n):
+        prev_s, next_s = sides[i - 1], sides[(i + 1) % n]
+        if (lens[i] < FRAGMENT_STUB_M and sides[i] != prev_s and prev_s == next_s
+                and _deviation_m(pts[i], pts[i - 1], pts[(i + 2) % n], px_m) < FRAGMENT_DEV_M
+                and _deviation_m(pts[(i + 1) % n], pts[i - 1], pts[(i + 2) % n], px_m) < FRAGMENT_DEV_M):
+            sides[i] = prev_s
+
+    # Drop the straightest qualifying corner first, then look again.
+    while len(pts) > 3:
+        n = len(pts)
+        best = None
+        for i in range(n):
+            if sides[i - 1] != sides[i]:
+                continue
+            dev = _deviation_m(pts[i], pts[i - 1], pts[(i + 1) % n], px_m)
+            if dev < FRAGMENT_DEV_M and (best is None or dev < best[0]):
+                best = (dev, i)
+        if best is None:
+            break
+        i = best[1]
+        pts.pop(i)
+        sides.pop(i)          # side i-1 now runs straight on to the next corner
+    return pts, sides
+
+
 def _classify(f: Facet, nb: int, q0, q1, normal, planes, px_m) -> Edge:
     """What kind of line is this, from what the heights do either side of it."""
     a, b = f.plane[0], f.plane[1]
@@ -1585,6 +1645,9 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
                 for i in range(n)]
         ks = _absorb_corner_stubs([k for k, _ in sides], lens, [nb is None for _, nb in sides])
         sides = [(k, nb) for k, (_, nb) in zip(ks, sides)]
+        snapped, sides = _merge_fragments(snapped, sides, px_m)
+        if len(snapped) < 3:
+            continue
         out.append(AxisFacet(name, f.id, [(float(p[0]), float(p[1])) for p in snapped],
                              sides, f.pitch_12))
     return out
