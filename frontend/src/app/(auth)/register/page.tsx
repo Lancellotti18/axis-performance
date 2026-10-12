@@ -69,6 +69,10 @@ function RegisterForm() {
   // they just typed, so they cannot resend and have nothing to act on.
   const [awaitingEmail, setAwaitingEmail] = useState(false)
   const [resent, setResent] = useState(false)
+  // The 6-digit code printed in the email: a way in that does not depend on
+  // the button, for when a mail app hides or mangles the link.
+  const [otp, setOtp] = useState('')
+  const [verifying, setVerifying] = useState(false)
 
   // Already signed in (the homepage cannot tell): picking a plan should go
   // straight to paying for it, not to a signup form for an account they have.
@@ -173,9 +177,8 @@ function RegisterForm() {
         </AuthAlert>
         <p className="mt-4 text-center text-xs leading-relaxed text-[#6b7280]">
           It usually arrives within a minute. Check your spam folder before
-          resending. If you resend, use the <strong>newest</strong> email &mdash; the
-          older link stops working. In Gmail the new copy may be tucked inside the
-          same conversation: open it and click the &ldquo;&middot;&middot;&middot;&rdquo; at the bottom to see the link.
+          resending. If you resend, use the <strong>newest</strong> email &mdash; each
+          new one replaces the last, and the older link stops working.
         </p>
         <div className="mt-4 space-y-3">
           <Button type="button" size="lg" variant="secondary" className="w-full"
@@ -189,6 +192,27 @@ function RegisterForm() {
           </Button>
           {error && <AuthAlert tone="error">{error}</AuthAlert>}
         </div>
+        <form className="mt-6 space-y-2" onSubmit={async e => {
+          e.preventDefault()
+          const token = otp.replace(/\D/g, '')
+          if (token.length !== 6) { setError('Enter the 6-digit code from the email.'); return }
+          setVerifying(true); setError('')
+          const { data, error: ve } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
+          setVerifying(false)
+          if (ve || !data.user) {
+            setError('That code didn\u2019t work. Use the code from the newest email, or resend.')
+            return
+          }
+          await seedProfileFromSignup(data.user)
+          router.replace(postAuthDestination(data.user))
+        }}>
+          <Label htmlFor="otp">Or type the 6-digit code from the email</Label>
+          <div className="flex gap-2">
+            <Input id="otp" inputMode="numeric" autoComplete="one-time-code" maxLength={7}
+                   value={otp} onChange={e => setOtp(e.target.value)} placeholder="123456" />
+            <Button type="submit" disabled={verifying}>{verifying ? 'Checking…' : 'Confirm'}</Button>
+          </div>
+        </form>
         <p className="text-center text-[#6b7280] text-sm mt-6">
           Wrong address?{' '}
           <button type="button"
