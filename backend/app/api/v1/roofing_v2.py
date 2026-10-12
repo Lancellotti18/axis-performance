@@ -1905,7 +1905,10 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
         "available": True,
         "facets": frows,
         "edges": erows,
-        "aggregates": aggregates,
+        # Numbers only once the contractor confirms it is the right roof — a
+        # wrong house backed out of must not cost a report OR reveal one.
+        "aggregates": (_awaiting_confirmation(aggregates)
+                       if _would_newly_bill(db, run_id, aggregates) else aggregates),
         "warnings": warnings,
         "imagery_date": layers.imagery_date,
         "imagery_quality": layers.imagery_quality,
@@ -2152,7 +2155,8 @@ def _aggregate_run(run_id: str) -> dict:
 
 
 @router.get("/runs/{run_id}/recompute")
-async def recompute_run(run_id: str, user: dict = Depends(require_user)) -> dict:
+async def recompute_run(run_id: str, confirm: bool = Query(False),
+                        user: dict = Depends(require_user)) -> dict:
     """Recompute aggregates from current facets+edges. Idempotent.
 
     This is also where a roof becomes BILLABLE. The meter used to fire when the
@@ -2164,12 +2168,40 @@ async def recompute_run(run_id: str, user: dict = Depends(require_user)) -> dict
     Charged once per RUN, not per call — this endpoint fires on every edit.
     _mark_run_billable is a no-op once the run has a billable row, and the
     later PDF then logs as 'rebuild' via the existing already_generated check.
+
+    It is charged only when the contractor CONFIRMS (confirm=true) — "yes, this
+    is the right roof, show me the measurements" (Ryan, 2026-10-12). Picking the
+    wrong house and backing out must not use up a report. Until then the
+    numbers are withheld, not merely hidden in the UI, so backing out is never
+    a free way to read them.
     """
     db = get_supabase()
     require_owned_run(db, run_id, user)
     aggregates = _aggregate_run(run_id)
+    if not confirm and _would_newly_bill(db, run_id, aggregates):
+        return _awaiting_confirmation(aggregates)
     _gate_and_mark_billable(db, run_id, user["id"], aggregates)
     return aggregates
+
+
+def _awaiting_confirmation(aggregates: dict) -> dict:
+    """What an unconfirmed roof may show: that it is ready, and anything wrong
+    with it — never the measurements themselves."""
+    return {
+        "needs_confirmation": True,
+        "blocking_issues": aggregates.get("blocking_issues") or [],
+        "partial_signals": aggregates.get("partial_signals") or [],
+    }
+
+
+def _require_confirmed(db, run_id: str) -> None:
+    """Endpoints built on the numbers (materials, adjuster estimate) answer only
+    once the roof is confirmed — or for a run with nothing billable yet."""
+    if _would_newly_bill(db, run_id, _aggregate_run(run_id)):
+        raise HTTPException(status_code=409, detail={
+            "error": "confirmation_required",
+            "reason": "Confirm this is the right roof to see its measurements.",
+        })
 
 
 def _would_newly_bill(db, run_id: str, aggregates: dict) -> bool:
@@ -4410,6 +4442,7 @@ async def get_run_materials(
     """
     require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
+    _require_confirmed(db, run_id)
     run = db.table("roof_measurement_runs").select("*").eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")
@@ -4526,6 +4559,7 @@ async def get_adjuster_estimate(
     only over lines the caller prices, and nothing is fabricated."""
     require_owned_run(get_supabase(), run_id, user)
     db = get_supabase()
+    _require_confirmed(db, run_id)
     run = db.table("roof_measurement_runs").select("*").eq("id", run_id).single().execute()
     if not run.data:
         raise HTTPException(status_code=404, detail="Run not found.")

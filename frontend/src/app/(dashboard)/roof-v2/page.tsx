@@ -1172,6 +1172,14 @@ export default function RoofV2Page() {
             zip={project?.zip}
             city={project?.city}
             onForceSave={async () => { cancelPending(); await persistGeometry(facets, edges) }}
+            onWrongHouse={async () => {
+              // Nothing was charged — a report is only used on confirmation —
+              // so throw the outline away and go back to picking the house.
+              cancelPending()
+              setFacets([]); setEdges([]); setAutoNote(null); setSubjectPoint(null)
+              await persistGeometry([], [])
+              setEditorSub('confirm')
+            }}
           />
 
 

@@ -1707,8 +1707,12 @@ export const api = {
           { method: 'PUT', body, keepalive: !!opts?.keepalive && body.length < 60000 },
         )
       },
-      recompute: (runId: string) =>
-        apiRequest<Record<string, unknown>>(`/api/v1/roofing/v2/runs/${runId}/recompute`),
+      /** confirm=true is "yes, this is the right roof": it uses a report and
+       *  returns the numbers. Without it, an unconfirmed roof answers
+       *  { needs_confirmation: true } and nothing is charged. */
+      recompute: (runId: string, confirm = false) =>
+        apiRequest<Record<string, unknown>>(
+          `/api/v1/roofing/v2/runs/${runId}/recompute${confirm ? '?confirm=true' : ''}`),
       addPenetration: (runId: string, p: {
         type: string
         count?: number

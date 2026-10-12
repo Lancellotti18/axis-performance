@@ -90,6 +90,9 @@ interface Props {
   zip?: string
   /** Project city — localizes the "compare prices" vendor search. */
   city?: string
+  /** "Wrong house": throw this outline away and pick again. Nothing has been
+   *  charged until the roof is confirmed, so backing out is free. */
+  onWrongHouse?: () => void | Promise<void>
 }
 
 const COLORS: Record<string, string> = {
@@ -172,7 +175,7 @@ function EdgeWorkRemaining({ unlabeled, unconfirmed }: { unlabeled: number; unco
   return <>{parts.join(' · ')}.</>
 }
 
-export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConfidenceChange, onIssuesChange, onForceSave, unlabeledCount = 0, unconfirmedCount = 0, runConfirmed = false, zip, city }: Props) {
+export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConfidenceChange, onIssuesChange, onForceSave, unlabeledCount = 0, unconfirmedCount = 0, runConfirmed = false, zip, city, onWrongHouse }: Props) {
   // Anything still standing between the contractor and final numbers.
   const pendingCount = unlabeledCount + unconfirmedCount
   const [aggregates, setAggregates] = useState<Aggregates | null>(null)
@@ -183,6 +186,10 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
   // A 402 from recompute is not an error to print — it is an offer to make.
   const [block, setBlock] = useState<EntitlementBlock | null>(null)
   const [blockUsage, setBlockUsage] = useState<UsageSummary | null>(null)
+  // The server withholds the numbers of a roof nobody has confirmed yet: a
+  // report is used on "yes, this is the right roof", not on page load.
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const lastStampRef = useRef<number>(-1)
   // Price book editing + live price checks (per SKU)
   const [priceEdit, setPriceEdit] = useState<{ sku: string; value: string } | null>(null)
@@ -228,12 +235,21 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
   }, [zip])
   const fetchAllRef = useRef<(() => Promise<void>) | null>(null)
 
-  const fetchAll = useCallback(async (waste: number) => {
+  const fetchAll = useCallback(async (waste: number, confirm = false) => {
     if (!runId) return
     setLoading(true)
     setError(null)
     try {
-      const agg = await api.roofing.v2.recompute(runId)
+      const agg = await api.roofing.v2.recompute(runId, confirm)
+      if ((agg as { needs_confirmation?: boolean }).needs_confirmation) {
+        const w = agg as { blocking_issues?: string[]; partial_signals?: string[] }
+        onIssuesChange?.(w.blocking_issues ?? [], w.partial_signals ?? [])
+        setAggregates(null)
+        setMaterials(null)
+        setAwaitingConfirm(true)
+        return
+      }
+      setAwaitingConfirm(false)
       setAggregates(agg as Aggregates)
       const conf = (agg as Aggregates).confidence
       if (conf !== undefined) onConfidenceChange?.(conf)
@@ -324,6 +340,15 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
     )
   }, [aggregates])
 
+  // Offered for as long as the roof is unconfirmed — including while edges are
+  // still being labeled, which is usually when a wrong house is noticed.
+  const wrongHouse = onWrongHouse && awaitingConfirm ? (
+    <button onClick={() => { void onWrongHouse() }}
+      className="rounded-md border border-[#dededc] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a1a1a] hover:bg-[#f8f8f7]">
+      Wrong house? Start over — no report is used
+    </button>
+  ) : null
+
   // #7: measurements, roof lines, and the material list stay hidden until every
   // edge is confirmed/denied/changed — so nobody quotes off unreviewed AI labels.
   // A finalized (confirmed) roof always shows its saved numbers on revisit, so you
@@ -342,6 +367,39 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
             </p>
           </div>
         </div>
+        {wrongHouse}
+      </div>
+    )
+  }
+
+  if (awaitingConfirm && !block) {
+    return (
+      <div className="space-y-3 rounded-xl border border-blue-300 bg-blue-50 p-4">
+        <div>
+          <div className="text-sm font-semibold text-blue-950">Is this the right roof?</div>
+          <p className="mt-0.5 text-xs leading-relaxed text-blue-900/80">
+            Check the outline on the map. Showing the measurements, roof lines and material
+            list uses <strong>one report</strong>. If it&apos;s the wrong house, start over — nothing is charged.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={async () => {
+              setConfirming(true)
+              try { await fetchAll(wastePct, true) } finally { setConfirming(false) }
+            }}
+            disabled={confirming || busy}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
+            {confirming ? 'Loading measurements…' : 'Yes, this is the right roof — show measurements'}
+          </button>
+          {onWrongHouse && (
+            <button onClick={() => { void onWrongHouse() }} disabled={confirming}
+              className="rounded-md border border-[#dededc] bg-white px-4 py-2 text-sm font-semibold text-[#1a1a1a] hover:bg-[#f8f8f7] disabled:opacity-50">
+              Wrong house — start over
+            </button>
+          )}
+        </div>
+        {error && <p className="text-xs text-rose-700">{error}</p>}
       </div>
     )
   }
