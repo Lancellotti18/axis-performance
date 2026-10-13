@@ -10,11 +10,12 @@
 # Override the URL with a repo variable KEEP_WARM_URL if the backend moves.
 name: keep-warm
 
+# 2026-10-12: the backend moved to Render's paid Starter compute plan, which
+# never sleeps, so the schedule is off. Its failures were the "health check
+# failed" emails (the free backend asleep, not broken). Kept as a manual run in
+# case the service ever goes back to the free tier.
 on:
-  schedule:
-    # every 10 minutes, hours 12-23 and 0-3 UTC, every day
-    - cron: '*/10 0-3,12-23 * * *'
-  workflow_dispatch: {}   # allow manual "Run workflow"
+  workflow_dispatch: {}   # manual "Run workflow" only
 
 jobs:
   ping:
