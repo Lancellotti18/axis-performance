@@ -419,7 +419,10 @@ async def health_deep(request: Request, images: int = 1):
         counties: dict = {}
         for county in live_counties():          # only the counties on offer
             try:
-                res = await find_roofs(county=county, city=None,
+                # Every parameter passed explicitly: called directly, not via
+                # FastAPI, an omitted one is its Query(...) default object, and
+                # zip_code's crashed the check with "'Query' has no .strip".
+                res = await find_roofs(county=county, city=None, zip_code=None,
                                        owner_occupied_only=False, limit=1,
                                        user={"id": "health-check"})
                 counties[county] = {"ok": True, "count": res.get("count", 0)}
