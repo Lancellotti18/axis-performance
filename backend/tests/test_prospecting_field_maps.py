@@ -51,3 +51,27 @@ def test_a_county_may_omit_city_without_breaking_the_row_builder():
         'find_roofs reads f["city"] without a guard again — it must use the '
         "city_val computed above, or counties without a city column will 500."
     )
+
+
+# ── which counties are OFFERED (Ryan, 2026-10-12: Onslow only for now) ──────
+
+def test_only_onslow_is_offered_by_default():
+    from app.api.v1.prospecting import live_counties
+    assert live_counties() == ["onslow"]
+
+
+def test_a_hidden_county_is_refused_not_just_unlisted(monkeypatch):
+    import asyncio
+    import pytest
+    from fastapi import HTTPException
+    from app.api.v1 import prospecting
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(prospecting.fetch_prospects("brunswick"))
+    assert e.value.status_code == 404
+
+
+def test_turning_a_county_back_on_is_one_setting(monkeypatch):
+    from app.api.v1.prospecting import live_counties
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "LEAD_COUNTIES", "onslow, brunswick, nowhere")
+    assert live_counties() == ["onslow", "brunswick"]

@@ -415,9 +415,9 @@ async def health_deep(request: Request, images: int = 1):
     # own field map from a different government service, so they fail
     # independently and have to be probed independently.
     try:
-        from app.api.v1.prospecting import PARCEL_SOURCES, find_roofs
+        from app.api.v1.prospecting import find_roofs, live_counties
         counties: dict = {}
-        for county in PARCEL_SOURCES:
+        for county in live_counties():          # only the counties on offer
             try:
                 res = await find_roofs(county=county, city=None,
                                        owner_occupied_only=False, limit=1,

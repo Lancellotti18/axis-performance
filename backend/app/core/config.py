@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     EMAIL_REPLY_TO: str = ""
     # Where homepage free-trial requests go (the public contact Ryan approved).
     INQUIRY_TO: str = "lance@rwinfrastructure.com"
+    # Counties Find Roofs / leads are OFFERED in. Only Onslow's public data is
+    # good enough to sell today (owner, year built, sale date); the others stay
+    # wired but hidden until better data is bought (Ryan, 2026-10-12).
+    # Comma list of PARCEL_SOURCES keys, e.g. "onslow,brunswick".
+    LEAD_COUNTIES: str = "onslow"
     # Who can see the Founders & Trials page and create promo codes. Ids, not
     # emails, so no address lives in code. Ryan's accounts by default.
     ADMIN_USER_IDS: str = (

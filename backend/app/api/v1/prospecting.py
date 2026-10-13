@@ -261,11 +261,19 @@ def _score(*, owner_occupied: Optional[bool], year_built: Optional[int] = None,
     return {"score": score, "tier": tier, "reasons": reasons, "confidence": confidence, "why": why}
 
 
+def live_counties() -> list[str]:
+    """The wired counties that are actually offered (settings.LEAD_COUNTIES)."""
+    from app.core.config import settings
+    want = [c.strip() for c in (settings.LEAD_COUNTIES or "").split(",") if c.strip()]
+    return [c for c in want if c in PARCEL_SOURCES]
+
+
 @router.get("/sources")
 async def list_sources(user: dict = Depends(require_user)) -> dict:
-    return {"sources": [{"key": k, "name": v["name"], "has_age": "year_built" in v["f"],
-                         "has_owner": "owner" in v["f"]}
-                        for k, v in PARCEL_SOURCES.items()]}
+    return {"sources": [{"key": k, "name": PARCEL_SOURCES[k]["name"],
+                         "has_age": "year_built" in PARCEL_SOURCES[k]["f"],
+                         "has_owner": "owner" in PARCEL_SOURCES[k]["f"]}
+                        for k in live_counties()]}
 
 
 async def fetch_prospects(
@@ -287,9 +295,11 @@ async def fetch_prospects(
     would otherwise prove nothing, and "not a home" would auto-approve for any
     parcel that simply fell off the end of the list.
     """
-    src = PARCEL_SOURCES.get(county)
+    # Hidden counties are refused here, the one place every search, purchase and
+    # dud check goes through — not just left out of the picker.
+    src = PARCEL_SOURCES.get(county) if county in live_counties() else None
     if not src:
-        raise HTTPException(status_code=404, detail=f"No free data source wired for '{county}' yet.")
+        raise HTTPException(status_code=404, detail="Find Roofs isn't available in that county yet.")
     f = src["f"]
     kind = src.get("geom", "polygon")
     where = src["residential_where"]
