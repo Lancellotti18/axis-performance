@@ -327,6 +327,12 @@
   .trial .msg{grid-column:1/-1;margin:2px 0 0;text-align:center;font-size:14px;min-height:20px;color:var(--haze)}
   .trial .msg.ok{color:#7ee2b8}.trial .msg.err{color:#ff9b9b}
   @media (max-width:560px){ .trial form{grid-template-columns:1fr} .trial{padding:24px 18px 20px} }
+  .feats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:18px 28px;text-align:left}
+  .feats div{display:flex;flex-direction:column;gap:4px;padding-left:18px;position:relative}
+  .feats div::before{content:"";position:absolute;left:0;top:8px;width:6px;height:6px;border-radius:50%;background:var(--cad)}
+  .feats b{font-size:14.5px;font-weight:650;color:#EEF4FA}
+  .feats span{font-size:13.5px;line-height:1.55;color:var(--haze)}
+  .plan li b{font-weight:650;color:#EEF4FA}
   .included{margin:28px auto 0;padding:22px 26px;border-radius:18px;border:1px solid var(--line);background:rgba(18,28,42,.35)}
   .included h4{margin:0 0 14px;font-size:12px;font-family:var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--cad)}
   .included ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px 24px}
@@ -525,8 +531,19 @@
     </div>
     <div class="plans" id="plans"></div>
     <div class="included">
-      <h4>Included on every plan</h4>
-      <ul id="included"></ul>
+      <h4>Everything on every plan</h4>
+      <div class="feats">
+        <div><b>Satellite roof measurement</b><span>Squares, pitch, every ridge, hip, valley, eave and rake &mdash; measured from above in minutes, no ladder.</span></div>
+        <div><b>Branded roof reports</b><span>A clean PDF with diagrams and every line length, under your logo, ready for the homeowner or adjuster.</span></div>
+        <div><b>Material lists &amp; supplier pricing</b><span>Every bundle, roll and box the job needs, with prices compared across suppliers before you order.</span></div>
+        <div><b>Code compliance checks</b><span>Your materials checked against local building code and manufacturer specs.</span></div>
+        <div><b>Roof visualizer</b><span>Show a homeowner their house with the new shingle color before they sign.</span></div>
+        <div><b>Instant quote page</b><span>A link for your website: homeowners get their roof measured and land in your CRM as a lead.</span></div>
+        <div><b>CRM &amp; proposals</b><span>Leads, inspections, proposals and jobs in one pipeline, with share links for homeowners.</span></div>
+        <div><b>Dispatch &amp; scheduling</b><span>Crews on a board, jobs scheduled, and rain days flagged with a proposed dry day.</span></div>
+        <div><b>Storm risk reports</b><span>Hurricane, hail, wind and flood exposure for any US city, from NOAA and FEMA data, with what to reinforce.</span></div>
+        <div><b>Exclusive roof leads</b><span>Buy homeowner leads one at a time ($50 each) &mdash; once you buy one, no one else can. Onslow County, NC for now.</span></div>
+      </div>
     </div>
     <p class="fine" id="pricingFine"></p>
     <div class="trial" id="trial">
@@ -1072,10 +1089,12 @@
       const crews=p.crews_unlimited?'Unlimited crews':`Up to ${p.crews} crews`;
       return `<article class="plan${FOUNDER_PRICING?' gift':''}">${FOUNDER_PRICING?GIFT:''}<h3>${esc(p.name)}</h3><p class="tag">${esc(p.tagline||'')}</p>
         <p class="price"><b>${money(price)}</b><span>/ month</span></p><p class="billed">${billed}</p>
-        <ul><li>${reports}</li><li>${crews}</li><li>Every Axis tool included</li></ul>
+        <ul><li><b>${reports}</b></li><li><span><b>${crews}</b> on the dispatch board</span></li>
+          <li>Branded roof reports and material lists</li><li>CRM, scheduling and weather alerts</li>
+          <li>Instant quote page for your website</li><li>Every Axis tool &mdash; nothing locked</li></ul>
         <a class="go" href="/register?plan=${encodeURIComponent(p.key)}&interval=${interval}">Choose ${esc(p.name)}</a></article>`;
     }).join('');
-    incEl.innerHTML=(data.included||[]).map(i=>`<li>${esc(i)}</li>`).join('');
+    if(incEl) incEl.innerHTML=(data.included||[]).map(i=>`<li>${esc(i)}</li>`).join('');
     // The free trial is asked for, not automatic — see the request form below.
     fineEl.textContent=data.overage_report_usd
       ?`Need more reports in a month? Extra reports are ${money(data.overage_report_usd)} each.`:'';
