@@ -69,6 +69,9 @@ def _plan_json(key: str) -> dict:
         # get it subtly wrong.
         "annual_monthly_equivalent": round(p.annual_usd / 12),
         "annual_months_free": 12 - (p.annual_usd // p.monthly_usd),
+        # The regular price, for showing crossed out beside a founding price.
+        "regular_monthly_usd": p.regular_monthly_usd,
+        "regular_annual_usd": p.regular_annual_usd,
         "reports": None if p.reports == UNLIMITED else p.reports,
         "reports_unlimited": p.reports == UNLIMITED,
         "crews": None if p.crews == UNLIMITED else p.crews,

@@ -211,9 +211,13 @@ def test_an_ended_promo_adds_no_crew(enforcing):
 
 # ── Pricing constants match what was agreed ───────────────────────────────
 def test_agreed_pricing():
-    assert (PLANS["solo"].monthly_usd, PLANS["solo"].reports, PLANS["solo"].crews) == (299, 15, 3)
-    assert (PLANS["crew"].monthly_usd, PLANS["crew"].reports, PLANS["crew"].crews) == (449, 30, 6)
-    assert PLANS["fleet"].monthly_usd == 599
+    # Founding-member prices ($50 off), with the regular price kept for display.
+    assert (PLANS["solo"].monthly_usd, PLANS["solo"].reports, PLANS["solo"].crews) == (249, 15, 3)
+    assert (PLANS["crew"].monthly_usd, PLANS["crew"].reports, PLANS["crew"].crews) == (399, 30, 6)
+    assert PLANS["fleet"].monthly_usd == 549
+    assert [PLANS[k].regular_monthly_usd for k in ("solo", "crew", "fleet")] == [299, 449, 599]
+    for p in PLANS.values():
+        assert p.annual_usd == p.monthly_usd * 10          # still two months free
     assert plans.OVERAGE_REPORT_USD == 35
     assert plans.LEAD_USD == 50
 

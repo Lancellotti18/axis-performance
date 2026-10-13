@@ -36,12 +36,23 @@ class Plan:
     annual_usd: int          # two months free
     reports: int
     crews: int
+    # The regular price, shown crossed out while monthly_usd/annual_usd are the
+    # founding-member price. None once the founding window closes.
+    regular_monthly_usd: Optional[int] = None
+    regular_annual_usd: Optional[int] = None
 
 
+# Founding-member prices: $50 a month off the regular price (Ryan, 2026-10-12).
+# Founders keep this price while subscribed; when the window closes, new
+# customers move to the regular price on NEW Stripe prices and the founders'
+# subscriptions stay on these (see project_axis_promo_codes).
 PLANS: dict[str, Plan] = {
-    "solo":  Plan("solo",  "Solo",  299, 2990, reports=15,        crews=3),
-    "crew":  Plan("crew",  "Crew",  449, 4490, reports=30,        crews=6),
-    "fleet": Plan("fleet", "Fleet", 599, 5990, reports=UNLIMITED, crews=UNLIMITED),
+    "solo":  Plan("solo",  "Solo",  249, 2490, reports=15,        crews=3,
+                  regular_monthly_usd=299, regular_annual_usd=2990),
+    "crew":  Plan("crew",  "Crew",  399, 3990, reports=30,        crews=6,
+                  regular_monthly_usd=449, regular_annual_usd=4490),
+    "fleet": Plan("fleet", "Fleet", 549, 5490, reports=UNLIMITED, crews=UNLIMITED,
+                  regular_monthly_usd=599, regular_annual_usd=5990),
 }
 
 OVERAGE_REPORT_USD = 35

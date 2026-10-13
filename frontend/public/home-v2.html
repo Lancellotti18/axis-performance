@@ -284,6 +284,7 @@
   .plan .tag{margin:6px 0 0;font-size:13px;line-height:1.5;color:var(--mute);min-height:39px}
   .plan .price{margin:20px 0 0;display:flex;align-items:baseline;gap:6px}
   .plan .price b{font-family:var(--serif);font-weight:400;font-size:46px;color:#F3F7FC;letter-spacing:-.02em}
+  .plan .price s{font-family:var(--serif);font-size:24px;color:#8796A8;text-decoration-color:#e05252;text-decoration-thickness:2px;margin-right:4px}
   .plan .price span{font-size:13px;color:var(--mute)}
   .plan .billed{margin:4px 0 0;font-size:12px;color:var(--mute);min-height:18px}
   .plan ul{list-style:none;margin:22px 0 0;padding:0;display:grid;gap:10px}
@@ -562,14 +563,14 @@
   </div>
 </section>
 
-<!-- Snapshot of GET /api/v1/billing/plans (app/core/plans.py), 2026-10-04.
+<!-- Snapshot of GET /api/v1/billing/plans (app/core/plans.py), 2026-10-12 (founding prices).
      Shown immediately; replaced by the live answer when the backend responds.
      The health check's homepage job fails if these numbers drift from the API. -->
 <script type="application/json" id="plansData">
 {"plans":[
- {"key":"solo","name":"Solo","tagline":"For an owner-operator running their own jobs.","monthly_usd":299,"annual_usd":2990,"annual_monthly_equivalent":249,"annual_months_free":2,"reports":15,"reports_unlimited":false,"crews":3,"crews_unlimited":false},
- {"key":"crew","name":"Crew","tagline":"For a growing shop with several crews in the field.","monthly_usd":449,"annual_usd":4490,"annual_monthly_equivalent":374,"annual_months_free":2,"reports":30,"reports_unlimited":false,"crews":6,"crews_unlimited":false},
- {"key":"fleet","name":"Fleet","tagline":"For established contractors who measure every roof they bid.","monthly_usd":599,"annual_usd":5990,"annual_monthly_equivalent":499,"annual_months_free":2,"reports":null,"reports_unlimited":true,"crews":null,"crews_unlimited":true}
+ {"key":"solo","name":"Solo","tagline":"For an owner-operator running their own jobs.","monthly_usd":249,"annual_usd":2490,"annual_monthly_equivalent":208,"annual_months_free":2,"regular_monthly_usd":299,"regular_annual_usd":2990,"reports":15,"reports_unlimited":false,"crews":3,"crews_unlimited":false},
+ {"key":"crew","name":"Crew","tagline":"For a growing shop with several crews in the field.","monthly_usd":399,"annual_usd":3990,"annual_monthly_equivalent":332,"annual_months_free":2,"regular_monthly_usd":449,"regular_annual_usd":4490,"reports":30,"reports_unlimited":false,"crews":6,"crews_unlimited":false},
+ {"key":"fleet","name":"Fleet","tagline":"For established contractors who measure every roof they bid.","monthly_usd":549,"annual_usd":5490,"annual_monthly_equivalent":458,"annual_months_free":2,"regular_monthly_usd":599,"regular_annual_usd":5990,"reports":null,"reports_unlimited":true,"crews":null,"crews_unlimited":true}
 ],
 "included":["Instant quote widget for your website","Full CRM — unlimited customers and jobs","Dispatch board and scheduling","Material compliance checks","Storm risk reports","Roof visualizer","Homeowner proposals and share links"],
 "overage_report_usd":35,"promo":{"reports":1}}
@@ -1084,11 +1085,14 @@
     plansEl.innerHTML=data.plans.map(p=>{
       const yr=interval==='year';
       const price=yr?p.annual_monthly_equivalent:p.monthly_usd;
+      // The regular price, crossed out, while founding prices are on.
+      const reg=FOUNDER_PRICING&&p.regular_monthly_usd
+        ?(yr?Math.round(p.regular_annual_usd/12):p.regular_monthly_usd):null;
       const billed=yr?`Billed ${money(p.annual_usd)} a year`:'Billed monthly';
       const reports=p.reports_unlimited?'Unlimited roof reports':`${p.reports} roof reports a month`;
       const crews=p.crews_unlimited?'Unlimited crews':`Up to ${p.crews} crews`;
       return `<article class="plan${FOUNDER_PRICING?' gift':''}">${FOUNDER_PRICING?GIFT:''}<h3>${esc(p.name)}</h3><p class="tag">${esc(p.tagline||'')}</p>
-        <p class="price"><b>${money(price)}</b><span>/ month</span></p><p class="billed">${billed}</p>
+        <p class="price">${reg&&reg>price?`<s>${money(reg)}</s>`:''}<b>${money(price)}</b><span>/ month</span></p><p class="billed">${billed}</p>
         <ul><li><b>${reports}</b></li><li><span><b>${crews}</b> on the dispatch board</span></li>
           <li>Branded roof reports and material lists</li><li>CRM, scheduling and weather alerts</li>
           <li>Instant quote page for your website</li><li>Every Axis tool &mdash; nothing locked</li></ul>
