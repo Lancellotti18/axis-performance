@@ -683,9 +683,11 @@ export default function RoofV2Page() {
         })
       } else {
         const why = r.reason || "This roof couldn't be measured automatically."
+        const stale = !!r.stale_imagery
         setAutoNote({
-          ok: false, text: /by hand/i.test(why) ? why : `${why} Trace it below instead.`, warnings: [],
-          staleDate: r.stale_imagery ? (r.imagery_date ?? 'an old date') : null,
+          // An old photo is a question with a clear yes, not a failure.
+          ok: false, text: stale || /by hand/i.test(why) ? why : `${why} Trace it below instead.`, warnings: [],
+          staleDate: stale ? (r.imagery_date ?? 'an old date') : null,
         })
       }
     } catch (e) {
@@ -1075,24 +1077,31 @@ export default function RoofV2Page() {
               Measuring this roof from Google&apos;s 3D model — usually under 30 seconds.
             </div>
           )}
-          {autoNote && !autoBusy && (
+          {autoNote && !autoBusy && !autoNote.ok && autoNote.staleDate && (
+            // Old Google photo: ask, with "measure it" as THE action. The
+            // apologetic "trace by hand" version is where the first founding
+            // contractor gave up, on a house Axis measures fine.
+            <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 text-sm text-blue-950">
+              <div className="font-semibold">Is this still the same roof?</div>
+              <p className="mt-1 leading-relaxed text-blue-900/90">{autoNote.text}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button onClick={() => { void runAutoMeasure(true) }} disabled={autoBusy}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
+                  Yes, same roof &mdash; measure it
+                </button>
+                <button onClick={() => setAutoNote(null)}
+                  className="text-xs font-medium text-blue-900/70 underline underline-offset-2 hover:text-blue-950">
+                  It&apos;s changed &mdash; I&apos;ll trace it by hand
+                </button>
+              </div>
+            </div>
+          )}
+          {autoNote && !autoBusy && !(!autoNote.ok && autoNote.staleDate) && (
             <div className={`rounded-lg border p-3 text-sm ${autoNote.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
               <div>{autoNote.ok ? '✨ ' : ''}{autoNote.text}</div>
               {autoNote.warnings.map(w => (
                 <div key={w} className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-amber-900">⚠️ {w}</div>
               ))}
-              {!autoNote.ok && autoNote.staleDate && (
-                <button
-                  onClick={() => {
-                    if (window.confirm(
-                      `Only continue if you're sure this house hasn't been built, added onto or reshaped since ${autoNote.staleDate}. `
-                      + 'The report will note that you confirmed it.')) void runAutoMeasure(true)
-                  }}
-                  disabled={autoBusy}
-                  className="mt-3 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50">
-                  {autoBusy ? 'Measuring…' : "It's the same house — measure anyway"}
-                </button>
-              )}
             </div>
           )}
           {/* Save state, always on screen while drawing. Tracing is the most

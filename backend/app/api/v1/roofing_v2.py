@@ -1282,10 +1282,13 @@ def _stale_imagery_note(imagery_date: Optional[str], today: Optional["date"] = N
     age_years = (today - taken).days / 365.25
     if age_years <= STALE_IMAGERY_YEARS:
         return None
-    return (f"Sorry - we couldn't auto-measure this roof. Google's 3D data for this address is from "
-            f"{taken.strftime('%B %Y')}, over {int(age_years)} years old, so the house may have been "
-            "built, added onto or changed since, and we'd rather not measure the wrong building. "
-            "Please trace this roof by hand.")
+    # Worded as a question with a clear yes, not a refusal. "Sorry - trace it
+    # by hand" read as "this doesn't work" and the first founding contractor
+    # (Fortitude, 2026-10-13) left at exactly this screen, though Google's data
+    # for his house was fine and one click would have measured it.
+    return (f"Google's 3D photo of this roof is from {taken.strftime('%B %Y')}. If the roof hasn't "
+            "changed since then (no addition or new roof shape), measure it now; the report will "
+            "note the photo date.")
 
 
 async def _store_roof_objects(db, run_id: str, model, layers, sp: dict, req, shift_en) -> list[dict]:

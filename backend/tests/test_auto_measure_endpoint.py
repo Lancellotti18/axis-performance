@@ -249,10 +249,13 @@ def test_vents_found_at_auto_measure_are_offered_once(monkeypatch):
 
 # ── Google's data older than the house ────────────────────────────────────
 
-def test_old_google_data_is_refused_with_an_apology():
+def test_old_google_data_asks_before_measuring():
+    """Not measured without a yes — but asked as a question with a clear yes.
+    The apologetic "Sorry - trace it by hand" is where Fortitude gave up."""
     from datetime import date
     note = rv._stale_imagery_note("2017-10-20", today=date(2026, 10, 2))
-    assert note.startswith("Sorry") and "October 2017" in note and "by hand" in note
+    assert "October 2017" in note and "measure it now" in note
+    assert "Sorry" not in note and "by hand" not in note
     assert rv._stale_imagery_note("2023-08-20", today=date(2026, 10, 2)) is None
     assert rv._stale_imagery_note(None) is None and rv._stale_imagery_note("garbage") is None
 
@@ -268,7 +271,10 @@ def test_a_house_newer_than_googles_data_is_not_measured(wired, monkeypatch):
         ls = _layers_for(dsm, mask, px); ls.imagery_date = "2017-10-20"; return ls
     monkeypatch.setattr(SL, "fetch_layers", layers)
     out = _call()
-    assert out["available"] is False and out["reason"].startswith("Sorry")
+    assert out["available"] is False and out["stale_imagery"] is True
+    # A question with a clear yes, not a refusal (Fortitude left at "Sorry").
+    assert "October 2017" in out["reason"] and "measure it now" in out["reason"]
+    assert "Sorry" not in out["reason"] and "by hand" not in out["reason"]
     assert "facets" not in wired["saved"]
     # The refusal is decided from the metadata alone: nothing was downloaded.
     assert downloads["n"] == 0
