@@ -823,7 +823,7 @@ export default function RoofV2Page() {
           <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-4">
             <h2 className="mb-2 text-sm font-semibold text-emerald-900">New project — property address</h2>
             <p className="mb-3 text-xs text-[#6b7280]">
-              Type the address and pick it from the list. That becomes the project's name, and
+              Type the address and pick it from the list. That becomes the project&apos;s name, and
               you go straight to the house.
             </p>
             <NewProjectByAddress
@@ -966,6 +966,28 @@ export default function RoofV2Page() {
       )}
 
       {/* EDITOR step */}
+      {/* Pop-ups centred on screen, over the map. The progress spinner and the
+          old-photo question used to sit BELOW the satellite image — off the
+          bottom of the screen — so the first founding contractor saw nothing
+          happen after clicking, or never saw the question at all. */}
+      {step === 'editor' && autoBusy && <MeasuringOverlay />}
+      {step === 'editor' && autoNote && !autoBusy && !autoNote.ok && autoNote.staleDate && (
+        <ScreenModal onClose={() => setAutoNote(null)}>
+          <div className="text-base font-semibold text-[#1a1a1a]">Is this still the same roof?</div>
+          <p className="mt-2 text-sm leading-relaxed text-[#4b5563]">{autoNote.text}</p>
+          <div className="mt-5 flex flex-col gap-2">
+            <button onClick={() => { void runAutoMeasure(true) }}
+              className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">
+              Yes, same roof &mdash; measure it
+            </button>
+            <button onClick={() => setAutoNote(null)}
+              className="w-full rounded-lg px-4 py-2 text-sm font-medium text-[#4b5563] hover:bg-[#f3f4f6]">
+              It&apos;s changed &mdash; I&apos;ll trace it by hand
+            </button>
+          </div>
+        </ScreenModal>
+      )}
+
       {step === 'editor' && imagery?.url && runId && (
         <section className="space-y-4">
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2 text-xs">
@@ -1039,7 +1061,7 @@ export default function RoofV2Page() {
               {autoBusy && (
                 <div className="flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-900">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-800" />
-                  Pulling Google's 3D model of this roof and measuring every facet — usually under 30 seconds.
+                  Pulling Google&apos;s 3D model of this roof and measuring every facet — usually under 30 seconds.
                 </div>
               )}
             </div>
@@ -1075,25 +1097,6 @@ export default function RoofV2Page() {
             <div className="flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-900">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-800" />
               Measuring this roof from Google&apos;s 3D model — usually under 30 seconds.
-            </div>
-          )}
-          {autoNote && !autoBusy && !autoNote.ok && autoNote.staleDate && (
-            // Old Google photo: ask, with "measure it" as THE action. The
-            // apologetic "trace by hand" version is where the first founding
-            // contractor gave up, on a house Axis measures fine.
-            <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 text-sm text-blue-950">
-              <div className="font-semibold">Is this still the same roof?</div>
-              <p className="mt-1 leading-relaxed text-blue-900/90">{autoNote.text}</p>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <button onClick={() => { void runAutoMeasure(true) }} disabled={autoBusy}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
-                  Yes, same roof &mdash; measure it
-                </button>
-                <button onClick={() => setAutoNote(null)}
-                  className="text-xs font-medium text-blue-900/70 underline underline-offset-2 hover:text-blue-950">
-                  It&apos;s changed &mdash; I&apos;ll trace it by hand
-                </button>
-              </div>
             </div>
           )}
           {autoNote && !autoBusy && !(!autoNote.ok && autoNote.staleDate) && (
@@ -1539,5 +1542,52 @@ function SaveIndicator({
         </>
       )}
     </div>
+  )
+}
+
+
+/** A card centred over the page. Clicking the backdrop or pressing Esc closes it. */
+function ScreenModal({ children, onClose }: { children: React.ReactNode; onClose?: () => void }) {
+  useEffect(() => {
+    if (!onClose) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose} role="dialog" aria-modal="true">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+const MEASURE_STEPS = [
+  'Getting Google\u2019s 3D model of this roof\u2026',
+  'Finding every roof plane\u2026',
+  'Measuring ridges, hips, valleys, eaves and rakes\u2026',
+  'Almost done \u2014 putting the outline on the map\u2026',
+]
+
+/** Shown for the whole length of an auto-measure, so the click visibly did something. */
+function MeasuringOverlay() {
+  const [i, setI] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setI(v => Math.min(v + 1, MEASURE_STEPS.length - 1)), 6000)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <ScreenModal>
+      <div className="flex items-center gap-4">
+        <span className="h-8 w-8 shrink-0 animate-spin rounded-full border-[3px] border-blue-200 border-t-blue-600" />
+        <div>
+          <div className="text-base font-semibold text-[#1a1a1a]">Measuring your roof</div>
+          <p className="mt-1 text-sm text-[#4b5563]">{MEASURE_STEPS[i]}</p>
+        </div>
+      </div>
+      <p className="mt-4 text-xs text-[#6b7280]">Usually under 30 seconds. Keep this tab open.</p>
+    </ScreenModal>
   )
 }

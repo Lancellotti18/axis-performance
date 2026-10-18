@@ -76,6 +76,10 @@ async def slot(queue_id: Optional[str] = None):
         _durations.append(time.monotonic() - started)
         del _durations[:-20]
         _semaphore().release()
+        # A report build is the heaviest thing the server does; hand its
+        # memory back before the next one starts (app/core/memory.py).
+        from app.core import memory
+        await asyncio.get_running_loop().run_in_executor(None, memory.release)
 
 
 def status(queue_id: Optional[str] = None) -> dict:

@@ -51,6 +51,21 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": detail}, headers=headers)
 
 
+# After the heavy endpoints finish, give freed memory back to the OS so the
+# process does not creep toward Render's limit (see app/core/memory.py).
+_HEAVY_PATHS = ("/auto-measure", "/report", "/visualizer", "/photos", "/project-photos")
+
+
+@app.middleware("http")
+async def _release_memory_after_heavy_work(request, call_next):
+    response = await call_next(request)
+    if any(h in request.url.path for h in _HEAVY_PATHS):
+        import asyncio as _asyncio
+        from app.core import memory as _memory
+        _asyncio.get_running_loop().run_in_executor(None, _memory.release)
+    return response
+
+
 app.include_router(api_router, prefix="/api/v1")
 
 # This used to fire whenever SUPABASE_JWT_SECRET was unset — which is now the

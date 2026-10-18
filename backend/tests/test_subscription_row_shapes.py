@@ -14,7 +14,12 @@ from datetime import datetime, timezone
 
 from app.services.stripe_service import subscription_to_row
 
-START, END = 1789655737, 1792247737
+# A 30-day period around NOW. These were fixed timestamps whose period ended
+# 2026-10-17, after which "a paid, active subscription must grant access"
+# failed for the calendar's sake, not the code's.
+import time as _time
+START = int(_time.time()) - 15 * 86400
+END = START + 30 * 86400
 
 
 def _expect(row):
