@@ -38,6 +38,7 @@ import ClientPortalPanel from '@/components/roof-v2/ClientPortalPanel'
 import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
 import HousePicker from '@/components/roof-v2/HousePicker'
+import DrawStatusCard, { AddressMismatchBanner, plainNote } from '@/components/roof-v2/DrawStatusCard'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 // RoofViewer3D temporarily disabled (geometry rebuild) — re-enable in REPORT step.
 // import RoofViewer3D from '@/components/roof-v2/RoofViewer3D'
@@ -166,7 +167,6 @@ export default function RoofV2Page() {
   // happened", or worse, as the new values.
   const [applyingEdges, setApplyingEdges] = useState(false)
   const [editorSyncRev, setEditorSyncRev] = useState(0)   // bump to push external edits into the editor canvas
-  const [autoLabelTrigger, setAutoLabelTrigger] = useState(0)   // editor toolbar → run edge auto-label
   // The contractor's confirmed "this is my house" tap. Loaded from the run on
   // resume; auto-analyze WAITS for it so we never draw the neighbor's roof.
   const [subjectPoint, setSubjectPoint] = useState<{ x: number; y: number } | null>(null)
@@ -185,6 +185,20 @@ export default function RoofV2Page() {
     // still confirm the house is unchanged and measure anyway.
     staleDate?: string | null
   } | null>(null)
+  // The roof on the map came from auto-measure in this session.
+  const [measuredAuto, setMeasuredAuto] = useState(false)
+  // Is the picked house the job's address? Checked the moment it is confirmed,
+  // BEFORE anything is measured or drawn (Ryan, 2026-10-18).
+  const [addressCheck, setAddressCheck] = useState<{ status: string; message: string | null } | null>(null)
+  const [addressConfirmed, setAddressConfirmed] = useState(false)
+  // The draw step's status card drives the editor, the labeler and the
+  // measurements panel through these.
+  const [editorCommand, setEditorCommand] = useState<{ kind: 'draw' | 'guide' | 'help'; n: number }>({ kind: 'draw', n: 0 })
+  const [labelCommand, setLabelCommand] = useState<{ kind: 'suggest' | 'review' | 'confirmAll'; n: number }>({ kind: 'review', n: 0 })
+  const [labelStatus, setLabelStatus] = useState<{ loading: boolean; error: string | null; aiLines: number }>({ loading: false, error: null, aiLines: 0 })
+  const [reportConfirmReq, setReportConfirmReq] = useState(0)
+  const [awaitingReportConfirm, setAwaitingReportConfirm] = useState(false)
+  const [showingMeasurements, setShowingMeasurements] = useState(false)
   const [step, setStep] = useState<Step>('project')
   // Callbacks that chain into each other across a project being created a
   // moment earlier read these, not stale closures.
@@ -644,6 +658,29 @@ export default function RoofV2Page() {
       .catch(() => setAutoMeasureOn(false))
   }, [])
 
+  // Check the picked house against the job's address as soon as it is picked.
+  // A confirmation is remembered for this run + point in the session, so a
+  // reload does not ask again.
+  const addressKey = runId && subjectPoint ? `axis_addr_ok:${runId}:${subjectPoint.x.toFixed(4)},${subjectPoint.y.toFixed(4)}` : null
+  useEffect(() => {
+    setAddressCheck(null)
+    if (!runId || !subjectPoint) { setAddressConfirmed(false); return }
+    let ok = false
+    try { ok = !!addressKey && sessionStorage.getItem(addressKey) === '1' } catch { /* private mode */ }
+    setAddressConfirmed(ok)
+    let cancelled = false
+    api.roofing.v2.addressCheck(runId)
+      .then(r => { if (!cancelled) setAddressCheck({ status: r.status, message: r.message }) })
+      .catch(() => { if (!cancelled) setAddressCheck({ status: 'unknown', message: null }) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, subjectPoint?.x, subjectPoint?.y])
+  const needsAddressConfirm = addressCheck?.status === 'mismatch' && !!addressCheck.message && !addressConfirmed
+  const confirmAddress = useCallback(() => {
+    setAddressConfirmed(true)
+    try { if (addressKey) sessionStorage.setItem(addressKey, '1') } catch { /* private mode */ }
+  }, [addressKey])
+
   // Measure the confirmed house from Google 3D. On success the result is
   // already stored server-side exactly like a trace; load it into the editor
   // for review. On any refusal, say why and open the editor empty to trace.
@@ -660,6 +697,7 @@ export default function RoofV2Page() {
         lng: imagery.lng ?? location?.lng ?? 0,
         satellite_image_url: imagery.original_url || imagery.url,
         allow_old_imagery: allowOldImagery,
+        address_confirmed: addressConfirmed,
       })
       if (r.available && r.facets && r.edges) {
         const { fcts, edgs } = rowsToGeometry(r.facets, r.edges)
@@ -674,29 +712,42 @@ export default function RoofV2Page() {
         setEdges(edgs)
         setEditorSyncRev(v => v + 1)
         setGeometryStamp(v => v + 1)
+        setMeasuredAuto(true)
         setAutoNote({
           ok: true,
-          text: `Measured automatically from Google 3D${r.imagery_date ? ` (imagery from ${r.imagery_date})` : ''}`
-            + `${r.alignment ? ` — ${r.alignment}` : ''}. `
-            + 'Check the outline sits on the right roof, adjust anything that looks off, then continue.',
-          warnings: r.warnings || [],
+          text: `Measured automatically from 3D roof data${r.imagery_date ? ` (aerial photo from ${monthYear(r.imagery_date)})` : ''}`
+            + `${r.alignment ? ` — ${plainNote(r.alignment)}` : ''}. `
+            + 'Check the outline sits on the right roof and adjust anything that looks off.',
+          warnings: (r.warnings || []).map(plainNote),
         })
       } else {
         const why = r.reason || "This roof couldn't be measured automatically."
         const stale = !!r.stale_imagery
         setAutoNote({
           // An old photo is a question with a clear yes, not a failure.
-          ok: false, text: stale || /by hand/i.test(why) ? why : `${why} Trace it below instead.`, warnings: [],
+          ok: false, text: plainNote(why), warnings: [],
           staleDate: stale ? (r.imagery_date ?? 'an old date') : null,
         })
       }
     } catch (e) {
-      setAutoNote({ ok: false, text: `Automatic measurement didn't finish (${e instanceof Error ? e.message : 'error'}). Trace it below instead.`, warnings: [] })
+      setAutoNote({ ok: false, text: `Automatic measurement didn't finish (${e instanceof Error ? e.message : 'error'}).`, warnings: [] })
     } finally {
       setAutoBusy(false)
       setEditorSub('draw')
     }
-  }, [runId, imagery, location, cancelPending])
+  }, [runId, imagery, location, cancelPending, addressConfirmed])
+
+  // Wrong house: throw the outline away (nothing has been charged — a report is
+  // only used when the measurements are shown) and go back to picking it.
+  const startOverHouse = useCallback(async () => {
+    cancelPending()
+    const had = facets.length > 0
+    setFacets([]); setEdges([]); setAutoNote(null); setSubjectPoint(null)
+    setMeasuredAuto(false); setAddressCheck(null); setAddressConfirmed(false)
+    setEditorSyncRev(v => v + 1)
+    if (had) await persistGeometryRef.current?.([], [])
+    setEditorSub('confirm')
+  }, [cancelPending, facets.length])
 
   const onEditorChange = useCallback((newFacets: Facet[], newEdges: LabeledEdge[]) => {
     setFacets(newFacets)
@@ -990,27 +1041,9 @@ export default function RoofV2Page() {
 
       {step === 'editor' && imagery?.url && runId && (
         <section className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2 text-xs">
-            <span className="text-[#6b7280]">Tile:</span>
-            <span className="font-mono text-[#1a1a1a]">
-              {imagery.provider} · z{imagery.zoom} · {imagery.feet_per_pixel?.toFixed(3)} ft/px
-            </span>
-            {(imagery.warnings || []).some(w => w.includes('sharpened')) && (
-              <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-emerald-800">
-                ✨ AI-sharpened
-              </span>
-            )}
-            {(imagery.warnings || []).filter(w => w.includes('sharpest of')).map(w => (
-              <span key={w} title="All satellite sources were compared for this address and the crispest tile won"
-                className="rounded bg-blue-500/20 px-2 py-0.5 text-blue-800">
-                🎯 {w}
-              </span>
-            ))}
-          </div>
-
-          {/* Sub-stepper — one satellite image at a time (confirm → scale → draw). */}
-          <div className="flex items-center gap-1.5 text-xs">
-            {([['confirm', '1. Confirm house'], ['scale', '2. Check scale (optional)'], ['draw', '3. Draw roof']] as const).map(([k, label], i) => {
+          {/* Progress — one satellite image at a time (confirm → scale → draw). */}
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {([['confirm', '1. Confirm house'], ['scale', '2. Check scale (optional)'], ['draw', '3. Draw & label roof']] as const).map(([k, label], i) => {
               const reached = k === 'confirm' || (k === 'scale' && subjectPoint != null) || k === 'draw'
               return (
                 <span key={k} className="flex items-center gap-1.5">
@@ -1023,6 +1056,20 @@ export default function RoofV2Page() {
               )
             })}
           </div>
+
+          {/* Critical warning zone — above everything else, only when relevant.
+              The wrong-house warning must be answered before anything can be
+              measured or drawn; once confirmed it collapses to a small note. */}
+          {needsAddressConfirm && addressCheck?.message && (
+            <AddressMismatchBanner
+              message={addressCheck.message}
+              onConfirm={confirmAddress}
+              onStartOver={() => { void startOverHouse() }}
+            />
+          )}
+          {addressCheck?.status === 'mismatch' && addressConfirmed && (
+            <p className="text-xs text-[#6b7280]"><span className="text-emerald-600">✓</span> Address confirmed — you&apos;ve checked this is the right house.</p>
+          )}
 
           {/* STEP 1 — confirm the house. */}
           {editorSub === 'confirm' && imagery?.url && (
@@ -1042,28 +1089,25 @@ export default function RoofV2Page() {
               {/* Scale is auto-derived from the tile's zoom/latitude and is right
                   the vast majority of the time — so drawing is the primary path.
                   "Check scale" stays one tap away for when a number looks off. */}
-              <div className="flex items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {needsAddressConfirm && (
+                  <span className="mr-auto text-xs text-amber-900">Answer the address question above to continue.</span>
+                )}
                 <button onClick={() => setEditorSub('scale')}
                   className="rounded-md bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2]">Check scale (optional)</button>
                 {autoMeasureOn ? (<>
-                  <button onClick={() => setEditorSub('draw')}
-                    className="rounded-md bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2]">Trace by hand</button>
-                  <button onClick={() => { void runAutoMeasure() }} disabled={!subjectPoint || autoBusy}
-                    title={subjectPoint ? 'Measure the whole roof from Google 3D — no tracing' : 'Confirm the house first'}
+                  <button onClick={() => setEditorSub('draw')} disabled={needsAddressConfirm}
+                    className="rounded-md bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-50">Trace by hand</button>
+                  <button onClick={() => { void runAutoMeasure() }} disabled={!subjectPoint || autoBusy || needsAddressConfirm}
+                    title={subjectPoint ? 'Measure the whole roof automatically — no tracing' : 'Confirm the house first'}
                     className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
                     {autoBusy ? 'Measuring the roof…' : '✨ Auto-measure roof'}
                   </button>
                 </>) : (
-                  <button onClick={() => setEditorSub('draw')}
-                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Next: draw roof &rarr;</button>
+                  <button onClick={() => setEditorSub('draw')} disabled={needsAddressConfirm}
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">Next: draw roof &rarr;</button>
                 )}
               </div>
-              {autoBusy && (
-                <div className="flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-900">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-800" />
-                  Pulling Google&apos;s 3D model of this roof and measuring every facet — usually under 30 seconds.
-                </div>
-              )}
             </div>
           )}
 
@@ -1081,39 +1125,51 @@ export default function RoofV2Page() {
               <div className="flex justify-between">
                 <button onClick={() => setEditorSub('confirm')}
                   className="rounded-md bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2]">&larr; Back</button>
-                <button onClick={() => setEditorSub('draw')}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">Next: draw roof &rarr;</button>
+                <button onClick={() => setEditorSub('draw')} disabled={needsAddressConfirm}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">Next: draw roof &rarr;</button>
               </div>
             </div>
           )}
 
-          {editorSub === 'draw' && (<>
-          {/* Measuring again after "it's the same house". The spinner in the
-              confirm step is gone by now — runAutoMeasure ends on 'draw' — and
-              clicking the button clears the note it sits in, so without this
-              the screen goes blank for the length of a measurement and looks
-              like the click did nothing. */}
-          {autoBusy && (
-            <div className="flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-900">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-800" />
-              Measuring this roof from Google&apos;s 3D model — usually under 30 seconds.
-            </div>
+          {editorSub === 'draw' && needsAddressConfirm && (
+            <p className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm text-[#4b5563]">
+              Confirm the address above (or start over) before measuring or drawing this roof.
+            </p>
           )}
-          {autoNote && !autoBusy && !(!autoNote.ok && autoNote.staleDate) && (
-            <div className={`rounded-lg border p-3 text-sm ${autoNote.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
-              <div>{autoNote.ok ? '✨ ' : ''}{autoNote.text}</div>
-              {autoNote.warnings.map(w => (
-                <div key={w} className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-amber-900">⚠️ {w}</div>
-              ))}
-            </div>
-          )}
-          {/* Save state, always on screen while drawing. Tracing is the most
-              expensive work in the app and it saves on a debounce — the
-              contractor should never have to wonder whether it landed. */}
-          <SaveIndicator state={saveState} savedAt={savedAt} onRetry={() => { cancelPending(); void persistGeometry(facets, edges) }} />
-          {/* Vision auto-detect retired: field testing showed it didn't reliably
-              pick up houses. The workflow is now trace the roof by hand →
-              ✨ Auto-label edges (kept, below the canvas). */}
+
+          {editorSub === 'draw' && !needsAddressConfirm && (<>
+          {/* ONE status card: where the roof stands and the single next step.
+              It replaced a stack of up to six competing boxes. */}
+          <DrawStatusCard
+            facetCount={facets.length}
+            counts={edgeCounts}
+            measuredAuto={measuredAuto}
+            autoFailedReason={autoNote && !autoNote.ok && !autoNote.staleDate && facets.length === 0 ? autoNote.text : null}
+            autoMeasureAvailable={autoMeasureOn && !!subjectPoint}
+            applying={applyingEdges}
+            labelBusy={labelStatus.loading}
+            aiLabelAvailable={labelStatus.aiLines > 0}
+            labelError={labelStatus.error}
+            awaitingReportConfirm={awaitingReportConfirm}
+            showingMeasurements={showingMeasurements}
+            notes={[
+              ...(autoNote?.ok ? [autoNote.text, ...autoNote.warnings] : []),
+              ...partialSignals.map(plainNote),
+            ]}
+            blocking={blockingIssues.map(c => ISSUE_TEXT[c] ?? c)}
+            saveIndicator={<SaveIndicator state={saveState} savedAt={savedAt} onRetry={() => { cancelPending(); void persistGeometry(facets, edges) }} />}
+            onAutoMeasure={() => { void runAutoMeasure() }}
+            onStartDrawing={() => setEditorCommand(c => ({ kind: 'draw', n: c.n + 1 }))}
+            onHelp={() => setEditorCommand(c => ({ kind: 'help', n: c.n + 1 }))}
+            onWalkThrough={() => setEditorCommand(c => ({ kind: 'guide', n: c.n + 1 }))}
+            onLabelAll={() => setLabelCommand(c => ({ kind: 'suggest', n: c.n + 1 }))}
+            onConfirmAll={() => setLabelCommand(c => ({ kind: 'confirmAll', n: c.n + 1 }))}
+            onReviewOneByOne={() => setLabelCommand(c => ({ kind: 'review', n: c.n + 1 }))}
+            onShowMeasurements={() => setReportConfirmReq(n => n + 1)}
+            onContinue={() => setStep('details')}
+          />
+
+          {/* The map stays the dominant visual. */}
           <div className="h-[680px] overflow-hidden">
             <RoofFacetEditor
               imageUrl={imagery.url}
@@ -1123,55 +1179,40 @@ export default function RoofV2Page() {
               initialEdges={edges}
               onChange={onEditorChange}
               syncRev={editorSyncRev}
-              onAutoLabelEdges={() => {
-                setAutoLabelTrigger(t => t + 1)
-                setTimeout(() => document.getElementById('edge-label-panel')
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
-              }}
+              command={editorCommand}
             />
           </div>
-          {/* Auto-label edges sits DIRECTLY under the canvas — the intended flow
-              is trace → ✨ auto-label → review, with by-hand labeling in the
-              editor as the fallback for individual disagreements. */}
+
+          {/* The labeler runs behind the status card: no panel of its own, only
+              the one-by-one review when it opens. */}
           {facets.length > 0 && (
-            <div id="edge-label-panel" className="scroll-mt-16">
-              <EdgeLabelSuggestions
-                runId={runId}
-                facets={facets}
-                edges={edges}
-                imageUrl={imagery?.original_url || imagery?.url}
-                imageWidthPx={imagery?.width_px ?? 2048}
-                imageHeightPx={imagery?.height_px ?? 1366}
-                trigger={autoLabelTrigger}
-                onAcceptEdges={async (updatedEdges) => {
-                  cancelPending()   // a queued canvas write would clobber these labels
-                  setApplyingEdges(true)
-                  try {
-                    setEdges(updatedEdges)
-                    setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
-                    // Persist FIRST, then bump geometryStamp so MeasurementsSummary
-                    // refetches against the saved edges — otherwise accepting labels
-                    // left the measurements + material order stale (only the
-                    // previously-saved ridges showed).
-                    await persistGeometry(facets, updatedEdges)
-                    setGeometryStamp(s => s + 1)
-                  } finally {
-                    // Cleared by the summary once it has actually refetched, not
-                    // here — the save finishing is not the same as the numbers
-                    // being right.
-                    setApplyingEdges(false)
-                  }
-                }}
-              />
-            </div>
+            <EdgeLabelSuggestions
+              headless
+              runId={runId}
+              facets={facets}
+              edges={edges}
+              imageUrl={imagery?.original_url || imagery?.url}
+              imageWidthPx={imagery?.width_px ?? 2048}
+              imageHeightPx={imagery?.height_px ?? 1366}
+              command={labelCommand}
+              onStatus={setLabelStatus}
+              onAcceptEdges={async (updatedEdges) => {
+                cancelPending()   // a queued canvas write would clobber these labels
+                setApplyingEdges(true)
+                try {
+                  setEdges(updatedEdges)
+                  setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
+                  // Persist FIRST, then bump geometryStamp so MeasurementsSummary
+                  // refetches against the saved edges.
+                  await persistGeometry(facets, updatedEdges)
+                  setGeometryStamp(s => s + 1)
+                } finally {
+                  setApplyingEdges(false)
+                }
+              }}
+            />
           )}
 
-          {applyingEdges && (
-            <div className="mb-3 flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-900">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-800" />
-              Applying labels — recalculating measurements, materials and confidence…
-            </div>
-          )}
           <MeasurementsSummary
             runId={runId}
             geometryStamp={geometryStamp}
@@ -1184,29 +1225,38 @@ export default function RoofV2Page() {
             zip={project?.zip}
             city={project?.city}
             onForceSave={async () => { cancelPending(); await persistGeometry(facets, edges) }}
-            onWrongHouse={async () => {
-              // Nothing was charged — a report is only used on confirmation —
-              // so throw the outline away and go back to picking the house.
-              cancelPending()
-              setFacets([]); setEdges([]); setAutoNote(null); setSubjectPoint(null)
-              await persistGeometry([], [])
-              setEditorSub('confirm')
-            }}
+            onWrongHouse={startOverHouse}
+            embeddedGate
+            confirmRequest={reportConfirmReq}
+            onAwaitingConfirmChange={setAwaitingReportConfirm}
+            onShowingChange={setShowingMeasurements}
           />
 
-
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              onClick={() => setStep('details')}
-              disabled={facets.length === 0}
-              className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
-            >Next: details →</button>
-            <button
-              onClick={() => setStep('report')}
-              disabled={facets.length === 0}
-              className="rounded bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-50"
-            >Skip to report →</button>
-          </div>
+          {/* Bottom actions — only once every line is labeled and confirmed and
+              the numbers are on screen. Until then the status card leads. */}
+          {facets.length > 0 && edgeCounts.totalLines > 0 && edgeCounts.needsLabel === 0 && edgeCounts.needsConfirm === 0 && showingMeasurements ? (
+            <div className="flex flex-wrap items-center gap-3 border-t border-[#eeeeed] pt-4">
+              <button onClick={() => setStep('details')} disabled={blockingIssues.length > 0}
+                className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
+                Continue to details →
+              </button>
+              <button onClick={() => setStep('report')} disabled={blockingIssues.length > 0}
+                className="rounded-lg border border-[#dededc] bg-white px-4 py-2.5 text-sm font-medium text-[#1a1a1a] hover:bg-[#f8f8f7] disabled:opacity-50">
+                Skip to report
+              </button>
+              <button onClick={() => { void startOverHouse() }}
+                className="ml-auto text-xs text-[#6b7280] underline underline-offset-2 hover:text-[#1a1a1a]">
+                Wrong house? Start over
+              </button>
+            </div>
+          ) : facets.length > 0 && (
+            <div className="flex justify-end">
+              <button onClick={() => { void startOverHouse() }}
+                className="text-xs text-[#6b7280] underline underline-offset-2 hover:text-[#1a1a1a]">
+                Wrong house? Start over
+              </button>
+            </div>
+          )}
           </>)}
         </section>
       )}
@@ -1590,4 +1640,11 @@ function MeasuringOverlay() {
       <p className="mt-4 text-xs text-[#6b7280]">Usually under 30 seconds. Keep this tab open.</p>
     </ScreenModal>
   )
+}
+
+/** "2021-09-03" -> "September 2021"; anything unparseable is returned as-is. */
+function monthYear(iso: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(iso)
+  if (!m) return iso
+  return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }

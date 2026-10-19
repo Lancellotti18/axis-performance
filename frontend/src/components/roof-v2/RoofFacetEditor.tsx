@@ -31,7 +31,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildEdgeMap, clearEdgeCache, snapToNearestEdge } from '@/lib/edgeSnap'
 import MagnifierLoupe from './MagnifierLoupe'
-import { distinctLines, labelLine } from './edgeGeometry'
+import { groupEdgesByLine, labelLine } from './edgeGeometry'
 
 export type EdgeType =
   | 'eave' | 'rake' | 'ridge' | 'hip' | 'valley'
@@ -69,8 +69,9 @@ interface Props {
   // Bump this from the parent to pull EXTERNAL facet/edge changes (e.g. an
   // accepted auto-label suggestion) into the editor so they show on the canvas.
   syncRev?: number
-  // Toolbar "Auto-label edges" button — runs the AI edge-label suggestion flow.
-  onAutoLabelEdges?: () => void
+  // Driven by the step's status card: bump `n` to switch to drawing, walk the
+  // contractor through the lines that still need a type, or open the drawing help.
+  command?: { kind: 'draw' | 'guide' | 'help'; n: number }
 }
 
 // What each line type IS, in the words a homeowner would understand — shown
@@ -184,7 +185,7 @@ function constrainTo45(from: Pt, to: Pt, imageW: number, imageH: number): Pt {
 
 export function RoofFacetEditor({
   imageUrl, imageWidthPx, imageHeightPx,
-  initialFacets = [], initialEdges = [], onChange, syncRev, onAutoLabelEdges,
+  initialFacets = [], initialEdges = [], onChange, syncRev, command,
 }: Props) {
   const [facets, setFacets] = useState<Facet[]>(initialFacets)
   // Closed on arrival — see the aside below for why.
@@ -213,16 +214,11 @@ export function RoofFacetEditor({
   const [hoverPt, setHoverPt] = useState<Pt | null>(null)
   const [hoverSnappedVertex, setHoverSnappedVertex] = useState(false)
 
-  // First-use coachmark (shown once, dismissed to localStorage).
+  // Drawing help — opened from "Need help drawing?" only. It used to open by
+  // itself on first visit and sat on top of the map with everything else.
   const [showCoach, setShowCoach] = useState(false)
-  // "Auto-label first" nudge — session-dismissible; disappears on its own once
-  // the edges are labeled.
-  const [labelNudgeDismissed, setLabelNudgeDismissed] = useState(false)
-  useEffect(() => {
-    try {
-      if (!localStorage.getItem('axis_editor_coach_v1')) setShowCoach(true)
-    } catch { /* private mode — just skip */ }
-  }, [])
+  // The floating line-colour legend, collapsible.
+  const [legendOpen, setLegendOpen] = useState(true)
   const dismissCoach = useCallback(() => {
     setShowCoach(false)
     try { localStorage.setItem('axis_editor_coach_v1', '1') } catch { /* ignore */ }
@@ -237,6 +233,9 @@ export function RoofFacetEditor({
   // constrained to a multiple of 45° from the previous one (typical for
   // residential roofs that are mostly right-angled).
   const [shiftHeld, setShiftHeld] = useState(false)
+  // The same constraint as a toggle in the toolbar, for anyone who doesn't
+  // know to hold Shift.
+  const [orthoEnabled, setOrthoEnabled] = useState(false)
   // Alt/Option held = place the vertex EXACTLY where the cursor is, bypassing
   // both the magnetic vertex snap and the gradient edge snap. The snaps are a
   // help most of the time but fight you when you're pinning a precise corner —
@@ -427,6 +426,61 @@ export function RoofFacetEditor({
 
   const resetView = useCallback(() => setView({ scale: 1, x: 0, y: 0 }), [])
 
+  const facetsRef = useRef<Facet[]>(initialFacets)
+  useEffect(() => { facetsRef.current = facets }, [facets])
+  // Frame the roof. The tile shows the whole neighbourhood, so a traced or
+  // auto-measured roof opened as a small shape in the middle of it — the map
+  // was the dominant visual, but the ROOF on it was not.
+  const fitToRoof = useCallback(() => {
+    const el = containerRef.current
+    const pts = facetsRef.current.flatMap(f => f.polygon)
+    if (!el || pts.length === 0) { setView({ scale: 1, x: 0, y: 0 }); return }
+    const r = el.getBoundingClientRect()
+    if (!r.width || !r.height) return
+    const xs = pts.map(p => p[0]); const ys = pts.map(p => p[1])
+    const k = Math.min(r.width / imageDims.w, r.height / imageDims.h)
+    const ox = (r.width - imageDims.w * k) / 2; const oy = (r.height - imageDims.h * k) / 2
+    const x0 = ox + Math.min(...xs) * imageDims.w * k, x1 = ox + Math.max(...xs) * imageDims.w * k
+    const y0 = oy + Math.min(...ys) * imageDims.h * k, y1 = oy + Math.max(...ys) * imageDims.h * k
+    const S = Math.max(1, Math.min(GUIDE_MAX_SCALE * 0.75,
+      0.7 * Math.min(r.width / Math.max(x1 - x0, 1), r.height / Math.max(y1 - y0, 1))))
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2
+    setView({ scale: S, x: r.width / 2 - cx * S, y: r.height / 2 - cy * S })
+  }, [imageDims.w, imageDims.h])
+  // Frame it when a roof ARRIVES — opened with one, or a new outline pushed in
+  // by the parent (an auto-measure result) — never because of the
+  // contractor's own drawing or labeling, which would yank the view mid-task.
+  // Keyed on the outline, so a parent sync that only changed labels is ignored.
+  //
+  // A parent push arrives in two renders: `syncRev` changes first, and the
+  // pushed facets land in this component's state on the next. So a sync only
+  // marks a fit as pending; the facets that follow decide it.
+  const openedWithRoof = useRef(initialFacets.length > 0)
+  const fit = useRef<{ sync: number | undefined; outline: string | null; pending: boolean }>(
+    { sync: syncRev, outline: null, pending: false })
+  useEffect(() => {
+    const st = fit.current
+    const outline = facets.length
+      ? facets.map(f => `${f.label}:${f.polygon.length}:${f.polygon[0]?.join(',')}`).join('|')
+      : ''
+    if (syncRev !== st.sync) {
+      st.sync = syncRev
+      st.pending = true
+      if (outline === (st.outline ?? '')) return        // wait for the pushed facets
+    }
+    let doFit = false
+    if (st.outline === null) {
+      doFit = openedWithRoof.current && facets.length > 0  // opened a saved/measured roof
+    } else if (st.pending) {
+      doFit = outline !== st.outline && facets.length > 0  // a NEW outline was pushed in
+    }
+    st.pending = false
+    st.outline = outline
+    if (doFit && drawingPoly.length === 0) requestAnimationFrame(() => requestAnimationFrame(fitToRoof))
+    // drawingPoly is read, not tracked: a fit must never be triggered by drawing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facets, syncRev, fitToRoof])
+
   // Instant pan by pixels (used by the keypad + continuous keyboard pan).
   // Panning the CSS view never refetches and never misaligns facets — facets
   // are stored in image-fraction coords tied to THIS tile, so a refetch (the
@@ -602,8 +656,8 @@ export function RoofFacetEditor({
   const resolvePoint = useCallback((raw: Pt): { pt: Pt; onVertex: boolean } => {
     let pt = raw
 
-    // 1. Orthogonality (Shift)
-    if (shiftHeld && drawingPoly.length > 0) {
+    // 1. Orthogonality (toolbar toggle, or Shift held)
+    if ((orthoEnabled || shiftHeld) && drawingPoly.length > 0) {
       pt = constrainTo45(drawingPoly[drawingPoly.length - 1], pt, imageDims.w, imageDims.h)
     }
 
@@ -636,7 +690,7 @@ export function RoofFacetEditor({
       if (snapped.snapped) pt = [snapped.x / imageDims.w, snapped.y / imageDims.h]
     }
     return { pt, onVertex: false }
-  }, [shiftHeld, altHeld, drawingPoly, facets, snapEnabled, snapReady, imageDims, view.scale])
+  }, [shiftHeld, orthoEnabled, altHeld, drawingPoly, facets, snapEnabled, snapReady, imageDims, view.scale])
 
   const onSvgPointerDown = useCallback((ev: React.PointerEvent<SVGSVGElement>) => {
     if (mode !== 'draw') return
@@ -775,16 +829,16 @@ export function RoofFacetEditor({
   // Counted as distinct ROOF LINES (a shared line is one line, not one per
   // facet), the same way the measurements panel counts — three different
   // numbers on one screen (8, 10, "all labeled") was the confusion.
+  // Same rule as edgeReviewCounts (the status card's count): a roof line needs
+  // a type when the copy it is counted under has none. Counting raw unlabeled
+  // copies instead made the walkthrough say "6 left" beside a card saying 4
+  // whenever one side of a shared line was typed and the other was not.
   const blankLines = useMemo(
-    () => distinctLines(facets, edges.filter(e => e.edgeType === 'unlabeled')),
+    () => groupEdgesByLine(facets, edges)
+      .filter(g => g.representative.edgeType === 'unlabeled')
+      .map(g => g.representative),
     [facets, edges],
   )
-  // Lines the AI may suggest for: not on a facet measured from Google 3D,
-  // where an untyped line means the heights showed no crease to guess from.
-  const aiBlankCount = useMemo(() => {
-    const measured = new Set(facets.filter(f => f.pitchSource === 'solar_3d').map(f => f.label))
-    return blankLines.filter(e => !measured.has(e.facetLabel)).length
-  }, [blankLines, facets])
   const [guiding, setGuiding] = useState(false)
 
   // Centre and zoom the canvas on one line, so a 4 ft line is findable.
@@ -841,11 +895,33 @@ export function RoofFacetEditor({
     const target = { facetLabel: selectedRecord.facetLabel, vertexIndexStart: selectedRecord.vertexIndexStart }
     const updated = labelLine(facets, edges, target, t)
     setEdges(updated)
-    const remaining = distinctLines(facets, updated.filter(e => e.edgeType === 'unlabeled'))
+    const remaining = groupEdgesByLine(facets, updated)
+      .filter(g => g.representative.edgeType === 'unlabeled')
+      .map(g => g.representative)
     const nxt = remaining.length ? nextBlank(target, [...remaining]) ?? remaining[0] : null
     if (nxt) goToLine(nxt)
     else { setGuiding(false); setSelectedEdge(null); setView({ scale: 1, x: 0, y: 0 }) }
   }, [selectedRecord, facets, edges, nextBlank, goToLine])
+
+  // Commands from the status card above the map.
+  const lastCommand = useRef(command?.n ?? 0)
+  useEffect(() => {
+    if (!command || command.n === lastCommand.current) return
+    lastCommand.current = command.n
+    if (command.kind === 'draw') { setGuiding(false); setSelectedEdge(null); setMode('draw') }
+    else if (command.kind === 'guide') startGuide()
+    else if (command.kind === 'help') setShowCoach(true)
+  }, [command, startGuide])
+
+  // Which stored edges belong to a CONFIRMED roof line (either facet's copy),
+  // so the map can show labeled-but-unconfirmed lines differently.
+  const confirmedKeys = useMemo(() => {
+    const k = new Set<string>()
+    for (const g of groupEdgesByLine(facets, edges)) {
+      if (g.confirmed) g.members.forEach(m => k.add(`${m.facetLabel}:${m.vertexIndexStart}`))
+    }
+    return k
+  }, [facets, edges])
 
   // ---- Facet pitch / delete ----
   const setFacetPitch = useCallback((facetIdx: number, pitch: string) => {
@@ -912,6 +988,10 @@ export function RoofFacetEditor({
           const color = edgeRec ? EDGE_COLORS[edgeRec.edgeType] : EDGE_COLORS.unlabeled
           const isSel = selectedEdge?.facetIdx === idx && selectedEdge.edgeIdx === i
           const blank = !edgeRec || edgeRec.edgeType === 'unlabeled'
+          // Three states the contractor can read at a glance (see the legend):
+          // ? unlabeled = loud pink dashed · labeled, needs confirm = bright with
+          // a soft glow · confirmed = solid and quieter, done.
+          const confirmed = !blank && confirmedKeys.has(`${f.label}:${i}`)
           return (
             <g key={i}>
               {/* Pulsing white halo so the SELECTED edge is unmistakable —
@@ -937,11 +1017,20 @@ export function RoofFacetEditor({
                   <animate attributeName="opacity" values="0.1;0.45;0.1" dur="1.4s" repeatCount="indefinite" />
                 </line>
               )}
+              {!blank && !confirmed && (
+                <line
+                  x1={p1[0] * imageDims.w} y1={p1[1] * imageDims.h}
+                  x2={p2[0] * imageDims.w} y2={p2[1] * imageDims.h}
+                  stroke={color} strokeOpacity={0.35} strokeWidth={12 / view.scale}
+                  strokeLinecap="round" pointerEvents="none"
+                />
+              )}
               <line
                 x1={p1[0] * imageDims.w} y1={p1[1] * imageDims.h}
                 x2={p2[0] * imageDims.w} y2={p2[1] * imageDims.h}
                 stroke={color}
-                strokeWidth={(isSel ? 7 : blank ? 5 : 4) / view.scale}
+                strokeOpacity={confirmed && !isSel ? 0.8 : 1}
+                strokeWidth={(isSel ? 7 : blank ? 5 : confirmed ? 3 : 4.5) / view.scale}
                 strokeDasharray={blank ? `${10 / view.scale} ${6 / view.scale}` : undefined}
                 strokeLinecap="round"
                 style={{ cursor: mode === 'label' || mode === 'select' ? 'pointer' : 'default' }}
@@ -997,142 +1086,64 @@ export function RoofFacetEditor({
   }
 
   const unlabeledCount = blankLines.length
-  // ONE action for "these lines need a type": the AI suggests where it is
-  // allowed to; otherwise (or after it) we walk through them on the roof.
-  const labelLines = () => {
-    if (aiBlankCount > 0 && onAutoLabelEdges) onAutoLabelEdges()
-    else startGuide()
-  }
+
+  const toolBtn = (on: boolean) =>
+    `rounded-md px-3 py-1.5 text-xs font-medium transition ${on ? 'bg-blue-600 text-white' : 'bg-white text-[#2d2d2d] hover:bg-[#eeeeed]'}`
+  const helperBtn = 'rounded-md px-2 py-1.5 text-xs font-medium text-[#1a1a1a] hover:bg-[#eeeeed] disabled:opacity-30'
 
   return (
-    <div className="flex h-full w-full flex-col gap-3">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-2 text-sm text-[#1a1a1a]">
-        <span className="font-semibold text-[#2d2d2d]">Mode:</span>
-        {(['draw', 'select', 'label'] as Mode[]).map(m => (
-          <button
-            key={m}
-            onClick={() => { setMode(m); setSelectedEdge(null) }}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${ mode === m ? 'bg-blue-600 text-white' : 'bg-[#eeeeed] text-[#2d2d2d] hover:bg-[#e4e4e2]' }`}
-            title={m === 'label' ? 'Manual fallback — click an edge on the canvas, then pick its type. Fastest path is ✨ Auto-label.' : undefined}
-          >
-            {m === 'draw' ? '+ Draw facet' : m === 'select' ? 'Edit vertices' : 'Label by hand'}
-          </button>
-        ))}
-        <button
-          onClick={() => setShowCoach(true)}
-          title="How to trace the roof for the best auto-label results"
-          className="rounded-md bg-[#eeeeed] px-3 py-1.5 text-xs font-medium text-blue-800 hover:bg-[#e4e4e2]"
-        >? How to trace</button>
-        <button
-          onClick={labelLines}
-          disabled={facets.length === 0 || unlabeledCount === 0}
-          title={aiBlankCount > 0
-            ? 'AI suggests a type for each line — you review and accept'
-            : 'Walks you to each line that still needs a type'}
-          className={`rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40 ${ facets.length > 0 && unlabeledCount > 0 ? 'ring-2 ring-emerald-300/60 shadow-[0_0_14px_rgba(52,211,153,0.45)]' : '' }`}
-        >{unlabeledCount > 0
-          ? `🏷 Label ${unlabeledCount} line${unlabeledCount === 1 ? '' : 's'}`
-          : '✓ Every line has a type'}</button>
-        <div className="mx-2 h-5 w-px bg-[#eeeeed]" />
-        {/* Undo / redo */}
-        <button
-          onClick={undo}
-          disabled={!canUndo}
-          title="Undo (⌘Z / Ctrl+Z)"
-          className="rounded-md bg-[#eeeeed] px-2 py-1.5 text-xs font-medium text-[#1a1a1a] hover:bg-[#e4e4e2] disabled:opacity-30"
-        >↶ Undo</button>
-        <button
-          onClick={redo}
-          disabled={!canRedo}
-          title="Redo (⌘⇧Z / Ctrl+Y)"
-          className="rounded-md bg-[#eeeeed] px-2 py-1.5 text-xs font-medium text-[#1a1a1a] hover:bg-[#e4e4e2] disabled:opacity-30"
-        >↷ Redo</button>
-        <div className="mx-2 h-5 w-px bg-[#eeeeed]" />
-        <span className="text-xs text-[#6b7280]">
-          {facets.length} facet{facets.length === 1 ? '' : 's'}
-        </span>
-        {/* Snap-to-edge + orthogonality controls (only matter in draw mode) */}
-        {mode === 'draw' && (
-          <>
-            <div className="mx-2 h-5 w-px bg-[#eeeeed]" />
-            <label className="flex items-center gap-1.5 text-xs text-[#2d2d2d]">
-              <input
-                type="checkbox"
-                checked={snapEnabled}
-                onChange={e => setSnapEnabled(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-[#dededc] bg-[#eeeeed]"
-              />
-              Snap to edge
-              {snapEnabled && (
-                <span className={snapReady ? 'text-emerald-400' : 'text-amber-400'}>
-                  {snapReady ? '●' : '◐'}
-                </span>
-              )}
-            </label>
-            <span
-              className={`rounded px-2 py-0.5 text-[10px] ${ shiftHeld ? 'bg-blue-500/30 text-blue-900' : 'bg-[#eeeeed] text-[#6b7280]' }`}
-              title="Hold Shift while clicking to constrain new vertex to 45° angles from the previous one"
+    <div className="flex h-full w-full flex-col gap-2">
+      {/* Tools: drawing on the left, helpers on the right. Status, next steps
+          and help live in the status card above the map, not in here. */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#dededc] bg-[#f8f8f7] p-1.5 text-sm text-[#1a1a1a]">
+        <div className="flex items-center gap-1 rounded-md bg-[#eeeeed] p-0.5" role="group" aria-label="Drawing tools">
+          {(['draw', 'select', 'label'] as Mode[]).map(m => (
+            <button
+              key={m}
+              onClick={() => { setMode(m); setSelectedEdge(null); if (m !== 'label') setGuiding(false) }}
+              className={toolBtn(mode === m)}
+              aria-pressed={mode === m}
+              title={m === 'draw' ? 'Click the corners of one roof plane, then click the first corner again to close it'
+                : m === 'select' ? 'Drag a corner to move it'
+                : 'Click a line on the map, then pick its type'}
             >
-              ⇧ {shiftHeld ? 'ortho ON' : 'ortho (hold ⇧)'}
-            </span>
-            <span
-              className={`rounded px-2 py-0.5 text-[10px] ${ altHeld ? 'bg-emerald-500/30 text-emerald-900' : 'bg-[#eeeeed] text-[#6b7280]' }`}
-              title="Hold Alt/Option while clicking to place the vertex exactly under the cursor, bypassing snap"
-            >
-              ⌥ {altHeld ? 'exact ON' : 'exact (hold ⌥)'}
-            </span>
-          </>
-        )}
+              {m === 'draw' ? '+ Draw facet' : m === 'select' ? 'Edit vertices' : 'Label by hand'}
+            </button>
+          ))}
+        </div>
+
         {mode === 'draw' && drawingPoly.length > 0 && (
-          <span className="rounded bg-amber-500/20 px-2 py-1 text-xs text-amber-900">
-            Drawing — {drawingPoly.length} vertex{drawingPoly.length === 1 ? '' : 'es'}. Click first dot or press Enter to close.
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[#4b5563]">
+              {drawingPoly.length} corner{drawingPoly.length === 1 ? '' : 's'} — click the first corner (or press Enter) to close
+            </span>
+            {drawingPoly.length >= 3 && (
+              <button onClick={finalizeDrawingPoly}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500">Close facet</button>
+            )}
+            <button onClick={() => setDrawingPoly([])}
+              className="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-[#1a1a1a] hover:bg-[#eeeeed]">Cancel</button>
+          </div>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          {mode === 'draw' && drawingPoly.length >= 3 && (
-            <button
-              onClick={finalizeDrawingPoly}
-              className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
-            >Close facet</button>
-          )}
-          {mode === 'draw' && drawingPoly.length > 0 && (
-            <button
-              onClick={() => setDrawingPoly([])}
-              className="rounded-md bg-[#e4e4e2] px-3 py-1.5 text-xs font-medium text-[#1a1a1a] hover:bg-[#d4d4d2]"
-            >Cancel</button>
-          )}
+
+        <div className="ml-auto flex flex-wrap items-center gap-1" role="group" aria-label="Helpers">
+          <label className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-[#2d2d2d] hover:bg-[#eeeeed]"
+            title="Corners snap onto the roof edges in the photo. Hold Alt/Option while clicking for exact placement.">
+            <input type="checkbox" checked={snapEnabled} onChange={e => setSnapEnabled(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-[#dededc]" />
+            Snap to edge
+          </label>
+          <label className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-[#2d2d2d] hover:bg-[#eeeeed]"
+            title="Keep new lines at right angles (or 45°) to the last one. Holding Shift does the same.">
+            <input type="checkbox" checked={orthoEnabled || shiftHeld} onChange={e => setOrthoEnabled(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-[#dededc]" />
+            Ortho
+          </label>
+          <div className="mx-1 h-5 w-px bg-[#dededc]" />
+          <button onClick={undo} disabled={!canUndo} title="Undo (⌘Z / Ctrl+Z)" className={helperBtn}>↶ Undo</button>
+          <button onClick={redo} disabled={!canRedo} title="Redo (⌘⇧Z / Ctrl+Y)" className={helperBtn}>↷ Redo</button>
         </div>
       </div>
-
-      {/* Auto-first nudge: appears the moment there are unlabeled edges and
-          steers to ✨ Auto-label before manual clicking. Session-dismissible;
-          disappears on its own once everything is labeled. */}
-      {facets.length > 0 && unlabeledCount > 0 && !labelNudgeDismissed && mode !== 'label' && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-          <span className="text-sm">🎯</span>
-          <span>
-            <strong>{unlabeledCount} line{unlabeledCount === 1 ? '' : 's'} still need{unlabeledCount === 1 ? 's' : ''} a type</strong>{' '}
-            — they&apos;re the pink dashed lines with a <strong>?</strong>, and they aren&apos;t counted until set.
-          </span>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={labelLines}
-              className="rounded bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-500"
-            >🏷 Label them</button>
-            <button
-              onClick={() => { setLabelNudgeDismissed(true); startGuide() }}
-              className="rounded bg-[#eeeeed] px-2 py-1 text-[#2d2d2d] hover:bg-[#e4e4e2]"
-              title="Click edges on the canvas and pick each type yourself"
-            >Walk me through them</button>
-            <button
-              onClick={() => setLabelNudgeDismissed(true)}
-              className="rounded p-1 text-emerald-900/60 hover:text-[#1a1a1a]"
-              aria-label="Dismiss"
-            >✕</button>
-          </div>
-        </div>
-      )}
 
       <div className="flex min-h-0 flex-1 gap-3">
         {/* Canvas */}
@@ -1342,7 +1353,7 @@ export function RoofFacetEditor({
                 </li>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white">5</span>
-                  <span>Hit <strong className="text-emerald-800">🏷 Label lines</strong>, then review — accept the good ones, fix any single edge by hand. The measurements lock in once you confirm.</span>
+                  <span>When every plane is traced, follow the <strong>status card above the map</strong>: label the lines, then confirm them. The measurements lock in once every line is confirmed.</span>
                 </li>
               </ol>
               <div className="mt-2 rounded bg-[#eeeeed] px-2 py-1.5 text-[10px] text-[#6b7280]">
@@ -1361,25 +1372,25 @@ export function RoofFacetEditor({
             <button
               onClick={() => panView(0, 70)}
               title="Pan up (↑ / W)"
-              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-white hover:bg-blue-600"
+              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-[#1a1a1a] hover:bg-blue-600 hover:text-white"
             >↑</button>
             <div></div>
             <button
               onClick={() => panView(70, 0)}
               title="Pan left (← / A)"
-              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-white hover:bg-blue-600"
+              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-[#1a1a1a] hover:bg-blue-600 hover:text-white"
             >←</button>
             <div className="flex h-8 w-8 items-center justify-center text-[9px] text-[#6b7280]">pan</div>
             <button
               onClick={() => panView(-70, 0)}
               title="Pan right (→ / D)"
-              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-white hover:bg-blue-600"
+              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-[#1a1a1a] hover:bg-blue-600 hover:text-white"
             >→</button>
             <div></div>
             <button
               onClick={() => panView(0, -70)}
               title="Pan down (↓ / S)"
-              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-white hover:bg-blue-600"
+              className="flex h-8 w-8 items-center justify-center rounded bg-[#eeeeed] text-base text-[#1a1a1a] hover:bg-blue-600 hover:text-white"
             >↓</button>
             <div></div>
           </div>
@@ -1412,14 +1423,40 @@ export function RoofFacetEditor({
                 Ridge: level top line · Hip: sloped, falls away both sides · Valley: sloped V · Eave: gutter edge ·
                 Rake: sloped gable edge · Wall: roof meets a wall or chimney.
               </p>
-              {unlabeledCount > 0 && (
-                <button onClick={() => { const n = nextBlank(selectedRecord); if (n) goToLine(n) }}
-                  className="mt-2 w-full rounded bg-[#eeeeed] py-1 text-[#2d2d2d] hover:bg-[#e4e4e2]">
-                  Not sure — skip to the next line
-                </button>
-              )}
             </div>
           )}
+
+          {/* Floating legend — what the three line states mean. Collapsible. */}
+          <div className="pointer-events-auto absolute bottom-2 left-2 z-10 rounded-md border border-[#dededc] bg-white/95 text-[11px] text-[#2d2d2d] shadow">
+            <button onClick={() => setLegendOpen(o => !o)} aria-expanded={legendOpen}
+              className="flex w-full items-center justify-between gap-3 px-2 py-1 font-semibold">
+              Legend <span aria-hidden>{legendOpen ? '−' : '+'}</span>
+            </button>
+            {legendOpen && (
+              <ul className="space-y-1 border-t border-[#eeeeed] px-2 py-1.5">
+                <li className="flex items-center gap-2">
+                  <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: EDGE_COLORS.unlabeled }}>?</span>
+                  Unlabeled
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="inline-block h-1.5 w-4 rounded" style={{ background: EDGE_COLORS.ridge, boxShadow: `0 0 0 3px ${EDGE_COLORS.ridge}55` }} />
+                  Labeled (needs confirm)
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="inline-block h-1 w-4 rounded opacity-80" style={{ background: EDGE_COLORS.ridge }} />
+                  Confirmed
+                </li>
+                <li className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 border-t border-[#eeeeed] pt-1 text-[10px] text-[#6b7280]">
+                  {(['ridge', 'hip', 'valley', 'eave', 'rake', 'wall_intersection'] as EdgeType[]).map(t => (
+                    <span key={t} className="flex items-center gap-1">
+                      <span className="inline-block h-1.5 w-2.5 rounded-sm" style={{ background: EDGE_COLORS[t] }} />
+                      {t === 'wall_intersection' ? 'wall' : t}
+                    </span>
+                  ))}
+                </li>
+              </ul>
+            )}
+          </div>
 
           {/* Floating zoom controls */}
           <div className="pointer-events-none absolute bottom-2 right-2 flex flex-col items-end gap-1">
@@ -1438,9 +1475,9 @@ export function RoofFacetEditor({
                 title="Zoom in (+)"
               >+</button>
               <button
-                onClick={resetView}
+                onClick={() => (facets.length ? fitToRoof() : resetView())}
                 className="ml-1 rounded bg-[#eeeeed] px-2 py-1 hover:bg-[#e4e4e2]"
-                title="Reset view (0)"
+                title={facets.length ? 'Frame the roof (0 = whole photo)' : 'Reset view (0)'}
               >Fit</button>
             </div>
             <div className="pointer-events-none rounded bg-[#f8f8f7] px-2 py-1 text-[10px] text-[#6b7280]">

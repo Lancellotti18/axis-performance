@@ -22,7 +22,7 @@ def test_the_neighbour_on_the_same_street_is_a_mismatch_and_says_so():
     c = compare(JOB, "1418 Oak St, Wilmington, NC")
     assert c.status == "mismatch"
     assert "1418 Oak St" in c.message and "1422 Oak Street" in c.message
-    assert "neighbouring house" in c.message
+    assert "may be a neighboring property" in c.message and "This job is for" in c.message
 
 
 def test_the_same_number_on_another_street_is_a_mismatch():

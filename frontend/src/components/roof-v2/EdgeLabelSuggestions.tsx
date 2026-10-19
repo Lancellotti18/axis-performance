@@ -38,6 +38,13 @@ interface Props {
   onAcceptEdges: (updatedEdges: LabeledEdge[]) => void
   // Bump to auto-run the suggestion (e.g. from the editor's toolbar button).
   trigger?: number
+  /** Render no panel of its own — only the one-by-one review when it opens.
+   *  The draw step's status card owns the buttons and the explanations. */
+  headless?: boolean
+  /** From the status card: suggest types for the open lines (then review them
+   *  one by one), review existing labels one by one, or confirm them all. */
+  command?: { kind: 'suggest' | 'review' | 'confirmAll'; n: number }
+  onStatus?: (s: { loading: boolean; error: string | null; aiLines: number }) => void
 }
 
 const EDGE_COLORS: Record<EdgeType, string> = {
@@ -53,6 +60,7 @@ const EDGE_COLORS: Record<EdgeType, string> = {
 
 export function EdgeLabelSuggestions({
   runId, facets, edges, imageUrl, imageWidthPx = 2048, imageHeightPx = 1366, onAcceptEdges, trigger,
+  headless = false, command, onStatus,
 }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
@@ -154,12 +162,18 @@ export function EdgeLabelSuggestions({
       })
       setSuggestions(res.suggestions || [])
       setMessage(res.message || null)
+      // Driven from the status card, every suggestion goes straight into the
+      // one-by-one review: nothing reaches the order without a look.
+      if (headless && (res.suggestions || []).length > 0) setReviewing(true)
+      else if (headless && !(res.suggestions || []).length) {
+        setError(res.message || 'No suggestions came back for these lines. Walk through them instead.')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Edge label suggestion failed')
     } finally {
       setLoading(false)
     }
-  }, [runId, facets, unlabeledEdges, measuredUnlabeled])
+  }, [runId, facets, unlabeledEdges, measuredUnlabeled, headless])
 
   // Auto-run when the editor's "Auto-label edges" button bumps `trigger`.
   const firstTrigger = useRef(true)
@@ -230,9 +244,42 @@ export function EdgeLabelSuggestions({
     return m
   }, [suggestions])
 
+  // Commands from the status card.
+  const lastCommand = useRef(command?.n ?? 0)
+  useEffect(() => {
+    if (!command || command.n === lastCommand.current) return
+    lastCommand.current = command.n
+    if (command.kind === 'suggest') { setError(null); void runSuggest() }
+    else if (command.kind === 'review') setReviewing(true)
+    else if (command.kind === 'confirmAll') confirmAllLabeled()
+  }, [command, runSuggest, confirmAllLabeled])
+
   const highConfidenceCount = suggestions.filter(s => s.confidence >= 0.7).length
   // Distinct roof lines, the same count the editor and measurements panel show.
   const aiLines = useMemo(() => distinctLines(facets, unlabeledEdges).length, [facets, unlabeledEdges])
+  useEffect(() => { onStatus?.({ loading, error, aiLines }) }, [loading, error, aiLines, onStatus])
+
+  const reviewModal = reviewing && imageUrl ? (
+    <EdgeReviewModal
+      imageUrl={imageUrl}
+      imageWidthPx={imageWidthPx}
+      imageHeightPx={imageHeightPx}
+      facets={facets}
+      edges={edges}
+      suggestions={reviewSuggestions}
+      onApply={(updated) => {
+        onAcceptEdges(updated)
+        const confirmedKeys = new Set(
+          updated.filter(e => e.userConfirmed).map(e => `${e.facetLabel}:${e.vertexIndexStart}`),
+        )
+        setSuggestions(prev => prev.filter(
+          s => !confirmedKeys.has(`${s.facet_label}:${s.vertex_index_start}`),
+        ))
+      }}
+      onClose={() => setReviewing(false)}
+    />
+  ) : null
+  if (headless) return reviewModal
 
   return (
     <section className="rounded-lg border border-[#dededc] bg-[#f8f8f7] p-4 text-sm">
@@ -448,27 +495,7 @@ export function EdgeLabelSuggestions({
         </p>
       )}
 
-      {reviewing && imageUrl && (
-        <EdgeReviewModal
-          imageUrl={imageUrl}
-          imageWidthPx={imageWidthPx}
-          imageHeightPx={imageHeightPx}
-          facets={facets}
-          edges={edges}
-          suggestions={reviewSuggestions}
-          onApply={(updated) => {
-            onAcceptEdges(updated)
-            // Clear suggestions that are now confirmed in the applied edges.
-            const confirmedKeys = new Set(
-              updated.filter(e => e.userConfirmed).map(e => `${e.facetLabel}:${e.vertexIndexStart}`),
-            )
-            setSuggestions(prev => prev.filter(
-              s => !confirmedKeys.has(`${s.facet_label}:${s.vertex_index_start}`),
-            ))
-          }}
-          onClose={() => setReviewing(false)}
-        />
-      )}
+      {reviewModal}
     </section>
   )
 }

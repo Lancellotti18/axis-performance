@@ -1286,7 +1286,7 @@ def _stale_imagery_note(imagery_date: Optional[str], today: Optional["date"] = N
     # by hand" read as "this doesn't work" and the first founding contractor
     # (Fortitude, 2026-10-13) left at exactly this screen, though Google's data
     # for his house was fine and one click would have measured it.
-    return (f"Google's 3D photo of this roof is from {taken.strftime('%B %Y')}. If the roof hasn't "
+    return (f"The aerial photo of this roof is from {taken.strftime('%B %Y')}. If the roof hasn't "
             "changed since then (no addition or new roof shape), measure it now; the report will "
             "note the photo date.")
 
@@ -1681,6 +1681,42 @@ class AutoMeasureRequest(BaseModel):
     # The contractor has checked the house is unchanged since Google's (old)
     # flight and wants it measured anyway. Only lifts the age check.
     allow_old_imagery: bool = False
+    # The contractor has seen an address-mismatch warning and confirmed this is
+    # the right house, so the measured result does not repeat it.
+    address_confirmed: bool = False
+
+
+@router.get("/runs/{run_id}/address-check")
+async def address_check(run_id: str, user: dict = Depends(require_user)) -> dict:
+    """Is the house the contractor picked the job's address? Asked the moment
+    the house is confirmed — BEFORE anything is measured — so a neighbour's roof
+    is caught while it costs nothing (Ryan, 2026-10-18). It used to be checked
+    only inside auto-measure, after the fact, as one warning among several.
+
+    Warns, never blocks: the contractor in the driveway knows better than a
+    geocoder, and "Confirm this is the right house" is always one click away.
+    'unknown' (no lookup, no house number) shows nothing."""
+    from app.core.config import settings
+    from app.services import address_match
+    db = get_supabase()
+    run = require_owned_run(db, run_id, user)
+    sp = run.get("subject_point") or {}
+    if sp.get("lat") is None or sp.get("lng") is None:
+        return {"status": "unknown", "message": None, "found": None, "job": None}
+    try:
+        proj = db.table("projects").select("name, address, city, state") \
+            .eq("id", run["project_id"]).single().execute().data or {}
+        job_addr = ", ".join(x for x in (proj.get("address") or proj.get("name"),
+                                          proj.get("city"), proj.get("state")) if x)
+        found, source = await address_match.reverse_lookup(
+            float(sp["lat"]), float(sp["lng"]), google_key=settings.GOOGLE_SOLAR_API_KEY,
+            maptiler_key=settings.MAPTILER_API_KEY)
+        check = address_match.compare(job_addr, found, source=source)
+    except Exception as e:
+        logger.info("address check skipped for %s: %s", run_id, e)
+        return {"status": "unknown", "message": None, "found": None, "job": None}
+    return {"status": check.status, "message": check.message, "found": check.found,
+            "job": (job_addr.split(",")[0].strip() or None) if job_addr else None}
 
 
 @router.post("/runs/{run_id}/auto-measure")
@@ -1717,7 +1753,7 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
             lat, lng, google_key=settings.GOOGLE_SOLAR_API_KEY,
             maptiler_key=settings.MAPTILER_API_KEY)
         check = address_match.compare(job_addr, found, source=source)
-        if check.status == "mismatch" and check.message:
+        if check.status == "mismatch" and check.message and not req.address_confirmed:
             warnings.append(check.message)
     except Exception as e:
         logger.info("auto-measure address check skipped for %s: %s", run_id, e)

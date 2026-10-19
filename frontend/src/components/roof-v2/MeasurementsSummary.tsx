@@ -93,6 +93,14 @@ interface Props {
   /** "Wrong house": throw this outline away and pick again. Nothing has been
    *  charged until the roof is confirmed, so backing out is free. */
   onWrongHouse?: () => void | Promise<void>
+  /** The draw step's status card owns "confirm your lines" and "show the
+   *  measurements": render nothing for those states, and report them up. */
+  embeddedGate?: boolean
+  /** Bump to show the measurements — this is the moment a report is used. */
+  confirmRequest?: number
+  onAwaitingConfirmChange?: (awaiting: boolean) => void
+  /** True once real numbers are on screen. */
+  onShowingChange?: (showing: boolean) => void
 }
 
 const COLORS: Record<string, string> = {
@@ -175,7 +183,8 @@ function EdgeWorkRemaining({ unlabeled, unconfirmed }: { unlabeled: number; unco
   return <>{parts.join(' · ')}.</>
 }
 
-export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConfidenceChange, onIssuesChange, onForceSave, unlabeledCount = 0, unconfirmedCount = 0, runConfirmed = false, zip, city, onWrongHouse }: Props) {
+export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConfidenceChange, onIssuesChange, onForceSave, unlabeledCount = 0, unconfirmedCount = 0, runConfirmed = false, zip, city, onWrongHouse,
+  embeddedGate = false, confirmRequest, onAwaitingConfirmChange, onShowingChange }: Props) {
   // Anything still standing between the contractor and final numbers.
   const pendingCount = unlabeledCount + unconfirmedCount
   const [aggregates, setAggregates] = useState<Aggregates | null>(null)
@@ -279,6 +288,19 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
 
   useEffect(() => { fetchAllRef.current = () => fetchAll(wastePct) }, [fetchAll, wastePct])
 
+  useEffect(() => { onAwaitingConfirmChange?.(awaitingConfirm) }, [awaitingConfirm, onAwaitingConfirmChange])
+  useEffect(() => {
+    onShowingChange?.(!!aggregates && !awaitingConfirm && (aggregates.facet_count ?? 0) > 0)
+  }, [aggregates, awaitingConfirm, onShowingChange])
+  // "Show measurements & materials" in the status card.
+  const lastConfirmRequest = useRef(confirmRequest ?? 0)
+  useEffect(() => {
+    if (confirmRequest == null || confirmRequest === lastConfirmRequest.current) return
+    lastConfirmRequest.current = confirmRequest
+    setConfirming(true)
+    void fetchAll(wastePct, true).finally(() => setConfirming(false))
+  }, [confirmRequest, fetchAll, wastePct])
+
   // Debounced recompute on geometry change
   useEffect(() => {
     if (geometryStamp === lastStampRef.current) return
@@ -353,6 +375,8 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
   // edge is confirmed/denied/changed — so nobody quotes off unreviewed AI labels.
   // A finalized (confirmed) roof always shows its saved numbers on revisit, so you
   // never re-label a roof you already finished.
+  if (embeddedGate && pendingCount > 0 && !runConfirmed) return null
+  if (embeddedGate && awaitingConfirm && !block) return null
   if (pendingCount > 0 && !runConfirmed) {
     return (
       <div className="space-y-4">

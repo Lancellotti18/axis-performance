@@ -98,14 +98,16 @@ def compare(project_address: str, found_address: Optional[str], *,
     if p.number == f.number and same_street:
         return AddressCheck("match", project_address, found_address, None, source)
     first_line = found_address.split(",")[0].strip()
+    job_line = project_address.split(",")[0].strip()
+    # Calm and specific, in one register (Ryan, 2026-10-18). Shown BEFORE
+    # anything is measured, with "Confirm this is the right house" beside it.
     if p.number != f.number and same_street:
-        msg = (f"The house you tapped looks like {first_line}, but this job is "
-               f"{project_address.split(',')[0].strip()} — a neighbouring house on the "
-               "same street. Check you have the right roof before measuring.")
+        msg = (f"We flagged that the house you selected may be a neighboring property "
+               f"({first_line}). This job is for {job_line}.")
     else:
-        msg = (f"The house you tapped looks like {first_line}, not "
-               f"{project_address.split(',')[0].strip()}. Check you have the right roof "
-               "before measuring. (Corner houses are sometimes listed on the other street.)")
+        msg = (f"We flagged that the house you selected may be a different property "
+               f"({first_line}). This job is for {job_line}. Corner houses are sometimes "
+               "listed on the other street.")
     return AddressCheck("mismatch", project_address, found_address, msg, source)
 
 

@@ -307,3 +307,40 @@ def test_a_rate_limited_google_says_so_instead_of_no_coverage(wired):
     out = _call()
     assert out["available"] is False
     assert "rate-limited" in out["reason"] and "try again" in out["reason"]
+
+
+# ── the address check happens BEFORE measuring (2026-10-18) ─────────────────
+
+def test_the_address_is_checked_before_anything_is_measured(wired, monkeypatch):
+    async def neighbour(*a, **k): return ("1418 Oak St, Wilmington", "google")
+    monkeypatch.setattr(address_match, "reverse_lookup", neighbour)
+    out = asyncio.run(rv.address_check("r1", RYAN))
+    assert out["status"] == "mismatch"
+    assert out["found"].startswith("1418 Oak St") and out["job"] == "1422 Oak St"
+    assert out["message"].startswith("We flagged that the house you selected may be a neighboring property")
+    assert "Google" not in out["message"]
+
+
+def test_the_right_house_raises_nothing(wired, monkeypatch):
+    async def same(*a, **k): return ("1422 Oak Street, Wilmington", "google")
+    monkeypatch.setattr(address_match, "reverse_lookup", same)
+    out = asyncio.run(rv.address_check("r1", RYAN))
+    assert out["status"] == "match" and out["message"] is None
+
+
+def test_no_house_picked_yet_is_unknown_not_an_error(wired, monkeypatch):
+    monkeypatch.setattr(rv, "require_owned_run", lambda db, rid, user: {"id": "r1", "project_id": "p1"})
+    assert asyncio.run(rv.address_check("r1", RYAN))["status"] == "unknown"
+
+
+def test_a_confirmed_house_is_not_warned_about_again(wired, monkeypatch):
+    async def neighbour(*a, **k): return ("1418 Oak St, Wilmington", "google")
+    monkeypatch.setattr(address_match, "reverse_lookup", neighbour)
+    dsm, mask, px = S.gable()
+    async def layers(*a, **k): return _layers_for(dsm, mask, px)
+    monkeypatch.setattr(SL, "fetch_layers", layers)
+    warned = asyncio.run(rv.auto_measure("r1", REQ, RYAN))
+    assert any("neighboring property" in w for w in warned["warnings"])
+    req = REQ.model_copy(update={"address_confirmed": True})
+    confirmed = asyncio.run(rv.auto_measure("r1", req, RYAN))
+    assert not any("neighboring property" in w for w in confirmed["warnings"])

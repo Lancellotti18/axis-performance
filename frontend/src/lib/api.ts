@@ -1602,6 +1602,10 @@ export const api = {
         apiRequest<{ enabled: boolean }>(`/api/v1/roofing/v2/auto-measure/enabled`),
       // Measures the confirmed house from Google 3D and stores it exactly like
       // a hand trace. available=false carries a plain reason to trace instead.
+      /** Is the picked house the job's address? Asked before anything is measured. */
+      addressCheck: (runId: string) =>
+        apiRequest<{ status: 'match' | 'mismatch' | 'unknown'; message: string | null; found: string | null; job: string | null }>(
+          `/api/v1/roofing/v2/runs/${runId}/address-check`),
       autoMeasure: (runId: string, req: {
         image_width_px: number
         image_height_px: number
@@ -1610,6 +1614,8 @@ export const api = {
         lng: number
         satellite_image_url?: string | null
         allow_old_imagery?: boolean
+        /** The contractor confirmed the house after an address-mismatch warning. */
+        address_confirmed?: boolean
       }) =>
         apiRequest<{
           available: boolean

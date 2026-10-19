@@ -66,7 +66,7 @@ export default function EdgeReviewModal({
   // contractor reclassify before accepting.
   const [choice, setChoice] = useState<Record<number, EdgeType>>({})
   // Track which suggestions have been actioned (accepted/skipped) for progress.
-  const [done, setDone] = useState<Record<number, 'accepted' | 'skipped'>>({})
+  const [done, setDone] = useState<Record<number, 'accepted'>>({})
 
   const total = suggestions.length
   const current = suggestions[idx]
@@ -109,46 +109,46 @@ export default function EdgeReviewModal({
 
   const chosenType: EdgeType = choice[idx] ?? current?.suggested_edge_type ?? 'unlabeled'
 
-  const applyTypeToDraft = useCallback((type: EdgeType) => {
-    if (!current) return
-    // Confirms both sides of a shared line — the ruling is on the roof line,
-    // not on one facet's stored copy of it.
-    setDraft(prev => labelLine(
-      facets, prev,
-      { facetLabel: current.facet_label, vertexIndexStart: current.vertex_index_start },
-      type,
-    ))
-  }, [current, facets])
 
   const goNext = useCallback(() => setIdx(i => Math.min(total - 1, i + 1)), [total])
   const goPrev = useCallback(() => setIdx(i => Math.max(0, i - 1)), [])
 
+  // No skipping: every line gets a decision, and the step cannot be finished
+  // until each one has one (Ryan, 2026-10-18). Accepting the last open line
+  // saves and closes by itself.
   const accept = useCallback(() => {
-    applyTypeToDraft(chosenType)
-    setDone(d => ({ ...d, [idx]: 'accepted' }))
-    if (idx < total - 1) goNext()
-  }, [applyTypeToDraft, chosenType, idx, total, goNext])
+    if (!current) return
+    const nextDraft = labelLine(
+      facets, draft,
+      { facetLabel: current.facet_label, vertexIndexStart: current.vertex_index_start },
+      chosenType,
+    )
+    setDraft(nextDraft)
+    const nextDone = { ...done, [idx]: 'accepted' as const }
+    setDone(nextDone)
+    const open = suggestions.findIndex((_, i) => nextDone[i] !== 'accepted')
+    if (open === -1) { onApply(nextDraft); onClose(); return }
+    // Move to the next line still needing a decision, after this one if any.
+    const after = suggestions.findIndex((_, i) => i > idx && nextDone[i] !== 'accepted')
+    setIdx(after !== -1 ? after : open)
+  }, [current, facets, draft, chosenType, done, idx, suggestions, onApply, onClose])
 
-  const skip = useCallback(() => {
-    setDone(d => ({ ...d, [idx]: 'skipped' }))
-    if (idx < total - 1) goNext()
-  }, [idx, total, goNext])
-
-  const finish = useCallback(() => {
-    onApply(draft)
+  // Closing never throws away decisions already made: whatever was accepted is
+  // saved, and the status card shows what is left.
+  const close = useCallback(() => {
+    if (Object.values(done).some(v => v === 'accepted')) onApply(draft)
     onClose()
-  }, [draft, onApply, onClose])
+  }, [done, draft, onApply, onClose])
 
-  // Keyboard: ←/→ navigate, Enter accept, S skip, 1-7 reclassify, Esc close
+  // Keyboard: ←/→ navigate, Enter accept, 1-7 reclassify, Esc save & close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      if (e.key === 'Escape') { onClose(); return }
+      if (e.key === 'Escape') { close(); return }
       if (e.key === 'ArrowRight') { goNext(); return }
       if (e.key === 'ArrowLeft') { goPrev(); return }
       if (e.key === 'Enter') { accept(); return }
-      if (e.key.toLowerCase() === 's') { skip(); return }
       const n = parseInt(e.key, 10)
       if (n >= 1 && n <= REVIEW_TYPES.length) {
         setChoice(c => ({ ...c, [idx]: REVIEW_TYPES[n - 1].type }))
@@ -156,13 +156,13 @@ export default function EdgeReviewModal({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [goNext, goPrev, accept, skip, onClose, idx])
+  }, [goNext, goPrev, accept, close, idx])
 
   const acceptedCount = Object.values(done).filter(v => v === 'accepted').length
 
   if (!current || !crop || !endpoints) {
     return (
-      <Backdrop onClose={onClose}>
+      <Backdrop onClose={close}>
         <div className="rounded-lg bg-[#f8f8f7] p-6 text-center text-sm text-[#2d2d2d]">
           No reviewable edges. <button onClick={onClose} className="ml-2 underline">Close</button>
         </div>
@@ -171,7 +171,7 @@ export default function EdgeReviewModal({
   }
 
   return (
-    <Backdrop onClose={onClose}>
+    <Backdrop onClose={close}>
       <div
         className="w-[min(720px,94vw)] overflow-hidden rounded-xl border border-[#dededc] bg-[#f8f8f7] shadow-2xl"
         onClick={e => e.stopPropagation()}
@@ -179,10 +179,11 @@ export default function EdgeReviewModal({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#dededc] px-4 py-3">
           <div className="text-sm font-semibold text-[#1a1a1a]">
-            Review edge {idx + 1} of {total}
+            Line {idx + 1} of {total}
             <span className="ml-2 text-xs font-normal text-[#6b7280]">{acceptedCount} confirmed</span>
           </div>
-          <button onClick={onClose} className="rounded p-1 text-[#6b7280] hover:bg-[#eeeeed] hover:text-[#1a1a1a]">✕</button>
+          <button onClick={close} title="Save what you've done and close"
+            className="rounded p-1 text-[#6b7280] hover:bg-[#eeeeed] hover:text-[#1a1a1a]">✕</button>
         </div>
 
         {/* Progress dots */}
@@ -191,8 +192,8 @@ export default function EdgeReviewModal({
             <button
               key={i}
               onClick={() => setIdx(i)}
-              title={`Edge ${i + 1}`}
-              className={`h-1.5 w-5 rounded-full transition ${ done[i] === 'accepted' ? 'bg-emerald-500' : done[i] === 'skipped' ? 'bg-[#d4d4d2]' : i === idx ? 'bg-blue-400' : 'bg-[#e4e4e2]' }`}
+              title={done[i] === 'accepted' ? `Line ${i + 1} — done` : `Line ${i + 1}`}
+              className={`h-1.5 w-5 rounded-full transition ${ done[i] === 'accepted' ? 'bg-emerald-500' : i === idx ? 'bg-blue-500' : 'bg-[#d4d4d2]' }`}
             />
           ))}
         </div>
@@ -245,7 +246,7 @@ export default function EdgeReviewModal({
 
             <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-2">
               <div className="text-[11px] font-semibold text-amber-900">
-                👆 Wrong? Tap the correct type — it fixes instantly
+                Wrong? Pick the correct type, then save it
               </div>
               <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 {REVIEW_TYPES.map((t, i) => {
@@ -256,10 +257,8 @@ export default function EdgeReviewModal({
                       key={t.type}
                       onClick={() => setChoice(c => ({ ...c, [idx]: t.type }))}
                       title={`${i + 1} · ${t.hint}`}
-                      className={`flex items-center gap-1.5 rounded-md px-2.5 py-2 text-left text-xs font-medium transition ${ selected ? 'ring-2' : 'bg-[#eeeeed] hover:bg-[#eeeeed]' }`}
-                      style={selected
-                        ? { background: `${t.color}26`, color: '#fff', boxShadow: `0 0 0 2px ${t.color}` }
-                        : { color: '#cbd5e1' }}
+                      className={`flex items-center gap-1.5 rounded-md border px-2.5 py-2 text-left text-xs font-medium text-[#1a1a1a] transition ${ selected ? 'border-transparent' : 'border-[#dededc] bg-white hover:bg-[#f3f4f6]' }`}
+                      style={selected ? { background: `${t.color}33`, boxShadow: `0 0 0 2px ${t.color}` } : undefined}
                     >
                       <span className="inline-block h-3 w-3 rounded-full" style={{ background: t.color }} />
                       {t.label}
@@ -276,18 +275,16 @@ export default function EdgeReviewModal({
         <div className="flex items-center justify-between gap-2 border-t border-[#dededc] px-4 py-3">
           <div className="flex gap-2">
             <button onClick={goPrev} disabled={idx === 0}
-              className="rounded bg-[#eeeeed] px-3 py-1.5 text-xs text-[#1a1a1a] hover:bg-[#e4e4e2] disabled:opacity-30">← Prev</button>
-            <button onClick={skip}
-              className="rounded bg-[#eeeeed] px-3 py-1.5 text-xs text-[#1a1a1a] hover:bg-[#e4e4e2]">Skip (S)</button>
+              className="rounded bg-[#eeeeed] px-3 py-1.5 text-xs text-[#1a1a1a] hover:bg-[#e4e4e2] disabled:opacity-30">← Previous</button>
           </div>
           <div className="flex gap-2">
             <button onClick={accept}
               className="rounded bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500">
               {chosenType === current.suggested_edge_type ? 'Accept' : 'Save correction'} (⏎)
             </button>
-            <button onClick={finish}
-              className="rounded bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">
-              Apply {acceptedCount > 0 ? `${acceptedCount} ` : ''}&amp; close
+            <button onClick={close}
+              className="rounded border border-[#dededc] bg-white px-4 py-1.5 text-xs font-semibold text-[#1a1a1a] hover:bg-[#f3f4f6]">
+              Save &amp; close
             </button>
           </div>
         </div>
