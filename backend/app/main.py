@@ -302,6 +302,12 @@ async def health_deep(request: Request, images: int = 1):
             f"WARN: Anthropic (last fallback) is unavailable — {checks['anthropic'].get('error')}. "
             "Out-of-credit shows up here."
         )
+    if checks["groq"]["ok"] is False and checks["anthropic"]["ok"]:
+        # Used to say nothing: a dead Groq key sat at "DOWN" unnoticed (2026-10-19).
+        problems.append(
+            f"WARN: Groq (first AI fallback) is down — {checks['groq'].get('error')}. "
+            "A 401 means the key was revoked: make a new one at console.groq.com."
+        )
 
     # ── 3. Render a real report from one fixed run ─────────────────────────
     run_id = settings.HEALTH_CHECK_RUN_ID
@@ -509,6 +515,67 @@ async def health_deep(request: Request, images: int = 1):
     except Exception as e:
         checks["material_compliance"] = {"ok": False, "error": str(e)[:300]}
         problems.append(f"HIGH: Material Compliance raised — {str(e)[:200]}")
+
+    # ── 7b. Google Maps services — one call each, on the keys Axis uses ────
+    # Each is enabled per-API on the Google Cloud key, and a missing one fails
+    # QUIETLY: Geocoding off made every address check say "unknown"; Solar
+    # asked HIGH-only and hand traces silently got 6/12. Fixed coordinates
+    # (1114 Willow Pond Ln, Leland NC — MEDIUM-quality imagery on purpose).
+    def _probe_google() -> dict:
+        import httpx as _httpx
+        maps_key = (settings.GOOGLE_SOLAR_API_KEY or "").strip()
+        wx_key = (getattr(settings, "GOOGLE_WEATHER_API_KEY", "") or maps_key).strip()
+        lat, lng = 34.2282644, -78.0487729
+        out: dict = {}
+        if not maps_key:
+            return {"configured": False}
+
+        def one(name, method, url, *, ok, **kw):
+            try:
+                r = _httpx.request(method, url, timeout=15, **kw)
+                body = r.json() if r.content else {}
+                good = r.status_code == 200 and ok(body)
+                out[name] = {"ok": good} if good else {
+                    "ok": False, "status": r.status_code,
+                    "error": str((body.get("error") or {}).get("message") if isinstance(body.get("error"), dict)
+                                 else body.get("error_message") or body.get("status") or body)[:200]}
+            except Exception as e:
+                out[name] = {"ok": False, "error": str(e)[:200]}
+
+        one("geocoding", "GET", "https://maps.googleapis.com/maps/api/geocode/json",
+            params={"address": "1114 Willow Pond Ln, Leland, NC 28451", "key": maps_key},
+            ok=lambda b: b.get("status") == "OK")
+        one("places_autocomplete", "POST", "https://places.googleapis.com/v1/places:autocomplete",
+            json={"input": "1114 Willow Pond Ln Leland", "includedRegionCodes": ["us"]},
+            headers={"X-Goog-Api-Key": maps_key}, ok=lambda b: bool(b.get("suggestions")))
+        one("solar_building", "GET", "https://solar.googleapis.com/v1/buildingInsights:findClosest",
+            params={"location.latitude": lat, "location.longitude": lng,
+                    "requiredQuality": "MEDIUM", "key": maps_key},
+            ok=lambda b: bool(b.get("solarPotential")))
+        one("solar_3d_layers", "GET", "https://solar.googleapis.com/v1/dataLayers:get",
+            params={"location.latitude": lat, "location.longitude": lng, "radiusMeters": 20,
+                    "view": "IMAGERY_AND_ANNUAL_FLUX_LAYERS", "requiredQuality": "MEDIUM",
+                    "pixelSizeMeters": 0.5, "key": maps_key},
+            ok=lambda b: bool(b.get("dsmUrl")))
+        one("weather", "GET", "https://weather.googleapis.com/v1/forecast/days:lookup",
+            params={"location.latitude": lat, "location.longitude": lng, "days": 1, "key": wx_key},
+            ok=lambda b: bool(b.get("forecastDays")))
+        return out
+
+    try:
+        checks["google"] = await _asyncio.to_thread(_probe_google)
+        down = [k for k, v in checks["google"].items() if isinstance(v, dict) and v.get("ok") is False]
+        if checks["google"].get("configured") is False:
+            problems.append("HIGH: GOOGLE_SOLAR_API_KEY is not set — address search, house picker, "
+                            "auto-measure and pitch all fall back or fail.")
+        for k in down:
+            sev = "WARN" if k == "weather" else "HIGH"
+            problems.append(f"{sev}: Google {k} failed — {checks['google'][k].get('error')}. "
+                            "Usually the API isn't enabled or allowed on the key "
+                            "(Google Cloud → APIs & Services).")
+    except Exception as e:
+        checks["google"] = {"ok": False, "error": str(e)[:200]}
+        problems.append(f"HIGH: Google services check raised — {str(e)[:200]}")
 
     # ── Memory ─────────────────────────────────────────────────────────────
     # Render restarts the service at its memory limit (2026-10-14). Report it

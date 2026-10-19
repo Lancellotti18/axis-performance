@@ -208,6 +208,8 @@ WALL_PITCH_12 = 20.0
 WALL_MAX_SHARE = 0.15     # cut at most this share of the roof as wall
 
 
+WALL_STRIP_HALF_M = 0.8   # narrower than ~1.6 m...
+WALL_STRIP_RMS_M = 0.10   # ...and rough: wall, not roof
 WALL_DROP_M = 0.30        # this far BELOW its own plane, at the edge, is wall
 WALL_BAND_M = 1.5         # ...and only within this distance of the outline
 
@@ -224,10 +226,15 @@ def _wall_fringe(model: RoofModel, bldg) -> Optional[np.ndarray]:
     edge = bldg & ~cv2.erode(u8, np.ones((3, 3), np.uint8)).astype(bool)
     out = np.zeros_like(bldg)
     for f in model.facets:
-        if f.pitch_12 < WALL_PITCH_12:
-            continue
         px = model.labels == f.id
-        if (px & edge).any():
+        if not (px & edge).any():
+            continue
+        # A narrow strip along the outline that a plane fits badly is the same
+        # wall, just not steep enough to show it (12.5/12 down the shadow side
+        # of 76 St Georgia Dr, Hanover PA). Real planes this narrow are rare,
+        # and they fit well.
+        half_width_m = float(cv2.distanceTransform(px.astype(np.uint8), cv2.DIST_L2, 3).max()) * model.px_m
+        if f.pitch_12 >= WALL_PITCH_12 or (half_width_m < WALL_STRIP_HALF_M and f.rms_m > WALL_STRIP_RMS_M):
             out |= px
 
     dist_m = cv2.distanceTransform(u8, cv2.DIST_L2, 3) * model.px_m
