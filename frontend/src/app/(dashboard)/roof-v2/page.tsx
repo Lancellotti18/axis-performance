@@ -320,10 +320,11 @@ export default function RoofV2Page() {
           // address lookup: the Census geocoder put 1114 Willow Pond Ln on 1146,
           // 353 m away. If the address's rooftop is now somewhere else, don't
           // adopt that run at all — fall through and start on the right house
-          // (the abandoned run holds no measurements).
+          // (the abandoned run holds no measurements). A house merely CLICKED
+          // there doesn't count as work to keep: it was clicked on the wrong
+          // street, and skipping those runs reopened Willow Pond 350 m off.
           const hasRoof = Array.isArray(data.facets) && (data.facets as unknown[]).length > 0
-          const spRaw = run.subject_point as { x?: number } | null
-          if (!hasRoof && !(spRaw && typeof spRaw.x === 'number') && run.satellite_image_url) {
+          if (!hasRoof && run.satellite_image_url) {
             const addrNow = [(p as Project).address, (p as Project).city, (p as Project).state, (p as Project).zip]
               .filter(Boolean).join(', ') || (p as Project).name || ''
             const lat0 = Number(run.satellite_lat) || 0, lng0 = Number(run.satellite_lng) || 0
