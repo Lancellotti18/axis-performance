@@ -62,7 +62,7 @@ def _azimuth_to_compass(az_deg: float) -> str:
     return dirs[idx]
 
 
-async def get_building_insights(lat: float, lng: float, required_quality: Optional[str] = None) -> dict:
+async def get_building_insights(lat: float, lng: float, required_quality: Optional[str] = "MEDIUM") -> dict:
     """
     Fetch the closest building's solar insights and normalize the roof segments.
 
@@ -94,8 +94,10 @@ async def get_building_insights(lat: float, lng: float, required_quality: Option
     # Cost guard — serve a cached result for this address if we have one.
     # required_quality: Google's findClosest defaults to HIGH-quality imagery
     # only, and much of the NC coast is MEDIUM — it answered "no coverage" for
-    # houses the Data Layers call (which asks for MEDIUM) measures fine. The
-    # house picker passes "MEDIUM" so it finds every house auto-measure can.
+    # houses the Data Layers call (which asks for MEDIUM) measures fine. MEDIUM
+    # is the default for every caller: left at HIGH, a hand-traced roof on
+    # 1114 Willow Pond got "no coverage" and 6/12 on every plane while Google
+    # had measured it at 8/12 (2026-10-19). Pass None to get Google's HIGH-only.
     key = (_cache_key(lat, lng), required_quality)
     hit = _cache.get(key)
     if hit and (time.time() - hit[0]) < _CACHE_TTL_SECONDS:

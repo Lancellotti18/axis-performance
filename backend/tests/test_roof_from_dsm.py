@@ -207,3 +207,15 @@ def test_a_wall_strip_past_the_eave_is_cut_not_measured():
     assert len(m.facets) == 2
     assert m.true_m2 == pytest.approx(exp["true_m2"], rel=0.02)
     assert m.quality["worst_facet_rms_m"] < 0.05
+
+
+def test_a_thin_wall_strip_absorbed_by_a_plane_is_cut_too():
+    """A ~1 m strip doesn't form its own facet: the plane next to it fits the
+    roof, ignores the strip, and counted its area anyway (+10%)."""
+    dsm, mask, px = S.gable()
+    X, Y = S._grid(14.0, 10.0)
+    strip = (X >= 0) & (X < 14.0) & (Y >= 10.0) & (Y < 11.0)
+    dsm = np.where(strip, S.EAVE_H - 3.0 * (Y - 10.0), dsm).astype(np.float32)
+    m = extract_roof(dsm, mask | strip, px)
+    assert m.quality.get("trimmed_wall_m2", 0) > 0.8 * 14.0
+    assert m.true_m2 == pytest.approx(S.gable_expected()["true_m2"], rel=0.02)

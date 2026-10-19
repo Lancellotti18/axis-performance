@@ -208,10 +208,20 @@ WALL_PITCH_12 = 20.0
 WALL_MAX_SHARE = 0.15     # cut at most this share of the roof as wall
 
 
+WALL_DROP_M = 0.30        # this far BELOW its own plane, at the edge, is wall
+WALL_BAND_M = 1.5         # ...and only within this distance of the outline
+
+
 def _wall_fringe(model: RoofModel, bldg) -> Optional[np.ndarray]:
-    """Pixels of near-vertical facets that touch the building's outside edge,
-    or None when there are none, or too many to call it fringe."""
-    edge = bldg & ~cv2.erode(bldg.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+    """Wall pixels on the building's outside edge, or None when there are none
+    or too many to call it fringe. Two shapes of the same thing:
+      * a strip wide enough to fit as its own near-vertical facet;
+      * a thinner one (~1 m) that a neighbouring plane absorbs — its plane fits
+        the roof and ignores the strip, but its area still counts it, ~10% on
+        a synthetic gable. It shows as pixels well BELOW the plane, at the edge.
+    """
+    u8 = bldg.astype(np.uint8)
+    edge = bldg & ~cv2.erode(u8, np.ones((3, 3), np.uint8)).astype(bool)
     out = np.zeros_like(bldg)
     for f in model.facets:
         if f.pitch_12 < WALL_PITCH_12:
@@ -219,6 +229,25 @@ def _wall_fringe(model: RoofModel, bldg) -> Optional[np.ndarray]:
         px = model.labels == f.id
         if (px & edge).any():
             out |= px
+
+    dist_m = cv2.distanceTransform(u8, cv2.DIST_L2, 3) * model.px_m
+    rows, cols = np.nonzero((model.labels >= 0) & (dist_m <= WALL_BAND_M))
+    if len(rows) and model.dsm is not None:
+        planes = {f.id: f.plane for f in model.facets}
+        fid = model.labels[rows, cols]
+        coef = np.array([planes.get(int(i), (0.0, 0.0, np.nan)) for i in fid])
+        z = coef[:, 0] * cols * model.px_m + coef[:, 1] * rows * model.px_m + coef[:, 2]
+        low = np.zeros_like(bldg)
+        low[rows, cols] = (model.dsm[rows, cols] - z) < -WALL_DROP_M
+        # The outermost pixel or two always blends roof with ground; that ring
+        # is not a wall. Opening keeps only drops wider than ~20 cm.
+        low = cv2.morphologyEx(low.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)).astype(bool)
+        # Only drops that reach the outline: a dip inside the roof (a skylight,
+        # a vent) is not a wall.
+        n, lab = cv2.connectedComponents(low.astype(np.uint8), connectivity=8)
+        touching = np.unique(lab[low & edge])
+        out |= np.isin(lab, touching[touching > 0])
+
     if not out.any() or out.sum() > WALL_MAX_SHARE * bldg.sum():
         return None
     return out
