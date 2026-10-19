@@ -849,9 +849,7 @@ async def location_validate(
         raise HTTPException(
             status_code=404,
             detail=(
-                "Could not validate that address with the US Census Geocoder. "
-                "Try including the city, state, and ZIP, or use the reverse-lookup "
-                "endpoint with coordinates."
+                "We couldn't find that address. Try including the city, state and ZIP."
             ),
         )
     return match.to_dict()

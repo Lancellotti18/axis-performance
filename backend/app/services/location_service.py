@@ -43,6 +43,115 @@ CENSUS_BENCHMARK = "Public_AR_Current"
 CENSUS_VINTAGE = "Current_Current"
 FCC_AREA_URL = "https://geo.fcc.gov/api/census/area"
 MAPTILER_GEOCODE_URL = "https://api.maptiler.com/geocoding"
+GOOGLE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+GOOGLE_AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
+
+
+# ----------------------------------------------------------------------------
+# Google (primary since 2026-10-18)
+#
+# The Census geocoder ESTIMATES a house's position along the street segment.
+# In newer subdivisions that can be a block off: it put 1114 Willow Pond Ln,
+# Leland — the first founding contractor's job — on 1146, 353 m away, so the
+# house picker showed him (and Ryan) the wrong house. Google resolves the
+# address to its ROOFTOP (within 0.5 m of Google's own building centre there),
+# which is also the building auto-measure reads. Census, MapTiler and the FCC
+# county lookup stay as fallbacks and for county FIPS.
+# ----------------------------------------------------------------------------
+
+def _google_key() -> str:
+    return (getattr(settings, "GOOGLE_SOLAR_API_KEY", "") or "").strip()
+
+
+def _parse_google_geocode(payload: dict) -> list["LocationMatch"]:
+    """Matches from a Geocoding API response, rooftop-grade results first."""
+    if (payload or {}).get("status") != "OK":
+        return []
+    out: list[LocationMatch] = []
+    for res in payload.get("results") or []:
+        comps: dict[str, dict] = {}
+        for c in res.get("address_components") or []:
+            for t in c.get("types") or []:
+                comps.setdefault(t, c)
+        loc = (res.get("geometry") or {}).get("location") or {}
+        if loc.get("lat") is None or loc.get("lng") is None:
+            continue
+        num = (comps.get("street_number") or {}).get("long_name", "")
+        route = (comps.get("route") or {}).get("long_name", "")
+        county = (comps.get("administrative_area_level_2") or {}).get("long_name", "")
+        if county.lower().endswith(" county"):
+            county = county[: -len(" county")]
+        out.append(LocationMatch(
+            matched_address=(res.get("formatted_address") or "").removesuffix(", USA"),
+            street=" ".join(x for x in (num, route) if x),
+            city=((comps.get("locality") or comps.get("sublocality") or comps.get("postal_town")
+                   or comps.get("administrative_area_level_3") or {}).get("long_name", "")),
+            state=(comps.get("administrative_area_level_1") or {}).get("short_name", ""),
+            zip=(comps.get("postal_code") or {}).get("long_name", ""),
+            lat=float(loc["lat"]), lng=float(loc["lng"]),
+            county=county, county_fips="", state_fips="",
+            source="google:" + ((res.get("geometry") or {}).get("location_type") or "").lower(),
+        ))
+    out.sort(key=lambda m: 0 if m.source == "google:rooftop" else 1)
+    return out
+
+
+async def _google_geocode(client: httpx.AsyncClient, address: str) -> list["LocationMatch"]:
+    key = _google_key()
+    if not key:
+        return []
+    try:
+        r = await client.get(GOOGLE_GEOCODE_URL, params={"address": address, "region": "us", "key": key},
+                             timeout=8.0)
+        data = r.json()
+    except Exception as e:
+        logger.info("google geocode failed: %s", e)
+        return []
+    if data.get("status") not in ("OK", "ZERO_RESULTS"):
+        logger.warning("google geocode %s: %s", data.get("status"), (data.get("error_message") or "")[:160])
+    return _parse_google_geocode(data)
+
+
+def _parse_google_autocomplete(payload: dict) -> list["LocationMatch"]:
+    """Suggestions from Places API (New). They carry no coordinates: picking one
+    resolves it through _google_geocode (the screens already do that step)."""
+    out: list[LocationMatch] = []
+    for s in (payload or {}).get("suggestions") or []:
+        p = s.get("placePrediction") or {}
+        text = ((p.get("text") or {}).get("text") or "").removesuffix(", USA")
+        if not text:
+            continue
+        fmt = p.get("structuredFormat") or {}
+        street = (fmt.get("mainText") or {}).get("text", "")
+        rest = [x.strip() for x in ((fmt.get("secondaryText") or {}).get("text", "")).split(",")]
+        out.append(LocationMatch(
+            matched_address=text, street=street,
+            city=rest[0] if rest else "", state=rest[1] if len(rest) > 1 else "", zip="",
+            lat=0.0, lng=0.0, county="", county_fips="", state_fips="", source="google:suggestion",
+        ))
+    return out
+
+
+async def _google_autocomplete(client: httpx.AsyncClient, query: str, *,
+                               proximity: tuple[float, float] | None = None) -> list["LocationMatch"]:
+    key = _google_key()
+    if not key:
+        return []
+    body: dict = {"input": query, "includedRegionCodes": ["us"]}
+    if proximity:
+        body["locationBias"] = {"circle": {"center": {"latitude": proximity[0], "longitude": proximity[1]},
+                                           "radius": 50000.0}}
+    try:
+        r = await client.post(GOOGLE_AUTOCOMPLETE_URL, json=body, timeout=6.0,
+                              headers={"X-Goog-Api-Key": key})
+        data = r.json()
+    except Exception as e:
+        logger.info("google autocomplete failed: %s", e)
+        return []
+    if data.get("error"):
+        logger.warning("google autocomplete: %s", str(data["error"].get("message", ""))[:160])
+        return []
+    return _parse_google_autocomplete(data)
 
 
 # ----------------------------------------------------------------------------
@@ -358,21 +467,45 @@ async def search_address(
 
     async with httpx.AsyncClient() as client:
         if with_geographies:
-            matches = await _census_geographies(client, query)
+            # Google's rooftop position first (see the note on _google_geocode);
+            # its county name is kept and the FIPS codes come from the FCC.
+            matches = await _google_geocode(client, query)
+            if matches:
+                matches[0] = await _enrich_with(client, matches[0])
+            if not matches:
+                matches = await _census_geographies(client, query)
             # If Census didn't match (common for partial / rural addresses),
             # fall back to MapTiler so we still return something useful.
             if not matches:
                 matches = await _maptiler_autocomplete(client, query)
         else:
-            # Autocomplete: try MapTiler first (it actually handles partial
-            # typing). Census fallback only if MapTiler not configured.
-            matches = await _maptiler_autocomplete(client, query, proximity=proximity)
+            # Autocomplete: Google Places suggestions (they handle partial
+            # typing and know new streets), then MapTiler, then Census.
+            matches = await _google_autocomplete(client, query, proximity=proximity)
+            if not matches:
+                matches = await _maptiler_autocomplete(client, query, proximity=proximity)
             if not matches:
                 matches = await _census_oneline(client, query)
 
     if not matches:
         return SearchResult(matches=[], error="No matches found — try adding city or state")
     return SearchResult(matches=matches)
+
+
+async def _enrich_with(client: httpx.AsyncClient, match: LocationMatch) -> LocationMatch:
+    """County FIPS for a Google match, from the FCC (Google gives the name only)."""
+    if match.county_fips:
+        return match
+    try:
+        info = await _fcc_county_from_latlng(client, match.lat, match.lng)
+    except Exception as e:
+        logger.info("fcc county lookup failed: %s", e)
+        info = None
+    if info:
+        match.county = match.county or info.get("county") or ""
+        match.county_fips = info.get("county_fips") or ""
+        match.state_fips = info.get("state_fips") or ""
+    return match
 
 
 async def enrich_with_county(match: LocationMatch) -> LocationMatch:

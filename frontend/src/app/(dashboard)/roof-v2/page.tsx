@@ -316,6 +316,32 @@ export default function RoofV2Page() {
           const data = await api.roofing.v2.getRun(run_id)
           const run = data.run as Record<string, unknown>
 
+          // A roof nobody has measured yet, saved at a position from the old
+          // address lookup: the Census geocoder put 1114 Willow Pond Ln on 1146,
+          // 353 m away. If the address's rooftop is now somewhere else, don't
+          // adopt that run at all — fall through and start on the right house
+          // (the abandoned run holds no measurements).
+          const hasRoof = Array.isArray(data.facets) && (data.facets as unknown[]).length > 0
+          const spRaw = run.subject_point as { x?: number } | null
+          if (!hasRoof && !(spRaw && typeof spRaw.x === 'number') && run.satellite_image_url) {
+            const addrNow = [(p as Project).address, (p as Project).city, (p as Project).state, (p as Project).zip]
+              .filter(Boolean).join(', ') || (p as Project).name || ''
+            const lat0 = Number(run.satellite_lat) || 0, lng0 = Number(run.satellite_lng) || 0
+            let misplaced = false
+            try {
+              const loc = addrNow ? await api.roofing.v2.locationValidate(addrNow) : null
+              if (loc?.lat && lat0) {
+                const dy = (loc.lat - lat0) * 111320
+                const dx = (loc.lng - lng0) * 111320 * Math.cos((lat0 * Math.PI) / 180)
+                misplaced = Math.hypot(dx, dy) > 40
+              }
+            } catch { /* keep the saved run */ }
+            if (misplaced) {
+              setRunId(null)   // never reuse a run left over from an earlier project
+              throw new Error('saved position is off the address — starting on the right house')
+            }
+          }
+
           // Adopt the run BEFORE deciding what else we can restore. Everything
           // the contractor draws saves against this id, and it used to be set
           // only on the imagery branch below — so a run with no pinned tile left

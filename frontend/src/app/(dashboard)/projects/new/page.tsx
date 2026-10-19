@@ -52,6 +52,7 @@ export default function NewProjectPage() {
     e.preventDefault()
     if (!name.trim()) { setError('Give the project a name.'); return }
     if (!selected) { setError('Search and select the property address.'); return }
+    if (!selected.lat && !selected.lng) { setError('We couldn\u2019t pin that address down yet. Pick it from the list again, or add the city and ZIP.'); return }
     setSubmitting(true); setError('')
     try {
       const user = await getUser()

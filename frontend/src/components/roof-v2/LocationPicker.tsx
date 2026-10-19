@@ -106,7 +106,13 @@ export function LocationPicker({ initialQuery = '', onSelected }: Props) {
         onSelected(full as LocationSelected)
         return
       } catch (err) {
-        // Fall through; we still have the basic match
+        // A suggestion with no position cannot be measured: never fall
+        // through to 0, 0 — ask for a fuller address instead.
+        if (m.lat === 0 && m.lng === 0) {
+          setSelected(null)
+          setError('We couldn\u2019t pin that address down. Add the city and ZIP and pick it again.')
+          return
+        }
       }
     }
     onSelected(m)
@@ -227,10 +233,14 @@ export function LocationPicker({ initialQuery = '', onSelected }: Props) {
               className="cursor-pointer border-b border-[#dededc] px-3 py-2 text-sm text-[#1a1a1a] transition hover:bg-blue-500/10"
             >
               <div className="font-medium">{m.matched_address}</div>
-              <div className="text-[10px] text-[#6b7280]">
-                {m.lat.toFixed(5)}, {m.lng.toFixed(5)}
-                {m.county && ` · ${m.county} County`}
-              </div>
+              {/* Google's suggestions carry no position until one is picked —
+                  picking resolves it to the rooftop — so say nothing rather than 0, 0. */}
+              {(m.lat !== 0 || m.county) && (
+                <div className="text-[10px] text-[#6b7280]">
+                  {m.lat !== 0 && `${m.lat.toFixed(5)}, ${m.lng.toFixed(5)}`}
+                  {m.county && `${m.lat !== 0 ? ' · ' : ''}${m.county} County`}
+                </div>
+              )}
             </li>
           ))}
         </ul>
