@@ -1940,6 +1940,10 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     if q.get("attached_suspected"):
         warnings.append("This looks like attached homes sharing one roof. Trim the outline to "
                         "this home's section before ordering.")
+    if q.get("trimmed_wall_m2"):
+        warnings.append(f"Left out about {round(q['trimmed_wall_m2'] * 10.7639 / 10) * 10:.0f} sq ft of "
+                        "near-vertical surface at the roof's edge (wall or tree in Google's 3D data). "
+                        "Check the front eave and any dormers.")
     sel = q.get("selection") or {}
     if sel.get("how") == "snapped to the nearest roof":
         warnings.append(f"Your tap was {sel.get('tap_distance_m')} m off the roof; the nearest "

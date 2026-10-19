@@ -121,6 +121,28 @@ def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
         return RoofModel(False, picked, px_m=px_m)
     bldg, selection = picked
 
+    model = _measure(dsm, bldg, selection, px_m)
+    if not model.available:
+        return model
+    # Google's roof mask often runs a little past the drip edge and down the
+    # wall (or into an overhanging tree), and those pixels fit as near-vertical
+    # "facets" along the outside: one at 40/12 on 1114 Willow Pond refused the
+    # whole roof as "too irregular" and padded the area. A strip that steep on
+    # the outline is wall, not roof, so it is cut from the outline and the roof
+    # measured again. Only a small share is cut; more than that and the roof
+    # really is odd, and the caller's quality checks decide as before.
+    fringe = _wall_fringe(model, bldg)
+    if fringe is not None:
+        trimmed_m2 = float(fringe.sum()) * px_m ** 2
+        kept = _largest_part(bldg & ~fringe)
+        again = _measure(dsm, kept, selection, px_m)
+        if again.available:
+            again.quality["trimmed_wall_m2"] = round(trimmed_m2, 1)
+            return again
+    return model
+
+
+def _measure(dsm, bldg, selection, px_m) -> RoofModel:
     normals, curvature = _surface_normals(dsm, bldg, px_m)
     labels = _grow_planes(normals, curvature, bldg, px_m)
     planes = _fit_planes(dsm, labels, px_m)
@@ -177,6 +199,38 @@ def extract_roof(dsm: np.ndarray, mask: np.ndarray, px_m: float,
         labels=labels,
         dsm=dsm,
     )
+
+
+# A real roof plane steeper than this is a mansard or a turret; a strip this
+# steep on the outline is the wall below the eave. Google's segments for the
+# houses Axis has seen top out near 15/12.
+WALL_PITCH_12 = 20.0
+WALL_MAX_SHARE = 0.15     # cut at most this share of the roof as wall
+
+
+def _wall_fringe(model: RoofModel, bldg) -> Optional[np.ndarray]:
+    """Pixels of near-vertical facets that touch the building's outside edge,
+    or None when there are none, or too many to call it fringe."""
+    edge = bldg & ~cv2.erode(bldg.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+    out = np.zeros_like(bldg)
+    for f in model.facets:
+        if f.pitch_12 < WALL_PITCH_12:
+            continue
+        px = model.labels == f.id
+        if (px & edge).any():
+            out |= px
+    if not out.any() or out.sum() > WALL_MAX_SHARE * bldg.sum():
+        return None
+    return out
+
+
+def _largest_part(region) -> np.ndarray:
+    """Cutting a strip can leave crumbs; keep the one main piece."""
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(region.astype(np.uint8), connectivity=4)
+    if n <= 2:
+        return region
+    big = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    return lab == big
 
 
 # ── Steps ────────────────────────────────────────────────────────────────

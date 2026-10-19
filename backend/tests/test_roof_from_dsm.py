@@ -191,3 +191,19 @@ def test_an_ordinary_house_is_not_flagged_as_attached():
     for name in ("gable", "hip", "cross_gable"):
         dsm, mask, px = getattr(S, name)()
         assert extract_roof(dsm, mask, px).quality["attached_suspected"] is False
+
+
+def test_a_wall_strip_past_the_eave_is_cut_not_measured():
+    """Google's mask often runs past the drip edge and down the wall; on 1114
+    Willow Pond that strip fit as a 40/12 'facet' and refused the whole roof."""
+    dsm, mask, px = S.gable()
+    X, Y = S._grid(14.0, 10.0)
+    strip = (X >= 0) & (X < 14.0) & (Y >= 10.0) & (Y < 11.5)
+    dsm = np.where(strip, S.EAVE_H - 3.0 * (Y - 10.0), dsm).astype(np.float32)
+    mask = mask | strip
+    m = extract_roof(dsm, mask, px)
+    exp = S.gable_expected()
+    assert m.quality["trimmed_wall_m2"] == pytest.approx(1.5 * 14.0, rel=0.15)
+    assert len(m.facets) == 2
+    assert m.true_m2 == pytest.approx(exp["true_m2"], rel=0.02)
+    assert m.quality["worst_facet_rms_m"] < 0.05
