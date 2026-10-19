@@ -298,8 +298,19 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
     if (confirmRequest == null || confirmRequest === lastConfirmRequest.current) return
     lastConfirmRequest.current = confirmRequest
     setConfirming(true)
-    void fetchAll(wastePct, true).finally(() => setConfirming(false))
+    void fetchAll(wastePct, true).finally(() => { setConfirming(false); setRevealTick(t => t + 1) })
   }, [confirmRequest, fetchAll, wastePct])
+  // ...and then bring them into view. The status card's button turns into
+  // "Continue to details", so without this a contractor who doesn't think to
+  // scroll clicks past the numbers they just paid for (Ryan, 2026-10-19).
+  const resultsRef = useRef<HTMLDivElement>(null)
+  const [revealTick, setRevealTick] = useState(0)
+  useEffect(() => {
+    if (revealTick === 0) return
+    const id = requestAnimationFrame(() =>
+      resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    return () => cancelAnimationFrame(id)
+  }, [revealTick])
 
   // Debounced recompute on geometry change
   useEffect(() => {
@@ -432,7 +443,7 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
     // While new edges are being saved, everything below still describes the
     // PREVIOUS geometry. Dimming it and blocking interaction is more honest
     // than letting stale squares and prices look current for a second or two.
-    <div className={`space-y-4 transition-opacity ${busy || loading ? 'pointer-events-none opacity-50' : ''}`}
+    <div ref={resultsRef} className={`scroll-mt-4 space-y-4 transition-opacity ${busy || loading ? 'pointer-events-none opacity-50' : ''}`}
       aria-busy={busy || loading}>
       {hasNoData && (
         <div className="space-y-2 rounded-lg border border-amber-400/40 bg-amber-50 p-3 text-sm text-amber-900">
