@@ -20,3 +20,23 @@ def test_a_report_build_releases_memory_when_its_slot_frees(monkeypatch):
             pass
     asyncio.run(build())
     assert calls == [1]
+
+
+def test_memory_health_warns_before_render_restarts_the_service(monkeypatch):
+    monkeypatch.setattr(memory, "limit_mb", lambda: 2048)
+    monkeypatch.setattr(memory, "rss_mb", lambda: 400)
+    check, problem = memory.health()
+    assert check["used_pct"] == 20 and problem is None
+
+    monkeypatch.setattr(memory, "rss_mb", lambda: 1500)          # 73%
+    _, problem = memory.health()
+    assert problem.startswith("WARN")
+
+    monkeypatch.setattr(memory, "rss_mb", lambda: 1800)          # 88%
+    _, problem = memory.health()
+    assert problem.startswith("HIGH")
+
+
+def test_unknown_limit_never_alarms(monkeypatch):
+    monkeypatch.setattr(memory, "limit_mb", lambda: 0)
+    assert memory.health()[1] is None

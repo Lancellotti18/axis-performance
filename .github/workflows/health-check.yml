@@ -108,6 +108,9 @@ jobs:
               line("- Image providers: not probed today (weekly, Sundays)")
           rr = checks.get("report_render") or {}
           line(f"- Report render: {'ok' if rr.get('ok') else 'FAILED'} ({rr.get('bytes')} bytes)")
+          mem = checks.get("memory") or {}
+          if mem.get("limit_mb"):
+              line(f"- Memory: {mem.get('rss_mb')} of {mem.get('limit_mb')} MB ({mem.get('used_pct')}%)")
           st = checks.get("storm_report") or {}
           line(f"- Storm report: {'ok' if st.get('ok') else 'FAILED'}")
           mc = checks.get("material_compliance") or {}

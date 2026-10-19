@@ -510,6 +510,17 @@ async def health_deep(request: Request, images: int = 1):
         checks["material_compliance"] = {"ok": False, "error": str(e)[:300]}
         problems.append(f"HIGH: Material Compliance raised — {str(e)[:200]}")
 
+    # ── Memory ─────────────────────────────────────────────────────────────
+    # Render restarts the service at its memory limit (2026-10-14). Report it
+    # daily, and warn at 70% / alarm at 85%, before a contractor's report fails.
+    try:
+        from app.core import memory as _memory
+        checks["memory"], _mem_problem = _memory.health()
+        if _mem_problem:
+            problems.append(_mem_problem)
+    except Exception as e:
+        checks["memory"] = {"error": str(e)[:120]}
+
     # ── 8. Billing configuration ──────────────────────────────────────────
     # Catches a failure that only shows up at the worst moment: a bad price id
     # means checkout or an upgrade fails the instant someone picks that plan.
