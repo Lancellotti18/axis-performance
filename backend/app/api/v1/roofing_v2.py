@@ -1686,6 +1686,48 @@ class AutoMeasureRequest(BaseModel):
     address_confirmed: bool = False
 
 
+@router.get("/runs/{run_id}/building")
+async def building_for_run(
+    run_id: str,
+    lat: Optional[float] = Query(None, ge=-90, le=90),
+    lng: Optional[float] = Query(None, ge=-180, le=180),
+    user: dict = Depends(require_user),
+) -> dict:
+    """The house picker's question, answered from Google's own building data:
+    which building is at the job's address (or at the point the contractor
+    clicked), its roof outline, and that building's street address checked
+    against the job's. See app/services/house_locator.py for why this replaced
+    the Street View-first picker and the OpenStreetMap outline."""
+    from app.core.config import settings
+    from app.services import address_match, house_locator
+    db = get_supabase()
+    run = require_owned_run(db, run_id, user)
+    if lat is None or lng is None:
+        lat, lng = run.get("satellite_lat"), run.get("satellite_lng")
+    if lat is None or lng is None:
+        return {"available": False, "reason": "This job has no location yet."}
+    found = await house_locator.building_at(float(lat), float(lng), settings.GOOGLE_SOLAR_API_KEY)
+    if not found.get("available"):
+        return found
+    found.update({"address": None, "address_status": "unknown", "job_address": None})
+    try:
+        proj = db.table("projects").select("name, address, city, state") \
+            .eq("id", run["project_id"]).single().execute().data or {}
+        job_addr = ", ".join(x for x in (proj.get("address") or proj.get("name"),
+                                          proj.get("city"), proj.get("state")) if x)
+        c = found["center"]
+        addr, source = await address_match.reverse_lookup(
+            c["lat"], c["lng"], google_key=settings.GOOGLE_SOLAR_API_KEY,
+            maptiler_key=settings.MAPTILER_API_KEY)
+        check = address_match.compare(job_addr, addr, source=source)
+        found.update({"address": (addr or "").split(",")[0].strip() or None,
+                      "address_status": check.status,
+                      "job_address": job_addr.split(",")[0].strip() or None})
+    except Exception as e:
+        logger.info("building address lookup skipped for %s: %s", run_id, e)
+    return found
+
+
 @router.get("/runs/{run_id}/address-check")
 async def address_check(run_id: str, user: dict = Depends(require_user)) -> dict:
     """Is the house the contractor picked the job's address? Asked the moment

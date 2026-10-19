@@ -1602,6 +1602,19 @@ export const api = {
         apiRequest<{ enabled: boolean }>(`/api/v1/roofing/v2/auto-measure/enabled`),
       // Measures the confirmed house from Google 3D and stores it exactly like
       // a hand trace. available=false carries a plain reason to trace instead.
+      /** The building at the job's address — or at a clicked point — from
+       *  Google's own building data: its centre, roof outline and street address. */
+      buildingAt: (runId: string, point?: { lat: number; lng: number }) =>
+        apiRequest<{
+          available: boolean; reason?: string
+          center?: { lat: number; lng: number }
+          outline?: { lat: number; lng: number }[]
+          outline_source?: 'roof' | 'box' | null
+          imagery_date?: string | null
+          address?: string | null
+          address_status?: 'match' | 'mismatch' | 'unknown'
+          job_address?: string | null
+        }>(`/api/v1/roofing/v2/runs/${runId}/building${point ? `?lat=${point.lat.toFixed(7)}&lng=${point.lng.toFixed(7)}` : ''}`),
       /** Is the picked house the job's address? Asked before anything is measured. */
       addressCheck: (runId: string) =>
         apiRequest<{ status: 'match' | 'mismatch' | 'unknown'; message: string | null; found: string | null; job: string | null }>(

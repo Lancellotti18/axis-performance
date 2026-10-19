@@ -62,7 +62,7 @@ def _azimuth_to_compass(az_deg: float) -> str:
     return dirs[idx]
 
 
-async def get_building_insights(lat: float, lng: float) -> dict:
+async def get_building_insights(lat: float, lng: float, required_quality: Optional[str] = None) -> dict:
     """
     Fetch the closest building's solar insights and normalize the roof segments.
 
@@ -92,7 +92,11 @@ async def get_building_insights(lat: float, lng: float) -> dict:
         return {"available": False, "reason": "Google Solar API key not configured."}
 
     # Cost guard — serve a cached result for this address if we have one.
-    key = _cache_key(lat, lng)
+    # required_quality: Google's findClosest defaults to HIGH-quality imagery
+    # only, and much of the NC coast is MEDIUM — it answered "no coverage" for
+    # houses the Data Layers call (which asks for MEDIUM) measures fine. The
+    # house picker passes "MEDIUM" so it finds every house auto-measure can.
+    key = (_cache_key(lat, lng), required_quality)
     hit = _cache.get(key)
     if hit and (time.time() - hit[0]) < _CACHE_TTL_SECONDS:
         return {**hit[1], "cached": True}
@@ -103,6 +107,8 @@ async def get_building_insights(lat: float, lng: float) -> dict:
         "location.longitude": f"{lng:.7f}",
         "key": settings.GOOGLE_SOLAR_API_KEY,
     }
+    if required_quality:
+        params["requiredQuality"] = required_quality
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             r = await client.get(url, params=params)

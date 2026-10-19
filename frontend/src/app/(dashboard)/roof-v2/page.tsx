@@ -684,7 +684,7 @@ export default function RoofV2Page() {
   // Measure the confirmed house from Google 3D. On success the result is
   // already stored server-side exactly like a trace; load it into the editor
   // for review. On any refusal, say why and open the editor empty to trace.
-  const runAutoMeasure = useCallback(async (allowOldImagery = false) => {
+  const runAutoMeasure = useCallback(async (allowOldImagery = false, addressOk?: boolean) => {
     if (!runId || !imagery) return
     setAutoBusy(true)
     setAutoNote(null)
@@ -697,7 +697,7 @@ export default function RoofV2Page() {
         lng: imagery.lng ?? location?.lng ?? 0,
         satellite_image_url: imagery.original_url || imagery.url,
         allow_old_imagery: allowOldImagery,
-        address_confirmed: addressConfirmed,
+        address_confirmed: addressOk ?? addressConfirmed,
       })
       if (r.available && r.facets && r.edges) {
         const { fcts, edgs } = rowsToGeometry(r.facets, r.edges)
@@ -1084,29 +1084,23 @@ export default function RoofV2Page() {
                 feetPerPixel={imagery.feet_per_pixel ?? 0}
                 address={project ? [project.address, project.city, project.state, project.zip].filter(Boolean).join(', ') : undefined}
                 initialPoint={subjectPoint}
-                onConfirmed={(pt) => { setSubjectPoint(pt) }}
+                onConfirmed={(pt, info) => {
+                  // A "yes" to a building whose address did not match the job IS
+                  // the address confirmation — never ask the same question twice.
+                  if (info.addressAcknowledged && runId) {
+                    try { sessionStorage.setItem(`axis_addr_ok:${runId}:${pt.x.toFixed(4)},${pt.y.toFixed(4)}`, '1') } catch { /* private mode */ }
+                  }
+                  setSubjectPoint(pt)
+                  // "Yes, measure this roof" measures it — straight away.
+                  if (autoMeasureOn) void runAutoMeasure(false, info.addressAcknowledged || undefined)
+                  else setEditorSub('draw')
+                }}
               />
-              {/* Scale is auto-derived from the tile's zoom/latitude and is right
-                  the vast majority of the time — so drawing is the primary path.
-                  "Check scale" stays one tap away for when a number looks off. */}
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                {needsAddressConfirm && (
-                  <span className="mr-auto text-xs text-amber-900">Answer the address question above to continue.</span>
-                )}
+              <div className="flex flex-wrap items-center justify-end gap-4 text-xs">
                 <button onClick={() => setEditorSub('scale')}
-                  className="rounded-md bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2]">Check scale (optional)</button>
-                {autoMeasureOn ? (<>
-                  <button onClick={() => setEditorSub('draw')} disabled={needsAddressConfirm}
-                    className="rounded-md bg-[#e4e4e2] px-4 py-2 text-sm text-[#1a1a1a] hover:bg-[#d4d4d2] disabled:opacity-50">Trace by hand</button>
-                  <button onClick={() => { void runAutoMeasure() }} disabled={!subjectPoint || autoBusy || needsAddressConfirm}
-                    title={subjectPoint ? 'Measure the whole roof automatically — no tracing' : 'Confirm the house first'}
-                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
-                    {autoBusy ? 'Measuring the roof…' : '✨ Auto-measure roof'}
-                  </button>
-                </>) : (
-                  <button onClick={() => setEditorSub('draw')} disabled={needsAddressConfirm}
-                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">Next: draw roof &rarr;</button>
-                )}
+                  className="font-medium text-[#4b5563] underline underline-offset-2 hover:text-[#1a1a1a]">Check scale (optional)</button>
+                <button onClick={() => setEditorSub('draw')} disabled={needsAddressConfirm}
+                  className="font-medium text-[#4b5563] underline underline-offset-2 hover:text-[#1a1a1a] disabled:opacity-50">Trace the roof by hand instead</button>
               </div>
             </div>
           )}
