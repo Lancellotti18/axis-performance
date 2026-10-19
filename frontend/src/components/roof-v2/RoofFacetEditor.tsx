@@ -72,6 +72,10 @@ interface Props {
   // Driven by the step's status card: bump `n` to switch to drawing, walk the
   // contractor through the lines that still need a type, or open the drawing help.
   command?: { kind: 'draw' | 'guide' | 'help'; n: number }
+  // The house confirmed in the picker, as fractions of the image. Without it
+  // the draw map showed two look-alike houses and nothing saying which one is
+  // the job: 1114 Willow Pond was traced on 1112 next door (2026-10-19).
+  houseGuide?: { point?: { x: number; y: number } | null; outline?: { x: number; y: number }[] | null }
 }
 
 // What each line type IS, in the words a homeowner would understand — shown
@@ -185,7 +189,7 @@ function constrainTo45(from: Pt, to: Pt, imageW: number, imageH: number): Pt {
 
 export function RoofFacetEditor({
   imageUrl, imageWidthPx, imageHeightPx,
-  initialFacets = [], initialEdges = [], onChange, syncRev, command,
+  initialFacets = [], initialEdges = [], onChange, syncRev, command, houseGuide,
 }: Props) {
   const [facets, setFacets] = useState<Facet[]>(initialFacets)
   // Closed on arrival — see the aside below for why.
@@ -1221,7 +1225,21 @@ export function RoofFacetEditor({
               onPointerLeave={onSvgPointerLeave}
               onDoubleClick={() => mode === 'draw' && finalizeDrawingPoly()}
             >
+              {houseGuide?.outline && houseGuide.outline.length >= 3 && (
+                <polygon pointerEvents="none"
+                  points={houseGuide.outline.map(p => `${p.x * imageDims.w},${p.y * imageDims.h}`).join(' ')}
+                  fill="rgba(34,211,238,0.10)" stroke="#22d3ee" strokeWidth={5 / view.scale}
+                  strokeDasharray={`${16 / view.scale} ${10 / view.scale}`} />
+              )}
               {facets.map(renderFacetPolygon)}
+              {houseGuide?.point && (
+                <g pointerEvents="none"
+                  transform={`translate(${houseGuide.point.x * imageDims.w}, ${houseGuide.point.y * imageDims.h}) scale(${1 / view.scale})`}>
+                  <rect x={-72} y={-62} width={144} height={38} rx={8} fill="#1a1a1a" fillOpacity={0.88} />
+                  <text x={0} y={-43} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={22} fontWeight={700}>Your house</text>
+                  <circle r={10} fill="#22d3ee" stroke="white" strokeWidth={3} />
+                </g>
+              )}
 
               {/* A "?" on every line that still needs a type, readable at any zoom. */}
               {blankLines.map(e => {

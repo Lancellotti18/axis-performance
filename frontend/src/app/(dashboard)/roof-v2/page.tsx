@@ -38,6 +38,7 @@ import ClientPortalPanel from '@/components/roof-v2/ClientPortalPanel'
 import PreReportChecklist from '@/components/roof-v2/PreReportChecklist'
 import ScaleCheckPanel from '@/components/roof-v2/ScaleCheckPanel'
 import HousePicker from '@/components/roof-v2/HousePicker'
+import { fracToGeo, geoToFrac } from '@/components/roof-v2/SolarAssistPanel'
 import DrawStatusCard, { AddressMismatchBanner, plainNote } from '@/components/roof-v2/DrawStatusCard'
 import AnnotatedRoofView from '@/components/roof-v2/AnnotatedRoofView'
 // RoofViewer3D temporarily disabled (geometry rebuild) — re-enable in REPORT step.
@@ -170,6 +171,9 @@ export default function RoofV2Page() {
   // The contractor's confirmed "this is my house" tap. Loaded from the run on
   // resume; auto-analyze WAITS for it so we never draw the neighbor's roof.
   const [subjectPoint, setSubjectPoint] = useState<{ x: number; y: number } | null>(null)
+  // That house's roof outline (fractions), drawn on the draw map so a hand
+  // trace lands on the right house. From the picker, or re-fetched on reopen.
+  const [houseOutline, setHouseOutline] = useState<{ x: number; y: number }[] | null>(null)
   const [savedScaleDesc, setSavedScaleDesc] = useState<string | null>(null)
   // Sub-steps inside the editor so the contractor sees ONE satellite image at a
   // time (confirm house → check scale → draw) and clicks Next, instead of
@@ -353,6 +357,7 @@ export default function RoofV2Page() {
           setRunConfirmed(!!run.confirmed)   // finalized roof → show its saved numbers on resume
           const sp = run.subject_point as { x: number; y: number } | null
           setSubjectPoint(sp && typeof sp.x === 'number' ? { x: sp.x, y: sp.y } : null)
+          setHouseOutline(null)
           setSavedScaleDesc((run.scale_reference_description as string) || null)
 
           // Geometry doesn't depend on the tile being pinned — restore it either way.
@@ -688,6 +693,50 @@ export default function RoofV2Page() {
   // Check the picked house against the job's address as soon as it is picked.
   // A confirmation is remembered for this run + point in the session, so a
   // reload does not ask again.
+  // Reopened job: the picker didn't run this visit, so ask for the confirmed
+  // house's outline once (Google's building at the confirmed point).
+  useEffect(() => {
+    if (!runId || !subjectPoint || houseOutline || !imagery?.feet_per_pixel) return
+    const lat0 = imagery.lat ?? location?.lat, lng0 = imagery.lng ?? location?.lng
+    if (lat0 == null || lng0 == null) return
+    const w = imagery.width_px ?? 2048, h = imagery.height_px ?? 1366, fpp = imagery.feet_per_pixel
+    let live = true
+    api.roofing.v2.buildingAt(runId, fracToGeo(subjectPoint.x, subjectPoint.y, lat0, lng0, w, h, fpp))
+      .then(b => {
+        if (!live || !b?.available || !b.outline?.length) return
+        setHouseOutline(b.outline.map((p: { lat: number; lng: number }) => {
+          const [x, y] = geoToFrac(p.lat, p.lng, lat0, lng0, w, h, fpp)
+          return { x, y }
+        }))
+      })
+      .catch(() => { /* the pin alone still marks the house */ })
+    return () => { live = false }
+  }, [runId, subjectPoint, houseOutline, imagery, location])
+
+  // Every traced plane is off the confirmed house: no plane's centre inside its
+  // outline (or, with no outline, none within ~15 m of the pin) and the pin
+  // inside no plane. Warns, never blocks.
+  const traceOffHouse = useMemo(() => {
+    if (!subjectPoint || facets.length === 0) return false
+    const inside = (pt: { x: number; y: number }, poly: { x: number; y: number }[]) => {
+      let c = false
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[i], b = poly[j]
+        if ((a.y > pt.y) !== (b.y > pt.y) && pt.x < ((b.x - a.x) * (pt.y - a.y)) / (b.y - a.y) + a.x) c = !c
+      }
+      return c
+    }
+    const polys = facets.map(f => f.polygon.map(([x, y]) => ({ x, y })))
+    if (polys.some(p => p.length >= 3 && inside(subjectPoint, p))) return false
+    const centres = polys.filter(p => p.length).map(p => ({
+      x: p.reduce((s, q) => s + q.x, 0) / p.length, y: p.reduce((s, q) => s + q.y, 0) / p.length }))
+    if (houseOutline && houseOutline.length >= 3) return !centres.some(c => inside(c, houseOutline))
+    const w = imagery?.width_px ?? 2048, h = imagery?.height_px ?? 1366, fpp = imagery?.feet_per_pixel
+    if (!fpp) return false
+    const mPerPx = fpp / 3.28084
+    return !centres.some(c => Math.hypot((c.x - subjectPoint.x) * w, (c.y - subjectPoint.y) * h) * mPerPx < 15)
+  }, [subjectPoint, facets, houseOutline, imagery])
+
   const addressKey = runId && subjectPoint ? `axis_addr_ok:${runId}:${subjectPoint.x.toFixed(4)},${subjectPoint.y.toFixed(4)}` : null
   useEffect(() => {
     setAddressCheck(null)
@@ -769,7 +818,7 @@ export default function RoofV2Page() {
   const startOverHouse = useCallback(async () => {
     cancelPending()
     const had = facets.length > 0
-    setFacets([]); setEdges([]); setAutoNote(null); setSubjectPoint(null)
+    setFacets([]); setEdges([]); setAutoNote(null); setSubjectPoint(null); setHouseOutline(null)
     setMeasuredAuto(false); setAddressCheck(null); setAddressConfirmed(false)
     setEditorSyncRev(v => v + 1)
     if (had) await persistGeometryRef.current?.([], [])
@@ -912,7 +961,7 @@ export default function RoofV2Page() {
                 setProjectId(newProject.id)
                 projectIdRef.current = newProject.id
                 setProject(newProject)
-                setRunId(null); setFacets([]); setEdges([]); setRunConfirmed(false); setSubjectPoint(null)
+                setRunId(null); setFacets([]); setEdges([]); setRunConfirmed(false); setSubjectPoint(null); setHouseOutline(null)
                 await onLocationSelected(loc, newProject.id)
               }}
               onError={(msg) => setError(msg)}
@@ -1118,6 +1167,7 @@ export default function RoofV2Page() {
                     try { sessionStorage.setItem(`axis_addr_ok:${runId}:${pt.x.toFixed(4)},${pt.y.toFixed(4)}`, '1') } catch { /* private mode */ }
                   }
                   setSubjectPoint(pt)
+                  setHouseOutline(info.outline)
                   // "Yes, measure this roof" measures it — straight away.
                   if (autoMeasureOn) void runAutoMeasure(false, info.addressAcknowledged || undefined)
                   else setEditorSub('draw')
@@ -1174,6 +1224,7 @@ export default function RoofV2Page() {
             awaitingReportConfirm={awaitingReportConfirm}
             showingMeasurements={showingMeasurements}
             notes={[
+              ...(traceOffHouse ? ['⚠ What you traced isn’t on the house you confirmed (the dashed outline marked “Your house”). Check you’re tracing the right roof.'] : []),
               ...(autoNote?.ok ? [autoNote.text, ...autoNote.warnings] : []),
               ...partialSignals.map(plainNote),
             ]}
@@ -1201,6 +1252,7 @@ export default function RoofV2Page() {
               onChange={onEditorChange}
               syncRev={editorSyncRev}
               command={editorCommand}
+              houseGuide={{ point: subjectPoint, outline: houseOutline }}
             />
           </div>
 

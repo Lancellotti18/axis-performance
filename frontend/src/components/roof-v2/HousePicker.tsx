@@ -40,7 +40,7 @@ interface Props {
   /** Called once the house is confirmed and saved. `addressAcknowledged` is
    *  true when the contractor confirmed a building whose address did NOT match
    *  the job's — so the step does not ask the same question again. */
-  onConfirmed?: (p: { x: number; y: number }, info: { addressAcknowledged: boolean }) => void
+  onConfirmed?: (p: { x: number; y: number }, info: { addressAcknowledged: boolean; outline: Pt[] | null }) => void
 }
 
 type Building = Awaited<ReturnType<typeof api.roofing.v2.buildingAt>>
@@ -123,13 +123,13 @@ export default function HousePicker({
       await api.roofing.v2.setSubjectPoint(runId, point.x, point.y, at?.lat, at?.lng)
       invalidateApiCache('/solar')
       invalidateApiCache('/footprint')
-      onConfirmed?.(point, { addressAcknowledged: building?.address_status === 'mismatch' })
+      onConfirmed?.(point, { addressAcknowledged: building?.address_status === 'mismatch', outline })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save the house')
     } finally {
       setSaving(false)
     }
-  }, [point, canGeo, toGeo, building, runId, onConfirmed])
+  }, [point, canGeo, toGeo, building, runId, onConfirmed, outline])
 
   // Clicking the photo — only while picking.
   const imgRef = useRef<HTMLImageElement>(null)
