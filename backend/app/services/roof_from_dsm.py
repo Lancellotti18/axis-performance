@@ -1740,4 +1740,233 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
             continue
         out.append(AxisFacet(name, f.id, [(float(p[0]), float(p[1])) for p in snapped],
                              sides, f.pitch_12))
-    return out
+    return _tidy_outlines(out, labels, px_m)
+
+
+# ── Last pass: outlines a contractor would draw ───────────────────────────────
+# Every outline above is built on its own and then pulled onto shared lines, and
+# that pulling can leave shapes nobody would trace (6219 Strawfield Dr,
+# 2026-10-20): a side that runs out and straight back (a spike), an outline that
+# crosses itself, a facet squeezed to a line with no area, and two facets
+# claiming the same patch of roof. Each is drawn on screen as extra, crossing
+# lines, and the overlap is counted twice.
+SPIKE_COS = -0.94           # a turn sharper than ~160 degrees is out-and-back, not a corner
+SLIVER_M2 = 0.75            # an OUTLINE holding less plan area than this is a sliver
+SLIVER_WIDTH_M = 0.6        # ...or this thin on average (2 x area / perimeter) and small:
+SLIVER_THIN_M2 = 4.0        # real small facets measured 0.7 m and up, a wedge 0.48 m
+OVERLAP_MIN_M2 = 0.2        # two facets sharing more than this is a defect to repair
+OVERLAP_CUT_M2 = 1.0        # ...and this much left after moving corners is cut along the shared line
+
+
+def _area_px(pts) -> float:
+    p = np.asarray(pts, dtype=np.float64)
+    x, y = p[:, 0], p[:, 1]
+    return 0.5 * abs(float(x @ np.roll(y, -1) - y @ np.roll(x, -1)))
+
+
+def _seg_cross(a, b, c, d, touch: bool = False):
+    """Where segment a-b crosses segment c-d, else None. With `touch`, an end of
+    either one resting on the middle of the other counts too (an outline that
+    touches itself at a corner is as broken as one that crosses)."""
+    r, s = b - a, d - c
+    den = r[0] * s[1] - r[1] * s[0]
+    if abs(den) < 1e-12:
+        return None
+    t = ((c[0] - a[0]) * s[1] - (c[1] - a[1]) * s[0]) / den
+    u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den
+    e = 1e-6
+    inner_t, inner_u = e < t < 1 - e, e < u < 1 - e
+    on_t, on_u = -e <= t <= 1 + e, -e <= u <= 1 + e
+    if (inner_t and inner_u) or (touch and ((inner_t and on_u) or (on_t and inner_u))):
+        return a + r * t
+    return None
+
+
+def _drop_spikes(pts, sides, px_m):
+    """Remove repeated points and out-and-back spikes; the side left spanning
+    the gap keeps the type of the longer of the two it replaces."""
+    pts, sides = [np.asarray(p, float) for p in pts], list(sides)
+    changed = True
+    while changed and len(pts) > 3:
+        changed = False
+        n = len(pts)
+        for i in range(n):
+            a, b, c = pts[i - 1], pts[i], pts[(i + 1) % n]
+            u1, u2 = b - a, c - b
+            l1, l2 = float(np.hypot(*u1)), float(np.hypot(*u2))
+            if l1 * px_m < 0.05 or l2 * px_m < 0.05 or float(u1 @ u2) / (l1 * l2) < SPIKE_COS:
+                if l2 > l1:
+                    sides[i - 1] = sides[i]
+                pts.pop(i); sides.pop(i)
+                changed = True
+                break
+    return pts, sides
+
+
+def _cut_loops(pts, sides):
+    """An outline that crosses itself is two loops joined at the crossing; keep
+    the bigger one. Side types carry over, and the two sides that met at the
+    crossing now end there."""
+    for _ in range(len(pts)):
+        n = len(pts)
+        hit = None
+        for i in range(n):
+            for j in range(i + 2, n):
+                if i == 0 and j == n - 1:
+                    continue
+                x = _seg_cross(pts[i], pts[(i + 1) % n], pts[j], pts[(j + 1) % n], touch=True)
+                if x is not None:
+                    hit = (i, j, x)
+                    break
+            if hit:
+                break
+        if not hit:
+            return pts, sides
+        i, j, x = hit
+        inner = [x] + pts[i + 1:j + 1]
+        outer = pts[:i + 1] + [x] + pts[j + 1:]
+        if _area_px(inner) > _area_px(outer):
+            pts, sides = inner, [sides[i]] + sides[i + 1:j + 1]
+        else:
+            pts, sides = outer, sides[:i + 1] + [sides[j]] + sides[j + 1:]
+        if len(pts) < 3:
+            return pts, sides
+    return pts, sides
+
+
+def _clip_halfplane(pts, sides, a, b, keep, kind, nb):
+    """Cut the outline along the line a-b, keeping the half `keep` lies in. Kept
+    sides keep their types; the new side along the cut is (kind, nb)."""
+    d = b - a
+    def side_of(p):
+        return float(d[0] * (p[1] - a[1]) - d[1] * (p[0] - a[0]))
+    sgn = 1.0 if side_of(keep) >= 0 else -1.0
+    n = len(pts)
+    out_p, out_s = [], []
+    for i in range(n):
+        p, q = pts[i], pts[(i + 1) % n]
+        sp, sq = sgn * side_of(p), sgn * side_of(q)
+        if sp >= 0:
+            out_p.append(p); out_s.append(sides[i])
+        if (sp >= 0) != (sq >= 0):
+            t = sp / (sp - sq)
+            x = p + (q - p) * t
+            out_p.append(x)
+            # Leaving the kept half, the next side runs along the cut.
+            out_s.append(sides[i] if sp < 0 else (kind, nb))
+    return out_p, out_s
+
+
+def _nearest_on_outline(p, poly):
+    best, bd = None, None
+    n = len(poly)
+    for k in range(n):
+        a, b = poly[k], poly[(k + 1) % n]
+        d = b - a
+        t = min(1.0, max(0.0, float((p - a) @ d) / (float(d @ d) or 1e-12)))
+        q = a + d * t
+        dist = float(np.hypot(*(q - p)))
+        if bd is None or dist < bd:
+            best, bd = q, dist
+    return best
+
+
+def _mask_of(pts, shape, ss):
+    m = np.zeros((shape[0] * ss, shape[1] * ss), np.uint8)
+    cv2.fillPoly(m, [np.round(np.asarray(pts) * ss + (ss - 1) / 2).astype(np.int32)], 1)
+    return m.astype(bool)
+
+
+def _core(both):
+    """An overlap without the hairline two neighbours' rasterised outlines
+    share along a common side: only real double-covered roof is left."""
+    return cv2.erode(both.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+
+
+def _tidy_outlines(afs: list[AxisFacet], labels, px_m) -> list[AxisFacet]:
+    # 1. Each outline on its own: no spikes, no self-crossing.
+    clean = []
+    for a in afs:
+        pts, sides = _drop_spikes(a.vertices_px, a.sides, px_m)
+        if len(pts) >= 3:
+            pts, sides = _cut_loops(pts, sides)
+            pts, sides = _drop_spikes(pts, sides, px_m)
+        if len(pts) >= 3:
+            clean.append((a, pts, sides))
+
+    # 2. Two outlines over the same roof: the 3D data says whose roof it is (the
+    # facet most of those pixels were fitted to). The other facet's corners that
+    # sit inside the owner are moved onto the owner's edge.
+    ss = 2
+    fid_of = {a.fid for a, _, _ in clean}
+    for _ in range(2):
+        masks = [_mask_of(p, labels.shape, ss) for _, p, _ in clean]
+        for i in range(len(clean)):
+            for j in range(i + 1, len(clean)):
+                both = _core(masks[i] & masks[j])
+                if both.sum() * (px_m / ss) ** 2 < OVERLAP_MIN_M2:
+                    continue
+                rr, cc = np.nonzero(both)
+                lab = labels[rr // ss, cc // ss]
+                ai, aj = clean[i][0], clean[j][0]
+                owner, loser = (i, j) if (lab == ai.fid).sum() >= (lab == aj.fid).sum() else (j, i)
+                own_pts = clean[owner][1]
+                cnt = np.asarray(own_pts, np.float32).reshape(-1, 1, 2)
+                a_l, pts_l, sides_l = clean[loser]
+                a_o, _, sides_o = clean[owner]
+                moved = [(_nearest_on_outline(p, own_pts)
+                          if cv2.pointPolygonTest(cnt, (float(p[0]), float(p[1])), True) > 0.5 else p)
+                         for p in pts_l]
+                moved, sides_l = _drop_spikes(moved, sides_l, px_m)
+                if len(moved) >= 3:
+                    moved, sides_l = _cut_loops(moved, sides_l)
+                # Still a real overlap (a side runs straight across the owner,
+                # no corner inside it)? Cut the intruder back along the line the
+                # two facets share. Only then: on the small edge overlaps every
+                # roof has, cutting along the whole line cost Brookside Oaks 12%
+                # of its eaves against EagleView.
+                if len(moved) >= 3:
+                    left = _core(_mask_of(moved, labels.shape, ss) & masks[owner]).sum()
+                    if left * (px_m / ss) ** 2 >= OVERLAP_CUT_M2:
+                        before = _area_px(moved)
+                        lost_max = left / ss ** 2 * 1.5 + 10.0     # px²: about the overlap, no more
+                        for k_, (kind_o, nb_o) in enumerate(sides_o):
+                            if nb_o != a_l.fid:
+                                continue
+                            a_, b_ = own_pts[k_], own_pts[(k_ + 1) % len(own_pts)]
+                            keep = np.mean(np.asarray(moved), axis=0)
+                            cp, cs = _clip_halfplane(moved, sides_l, a_, b_, keep, kind_o, a_o.fid)
+                            if len(cp) >= 3 and 0 <= before - _area_px(cp) <= lost_max:
+                                moved, sides_l = _drop_spikes(cp, cs, px_m)
+                                before = _area_px(moved)
+                clean[loser] = (a_l, moved, sides_l)
+                masks[loser] = _mask_of(moved, labels.shape, ss) if len(moved) >= 3 else masks[loser] & False
+
+    # 3. Slivers go. A facet whose outline holds almost no roof is not a facet;
+    # the sides that pointed at it point at nothing in particular now.
+    out, gone = [], set()
+    for a, pts, sides in clean:
+        area = _area_px(pts) * px_m ** 2 if len(pts) >= 3 else 0.0
+        perim = sum(float(np.hypot(*(pts[(i + 1) % len(pts)] - pts[i]))) for i in range(len(pts))) * px_m
+        thin = perim > 0 and 2 * area / perim < SLIVER_WIDTH_M and area < SLIVER_THIN_M2
+        if len(pts) < 3 or area < SLIVER_M2 or thin:
+            gone.add(a.fid)
+            continue
+        # 4. A sub-metre corner stub nothing could type (the pink "?" in a corner
+        # of 6219 Strawfield's outline) is part of the line beside it, exactly as
+        # outside corner stubs already are (_absorb_corner_stubs).
+        n = len(pts)
+        lens = [float(np.hypot(*(pts[(i + 1) % n] - pts[i]))) * px_m for i in range(n)]
+        for i in range(n):
+            if sides[i][0] != "unlabeled" or lens[i] >= CORNER_STUB_M:
+                continue
+            cands = [(lens[j], sides[j]) for j in (i - 1, (i + 1) % n) if sides[j][0] != "unlabeled"]
+            if cands:
+                sides[i] = (max(cands, key=lambda c: c[0])[1][0], sides[i][1])
+        out.append((a, pts, sides))
+    result = []
+    # Letters are re-dealt so a dropped sliver leaves no gap (A, B, D...).
+    for name, (a, pts, sides) in zip(_labels_seq(len(out)), out):
+        sides = [(k, None if nb in gone or nb not in fid_of else nb) for k, nb in sides]
+        result.append(AxisFacet(name, a.fid, [(float(p[0]), float(p[1])) for p in pts], sides, a.pitch_12))
+    return result
