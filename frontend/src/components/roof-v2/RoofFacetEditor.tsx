@@ -123,6 +123,50 @@ const EDGE_COLORS: Record<EdgeType, string> = {
   unlabeled: '#ff1fa8',
 }
 
+// The legend's "needs confirm" / "confirmed" samples show a line STATE, not a
+// type. Drawn in ridge purple they read as a third purple line; slate is a
+// colour no line type uses.
+const STATE_SWATCH = '#475569'
+
+// Where a facet's letter goes. The average of the corners lands OUTSIDE an
+// L- or U-shaped facet (a back slope wrapped round a dormer put its "G" on the
+// dormer), so this picks the inside point furthest from every side.
+function labelPoint(poly: [number, number][], w: number, h: number): [number, number] {
+  const pts = poly.map(([x, y]) => [x * w, y * h] as [number, number])
+  const inside = (x: number, y: number) => {
+    let c = false
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i], [xj, yj] = pts[j]
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c
+    }
+    return c
+  }
+  const edgeDist = (x: number, y: number) => {
+    let best = Infinity
+    for (let i = 0; i < pts.length; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length]
+      const dx = bx - ax, dy = by - ay
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)))
+      best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)))
+    }
+    return best
+  }
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1])
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys)
+  let best: [number, number] | null = null, bestD = -1
+  const N = 24
+  for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) {
+    const x = x0 + ((x1 - x0) * i) / N, y = y0 + ((y1 - y0) * j) / N
+    if (!inside(x, y)) continue
+    const d = edgeDist(x, y)
+    if (d > bestD) { bestD = d; best = [x, y] }
+  }
+  if (!best) {
+    return [poly.reduce((s, p) => s + p[0], 0) / poly.length, poly.reduce((s, p) => s + p[1], 0) / poly.length]
+  }
+  return [best[0] / w, best[1] / h]
+}
+
 const FACET_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
 
 type Mode = 'draw' | 'select' | 'label'
@@ -979,7 +1023,7 @@ export function RoofFacetEditor({
       <g key={f.label}>
         <polygon
           points={points}
-          fill={isActive ? 'rgba(96,165,250,0.18)' : 'rgba(96,165,250,0.08)'}
+          fill={isActive ? 'rgba(96,165,250,0.18)' : 'transparent'}
           stroke="rgba(0,0,0,0.0)"
           strokeWidth={0}
         />
@@ -1069,8 +1113,7 @@ export function RoofFacetEditor({
         ))}
         {/* Label */}
         {f.polygon.length > 0 && (() => {
-          const cx = f.polygon.reduce((s, p) => s + p[0], 0) / f.polygon.length
-          const cy = f.polygon.reduce((s, p) => s + p[1], 0) / f.polygon.length
+          const [cx, cy] = labelPoint(f.polygon, imageDims.w, imageDims.h)
           return (
             <g
               transform={`translate(${cx * imageDims.w}, ${cy * imageDims.h}) scale(${1 / view.scale})`}
@@ -1225,12 +1268,9 @@ export function RoofFacetEditor({
               onPointerLeave={onSvgPointerLeave}
               onDoubleClick={() => mode === 'draw' && finalizeDrawingPoly()}
             >
-              {houseGuide?.outline && houseGuide.outline.length >= 3 && (
-                <polygon pointerEvents="none"
-                  points={houseGuide.outline.map(p => `${p.x * imageDims.w},${p.y * imageDims.h}`).join(' ')}
-                  fill="rgba(34,211,238,0.10)" stroke="#22d3ee" strokeWidth={5 / view.scale}
-                  strokeDasharray={`${16 / view.scale} ${10 / view.scale}`} />
-              )}
+              {/* The confirmed house's outline is NOT drawn here: on top of the
+                  traced lines it was one more set of lines to read (Ryan,
+                  2026-10-20). It still drives the off-house warning. */}
               {facets.map(renderFacetPolygon)}
               {houseGuide?.point && (
                 <g pointerEvents="none"
@@ -1457,11 +1497,11 @@ export function RoofFacetEditor({
                   Unlabeled
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="inline-block h-1.5 w-4 rounded" style={{ background: EDGE_COLORS.ridge, boxShadow: `0 0 0 3px ${EDGE_COLORS.ridge}55` }} />
+                  <span className="inline-block h-1.5 w-4 rounded" style={{ background: STATE_SWATCH, boxShadow: `0 0 0 3px ${STATE_SWATCH}55` }} />
                   Labeled (needs confirm)
                 </li>
                 <li className="flex items-center gap-2">
-                  <span className="inline-block h-1 w-4 rounded opacity-80" style={{ background: EDGE_COLORS.ridge }} />
+                  <span className="inline-block h-1 w-4 rounded opacity-80" style={{ background: STATE_SWATCH }} />
                   Confirmed
                 </li>
                 <li className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 border-t border-[#eeeeed] pt-1 text-[10px] text-[#6b7280]">

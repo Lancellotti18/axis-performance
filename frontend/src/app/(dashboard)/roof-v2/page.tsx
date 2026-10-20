@@ -1224,7 +1224,7 @@ export default function RoofV2Page() {
             awaitingReportConfirm={awaitingReportConfirm}
             showingMeasurements={showingMeasurements}
             notes={[
-              ...(traceOffHouse ? ['⚠ What you traced isn’t on the house you confirmed (the dashed outline marked “Your house”). Check you’re tracing the right roof.'] : []),
+              ...(traceOffHouse ? ['⚠ What you traced isn’t on the house you confirmed (marked “Your house”). Check you’re tracing the right roof.'] : []),
               ...(autoNote?.ok ? [autoNote.text, ...autoNote.warnings] : []),
               ...partialSignals.map(plainNote),
             ]}

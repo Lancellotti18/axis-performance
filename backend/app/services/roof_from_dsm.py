@@ -1877,6 +1877,69 @@ def _mask_of(pts, shape, ss):
     return m.astype(bool)
 
 
+def _runs_toward(sides, nb):
+    """Contiguous (cyclic) runs of sides whose neighbour is `nb`, as (first, last)."""
+    n = len(sides)
+    hits = [i for i in range(n) if sides[i][1] == nb]
+    if not hits or len(hits) == n:
+        return []
+    runs, i = [], 0
+    start = next(k for k in range(n) if sides[k][1] == nb and sides[k - 1][1] != nb)
+    k = start
+    while i < n:
+        if sides[k % n][1] == nb:
+            first = k % n
+            while sides[k % n][1] == nb and i < n:
+                k += 1; i += 1
+            runs.append((first, (k - 1) % n))
+        else:
+            k += 1; i += 1
+    return runs
+
+
+def _unify_border(big, small, px_m, tol_m=1.0):
+    """Two facets each trace the border between them; on real data the two
+    traces wander apart (6219 Strawfield: two crossing zig-zags where a small
+    raised roof meets the back slope), so the screen shows both and the report
+    cannot recognise them as one line. The smaller facet takes the bigger
+    one's trace, keeping its own type for each stretch."""
+    (ab, pb, sb), (as_, ps, ss_) = big, small
+    rb, rs = _runs_toward(sb, as_.fid), _runs_toward(ss_, ab.fid)
+    if len(rb) != 1 or len(rs) != 1:
+        return small
+    (i0, i1), (j0, j1) = rb[0], rs[0]
+    nb_, ns = len(pb), len(ps)
+    chain = [pb[(i0 + t) % nb_] for t in range(((i1 - i0) % nb_) + 2)]
+    x_start, x_end = chain[0], chain[-1]
+    y_start, y_end = ps[j0], ps[(j1 + 1) % ns]
+    if (float(np.hypot(*(x_start - y_end))) * px_m > tol_m
+            or float(np.hypot(*(x_end - y_start))) * px_m > tol_m):
+        return small
+    run_sides = [ss_[(j0 + t) % ns] for t in range(((j1 - j0) % ns) + 1)]
+    run_mids = [(ps[(j0 + t) % ns] + ps[(j0 + t + 1) % ns]) / 2 for t in range(len(run_sides))]
+    rev = chain[::-1]
+    new_pts = list(rev)
+    new_sides = []
+    for t in range(len(rev) - 1):
+        mid = (rev[t] + rev[t + 1]) / 2
+        k = min(range(len(run_mids)), key=lambda q: float(np.hypot(*(run_mids[q] - mid))))
+        new_sides.append((run_sides[k][0], ab.fid))
+    idx = (j1 + 1) % ns
+    while True:
+        new_sides.append(ss_[idx])
+        nxt = (idx + 1) % ns
+        if nxt == j0:
+            break
+        new_pts.append(ps[nxt])
+        idx = nxt
+    new_pts, new_sides = _drop_spikes(new_pts, new_sides, px_m)
+    if len(new_pts) >= 3:
+        new_pts, new_sides = _cut_loops(new_pts, new_sides)
+    if len(new_pts) < 3:
+        return small
+    return (as_, new_pts, new_sides)
+
+
 def _core(both):
     """An overlap without the hairline two neighbours' rasterised outlines
     share along a common side: only real double-covered roof is left."""
@@ -1941,6 +2004,17 @@ def _tidy_outlines(afs: list[AxisFacet], labels, px_m) -> list[AxisFacet]:
                                 before = _area_px(moved)
                 clean[loser] = (a_l, moved, sides_l)
                 masks[loser] = _mask_of(moved, labels.shape, ss) if len(moved) >= 3 else masks[loser] & False
+
+    # 2b. One border, one trace: the smaller facet of each pair takes the bigger
+    # one's line along the border they share.
+    order = sorted(range(len(clean)), key=lambda q: -_area_px(clean[q][1]) if len(clean[q][1]) >= 3 else 0)
+    for x in order:
+        for y in order:
+            if x == y or len(clean[x][1]) < 3 or len(clean[y][1]) < 3:
+                continue
+            if _area_px(clean[x][1]) < _area_px(clean[y][1]):
+                continue
+            clean[y] = _unify_border(clean[x], clean[y], px_m)
 
     # 3. Slivers go. A facet whose outline holds almost no roof is not a facet;
     # the sides that pointed at it point at nothing in particular now.

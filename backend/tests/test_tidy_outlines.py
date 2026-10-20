@@ -100,3 +100,19 @@ def test_a_long_unlabeled_side_is_left_for_the_contractor():
                   [("eave", None), ("unlabeled", None), ("eave", None), ("rake", None)], 6.0)
     out = _tidy_outlines([f], lab, PX)
     assert out[0].sides[1][0] == "unlabeled"
+
+
+def test_two_facets_share_one_trace_of_their_border():
+    """6219 Strawfield: the back slope and a small raised roof each traced the
+    border between them with their own zig-zag, so two sets of lines crossed
+    on screen and the report counted the border twice."""
+    lab = _labels()
+    big = AxisFacet("A", 1, [(10, 10), (60, 10), (60, 35), (60, 60), (10, 60)],
+                    [("eave", None), ("valley", 2), ("valley", 2), ("eave", None), ("rake", None)], 6.0)
+    # Facet 2's copy of the same border wanders 1.5 px off it.
+    small = AxisFacet("B", 2, [(60, 10), (90, 10), (90, 60), (60, 60), (61.5, 35)],
+                      [("eave", None), ("rake", None), ("eave", None), ("valley", 1), ("valley", 1)], 6.0)
+    out = {a.fid: a for a in _tidy_outlines([big, small], lab, PX)}
+    border = {p for p in map(tuple, out[2].vertices_px) if p[0] < 62}
+    assert border <= {(60.0, 10.0), (60.0, 35.0), (60.0, 60.0)}
+    assert [k for k, nb in out[2].sides if nb == 1] == ["valley", "valley"]
