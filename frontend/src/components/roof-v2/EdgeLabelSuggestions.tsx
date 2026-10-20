@@ -45,6 +45,8 @@ interface Props {
    *  one by one), review existing labels one by one, or confirm them all. */
   command?: { kind: 'suggest' | 'review' | 'confirmAll'; n: number }
   onStatus?: (s: { loading: boolean; error: string | null; aiLines: number }) => void
+  /** "Not roof (tree / shadow)" in the one-by-one review. */
+  onExcludeFacet?: (facetLabel: string) => void
 }
 
 const EDGE_COLORS: Record<EdgeType, string> = {
@@ -60,7 +62,7 @@ const EDGE_COLORS: Record<EdgeType, string> = {
 
 export function EdgeLabelSuggestions({
   runId, facets, edges, imageUrl, imageWidthPx = 2048, imageHeightPx = 1366, onAcceptEdges, trigger,
-  headless = false, command, onStatus,
+  headless = false, command, onStatus, onExcludeFacet,
 }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
@@ -277,6 +279,10 @@ export function EdgeLabelSuggestions({
         ))
       }}
       onClose={() => setReviewing(false)}
+      onExcludeFacet={onExcludeFacet ? (label) => {
+        onExcludeFacet(label)
+        setSuggestions(prev => prev.filter(s => s.facet_label !== label))
+      } : undefined}
     />
   ) : null
   if (headless) return reviewModal

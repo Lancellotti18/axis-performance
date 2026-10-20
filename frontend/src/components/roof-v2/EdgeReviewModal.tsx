@@ -40,6 +40,9 @@ interface Props {
   suggestions: EdgeSuggestion[]
   onApply: (updatedEdges: LabeledEdge[]) => void
   onClose: () => void
+  /** The whole section this line belongs to is not roof (a tree or its
+   *  shadow): take it out of the measurement. */
+  onExcludeFacet?: (facetLabel: string) => void
 }
 
 const REVIEW_TYPES: { type: EdgeType; label: string; color: string; hint: string }[] = [
@@ -57,8 +60,13 @@ function colorFor(t: EdgeType): string {
 }
 
 export default function EdgeReviewModal({
-  imageUrl, imageWidthPx, imageHeightPx, facets, edges, suggestions, onApply, onClose,
+  imageUrl, imageWidthPx, imageHeightPx, facets: liveFacets, edges, suggestions: liveSuggestions, onApply, onClose, onExcludeFacet,
 }: Props) {
+  // The list and the roof as they were when the review opened. Taking a section
+  // out as "Not roof" changes the page's roof mid-review; indices into a list
+  // that shifts underneath would mark the wrong lines done.
+  const [suggestions] = useState(liveSuggestions)
+  const [facets] = useState(liveFacets)
   const [idx, setIdx] = useState(0)
   // Working copy of edges we mutate as the contractor confirms.
   const [draft, setDraft] = useState<LabeledEdge[]>(edges)
@@ -67,6 +75,10 @@ export default function EdgeReviewModal({
   const [choice, setChoice] = useState<Record<number, EdgeType>>({})
   // Track which suggestions have been actioned (accepted/skipped) for progress.
   const [done, setDone] = useState<Record<number, 'accepted'>>({})
+  // Sections taken out as "Not roof" during this review, and the one waiting
+  // for its "are you sure".
+  const [excluded, setExcluded] = useState<Set<string>>(new Set())
+  const [askExclude, setAskExclude] = useState(false)
 
   const total = suggestions.length
   const current = suggestions[idx]
@@ -110,8 +122,8 @@ export default function EdgeReviewModal({
   const chosenType: EdgeType = choice[idx] ?? current?.suggested_edge_type ?? 'unlabeled'
 
 
-  const goNext = useCallback(() => setIdx(i => Math.min(total - 1, i + 1)), [total])
-  const goPrev = useCallback(() => setIdx(i => Math.max(0, i - 1)), [])
+  const goNext = useCallback(() => { setAskExclude(false); setIdx(i => Math.min(total - 1, i + 1)) }, [total])
+  const goPrev = useCallback(() => { setAskExclude(false); setIdx(i => Math.max(0, i - 1)) }, [])
 
   // No skipping: every line gets a decision, and the step cannot be finished
   // until each one has one (Ryan, 2026-10-18). Accepting the last open line
@@ -127,18 +139,40 @@ export default function EdgeReviewModal({
     const nextDone = { ...done, [idx]: 'accepted' as const }
     setDone(nextDone)
     const open = suggestions.findIndex((_, i) => nextDone[i] !== 'accepted')
-    if (open === -1) { onApply(nextDraft); onClose(); return }
+    if (open === -1) { onApply(nextDraft.filter(e => !excluded.has(e.facetLabel))); onClose(); return }
     // Move to the next line still needing a decision, after this one if any.
     const after = suggestions.findIndex((_, i) => i > idx && nextDone[i] !== 'accepted')
     setIdx(after !== -1 ? after : open)
-  }, [current, facets, draft, chosenType, done, idx, suggestions, onApply, onClose])
+  }, [current, facets, draft, chosenType, done, idx, suggestions, onApply, onClose, excluded])
+
+  // "Not roof": the whole section goes, so every line of it is settled too.
+  const excludeCurrent = useCallback(() => {
+    if (!current || !onExcludeFacet) return
+    const label = current.facet_label
+    setAskExclude(false)
+    const nextExcluded = new Set(excluded); nextExcluded.add(label)
+    setExcluded(nextExcluded)
+    const nextDraft = draft.filter(e => e.facetLabel !== label)
+    setDraft(nextDraft)
+    const nextDone = { ...done }
+    suggestions.forEach((s, i) => { if (s.facet_label === label) nextDone[i] = 'accepted' })
+    setDone(nextDone)
+    onExcludeFacet(label)
+    const open = suggestions.findIndex((_, i) => nextDone[i] !== 'accepted')
+    if (open === -1) {
+      if (Object.keys(done).length) onApply(nextDraft)
+      onClose(); return
+    }
+    const after = suggestions.findIndex((_, i) => i > idx && nextDone[i] !== 'accepted')
+    setIdx(after !== -1 ? after : open)
+  }, [current, onExcludeFacet, excluded, draft, done, suggestions, idx, onApply, onClose])
 
   // Closing never throws away decisions already made: whatever was accepted is
   // saved, and the status card shows what is left.
   const close = useCallback(() => {
-    if (Object.values(done).some(v => v === 'accepted')) onApply(draft)
+    if (Object.values(done).some(v => v === 'accepted')) onApply(draft.filter(e => !excluded.has(e.facetLabel)))
     onClose()
-  }, [done, draft, onApply, onClose])
+  }, [done, draft, onApply, onClose, excluded])
 
   // Keyboard: ←/→ navigate, Enter accept, 1-7 reclassify, Esc save & close
   useEffect(() => {
@@ -191,9 +225,9 @@ export default function EdgeReviewModal({
           {suggestions.map((_, i) => (
             <button
               key={i}
-              onClick={() => setIdx(i)}
+              onClick={() => { if (!excluded.has(suggestions[i]?.facet_label)) { setAskExclude(false); setIdx(i) } }}
               title={done[i] === 'accepted' ? `Line ${i + 1} — done` : `Line ${i + 1}`}
-              className={`h-1.5 w-5 rounded-full transition ${ done[i] === 'accepted' ? 'bg-emerald-500' : i === idx ? 'bg-blue-500' : 'bg-[#d4d4d2]' }`}
+              className={`h-1.5 w-5 rounded-full transition ${ excluded.has(suggestions[i]?.facet_label) ? 'bg-[#9ca3af]' : done[i] === 'accepted' ? 'bg-emerald-500' : i === idx ? 'bg-blue-500' : 'bg-[#d4d4d2]' }`}
             />
           ))}
         </div>
@@ -206,7 +240,12 @@ export default function EdgeReviewModal({
               className="block aspect-square w-full"
             >
               <image href={imageUrl} x={0} y={0} width={imageWidthPx} height={imageHeightPx} preserveAspectRatio="none" />
-              {/* dim outside? keep simple: just highlight the edge */}
+              {/* The section this line belongs to, faintly — so "is this whole
+                  section really roof?" can be judged from the picture. */}
+              <polygon
+                points={endpoints.facet.polygon.map(([x, y]) => `${x * imageWidthPx},${y * imageHeightPx}`).join(' ')}
+                fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.7)" strokeWidth={crop.w * 0.004}
+                strokeDasharray={`${crop.w * 0.015} ${crop.w * 0.01}`} />
               <line
                 x1={crop.ax} y1={crop.ay} x2={crop.bx} y2={crop.by}
                 stroke={colorFor(chosenType)} strokeWidth={crop.w * 0.018}
@@ -268,6 +307,29 @@ export default function EdgeReviewModal({
                 })}
               </div>
             </div>
+
+            {onExcludeFacet && (
+              <div className="mt-2 rounded-lg border border-[#dededc] bg-white p-2">
+                {!askExclude ? (
+                  <button onClick={() => setAskExclude(true)}
+                    title="The dashed section isn't roof at all — a tree or its shadow was picked up"
+                    className="flex w-full items-center gap-1.5 rounded-md border border-[#dededc] px-2.5 py-2 text-left text-xs font-medium text-[#1a1a1a] hover:bg-[#f3f4f6]">
+                    <span aria-hidden>🌳</span> Not roof (tree / shadow)
+                    <span className="ml-auto text-[10px] text-[#6b7280]">section {current.facet_label}</span>
+                  </button>
+                ) : (
+                  <div className="text-xs text-[#1a1a1a]">
+                    <div>Take section <b>{current.facet_label}</b> (dashed in the picture) out of the measurement? It stays greyed out on the map and you can restore it.</div>
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={excludeCurrent}
+                        className="rounded bg-[#374151] px-3 py-1.5 font-semibold text-white hover:bg-[#1f2937]">Yes, not roof</button>
+                      <button onClick={() => setAskExclude(false)}
+                        className="rounded border border-[#dededc] bg-white px-3 py-1.5 hover:bg-[#f3f4f6]">Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

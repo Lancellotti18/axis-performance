@@ -1022,6 +1022,32 @@ class FacetIn(BaseModel):
         return v
 
 
+class ExcludedEdgeIn(BaseModel):
+    vertex_index_start: int = Field(..., ge=0)
+    vertex_index_end: int = Field(..., ge=0)
+    edge_type: str = Field("unlabeled", max_length=24)
+
+
+class ExcludedFacetIn(BaseModel):
+    """A section the contractor marked "Not roof" (a tree or its shadow picked
+    up as roof). Kept on the RUN, not in roof_facets, so nothing that adds up
+    the roof — totals, report, material list — can count it by accident, while
+    the editor still shows it greyed out and can bring it back. Doubles as a
+    labelled 'not roof' example for the auto-measure."""
+    facet_label: str = Field(..., max_length=8)
+    polygon: list[list[float]] = Field(..., max_length=400)
+    pitch: str = Field("6/12", max_length=16)
+    reason: str = Field("not_roof", max_length=40)
+    edges: list[ExcludedEdgeIn] = Field(default_factory=list, max_length=400)
+
+    @field_validator("polygon")
+    @classmethod
+    def _check_polygon(cls, v: list[list[float]]) -> list[list[float]]:
+        if len(v) < 3 or any(not isinstance(p, list) or len(p) < 2 for p in v):
+            raise ValueError("polygon must have at least 3 [x, y] vertices")
+        return v
+
+
 class PutFacetsRequest(BaseModel):
     image_width_px: int = Field(..., ge=64)
     image_height_px: int = Field(..., ge=64)
@@ -1032,6 +1058,9 @@ class PutFacetsRequest(BaseModel):
     # The exact tile the facets were traced on. Persisted so resume reloads the
     # SAME tile — otherwise the outline lands in the wrong place on the roof.
     satellite_image_url: Optional[str] = None
+    # Sections marked "Not roof". None leaves the stored list as it is; a list
+    # (even empty) replaces it.
+    excluded_facets: Optional[list[ExcludedFacetIn]] = Field(None, max_length=50)
 
 
 
@@ -1477,6 +1506,8 @@ async def _prepare_facets(db, run_id: str, req: PutFacetsRequest) -> tuple[list[
     if req.satellite_image_url:
         # Pin a stored copy, not the provider's live render endpoint.
         run_update["satellite_image_url"] = await _cache_tile(db, run_id, req.satellite_image_url)
+    if req.excluded_facets is not None:
+        run_update["excluded_facets"] = [x.model_dump() for x in req.excluded_facets]
     return rows, run_update
 
 
@@ -1487,8 +1518,18 @@ def _write_facets(db, run_id: str, rows: list[dict], run_update: dict) -> list[d
     new_facets = (db.table("roof_facets").insert(rows).execute().data or []) if rows else []
     # Cache image params on the run so we can recompute later without the client
     # AND so resume reloads the exact tile these facets were drawn on.
-    db.table("roof_measurement_runs").update(
-        {**run_update, "facet_count": len(new_facets)}).eq("id", run_id).execute()
+    try:
+        db.table("roof_measurement_runs").update(
+            {**run_update, "facet_count": len(new_facets)}).eq("id", run_id).execute()
+    except Exception as e:
+        # Before migration 20261020_excluded_facets is run the column does not
+        # exist; that must never cost the contractor the save itself.
+        if "excluded_facets" not in run_update:
+            raise
+        logger.warning("excluded_facets not stored for %s (migration not run?): %s", run_id, e)
+        rest = {k: v for k, v in run_update.items() if k != "excluded_facets"}
+        db.table("roof_measurement_runs").update(
+            {**rest, "facet_count": len(new_facets)}).eq("id", run_id).execute()
     return new_facets
 
 
@@ -1955,7 +1996,9 @@ async def auto_measure(run_id: str, req: AutoMeasureRequest,
     await put_facets(run_id, PutFacetsRequest(
         image_width_px=req.image_width_px, image_height_px=req.image_height_px,
         zoom=req.zoom, lat=req.lat, lng=req.lng, facets=[FacetIn(**f) for f in facets],
-        satellite_image_url=backdrop_url or req.satellite_image_url), user)
+        satellite_image_url=backdrop_url or req.satellite_image_url,
+        # A fresh measurement: earlier "Not roof" marks were on other outlines.
+        excluded_facets=[]), user)
     if backdrop_url:
         try:
             db.table("roof_measurement_runs").update({"satellite_provider": "Google 3D"}) \

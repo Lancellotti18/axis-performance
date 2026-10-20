@@ -59,6 +59,14 @@ export interface LabeledEdge {
   userConfirmed: boolean
 }
 
+/** A section the contractor marked "Not roof" (a tree or its shadow). Shown
+ *  greyed out, counted nowhere, and can be brought back. */
+export interface ExcludedFacet {
+  facet: Facet
+  edges: LabeledEdge[]
+  reason: string
+}
+
 interface Props {
   imageUrl: string
   imageWidthPx: number
@@ -76,6 +84,8 @@ interface Props {
   // the draw map showed two look-alike houses and nothing saying which one is
   // the job: 1114 Willow Pond was traced on 1112 next door (2026-10-19).
   houseGuide?: { point?: { x: number; y: number } | null; outline?: { x: number; y: number }[] | null }
+  excludedFacets?: ExcludedFacet[]
+  onRestoreFacet?: (label: string) => void
 }
 
 // What each line type IS, in the words a homeowner would understand — shown
@@ -234,6 +244,7 @@ function constrainTo45(from: Pt, to: Pt, imageW: number, imageH: number): Pt {
 export function RoofFacetEditor({
   imageUrl, imageWidthPx, imageHeightPx,
   initialFacets = [], initialEdges = [], onChange, syncRev, command, houseGuide,
+  excludedFacets = [], onRestoreFacet,
 }: Props) {
   const [facets, setFacets] = useState<Facet[]>(initialFacets)
   // Closed on arrival — see the aside below for why.
@@ -1272,6 +1283,28 @@ export function RoofFacetEditor({
                   traced lines it was one more set of lines to read (Ryan,
                   2026-10-20). It still drives the off-house warning. */}
               {facets.map(renderFacetPolygon)}
+              {/* "Not roof" sections: greyed and dashed, counted nowhere. Drawn
+                  above the roof so their Restore pill can always be clicked. */}
+              {excludedFacets.map(x => {
+                const pts = x.facet.polygon.map(([px, py]) => `${px * imageDims.w},${py * imageDims.h}`).join(' ')
+                const [lx, ly] = labelPoint(x.facet.polygon, imageDims.w, imageDims.h)
+                return (
+                  <g key={`x-${x.facet.label}`}>
+                    <polygon points={pts} pointerEvents="none" fill="rgba(209,213,219,0.42)"
+                      stroke="#e5e7eb" strokeWidth={2.5 / view.scale}
+                      strokeDasharray={`${6 / view.scale} ${5 / view.scale}`} />
+                    <g transform={`translate(${lx * imageDims.w}, ${ly * imageDims.h}) scale(${1 / view.scale})`}
+                      style={{ cursor: onRestoreFacet ? 'pointer' : 'default' }}
+                      onClick={(ev) => { ev.stopPropagation(); onRestoreFacet?.(x.facet.label) }}>
+                      <title>Not roof — click to bring this section back into the measurement</title>
+                      <rect x={-82} y={-17} width={164} height={34} rx={17} fill="#374151" fillOpacity={0.95} stroke="white" strokeWidth={1.5} />
+                      <text textAnchor="middle" dominantBaseline="central" fill="white" fontSize={16} fontWeight={700}>
+                        Not roof · ↺ Restore
+                      </text>
+                    </g>
+                  </g>
+                )
+              })}
               {houseGuide?.point && (
                 <g pointerEvents="none"
                   transform={`translate(${houseGuide.point.x * imageDims.w}, ${houseGuide.point.y * imageDims.h}) scale(${1 / view.scale})`}>

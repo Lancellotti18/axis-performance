@@ -1700,6 +1700,13 @@ export const api = {
         lat: number
         lng: number
         satellite_image_url?: string
+        excluded_facets?: Array<{
+          facet_label: string
+          polygon: [number, number][]
+          pitch: string
+          reason: string
+          edges: Array<{ vertex_index_start: number; vertex_index_end: number; edge_type: string }>
+        }>
         facets: Array<{
           facet_label: string
           polygon: [number, number][]

@@ -103,3 +103,67 @@ def test_geometry_with_no_edges_still_saves_facets(db):
     out = asyncio.run(rv.put_geometry("r1", rv.PutGeometryRequest(**_req()), USER))
     assert out["count"] == 1 and out["edge_count"] == 0
     assert ("insert", "roof_edges") not in db.log
+
+
+# ── "Not roof" sections ──────────────────────────────────────────────────────
+
+TRI = [[0.10, 0.10], [0.20, 0.10], [0.15, 0.20]]
+
+
+def test_not_roof_sections_are_stored_on_the_run_and_never_as_facets(db, monkeypatch):
+    updates = []
+    real = db.table
+    def table(name):
+        q = real(name)
+        orig = q.update
+        def update(row):
+            if name == "roof_measurement_runs":
+                updates.append(row)
+            return orig(row)
+        q.update = update
+        return q
+    monkeypatch.setattr(db, "table", table)
+    ex = rv.ExcludedFacetIn(facet_label="B", polygon=TRI, pitch="8/12",
+                            edges=[rv.ExcludedEdgeIn(vertex_index_start=0, vertex_index_end=1, edge_type="eave")])
+    asyncio.run(rv.put_geometry("r1", rv.PutGeometryRequest(**_req(excluded_facets=[ex]), edges=_edges()), USER))
+    assert [f["facet_label"] for f in db.rows["roof_facets"]] == ["A"]
+    stored = [u["excluded_facets"] for u in updates if "excluded_facets" in u]
+    assert stored and stored[-1][0]["facet_label"] == "B" and stored[-1][0]["reason"] == "not_roof"
+
+
+def test_a_save_without_the_field_leaves_stored_not_roof_sections_alone(db, monkeypatch):
+    updates = []
+    real = db.table
+    def table(name):
+        q = real(name)
+        orig = q.update
+        def update(row):
+            updates.append(row)
+            return orig(row)
+        q.update = update
+        return q
+    monkeypatch.setattr(db, "table", table)
+    asyncio.run(rv.put_facets("r1", rv.PutFacetsRequest(**_req()), USER))
+    assert all("excluded_facets" not in u for u in updates)
+
+
+def test_the_save_survives_before_the_migration_is_run(db, monkeypatch):
+    """No excluded_facets column yet: the roof must still save."""
+    real = db.table
+    calls = []
+    def table(name):
+        q = real(name)
+        orig_exec = q.execute
+        def execute():
+            if name == "roof_measurement_runs" and q.op == "update":
+                calls.append(dict(q.payload))
+                if "excluded_facets" in q.payload:
+                    raise RuntimeError('column "excluded_facets" does not exist')
+            return orig_exec()
+        q.execute = execute
+        return q
+    monkeypatch.setattr(db, "table", table)
+    ex = rv.ExcludedFacetIn(facet_label="B", polygon=TRI)
+    out = asyncio.run(rv.put_geometry("r1", rv.PutGeometryRequest(**_req(excluded_facets=[ex]), edges=_edges()), USER))
+    assert out["count"] == 1
+    assert calls[-1].get("facet_count") == 1 and "excluded_facets" not in calls[-1]

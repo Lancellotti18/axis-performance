@@ -22,7 +22,7 @@ import { api, ApiError, describeReportQueue } from '@/lib/api'
 import { getUser } from '@/lib/auth'
 import { useRegisterChatContext } from '@/lib/chat-context'
 import LocationPicker, { type LocationSelected } from '@/components/roof-v2/LocationPicker'
-import RoofFacetEditor, { type Facet, type LabeledEdge } from '@/components/roof-v2/RoofFacetEditor'
+import RoofFacetEditor, { type Facet, type LabeledEdge, type ExcludedFacet } from '@/components/roof-v2/RoofFacetEditor'
 import { edgeReviewCounts } from '@/components/roof-v2/edgeGeometry'
 import MeasurementsSummary from '@/components/roof-v2/MeasurementsSummary'
 import PenetrationSuggestions from '@/components/roof-v2/PenetrationSuggestions'
@@ -123,6 +123,28 @@ function rowsToGeometry(facetRows: Record<string, unknown>[], edgeRows: Record<s
   return { fcts, edgs }
 }
 
+// Sections marked "Not roof", as the run stores them.
+function rowsToExcluded(raw: unknown): ExcludedFacet[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((x: Record<string, unknown>) => {
+    const label = String(x?.facet_label || '')
+    const polygon = (x?.polygon as [number, number][]) || []
+    if (!label || polygon.length < 3) return []
+    const edges = Array.isArray(x.edges) ? (x.edges as Record<string, unknown>[]) : []
+    return [{
+      reason: String(x.reason || 'not_roof'),
+      facet: { label, polygon, pitch: String(x.pitch || '6/12'), confidence: 0.8, userConfirmed: false },
+      edges: edges.map(e => ({
+        facetLabel: label,
+        vertexIndexStart: Number(e.vertex_index_start) || 0,
+        vertexIndexEnd: Number(e.vertex_index_end) || 0,
+        edgeType: (String(e.edge_type || 'unlabeled')) as LabeledEdge['edgeType'],
+        userConfirmed: false,
+      })),
+    }]
+  })
+}
+
 type Step = 'project' | 'location' | 'imagery' | 'editor' | 'details' | 'siding' | 'report'
 
 // Friendly stepper labels (the Step values stay the same for all the logic).
@@ -157,6 +179,15 @@ export default function RoofV2Page() {
   const [runConfirmed, setRunConfirmed] = useState(false)   // a finalized roof shows its saved numbers without re-confirming edges
   const [facets, setFacets] = useState<Facet[]>([])
   const [edges, setEdges] = useState<LabeledEdge[]>([])
+  // Sections marked "Not roof" (a tree or its shadow). Saved on the run, never
+  // counted; the editor shows them greyed out with a Restore pill. The ref is
+  // what a save reads, so a save started in the same tick as a change sees it.
+  const [excludedFacets, setExcludedFacetsState] = useState<ExcludedFacet[]>([])
+  const excludedRef = useRef<ExcludedFacet[]>([])
+  const setExcludedFacets = useCallback((x: ExcludedFacet[]) => { excludedRef.current = x; setExcludedFacetsState(x) }, [])
+  // The roof as of the latest change, for handlers that run before a re-render.
+  const geomRef = useRef<{ facets: Facet[]; edges: LabeledEdge[] }>({ facets: [], edges: [] })
+  geomRef.current = { facets, edges }
   // Counted in distinct roof LINES, not stored edge records — a shared line is
   // stored once per facet, so raw counts double it and the panel ends up asking
   // for confirmations the editor has nothing left to show.
@@ -366,6 +397,7 @@ export default function RoofV2Page() {
 
           setFacets(fcts)
           setEdges(edgs)
+          setExcludedFacets(rowsToExcluded(run.excluded_facets))
           setGeometryStamp(s => s + 1)
           setEditorSyncRev(r => r + 1)
 
@@ -613,6 +645,15 @@ export default function RoofV2Page() {
         lng,
         // Pin the exact tile these facets were drawn on so resume reloads it.
         satellite_image_url: imagery.original_url || imagery.url,
+        excluded_facets: excludedRef.current.map(x => ({
+          facet_label: x.facet.label,
+          polygon: x.facet.polygon,
+          pitch: x.facet.pitch,
+          reason: x.reason,
+          edges: x.edges.map(e => ({
+            vertex_index_start: e.vertexIndexStart, vertex_index_end: e.vertexIndexEnd, edge_type: e.edgeType,
+          })),
+        })),
         facets: newFacets.map(f => ({
           facet_label: f.label,
           polygon: f.polygon,
@@ -786,6 +827,7 @@ export default function RoofV2Page() {
         }
         setFacets(fcts)
         setEdges(edgs)
+        setExcludedFacets([])   // the server cleared them: a fresh measurement
         setEditorSyncRev(v => v + 1)
         setGeometryStamp(v => v + 1)
         setMeasuredAuto(true)
@@ -818,14 +860,56 @@ export default function RoofV2Page() {
   const startOverHouse = useCallback(async () => {
     cancelPending()
     const had = facets.length > 0
-    setFacets([]); setEdges([]); setAutoNote(null); setSubjectPoint(null); setHouseOutline(null)
+    setFacets([]); setEdges([]); setExcludedFacets([]); setAutoNote(null); setSubjectPoint(null); setHouseOutline(null)
     setMeasuredAuto(false); setAddressCheck(null); setAddressConfirmed(false)
     setEditorSyncRev(v => v + 1)
     if (had) await persistGeometryRef.current?.([], [])
     setEditorSub('confirm')
   }, [cancelPending, facets.length])
 
+  // "Not roof (tree / shadow)" from the line review: the section and its lines
+  // leave the roof; lines of other sections that pointed at it point at nothing.
+  const excludeFacet = useCallback((label: string) => {
+    const { facets: fs, edges: es } = geomRef.current
+    const f = fs.find(x => x.label === label)
+    if (!f) return
+    cancelPending()
+    const nextFacets = fs.filter(x => x.label !== label)
+    const nextEdges = es.filter(e => e.facetLabel !== label)
+      .map(e => (e.sharedWithFacetLabel === label ? { ...e, sharedWithFacetLabel: undefined } : e))
+    setExcludedFacets([...excludedRef.current, { facet: f, edges: es.filter(e => e.facetLabel === label), reason: 'not_roof' }])
+    geomRef.current = { facets: nextFacets, edges: nextEdges }
+    setEditorSyncRev(r => r + 1)
+    void persistGeometry(nextFacets, nextEdges).then(() => setGeometryStamp(s => s + 1))
+  }, [cancelPending, persistGeometry, setExcludedFacets])
+
+  const restoreFacet = useCallback((label: string) => {
+    const x = excludedRef.current.find(e => e.facet.label === label)
+    if (!x) return
+    const { facets: fs, edges: es } = geomRef.current
+    // Its letter may have been reused since; then it takes the next free one.
+    const used = new Set(fs.map(f => f.label))
+    let name = label
+    if (used.has(name)) {
+      name = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').find(c => !used.has(c)) || `${label}2`
+    }
+    cancelPending()
+    const nextFacets = [...fs, { ...x.facet, label: name }]
+    const nextEdges = [...es, ...x.edges.map(e => ({ ...e, facetLabel: name, sharedWithFacetLabel: undefined }))]
+    setExcludedFacets(excludedRef.current.filter(e => e !== x))
+    geomRef.current = { facets: nextFacets, edges: nextEdges }
+    setEditorSyncRev(r => r + 1)
+    void persistGeometry(nextFacets, nextEdges).then(() => setGeometryStamp(s => s + 1))
+  }, [cancelPending, persistGeometry, setExcludedFacets])
+
   const onEditorChange = useCallback((newFacets: Facet[], newEdges: LabeledEdge[]) => {
+    // Undo in the editor can bring a "Not roof" section straight back; then it
+    // is roof again, not both.
+    if (excludedRef.current.length) {
+      const back = new Set(newFacets.map(f => `${f.label}|${JSON.stringify(f.polygon)}`))
+      const still = excludedRef.current.filter(x => !back.has(`${x.facet.label}|${JSON.stringify(x.facet.polygon)}`))
+      if (still.length !== excludedRef.current.length) setExcludedFacets(still)
+    }
     setFacets(newFacets)
     setEdges(newEdges)
     debouncedRef.pending = { facets: newFacets, edges: newEdges }
@@ -838,7 +922,7 @@ export default function RoofV2Page() {
       debouncedRef.pending = null
       void persistGeometry(p.facets, p.edges)
     }, 800)
-  }, [persistGeometry, debouncedRef])
+  }, [persistGeometry, debouncedRef, setExcludedFacets])
 
   // A debounce that loses its last edit is indistinguishable from "it doesn't
   // save". Flush the pending write when the tab is hidden or the page is being
@@ -1253,6 +1337,8 @@ export default function RoofV2Page() {
               syncRev={editorSyncRev}
               command={editorCommand}
               houseGuide={{ point: subjectPoint, outline: houseOutline }}
+              excludedFacets={excludedFacets}
+              onRestoreFacet={restoreFacet}
             />
           </div>
 
@@ -1269,15 +1355,21 @@ export default function RoofV2Page() {
               imageHeightPx={imagery?.height_px ?? 1366}
               command={labelCommand}
               onStatus={setLabelStatus}
-              onAcceptEdges={async (updatedEdges) => {
+              onExcludeFacet={excludeFacet}
+              onAcceptEdges={async (accepted) => {
                 cancelPending()   // a queued canvas write would clobber these labels
                 setApplyingEdges(true)
                 try {
+                  // The roof as it is NOW: a section taken out as "Not roof"
+                  // during the review must not come back with these lines.
+                  const cur = geomRef.current.facets
+                  const live = new Set(cur.map(f => f.label))
+                  const updatedEdges = accepted.filter(e => live.has(e.facetLabel))
                   setEdges(updatedEdges)
                   setEditorSyncRev(r => r + 1)   // show the labels on the editor canvas
                   // Persist FIRST, then bump geometryStamp so MeasurementsSummary
                   // refetches against the saved edges.
-                  await persistGeometry(facets, updatedEdges)
+                  await persistGeometry(cur, updatedEdges)
                   setGeometryStamp(s => s + 1)
                 } finally {
                   setApplyingEdges(false)
