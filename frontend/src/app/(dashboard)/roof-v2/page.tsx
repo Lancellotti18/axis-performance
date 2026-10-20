@@ -89,6 +89,10 @@ const SHOW_SIDING = false
 // Xactimate line codes + RCV/ACV claim summary. Parked, not deleted — the
 // endpoint, the estimator service and the report all stay wired.
 const SHOW_ADJUSTER_MODE = false
+// "Job verification" (enter the crew's real squares to build an accuracy stat)
+// cluttered the report step and confused more than it helped (Ryan,
+// 2026-10-20). Parked, not deleted; report branding stays editable in Settings.
+const SHOW_JOB_VERIFICATION = false
 
 // Saved facet/edge rows → the editor's geometry. Used by RESUME and by
 // auto-measure, so both load a roof the same way (a stored auto-measurement IS
@@ -1581,7 +1585,7 @@ export default function RoofV2Page() {
           {projectId && <ClientPortalPanel projectId={projectId} />}
 
           {/* Accuracy flywheel + white-label branding */}
-          {userId && <JobVerificationPanel runId={runId} userId={userId} />}
+          {SHOW_JOB_VERIFICATION && userId && <JobVerificationPanel runId={runId} userId={userId} />}
 
           {/* 3D viewer — temporarily hidden (geometry rebuild in progress).
               Component kept; re-enable when the connected-mesh version is ready.
