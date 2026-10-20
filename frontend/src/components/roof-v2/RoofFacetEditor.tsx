@@ -86,6 +86,9 @@ interface Props {
   houseGuide?: { point?: { x: number; y: number } | null; outline?: { x: number; y: number }[] | null }
   excludedFacets?: ExcludedFacet[]
   onRestoreFacet?: (label: string) => void
+  /** "Not roof" straight from the map: click a section's letter, then the
+   *  button under it (an RV parked against the house, a tree, a shadow). */
+  onExcludeFacet?: (label: string) => void
 }
 
 // What each line type IS, in the words a homeowner would understand — shown
@@ -244,7 +247,7 @@ function constrainTo45(from: Pt, to: Pt, imageW: number, imageH: number): Pt {
 export function RoofFacetEditor({
   imageUrl, imageWidthPx, imageHeightPx,
   initialFacets = [], initialEdges = [], onChange, syncRev, command, houseGuide,
-  excludedFacets = [], onRestoreFacet,
+  excludedFacets = [], onRestoreFacet, onExcludeFacet,
 }: Props) {
   const [facets, setFacets] = useState<Facet[]>(initialFacets)
   // Closed on arrival — see the aside below for why.
@@ -1129,6 +1132,9 @@ export function RoofFacetEditor({
             <g
               transform={`translate(${cx * imageDims.w}, ${cy * imageDims.h}) scale(${1 / view.scale})`}
               style={{ cursor: 'pointer' }}
+              // Not mid-shape: a click on a letter selects that section instead
+              // of dropping a drawing point on it.
+              onPointerDown={(ev) => { if (drawingPoly.length === 0) ev.stopPropagation() }}
               onClick={(ev) => { ev.stopPropagation(); setActiveFacetIdx(idx) }}
             >
               <circle r={18} fill={isActive ? '#1e40af' : '#1f2937'} fillOpacity={0.85} />
@@ -1136,6 +1142,17 @@ export function RoofFacetEditor({
                 textAnchor="middle" dominantBaseline="central"
                 fill="white" fontSize={18} fontWeight={700}
               >{f.label}</text>
+              {isActive && onExcludeFacet && drawingPoly.length === 0 && (
+                <g transform="translate(0, 40)" style={{ cursor: 'pointer' }}
+                  onPointerDown={(ev) => ev.stopPropagation()}
+                  onClick={(ev) => { ev.stopPropagation(); setActiveFacetIdx(null); onExcludeFacet(f.label) }}>
+                  <title>Not part of the roof (a vehicle, tree or shadow): take this section out of the measurement. You can restore it.</title>
+                  <rect x={-86} y={-17} width={172} height={34} rx={17} fill="#374151" fillOpacity={0.95} stroke="white" strokeWidth={1.5} />
+                  <text textAnchor="middle" dominantBaseline="central" fill="white" fontSize={15} fontWeight={700}>
+                    ✕ Not roof · remove {f.label}
+                  </text>
+                </g>
+              )}
             </g>
           )
         })()}

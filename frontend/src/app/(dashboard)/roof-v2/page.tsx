@@ -1343,6 +1343,7 @@ export default function RoofV2Page() {
               houseGuide={{ point: subjectPoint, outline: houseOutline }}
               excludedFacets={excludedFacets}
               onRestoreFacet={restoreFacet}
+              onExcludeFacet={excludeFacet}
             />
           </div>
 
