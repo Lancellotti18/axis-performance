@@ -1618,6 +1618,9 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
         if len(keep_v) < 3:
             continue
         keep_n = _neighbours_from_lines(f.id, keep_v, keep_n, all_lines, px_m)
+        # The outline as traced round the facet's own pixels, before it is pulled
+        # onto the shared lines. Kept in case the pulling squeezes it (below).
+        traced_v, traced_n = list(keep_v), list(keep_n)
         keep_v, keep_n = _straighten_runs(f.id, keep_v, keep_n, all_lines, px_m)
         if len(keep_v) < 3:
             continue
@@ -1708,6 +1711,16 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
                     changed = True
                     break
         snapped, keep_n, n = pts, nbs, len(pts)
+        # Pulling every corner onto nearby lines and line ends can squeeze a
+        # small or odd-shaped facet: on 6219 Strawfield a real 3.9 m² plane came
+        # out as a line with no area, and on Willow Pond a 15 m² one as 7.8 m²,
+        # leaving holes in the report's diagrams and roof unmeasured. When that
+        # happens the outline round the facet's own pixels is used instead; the
+        # shared-border pass later lines its sides up with its neighbours.
+        own_m2 = float((labels == f.id).sum()) * px_m ** 2
+        got_m2 = _area_px(snapped) * px_m ** 2 if n >= 3 else 0.0
+        if own_m2 - got_m2 > SQUEEZE_MIN_M2 and got_m2 < SQUEEZE_KEEP * own_m2 and len(traced_v) >= 3:
+            snapped, keep_n, n = [np.asarray(v, float) for v in traced_v], list(traced_n), len(traced_v)
         if n < 3:
             continue
 
@@ -1750,6 +1763,10 @@ def axis_facets(model: RoofModel) -> list[AxisFacet]:
 # crosses itself, a facet squeezed to a line with no area, and two facets
 # claiming the same patch of roof. Each is drawn on screen as extra, crossing
 # lines, and the overlap is counted twice.
+SQUEEZE_KEEP = 0.75        # an outline holding less than this share of its facet's roof...
+SQUEEZE_MIN_M2 = 0.5       # ...and losing more than this was squeezed by snapping
+GAP_FILL_M2 = 0.8          # roof left outside every outline that is worth a corner
+CORNER_FILL_M = 0.5        # ...when it sticks out past the outer side this far (thin edge slivers are the mask overshooting the drip edge)
 SPIKE_COS = -0.94           # a turn sharper than ~160 degrees is out-and-back, not a corner
 SLIVER_M2 = 0.75            # an OUTLINE holding less plan area than this is a sliver
 SLIVER_WIDTH_M = 0.6        # ...or this thin on average (2 x area / perimeter) and small:
@@ -1940,6 +1957,38 @@ def _unify_border(big, small, px_m, tol_m=1.0):
     return (as_, new_pts, new_sides)
 
 
+def _trim_into(owner, loser, owner_mask, shape, ss, px_m):
+    """The loser's outline with the owner's roof taken out of it: corners inside
+    the owner move onto its edge, and a real overlap left after that is cut
+    along the line the two share. Only then: on the small edge overlaps every
+    roof has, cutting along the whole line cost Brookside Oaks 12% of its eaves
+    against EagleView."""
+    a_o, own_pts, sides_o = owner
+    a_l, pts_l, sides_l = loser
+    cnt = np.asarray(own_pts, np.float32).reshape(-1, 1, 2)
+    moved = [(_nearest_on_outline(p, own_pts)
+              if cv2.pointPolygonTest(cnt, (float(p[0]), float(p[1])), True) > 0.5 else p)
+             for p in pts_l]
+    moved, sides_l = _drop_spikes(moved, sides_l, px_m)
+    if len(moved) >= 3:
+        moved, sides_l = _cut_loops(moved, sides_l)
+    if len(moved) >= 3:
+        left = _core(_mask_of(moved, shape, ss) & owner_mask).sum()
+        if left * (px_m / ss) ** 2 >= OVERLAP_CUT_M2:
+            before = _area_px(moved)
+            lost_max = left / ss ** 2 * 1.5 + 10.0     # px²: about the overlap, no more
+            for k_, (kind_o, nb_o) in enumerate(sides_o):
+                if nb_o != a_l.fid:
+                    continue
+                a_, b_ = own_pts[k_], own_pts[(k_ + 1) % len(own_pts)]
+                keep = np.mean(np.asarray(moved), axis=0)
+                cp, cs = _clip_halfplane(moved, sides_l, a_, b_, keep, kind_o, a_o.fid)
+                if len(cp) >= 3 and 0 <= before - _area_px(cp) <= lost_max:
+                    moved, sides_l = _drop_spikes(cp, cs, px_m)
+                    before = _area_px(moved)
+    return moved, sides_l
+
+
 def _core(both):
     """An overlap without the hairline two neighbours' rasterised outlines
     share along a common side: only real double-covered roof is left."""
@@ -1947,6 +1996,26 @@ def _core(both):
 
 
 def _tidy_outlines(afs: list[AxisFacet], labels, px_m) -> list[AxisFacet]:
+    # A repair below may never open a hole in the roof (the white gaps in the
+    # report's diagrams, and roof left unmeasured): Willow Pond lost 7 m² of one
+    # facet to an overlap trim. A facet may shrink, but only where another
+    # facet's outline still covers the roof it gives up.
+    roof = labels >= 0
+
+    def keeps_roof(idx, before, after) -> bool:
+        if len(after) < 3:
+            return False
+        others = np.zeros(labels.shape, np.uint8)
+        for k, (_, p, _) in enumerate(clean):
+            if k != idx and len(p) >= 3:
+                cv2.fillPoly(others, [np.round(np.asarray(p)).astype(np.int32)], 1)
+        def open_m2(pts):
+            m = others.copy()
+            if len(pts) >= 3:
+                cv2.fillPoly(m, [np.round(np.asarray(pts)).astype(np.int32)], 1)
+            return float((roof & (m == 0)).sum()) * px_m ** 2
+        return open_m2(after) - open_m2(before) <= SQUEEZE_MIN_M2
+
     # 1. Each outline on its own: no spikes, no self-crossing.
     clean = []
     for a in afs:
@@ -1973,37 +2042,15 @@ def _tidy_outlines(afs: list[AxisFacet], labels, px_m) -> list[AxisFacet]:
                 lab = labels[rr // ss, cc // ss]
                 ai, aj = clean[i][0], clean[j][0]
                 owner, loser = (i, j) if (lab == ai.fid).sum() >= (lab == aj.fid).sum() else (j, i)
-                own_pts = clean[owner][1]
-                cnt = np.asarray(own_pts, np.float32).reshape(-1, 1, 2)
-                a_l, pts_l, sides_l = clean[loser]
-                a_o, _, sides_o = clean[owner]
-                moved = [(_nearest_on_outline(p, own_pts)
-                          if cv2.pointPolygonTest(cnt, (float(p[0]), float(p[1])), True) > 0.5 else p)
-                         for p in pts_l]
-                moved, sides_l = _drop_spikes(moved, sides_l, px_m)
-                if len(moved) >= 3:
-                    moved, sides_l = _cut_loops(moved, sides_l)
-                # Still a real overlap (a side runs straight across the owner,
-                # no corner inside it)? Cut the intruder back along the line the
-                # two facets share. Only then: on the small edge overlaps every
-                # roof has, cutting along the whole line cost Brookside Oaks 12%
-                # of its eaves against EagleView.
-                if len(moved) >= 3:
-                    left = _core(_mask_of(moved, labels.shape, ss) & masks[owner]).sum()
-                    if left * (px_m / ss) ** 2 >= OVERLAP_CUT_M2:
-                        before = _area_px(moved)
-                        lost_max = left / ss ** 2 * 1.5 + 10.0     # px²: about the overlap, no more
-                        for k_, (kind_o, nb_o) in enumerate(sides_o):
-                            if nb_o != a_l.fid:
-                                continue
-                            a_, b_ = own_pts[k_], own_pts[(k_ + 1) % len(own_pts)]
-                            keep = np.mean(np.asarray(moved), axis=0)
-                            cp, cs = _clip_halfplane(moved, sides_l, a_, b_, keep, kind_o, a_o.fid)
-                            if len(cp) >= 3 and 0 <= before - _area_px(cp) <= lost_max:
-                                moved, sides_l = _drop_spikes(cp, cs, px_m)
-                                before = _area_px(moved)
-                clean[loser] = (a_l, moved, sides_l)
-                masks[loser] = _mask_of(moved, labels.shape, ss) if len(moved) >= 3 else masks[loser] & False
+                # Trim the facet that does not own the shared patch. If that would
+                # squeeze it below its own roof, the owner's outline is the one
+                # reaching too far (Willow Pond's porch): trim the owner instead.
+                for o_, l_ in ((owner, loser), (loser, owner)):
+                    moved, sides_l = _trim_into(clean[o_], clean[l_], masks[o_], labels.shape, ss, px_m)
+                    if keeps_roof(l_, clean[l_][1], moved):
+                        clean[l_] = (clean[l_][0], moved, sides_l)
+                        masks[l_] = _mask_of(moved, labels.shape, ss)
+                        break
 
     # 2b. One border, one trace: the smaller facet of each pair takes the bigger
     # one's line along the border they share.
@@ -2014,7 +2061,79 @@ def _tidy_outlines(afs: list[AxisFacet], labels, px_m) -> list[AxisFacet]:
                 continue
             if _area_px(clean[x][1]) < _area_px(clean[y][1]):
                 continue
-            clean[y] = _unify_border(clean[x], clean[y], px_m)
+            new_y = _unify_border(clean[x], clean[y], px_m)
+            if new_y is not clean[y] and keeps_roof(y, clean[y][1], new_y[1]):
+                clean[y] = new_y
+
+    # 2c. Corners cut off the roof. A straight outer side can cut across a
+    # corner of the real roof (6219 Strawfield: a 1.2 m² wedge beside D), which
+    # the report draws as a bite out of the house. Where roof sticks out past an
+    # outer side by more than CORNER_FILL_M, the side gets a corner there.
+    for _ in range(3):
+        cov = np.zeros(labels.shape, np.uint8)
+        for _, p_, _ in clean:
+            if len(p_) >= 3:
+                cv2.fillPoly(cov, [np.round(np.asarray(p_)).astype(np.int32)], 1)
+        gap = cv2.morphologyEx((roof & (cov == 0)).astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        ncomp, comp, stats, cent = cv2.connectedComponentsWithStats(gap, connectivity=4)
+        changed = False
+        for ci in range(1, ncomp):
+            if stats[ci, cv2.CC_STAT_AREA] * px_m ** 2 < GAP_FILL_M2:
+                continue
+            rr, cc = np.nonzero(comp == ci)
+            owner_fid = np.bincount(labels[rr, cc][labels[rr, cc] >= 0]).argmax()
+            k = next((q for q, (a_, _, _) in enumerate(clean) if a_.fid == owner_fid), None)
+            if k is None:
+                continue
+            a_k, pts_k, sides_k = clean[k]
+            n = len(pts_k)
+            ctr = np.array([cent[ci][0], cent[ci][1]])
+            # The outer side the gap lies against.
+            best = None
+            for i in range(n):
+                if sides_k[i][1] is not None:
+                    continue
+                pa, pb = pts_k[i], pts_k[(i + 1) % n]
+                d = pb - pa
+                t = min(1.0, max(0.0, float((ctr - pa) @ d) / (float(d @ d) or 1e-12)))
+                dist = float(np.hypot(*(pa + d * t - ctr)))
+                if best is None or dist < best[0]:
+                    best = (dist, i)
+            if best is None:
+                continue
+            i = best[1]
+            pa, pb = pts_k[i], pts_k[(i + 1) % n]
+            d = pb - pa
+            L = float(np.hypot(*d)) or 1e-12
+            nrm = np.array([-d[1], d[0]]) / L
+            inside = np.mean(np.asarray(pts_k), axis=0)
+            if float((inside - pa) @ nrm) > 0:
+                nrm = -nrm                                   # point outward
+            P = np.stack([cc, rr], axis=1).astype(float)
+            t = ((P - pa) @ d) / (L * L)
+            off = (P - pa) @ nrm
+            ok = (t > 0.02) & (t < 0.98)
+            if not ok.any():
+                continue
+            j = int(np.argmax(np.where(ok, off, -1e9)))
+            if off[j] * px_m < CORNER_FILL_M:
+                continue
+            q = P[j]
+            new_pts = pts_k[:i + 1] + [q] + pts_k[i + 1:]
+            new_sides = sides_k[:i + 1] + [sides_k[i]] + sides_k[i + 1:]
+            new_pts, new_sides = _cut_loops(new_pts, new_sides)
+            if len(new_pts) < 3:
+                continue
+            # Must not run onto a neighbour.
+            mk = _mask_of(new_pts, labels.shape, 1)
+            clash = any(_core(mk & _mask_of(p_, labels.shape, 1)).sum() * px_m ** 2 > OVERLAP_MIN_M2
+                        for q_, (_, p_, _) in enumerate(clean) if q_ != k and len(p_) >= 3)
+            if clash:
+                continue
+            clean[k] = (a_k, new_pts, new_sides)
+            changed = True
+        if not changed:
+            break
 
     # 3. Slivers go. A facet whose outline holds almost no roof is not a facet;
     # the sides that pointed at it point at nothing in particular now.

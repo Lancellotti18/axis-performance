@@ -116,3 +116,33 @@ def test_two_facets_share_one_trace_of_their_border():
     border = {p for p in map(tuple, out[2].vertices_px) if p[0] < 62}
     assert border <= {(60.0, 10.0), (60.0, 35.0), (60.0, 60.0)}
     assert [k for k, nb in out[2].sides if nb == 1] == ["valley", "valley"]
+
+
+def test_a_corner_cut_off_the_roof_gets_its_corner_back():
+    """6219 Strawfield: a straight outer side cut a 1.2 m² wedge off the roof,
+    which the report drew as a bite out of the house."""
+    lab = _labels()
+    lab[10:60, 10:60] = 1
+    cut = AxisFacet("A", 1, [(30, 10), (59, 10), (59, 59), (10, 59), (10, 30)],
+                    [("eave", None), ("rake", None), ("eave", None), ("rake", None), ("rake", None)], 6.0)
+    out = _tidy_outlines([cut], lab, PX)
+    assert _area_px(out[0].vertices_px) > _area_px(cut.vertices_px) + 150
+    assert len(out[0].sides) == len(out[0].vertices_px)
+
+
+def test_a_repair_may_not_open_a_hole_in_the_roof():
+    """Trimming an overlap must not hand back roof nobody else covers."""
+    lab = _labels()
+    lab[10:60, 10:60] = 1
+    lab[10:60, 60:100] = 2
+    owner = AxisFacet("A", 1, [(10, 10), (60, 10), (60, 60), (10, 60)],
+                      [("eave", None), ("valley", 2), ("eave", None), ("rake", None)], 6.0)
+    intruder = AxisFacet("B", 2, [(45, 10), (100, 10), (100, 60), (45, 60)],
+                         [("eave", None), ("rake", None), ("eave", None), ("valley", 1)], 6.0)
+    out = _tidy_outlines([owner, intruder], lab, PX)
+    import cv2
+    cov = np.zeros(lab.shape, np.uint8)
+    for a in out:
+        cv2.fillPoly(cov, [np.round(np.asarray(a.vertices_px)).astype(np.int32)], 1)
+    hole = ((lab >= 0) & (cov == 0)).sum() * PX ** 2
+    assert hole < 0.5

@@ -100,6 +100,36 @@ def _load_font(bold: bool = False, size: int = 30):
         return None
 
 
+
+def _label_spot(pts) -> tuple[float, float, float]:
+    """(x, y, room): the point inside a plane furthest from all its sides, and
+    that distance. The corner average lands OUTSIDE an L- or U-shaped plane
+    (6219 Strawfield's back slope wraps round a dormer, and its label printed on
+    the dormer), and a bounding box overstates how much text fits there."""
+    import numpy as _np
+    P = _np.asarray(pts, dtype=float)
+    if len(P) < 3:
+        return float(P[:, 0].mean()), float(P[:, 1].mean()), 0.0
+    x0, y0 = P.min(axis=0); x1, y1 = P.max(axis=0)
+    gx, gy = _np.meshgrid(_np.linspace(x0, x1, 40), _np.linspace(y0, y1, 40))
+    Q = _np.stack([gx.ravel(), gy.ravel()], axis=1)
+    A, B = P, _np.roll(P, -1, axis=0)
+    inside = _np.zeros(len(Q), bool)
+    for (ax, ay), (bx, by) in zip(A, B):
+        hit = ((ay > Q[:, 1]) != (by > Q[:, 1])) & (
+            Q[:, 0] < (bx - ax) * (Q[:, 1] - ay) / ((by - ay) or 1e-12) + ax)
+        inside ^= hit
+    D = _np.full(len(Q), _np.inf)
+    for a, b in zip(A, B):
+        d = b - a
+        t = _np.clip(((Q - a) @ d) / (float(d @ d) or 1e-12), 0, 1)
+        D = _np.minimum(D, _np.hypot(*(Q - (a + t[:, None] * d)).T))
+    if not inside.any():
+        return float(P[:, 0].mean()), float(P[:, 1].mean()), 0.0
+    D[~inside] = -1
+    k = int(D.argmax())
+    return float(Q[k, 0]), float(Q[k, 1]), float(D[k])
+
 def _centered_lines(draw, cx, cy, lines, font, fontb) -> None:
     sized = []
     for i, txt in enumerate(lines):
@@ -244,12 +274,13 @@ def _render_facet_diagram(facets: list[dict]) -> bytes | None:
             c = palette[idx % len(palette)]
             d.polygon(pts, fill=(c[0], c[1], c[2], 55))
             d.line(pts + [pts[0]], fill=(c[0], c[1], c[2], 255), width=4)
-            cx = sum(x for x, _ in pts) / len(pts)
-            cy = sum(y for _, y in pts) / len(pts)
+            cx, cy, room = _label_spot(pts)
             label = f.get("facet_label") or f"RF-{i + 1}"
             area = f.get("true_area_sqft") or f.get("plan_area_sqft") or 0
             pitch = f.get("pitch") or ""
-            _centered_lines(d, cx, cy, [str(label), f"{round(float(area))} ft²", str(pitch)], font, fontb)
+            lines = ([str(label), f"{round(float(area))} ft²", str(pitch)] if room >= 55
+                     else [str(label)])
+            _centered_lines(d, cx, cy, lines, font, fontb)
 
         buf = io.BytesIO()
         img.save(buf, format="PNG")
@@ -445,8 +476,7 @@ def _render_pitch_diagram(facets: list[dict]) -> bytes | None:
             d.polygon(pts, fill=fill)
             d.line(pts + [pts[0]], fill=(30, 41, 59, 255), width=5)
 
-            cx = sum(x for x, _ in pts) / len(pts)
-            cy = sum(y for _, y in pts) / len(pts)
+            cx, cy, room_px = _label_spot(pts)
             label = f.get("facet_label") or f"RF-{i + 1}"
             pitch = f.get("pitch") or "unverified"
             area = f.get("true_area_sqft") or f.get("plan_area_sqft") or 0
@@ -454,10 +484,10 @@ def _render_pitch_diagram(facets: list[dict]) -> bytes | None:
             # A four-line caption on a narrow dormer spills over its neighbours
             # and makes the whole plan harder to read than no label at all.
             # Drop detail as the plane gets smaller; the facet table carries the
-            # full numbers for every plane regardless.
-            px = [x for x, _ in pts]; py = [y for _, y in pts]
-            box = (max(px) - min(px)) * (max(py) - min(py))
-            room = box / float(W * H)
+            # full numbers for every plane regardless. Room is the clear radius
+            # round the label point, not the bounding box (a wrap-round plane
+            # has a big box and little space).
+            room = 0.045 if room_px >= 75 else (0.012 if room_px >= 38 else 0.0)
             if room >= 0.045:
                 lines = [str(label), str(pitch), f"{round(float(area))} ft²"]
                 lines.append("measured" if measured else
