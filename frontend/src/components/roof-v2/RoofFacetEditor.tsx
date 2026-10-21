@@ -271,7 +271,11 @@ export function RoofFacetEditor({
   const [mode, setMode] = useState<Mode>('draw')
   const [activeFacetIdx, setActiveFacetIdx] = useState<number | null>(null)
   const [drawingPoly, setDrawingPoly] = useState<Pt[]>([])
-  const [dragVertex, setDragVertex] = useState<{ facetIdx: number; vertexIdx: number } | null>(null)
+  // `group`: every facet corner sitting on the grabbed one. Neighbouring facets
+  // each hold their own copy of a shared corner; moving only the top copy left
+  // the other facets' lines behind, so lines looked impossible to move (Ryan,
+  // 2026-10-21). Alt/Option detaches just the one corner.
+  const [dragVertex, setDragVertex] = useState<{ facetIdx: number; vertexIdx: number; group: [number, number][] } | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<{ facetIdx: number; edgeIdx: number } | null>(null)
   const [imageDims, setImageDims] = useState({ w: imageWidthPx, h: imageHeightPx })
   // Live cursor position (image fractions) while drawing — drives the
@@ -837,16 +841,31 @@ export function RoofFacetEditor({
     if (mode !== 'select') return
     ev.stopPropagation()
     ev.preventDefault()
-    setDragVertex({ facetIdx, vertexIdx })
-  }, [mode])
+    const grabbed = facets[facetIdx]?.polygon[vertexIdx]
+    const group: [number, number][] = [[facetIdx, vertexIdx]]
+    if (grabbed && !ev.altKey) {
+      const tolX = 1 / imageDims.w, tolY = 1 / imageDims.h      // within one image pixel
+      facets.forEach((f, fi) => f.polygon.forEach((p, vi) => {
+        if (fi === facetIdx && vi === vertexIdx) return
+        if (Math.abs(p[0] - grabbed[0]) <= tolX && Math.abs(p[1] - grabbed[1]) <= tolY) group.push([fi, vi])
+      }))
+    }
+    setDragVertex({ facetIdx, vertexIdx, group })
+  }, [mode, facets, imageDims.w, imageDims.h])
 
   useEffect(() => {
     if (!dragVertex) return
     const onMove = (ev: PointerEvent) => {
       const pt = eventToFrac(ev as unknown as React.PointerEvent)
+      const moving = new Map<number, Set<number>>()
+      for (const [fi, vi] of dragVertex.group) {
+        if (!moving.has(fi)) moving.set(fi, new Set())
+        moving.get(fi)!.add(vi)
+      }
       setFacets(prev => prev.map((f, i) => {
-        if (i !== dragVertex.facetIdx) return f
-        const poly = f.polygon.map((p, j) => (j === dragVertex.vertexIdx ? pt : p))
+        const vs = moving.get(i)
+        if (!vs) return f
+        const poly = f.polygon.map((p, j) => (vs.has(j) ? pt : p))
         // Reshaped by hand, an auto-measured facet's OUTLINE is now the
         // contractor's: the AI labeller may help with its lines again and the
         // report stops calling it auto-measured. Its pitch is still measured.
@@ -857,9 +876,10 @@ export function RoofFacetEditor({
     const onUp = () => {
       // Recompute edge plan lengths is server-side; client just persists vertex moves.
       // Re-evaluate shared_with for this facet's edges since vertices moved.
+      const moved = new Set(dragVertex.group.map(([fi]) => facets[fi]?.label).filter(Boolean))
       setEdges(prev => prev.map(e => {
-        if (e.facetLabel !== facets[dragVertex.facetIdx]?.label) return e
-        const facet = facets[dragVertex.facetIdx]
+        if (!moved.has(e.facetLabel)) return e
+        const facet = facets.find(f => f.label === e.facetLabel)
         if (!facet) return e
         const shared = findSharedFacet(facet, e.vertexIndexStart, facets)
         return { ...e, sharedWithFacetLabel: shared }
