@@ -131,7 +131,7 @@ function rowsToGeometry(facetRows: Record<string, unknown>[], edgeRows: Record<s
 function uniqueLetters(facets: Facet[], edges: LabeledEdge[]): { facets: Facet[]; edges: LabeledEdge[] } {
   const seen = new Set<string>()
   const dup = facets.some(f => (seen.has(f.label) ? true : (seen.add(f.label), false)))
-  if (!dup) return { facets, edges }
+  if (!dup) return { facets, edges: validLines(facets, edges) }
   const used = new Set<string>()
   const all = new Set(facets.map(f => f.label))
   const next = () => {
@@ -143,7 +143,19 @@ function uniqueLetters(facets: Facet[], edges: LabeledEdge[]): { facets: Facet[]
     const l = next(); used.add(l)
     return { ...f, label: l }
   })
-  return { facets: out, edges }
+  return { facets: out, edges: validLines(out, edges) }
+}
+
+// Lines whose corners exist on their facet. Two facets that shared a letter
+// left the second one's lines on the first, pointing past its corners.
+function validLines(facets: Facet[], edges: LabeledEdge[]): LabeledEdge[] {
+  const n = new Map(facets.map(f => [f.label, f.polygon.length]))
+  const ok = edges.filter(e => {
+    const len = n.get(e.facetLabel)
+    return len !== undefined && Number.isInteger(e.vertexIndexStart) && e.vertexIndexStart >= 0
+      && e.vertexIndexStart < len && (e.vertexIndexEnd === undefined || (e.vertexIndexEnd >= 0 && e.vertexIndexEnd < len))
+  })
+  return ok.length === edges.length ? edges : ok
 }
 
 // Sections marked "Not roof", as the run stores them.
@@ -419,7 +431,7 @@ export default function RoofV2Page() {
             data.facets as Record<string, unknown>[], data.edges as Record<string, unknown>[])
 
           setFacets(fcts)
-          setEdges(edgs)
+          setEdges(validLines(fcts, edgs))
           setExcludedFacets(rowsToExcluded(run.excluded_facets))
           setGeometryStamp(s => s + 1)
           setEditorSyncRev(r => r + 1)
@@ -657,10 +669,12 @@ export default function RoofV2Page() {
     // the second one takes a free letter (its lines can't be told apart from
     // the first's, so they start unlabeled), and nothing is lost.
     const fixed = uniqueLetters(newFacets, newEdges)
-    if (fixed.facets !== newFacets) {
+    if (fixed.facets !== newFacets || fixed.edges !== newEdges) {
       newFacets = fixed.facets
+      newEdges = fixed.edges
       setFacets(newFacets)
-      setEditorSyncRev(r => r + 1)       // show the new letter on the map
+      setEdges(newEdges)
+      setEditorSyncRev(r => r + 1)       // show the repaired roof on the map
     }
     setSaveState('saving')
     const lat = location.lat

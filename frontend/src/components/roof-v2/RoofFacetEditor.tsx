@@ -200,6 +200,9 @@ function findSharedFacet(
 ): string | undefined {
   const p1 = edgeFrom.polygon[edgeIdxStart]
   const p2 = edgeFrom.polygon[(edgeIdxStart + 1) % edgeFrom.polygon.length]
+  // A line pointing past its facet's corners (left over from two facets that
+  // shared a letter) has no geometry; reading it crashed the page.
+  if (!p1 || !p2) return undefined
   for (const other of allFacets) {
     if (other.label === edgeFrom.label) continue
     const n = other.polygon.length
