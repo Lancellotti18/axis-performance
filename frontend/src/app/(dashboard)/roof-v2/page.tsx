@@ -127,6 +127,25 @@ function rowsToGeometry(facetRows: Record<string, unknown>[], edgeRows: Record<s
   return { fcts, edgs }
 }
 
+// Two facets may never share a letter (the server keeps one row per letter).
+function uniqueLetters(facets: Facet[], edges: LabeledEdge[]): { facets: Facet[]; edges: LabeledEdge[] } {
+  const seen = new Set<string>()
+  const dup = facets.some(f => (seen.has(f.label) ? true : (seen.add(f.label), false)))
+  if (!dup) return { facets, edges }
+  const used = new Set<string>()
+  const all = new Set(facets.map(f => f.label))
+  const next = () => {
+    for (const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') if (!all.has(c) && !used.has(c)) return c
+    for (let k = facets.length + 1; ; k++) if (!all.has(`F${k}`) && !used.has(`F${k}`)) return `F${k}`
+  }
+  const out = facets.map(f => {
+    if (!used.has(f.label)) { used.add(f.label); return f }
+    const l = next(); used.add(l)
+    return { ...f, label: l }
+  })
+  return { facets: out, edges }
+}
+
 // Sections marked "Not roof", as the run stores them.
 function rowsToExcluded(raw: unknown): ExcludedFacet[] {
   if (!Array.isArray(raw)) return []
@@ -632,6 +651,16 @@ export default function RoofV2Page() {
     if (newFacets.length === 0) {
       // Empty editor state isn't an error — just nothing to save
       return
+    }
+    // One row per letter is all the server can hold. A roof that somehow has
+    // two facets with the same letter is renamed here rather than refused:
+    // the second one takes a free letter (its lines can't be told apart from
+    // the first's, so they start unlabeled), and nothing is lost.
+    const fixed = uniqueLetters(newFacets, newEdges)
+    if (fixed.facets !== newFacets) {
+      newFacets = fixed.facets
+      setFacets(newFacets)
+      setEditorSyncRev(r => r + 1)       // show the new letter on the map
     }
     setSaveState('saving')
     const lat = location.lat

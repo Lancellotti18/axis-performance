@@ -167,3 +167,15 @@ def test_the_save_survives_before_the_migration_is_run(db, monkeypatch):
     out = asyncio.run(rv.put_geometry("r1", rv.PutGeometryRequest(**_req(excluded_facets=[ex]), edges=_edges()), USER))
     assert out["count"] == 1
     assert calls[-1].get("facet_count") == 1 and "excluded_facets" not in calls[-1]
+
+
+def test_two_facets_with_one_letter_are_refused_before_anything_is_deleted(db):
+    """711 Spring Branch Rd: a facet drawn after one was removed got a letter
+    already in use; the save deleted the roof, failed its insert on the
+    (run, letter) key, and left the run with no facets at all."""
+    import pydantic
+    two_js = [rv.FacetIn(facet_label="J", polygon=SQUARE), rv.FacetIn(facet_label="J", polygon=TRI)]
+    with pytest.raises(pydantic.ValidationError):
+        rv.PutGeometryRequest(image_width_px=2048, image_height_px=1366, zoom=20, lat=34.2, lng=-77.9,
+                              facets=two_js, edges=[])
+    assert ("delete", "roof_facets") not in db.log

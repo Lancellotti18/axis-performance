@@ -791,7 +791,13 @@ export function RoofFacetEditor({
       setDrawingPoly([])
       return
     }
-    const label = FACET_LABELS[facets.length] || `F${facets.length + 1}`
+    // The first letter nobody has. Counting facets reused a letter once one had
+    // been removed or marked "Not roof" (9 facets -> "J" while a J existed), and
+    // the server, holding one row per letter, refused the save and kept nothing
+    // (711 Spring Branch Rd, 2026-10-21).
+    const taken = new Set([...facets.map(f => f.label), ...excludedFacets.map(x => x.facet.label)])
+    let label = FACET_LABELS.find(l => !taken.has(l)) || ''
+    for (let k = facets.length + 1; !label; k++) if (!taken.has(`F${k}`)) label = `F${k}`
     const newFacet: Facet = {
       label,
       polygon: drawingPoly,
@@ -819,7 +825,7 @@ export function RoofFacetEditor({
     setEdges(prev => [...prev, ...newEdges])
     setActiveFacetIdx(newFacets.length - 1)
     setMode('label')   // jump straight into edge labeling
-  }, [drawingPoly, facets])
+  }, [drawingPoly, facets, excludedFacets])
 
   // ---- Vertex dragging ----
   const onVertexPointerDown = useCallback((

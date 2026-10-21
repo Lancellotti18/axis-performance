@@ -1062,6 +1062,20 @@ class PutFacetsRequest(BaseModel):
     # (even empty) replaces it.
     excluded_facets: Optional[list[ExcludedFacetIn]] = Field(None, max_length=50)
 
+    @field_validator("facets")
+    @classmethod
+    def _unique_letters(cls, v: list[FacetIn]) -> list[FacetIn]:
+        # One row per (run, letter). A save with two facets sharing a letter
+        # used to delete the roof and then fail its insert, leaving NOTHING
+        # (711 Spring Branch Rd, 2026-10-21). Refused here, before any delete.
+        seen, dup = set(), set()
+        for f in v:
+            (dup if f.facet_label in seen else seen).add(f.facet_label)
+        if dup:
+            raise ValueError(f"two facets share the letter {', '.join(sorted(dup))}; "
+                             "each facet needs its own letter")
+        return v
+
 
 
 # Last Solar lookup per run, so the diagnostic endpoint can explain a default
