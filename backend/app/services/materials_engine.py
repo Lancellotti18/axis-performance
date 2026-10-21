@@ -50,6 +50,9 @@ logger = logging.getLogger(__name__)
 STANDARD_WASTE_PCTS: list[int] = [5, 10, 12, 15, 18, 20, 25]
 
 
+LOW_SLOPE_RISE = 2.0   # shingles need at least 2/12; flatter planes take a membrane
+
+
 def waste_factor(pct: float) -> float:
     return 1.0 + (max(0.0, float(pct)) / 100.0)
 
@@ -106,6 +109,18 @@ class RoofTotals:
     # too would order it twice. None = not split: all wall length is step.
     step_flashing_ft: Optional[float] = None
     pitch: str = "6/12"
+    # True area of planes too flat for shingles (under LOW_SLOPE_RISE/12). It
+    # takes a membrane system instead, so shingle-system items are sized on the
+    # rest only (106 Savannah Ave: 22 of 46 squares flat, all priced as shingles).
+    low_slope_sqft: float = 0.0
+
+    @property
+    def steep_squares(self) -> float:
+        return max(0.0, self.squares - self.low_slope_sqft / 100.0)
+
+    @property
+    def low_slope_squares(self) -> float:
+        return min(self.squares, max(0.0, self.low_slope_sqft / 100.0))
 
     @property
     def perimeter_ft(self) -> float:
@@ -205,13 +220,18 @@ def _base_quantity_for(
     cov = max(coverage_value, 0.001)   # avoid div by zero on bad catalog data
 
     if coverage_basis == "per_square":
-        # quantity such that quantity × coverage_value squares are covered
+        flat = totals.low_slope_squares
+        if item_category == "membrane":
+            qty = flat / cov
+            return qty, f"{flat:.2f} low-slope sq (under {LOW_SLOPE_RISE:g}/12) ÷ {cov:g} = {qty:.2f}"
+        # Shingle-system items cover only the planes steep enough for shingles.
+        sq = totals.steep_squares
+        note = f" ({flat:.2f} low-slope sq excluded: membrane)" if flat > 0 else ""
         if item_category == "shingles":
-            qty = totals.squares
-            return qty, f"{qty:.2f} squares (1 sq per 100 sf roof)"
+            return sq, f"{sq:.2f} squares (1 sq per 100 sf roof){note}"
         # Underlayment, nails, sealant: 1 unit per coverage_value squares
-        qty = totals.squares / cov
-        return qty, f"{totals.squares:.2f} sq ÷ {cov:g} sq per {item_category} = {qty:.2f}"
+        qty = sq / cov
+        return qty, f"{sq:.2f} sq ÷ {cov:g} sq per {item_category} = {qty:.2f}{note}"
 
     if coverage_basis == "per_lf":
         # Step flashing follows wall intersections; if there's none we won't include the row
@@ -479,6 +499,27 @@ def compute_material_lines(
             computation_trace=trace,
         )
         lines.append(line)
+
+    # The flat part of the roof, when the catalog has no membrane product to
+    # price it: listed with its quantity so it is never silently missing, and
+    # marked to be priced with a flat-roof supplier.
+    if totals.low_slope_squares > 0 and not any(l.category == "membrane" for l in lines):
+        flat = totals.low_slope_squares
+        waste_q = {pct: max(1, math.ceil(round(flat * waste_factor(pct), 6))) for pct in STANDARD_WASTE_PCTS}
+        lines.append(MaterialLine(
+            sku="LOW-SLOPE",
+            item_name="Low-slope roof membrane (TPO / EPDM / mod-bit) - price separately",
+            category="membrane",
+            unit="square",
+            coverage_basis="per_square",
+            base_quantity=flat,
+            waste_quantities=waste_q,
+            unit_cost=0.0,
+            default_waste_pct=default_waste_pct,
+            total_cost_at_default_waste=0.0,
+            notes=f"Planes under {LOW_SLOPE_RISE:g}/12 cannot take shingles. Price with your flat-roof supplier.",
+            computation_trace=f"{flat:.2f} sq of planes under {LOW_SLOPE_RISE:g}/12",
+        ))
 
     return lines
 

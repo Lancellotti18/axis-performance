@@ -2284,8 +2284,16 @@ def _aggregate_run(run_id: str) -> dict:
          if k not in ("blocking_issues", "partial_signals", "trace_coverage",
                       "imagery_ft_per_px")}
     ).eq("id", run_id).execute()
+    # Planes too flat for shingles, for the material list (not stored).
+    def _rise(f):
+        try:
+            return float(str(f.get("pitch") or "").split("/")[0])
+        except ValueError:
+            return 99.0
+    low_slope_sqft = round(sum((f.get("true_area_sqft") or 0) for f in facets if _rise(f) < 2.0), 1)
     return {
         **aggregates,
+        "low_slope_sqft": low_slope_sqft,
         "wall_intersection_ft": wall_int_ft,
     }
 
@@ -4624,6 +4632,7 @@ async def get_run_materials(
         wall_intersection_ft=float(aggregates.get("wall_intersection_ft") or 0),
         stories=int(run.data.get("stories") or 1),
         pitch=str(aggregates["predominant_pitch"] or "6/12"),
+        low_slope_sqft=float(aggregates.get("low_slope_sqft") or 0),
     )
     penetrations = PenetrationSummary.from_rows(pen_rows)
 
@@ -4716,6 +4725,7 @@ async def get_adjuster_estimate(
         wall_intersection_ft=float(aggregates.get("wall_intersection_ft") or 0),
         stories=int(run.data.get("stories") or 1),
         pitch=str(aggregates["predominant_pitch"] or "6/12"),
+        low_slope_sqft=float(aggregates.get("low_slope_sqft") or 0),
     )
     pens = PenetrationSummary.from_rows(pen_rows)
 
@@ -4985,6 +4995,7 @@ def _build_and_store_report_sync(run_id: str, user_id: Optional[str] = None) -> 
         wall_intersection_ft=float(aggregates.get("wall_intersection_ft") or 0),
         stories=int(run.get("stories") or 1),
         pitch=str(aggregates["predominant_pitch"] or "6/12"),
+        low_slope_sqft=float(aggregates.get("low_slope_sqft") or 0),
     )
     pens = PenetrationSummary.from_rows(pens_res.data or [])
     default_waste = int(run.get("waste_pct_default") or aggregates["waste_pct_default"])
