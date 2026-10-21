@@ -304,7 +304,17 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
   // "Continue to details", so without this a contractor who doesn't think to
   // scroll clicks past the numbers they just paid for (Ryan, 2026-10-19).
   const resultsRef = useRef<HTMLDivElement>(null)
+  const loadingRef = useRef<HTMLDivElement>(null)
   const [revealTick, setRevealTick] = useState(0)
+  // The moment the button is pressed, slide to where the numbers will appear
+  // and show that they are on their way (Ryan, 2026-10-21): the request can take
+  // several seconds and the page used to sit still until it came back.
+  useEffect(() => {
+    if (!confirming) return
+    const id = requestAnimationFrame(() =>
+      loadingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    return () => cancelAnimationFrame(id)
+  }, [confirming])
   useEffect(() => {
     if (revealTick === 0) return
     const id = requestAnimationFrame(() =>
@@ -387,6 +397,18 @@ export function MeasurementsSummary({ runId, geometryStamp, busy = false, onConf
   // A finalized (confirmed) roof always shows its saved numbers on revisit, so you
   // never re-label a roof you already finished.
   if (embeddedGate && pendingCount > 0 && !runConfirmed) return null
+  if (confirming && !block) {
+    return (
+      <div ref={loadingRef} role="status" aria-live="polite"
+        className="flex items-center gap-4 rounded-xl border border-blue-200 bg-blue-50 px-5 py-6">
+        <span aria-hidden className="h-8 w-8 shrink-0 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+        <div>
+          <div className="text-sm font-semibold text-blue-950">Loading your measurements &amp; materials…</div>
+          <p className="mt-0.5 text-xs text-blue-900/80">Squares, pitch, every roof line and the material list. This takes a few seconds.</p>
+        </div>
+      </div>
+    )
+  }
   if (embeddedGate && awaitingConfirm && !block) return null
   if (pendingCount > 0 && !runConfirmed) {
     return (
