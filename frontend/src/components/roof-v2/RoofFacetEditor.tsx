@@ -104,7 +104,7 @@ const LINE_HINTS: Record<Exclude<EdgeType, 'unlabeled' | 'gable_end'>, string> =
 
 const GUIDE_MAX_SCALE = 8
 
-const PITCH_OPTIONS = ['2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '9/12', '10/12', '12/12']
+const PITCH_OPTIONS = Array.from({ length: 15 }, (_, i) => `${i}/12`)   // 0/12 ... 14/12
 
 // Phase 1: label + color for a facet's pitch provenance, so a MEASURED pitch reads
 // green (trusted) and the bare default reads amber (needs a look). Mirrors the
@@ -1686,6 +1686,14 @@ export function RoofFacetEditor({
                       onClick={(ev) => ev.stopPropagation()}
                       className="rounded bg-[#eeeeed] px-2 py-1 text-xs text-[#1a1a1a]"
                     >
+                      {/* A measured pitch (7.7/12) is not one of the whole-number
+                          choices; without its own option the browser showed the
+                          FIRST choice, so every measured facet read "2/12" (Ryan,
+                          2026-10-21) — and picking from it would overwrite the
+                          real pitch. The facet's own pitch is always listed. */}
+                      {!PITCH_OPTIONS.includes(f.pitch) && f.pitch && (
+                        <option value={f.pitch}>{f.pitch}{String(f.pitchSource || '').startsWith('solar') ? ' · measured' : ''}</option>
+                      )}
                       {PITCH_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
                     {(() => {

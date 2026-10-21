@@ -367,7 +367,10 @@ export default function RoofingSection({
                   <div>
                     <label className={labelCls}>Pitch</label>
                     <select value={draft.pitch} onChange={e => updateDraft('pitch', e.target.value)} className={inputCls}>
-                      {['3/12','4/12','5/12','6/12','7/12','8/12','9/12','10/12','12/12'].map(p => (
+                      {/* The draft's own pitch is always a choice: a measured 7.7/12
+                          missing from the list showed as the first option instead. */}
+                      {[...(draft.pitch && !/^(\d|1[0-4])\/12$/.test(draft.pitch) ? [draft.pitch] : []),
+                        ...Array.from({ length: 15 }, (_, i) => `${i}/12`)].map(p => (
                         <option key={p} value={p}>{p}</option>
                       ))}
                     </select>
