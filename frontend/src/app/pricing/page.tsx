@@ -1,5 +1,8 @@
 import type { Metadata } from 'next'
 
+import { redirect } from 'next/navigation'
+
+import { SHOW_PRICING } from '@/lib/pricing-visibility'
 import PricingTables from './PricingTables'
 
 export const metadata: Metadata = {
@@ -9,5 +12,6 @@ export const metadata: Metadata = {
 }
 
 export default function PricingPage() {
+  if (!SHOW_PRICING) redirect('/#trial')
   return <PricingTables />
 }

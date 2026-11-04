@@ -1,5 +1,7 @@
 <!doctype html>
-<html lang="en">
+<!-- SHOW_PRICING: prices are hidden while Axis is tested free with local roofers (2026-11).
+     Remove class="hide-pricing" to bring the plan cards, billing toggle and Pricing links back. -->
+<html lang="en" class="hide-pricing">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -313,6 +315,8 @@
     background:#0A0F16;box-shadow:0 0 0 1.5px #c9b98f}
   .plan.gift .gtag::after{content:"";position:absolute;left:10px;top:-14px;width:1.5px;height:16px;background:#e9dcc0;transform:rotate(-18deg)}
   @media (max-width:380px){ .plan.gift .gtag{font-size:10px;right:10px} }
+  .hide-pricing [data-price]{display:none!important}
+  html:not(.hide-pricing) [data-tester]{display:none!important}
   .trial{margin:40px auto 0;max-width:760px;padding:28px 28px 24px;border-radius:18px;border:1px solid var(--line);
     background:linear-gradient(180deg,rgba(18,28,42,.55),rgba(10,16,24,.5));text-align:center}
   .trial h3{margin:0;font-family:var(--serif);font-weight:400;font-size:clamp(22px,2.6vw,30px);color:#EEF4FA}
@@ -408,7 +412,7 @@
         <a href="#f-crm"><span class="k">CRM</span><span class="t">A CRM built for roofers</span><span class="d">Leads to signed contract in one pipeline.</span></a>
       </div></div>
     </div>
-    <a href="#pricing">Pricing</a>
+    <a href="#pricing" data-price>Pricing</a><a href="#trial" data-tester>Test Axis free</a>
     <a href="#about">About</a>
   </nav>
   <div class="actions">
@@ -429,7 +433,7 @@
   <a class="sub" href="#f-visualizer">Roof Visualizer</a>
   <a class="sub" href="#f-dispatch">Dispatch</a>
   <a class="sub" href="#f-crm">CRM</a>
-  <a href="#pricing">Pricing</a>
+  <a href="#pricing" data-price>Pricing</a><a href="#trial" data-tester>Test Axis free</a>
   <a href="#about">About</a>
   <a href="/login">Sign In</a>
 </div>
@@ -523,16 +527,19 @@
 
 <section class="pricing" id="pricing">
   <div class="wrap">
-    <p class="ey">Pricing</p>
-    <h2 class="ttl">Every tool on every plan.</h2>
-    <p class="lede">You only choose how many roof reports and crews you need. Month to month, cancel anytime.</p>
-    <div class="billing" role="group" aria-label="Billing period">
+    <p class="ey" data-price>Pricing</p>
+    <h2 class="ttl" data-price>Every tool on every plan.</h2>
+    <p class="lede" data-price>You only choose how many roof reports and crews you need. Month to month, cancel anytime.</p>
+    <p class="ey" data-tester>What&rsquo;s included</p>
+    <h2 class="ttl" data-tester>Every tool, free while I test it.</h2>
+    <p class="lede" data-tester>I&rsquo;m testing Axis with local roofers before setting prices. Testers get every tool below at no cost.</p>
+    <div class="billing" data-price role="group" aria-label="Billing period">
       <button type="button" data-interval="month" aria-pressed="true">Monthly</button>
       <button type="button" data-interval="year" aria-pressed="false">Annual<span class="save" id="annualSave">2 months free</span></button>
     </div>
-    <div class="plans" id="plans"></div>
+    <div class="plans" id="plans" data-price></div>
     <div class="included">
-      <h4>Everything on every plan</h4>
+      <h4 data-price>Everything on every plan</h4><h4 data-tester>Everything testers get</h4>
       <div class="feats">
         <div><b>Satellite roof measurement</b><span>Squares, pitch, every ridge, hip, valley, eave and rake &mdash; measured from above in minutes, no ladder.</span></div>
         <div><b>Branded roof reports</b><span>A clean PDF with diagrams and every line length, under your logo, ready for the homeowner or adjuster.</span></div>
@@ -543,20 +550,22 @@
         <div><b>CRM &amp; proposals</b><span>Leads, inspections, proposals and jobs in one pipeline, with share links for homeowners.</span></div>
         <div><b>Dispatch &amp; scheduling</b><span>Crews on a board, jobs scheduled, and rain days flagged with a proposed dry day.</span></div>
         <div><b>Storm risk reports</b><span>Hurricane, hail, wind and flood exposure for any US city, from NOAA and FEMA data, with what to reinforce.</span></div>
-        <div><b>Exclusive roof leads</b><span>Buy homeowner leads one at a time ($50 each) &mdash; once you buy one, no one else can. Onslow County, NC for now.</span></div>
+        <div><b>Exclusive roof leads</b><span>Homeowner leads sold one at a time (not part of the free test) &mdash; once you buy one, no one else can. Onslow County, NC for now.</span></div>
       </div>
     </div>
-    <p class="fine" id="pricingFine"></p>
+    <p class="fine" id="pricingFine" data-price></p>
     <div class="trial" id="trial">
-      <h3>Want to try Axis first?</h3>
-      <p>Leave your details and we&rsquo;ll send you a free trial code &mdash; a few roof reports and a week of every tool.</p>
+      <h3 data-price>Want to try Axis first?</h3>
+      <p data-price>Leave your details and we&rsquo;ll send you a free trial code &mdash; a few roof reports and a week of every tool.</p>
+      <h3 data-tester>Want to help test Axis?</h3>
+      <p data-tester>Leave your details and I&rsquo;ll send you a tester code: 25 roof reports and 90 days of every tool, free. All I ask is that you tell me where it&rsquo;s wrong.</p>
       <form id="trialForm" novalidate>
         <label>Name<input name="name" autocomplete="name" required maxlength="80"></label>
         <label>Company<input name="company" autocomplete="organization" required maxlength="120"></label>
         <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>
         <label>Phone<input name="phone" type="tel" autocomplete="tel" required maxlength="32"></label>
         <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
-        <button type="submit" class="btn">Request a free trial</button>
+        <button type="submit" class="btn">Request a tester code</button>
         <p class="msg" id="trialMsg" role="status" aria-live="polite"></p>
       </form>
     </div>
@@ -626,7 +635,7 @@
     <span>Axis Roofing Performance — AI-powered roofing intelligence.</span>
     <nav aria-label="Footer">
       <a href="#platform">Features</a>
-      <a href="#pricing">Pricing</a>
+      <a href="#pricing" data-price>Pricing</a><a href="#trial" data-tester>Test Axis free</a>
       <a href="#about">About</a>
       <a href="/portal">Homeowner sign in</a>
       <a href="/legal/privacy">Privacy</a>

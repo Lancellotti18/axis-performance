@@ -18,6 +18,7 @@ import { usePathname } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { api, type PromoState } from '@/lib/api'
 import PromoCodeBox, { PENDING_CODE_KEY } from './PromoCodeBox'
+import { SHOW_PRICING } from '@/lib/pricing-visibility'
 
 type Me = Awaited<ReturnType<typeof api.billing.me>>
 type Plan = {
@@ -65,7 +66,9 @@ export default function AccessGate({ children }: { children: React.ReactNode }) 
   const open = me.is_admin || subscribed || promo?.active || !me.enforcing
   const exempt = ALWAYS_OPEN.some(p => pathname.startsWith(p))
 
-  if (!open && !exempt) return <PlanScreen promo={promo} onRedeemed={load} />
+  if (!open && !exempt) return SHOW_PRICING
+    ? <PlanScreen promo={promo} onRedeemed={load} />
+    : <TesterScreen promo={promo} onRedeemed={load} />
   return (
     <>
       {promo?.active && !subscribed && <TrialBanner promo={promo} />}
@@ -80,10 +83,10 @@ function TrialBanner({ promo }: { promo: PromoState }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200 bg-emerald-50 px-6 py-2 text-sm text-emerald-900">
       <span>
-        <strong>Free trial:</strong> {days} and {reports} left
+        <strong>{SHOW_PRICING ? 'Free trial' : 'Tester access'}:</strong> {days} and {reports} left
         {promo.founding_member && <span className="ml-2 rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">Founding member</span>}
       </span>
-      <Link href="/settings?tab=billing" className="font-semibold underline underline-offset-2">Choose a plan</Link>
+      {SHOW_PRICING && <Link href="/settings?tab=billing" className="font-semibold underline underline-offset-2">Choose a plan</Link>}
     </div>
   )
 }
@@ -163,6 +166,30 @@ function PlanScreen({ promo, onRedeemed }: { promo?: PromoState; onRedeemed: () 
       <p className="mt-8 text-center text-xs text-[#6b7280]">
         Questions? Reply to any email from me, or manage billing in <Link href="/settings?tab=billing" className="underline">Settings</Link>.
       </p>
+    </div>
+  )
+}
+
+// While prices are hidden: no plan cards, just the tester code box or a way to reach Ryan.
+function TesterScreen({ promo, onRedeemed }: { promo?: PromoState; onRedeemed: () => void }) {
+  const ended = !!promo?.ended
+  return (
+    <div className="mx-auto max-w-xl px-6 py-12 text-center">
+      <h1 className="text-2xl font-bold text-[#1a1a1a]">
+        {ended ? 'Thank you for testing Axis' : 'Axis is invite-only while I test it'}
+      </h1>
+      <p className="mx-auto mt-3 text-sm leading-relaxed text-[#4b5563]">
+        {ended
+          ? <>Your tester access has ended. If you want to keep using it, email me at{' '}
+              <a href="mailto:lance@rwinfrastructure.com" className="underline">lance@rwinfrastructure.com</a> and I&apos;ll extend it.</>
+          : <>I&apos;m testing Axis with local roofers before setting prices. Enter the tester code from your
+              email, or <Link href="/#trial" className="underline">request one here</Link>.</>}
+      </p>
+      {!promo?.had_promo && (
+        <div className="mx-auto mt-8 max-w-md text-left">
+          <PromoCodeBox onRedeemed={onRedeemed} />
+        </div>
+      )}
     </div>
   )
 }

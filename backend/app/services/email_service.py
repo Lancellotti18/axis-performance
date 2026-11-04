@@ -65,7 +65,7 @@ def promo_welcome(company: Optional[str], reports: int, days: int, until_text: s
         f"What you have:\n"
         f"- {reports} free roof reports\n"
         f"- Full access to Axis for {days} days, until {until_text}\n"
-        f"- Founding member status, so today's pricing stays locked in for you when you subscribe\n\n"
+        f"- Founding member status, so you get the best price when plans launch\n\n"
         f"To get started, log in, enter the address of a roof you're bidding, confirm the house, "
         f"and Axis measures it and builds the report and material list.\n\n"
         f"{_site()}/dashboard\n\n"

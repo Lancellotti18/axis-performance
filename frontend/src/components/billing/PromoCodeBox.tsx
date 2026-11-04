@@ -2,7 +2,7 @@
 
 /**
  * "Have a company code?" — redeems a promo code on the signed-in account.
- * A code gives 3 free reports and 7 days of full access, and makes the
+ * A code gives the free reports and days of full access set on the Founders page, and makes the
  * account a founding member (today's pricing kept when prices rise).
  */
 import { useState } from 'react'

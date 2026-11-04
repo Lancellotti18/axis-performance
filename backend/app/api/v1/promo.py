@@ -283,8 +283,8 @@ def require_admin(user: dict = Depends(require_user)) -> dict:
 class CreateCode(BaseModel):
     code: str = Field(..., min_length=3, max_length=32)
     company: str = Field(..., min_length=1, max_length=120)
-    free_reports: int = Field(3, ge=0, le=50)
-    access_days: int = Field(7, ge=0, le=90)
+    free_reports: int = Field(25, ge=0, le=100)   # tester defaults (2026-11): 25 reports, 90 days
+    access_days: int = Field(90, ge=1, le=90)
     expires_in_days: int = Field(DEFAULT_UNREDEEMED_DAYS, ge=1, le=365)
     notes: Optional[str] = Field(None, max_length=500)
 

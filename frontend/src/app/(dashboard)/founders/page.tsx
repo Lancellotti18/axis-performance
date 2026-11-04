@@ -49,6 +49,8 @@ export default function FoundersPage() {
   const [open, setOpen] = useState<string | null>(null)
   const [code, setCode] = useState('')
   const [company, setCompany] = useState('')
+  const [reports, setReports] = useState(25)
+  const [days, setDays] = useState(90)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -65,7 +67,8 @@ export default function FoundersPage() {
     if (!code.trim() || !company.trim()) { toast.error('Enter a code and the company it is for.'); return }
     setBusy(true)
     try {
-      const r = await api.billing.createCode({ code: code.trim(), company: company.trim() })
+      const r = await api.billing.createCode({ code: code.trim(), company: company.trim(),
+                                               free_reports: reports, access_days: days })
       toast.success(`${String(r.code)} created — copy its sign-up link from the list`)
       setCode(''); setCompany('')
       await load()
@@ -95,8 +98,8 @@ export default function FoundersPage() {
       <header>
         <h1 className="text-xl font-bold text-[#1a1a1a]">Founders &amp; Trials</h1>
         <p className="mt-1 text-sm text-[#6b7280]">
-          Each code works once: 3 free reports and 7 days of full access from the moment it&apos;s redeemed,
-          and that account becomes a founding member. Unused codes expire after 60 days.
+          Each code works once and gives the reports and days you set below (tester default: 25 reports,
+          90 days), counted from the moment it&apos;s redeemed. That account becomes a founding member. Unused codes expire after 60 days.
           A random suffix is added to every name (FORTITUDE-K7Q2M) so codes can&apos;t be guessed.
           {!enforcing && <strong className="text-amber-700"> Billing enforcement is OFF — nothing is locked yet.</strong>}
         </p>
@@ -135,6 +138,18 @@ export default function FoundersPage() {
           <input value={company} onChange={e => setCompany(e.target.value)} maxLength={120}
             placeholder="Company it's for" aria-label="Company"
             className="min-w-[220px] flex-1 rounded-md border border-[#dededc] bg-[#f8f8f7] px-3 py-2 text-sm" />
+          <label className="flex items-center gap-1.5 text-sm text-[#4b5563]">
+            Reports
+            <input type="number" min={0} max={100} value={reports} aria-label="Free reports"
+              onChange={e => setReports(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+              className="w-20 rounded-md border border-[#dededc] bg-[#f8f8f7] px-2 py-2 text-sm" />
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-[#4b5563]">
+            Days
+            <input type="number" min={1} max={90} value={days} aria-label="Days of access"
+              onChange={e => setDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
+              className="w-20 rounded-md border border-[#dededc] bg-[#f8f8f7] px-2 py-2 text-sm" />
+          </label>
           <button onClick={() => void create()} disabled={busy}
             className="rounded-md bg-[#1a1a1a] px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-50">
             {busy ? 'Creating…' : 'Create code'}

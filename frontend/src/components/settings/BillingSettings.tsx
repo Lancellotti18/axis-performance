@@ -15,6 +15,7 @@ import toast from 'react-hot-toast'
 
 import PromoCodeBox from '@/components/billing/PromoCodeBox'
 import { api, type UsageSummary } from '@/lib/api'
+import { SHOW_PRICING } from '@/lib/pricing-visibility'
 
 type Card = {
   id: string; brand: string | null; last4: string | null
@@ -112,13 +113,22 @@ export default function BillingSettings() {
 
         {!active ? (
           <>
-            <p className="mt-1 text-sm text-[#6b7280]">
-              You don’t have a plan yet. Choose one to unlock reports, dispatch crews and leads.
-            </p>
-            <a href="/pricing"
-               className="mt-4 inline-block rounded-xl bg-[#0068d6] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#01498f]">
-              See plans
-            </a>
+            {SHOW_PRICING ? (
+              <>
+                <p className="mt-1 text-sm text-[#6b7280]">
+                  You don’t have a plan yet. Choose one to unlock reports, dispatch crews and leads.
+                </p>
+                <a href="/pricing"
+                   className="mt-4 inline-block rounded-xl bg-[#0068d6] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#01498f]">
+                  See plans
+                </a>
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-[#6b7280]">
+                Axis is free for testers right now. Plans and prices come later. Questions? Email{' '}
+                <a href="mailto:lance@rwinfrastructure.com" className="underline">lance@rwinfrastructure.com</a>.
+              </p>
+            )}
             {!sub?.promo_access_until && (
               <div className="mt-5">
                 <PromoCodeBox onRedeemed={refresh} />

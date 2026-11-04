@@ -200,7 +200,7 @@ def evaluate(sub: Optional[dict], action: Action, *, reports_used: int = 0,
             if promo["active"] and promo["reports_left"] > 0:
                 return decide(True, f"promo: report {promo['reports_used_next']} of {promo['reports_total']}")
             if promo["active"]:
-                return decide(False, "you've used all of your free reports — choose a plan to keep going")
+                return decide(False, "you've used all of your free reports — email lance@rwinfrastructure.com for more")
             return decide(False, promo["ended_reason"] or "a plan is required")
 
         # Everything the contractor is entitled to this period: what the plan
