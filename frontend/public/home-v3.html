@@ -189,38 +189,21 @@
   @media (max-width:900px){ .acc{grid-template-columns:1fr;gap:28px} table.cmp th,table.cmp td{padding:12px 10px} }
   @media (max-width:480px){ table.cmp{font-size:14px} table.cmp th{font-size:10.5px;letter-spacing:.06em;padding:10px 7px} table.cmp td{padding:12px 7px} table.cmp td.ax{font-size:15px} table.cmp td.num{font-size:14px} }
 
-  /* after the measurement: the same numbers flowing through three screens */
-  .flow{display:grid;grid-template-columns:1fr 46px 1fr 46px 1fr;align-items:stretch;margin-top:44px}
-  .step-h{font:500 12px var(--mono);letter-spacing:.12em;color:var(--orange);margin:0 0 10px}
-  .step-h b{color:var(--navy);font-family:var(--sans);font-size:19px;letter-spacing:-.01em;display:block;margin-top:4px}
-  .scr{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 14px 30px -22px rgba(22,35,74,.5);overflow:hidden;font-size:14px}
-  .scr .tb{display:flex;align-items:center;gap:6px;padding:9px 12px;border-bottom:1px solid var(--line);background:#fafbfd}
-  .scr .tb i{width:8px;height:8px;border-radius:50%;background:var(--line)}
-  .scr .tb span{margin-left:6px;font:500 11.5px var(--mono);color:var(--muted)}
-  .scr .bd{padding:12px 14px 14px}
-  .ln{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);color:var(--ink)}
-  .ln:last-child{border-bottom:0}
-  .ln b{font-family:var(--mono);font-weight:500;white-space:nowrap}
-  .carry{background:#fbefe9;border-radius:3px;padding:0 4px;color:var(--orange-d);font-weight:700}
-  .sup{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-  .sup div{border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--muted)}
-  .sup div b{display:block;font:600 16px var(--mono);color:var(--ink)}
-  .sup .best{border-color:var(--valley);background:#eef6f3}
-  .sup .best::after{content:"Lowest";font:500 10.5px var(--mono);color:var(--valley);letter-spacing:.06em}
-  .tot{display:flex;justify-content:space-between;margin-top:8px;padding-top:10px;border-top:2px solid var(--navy);font-weight:800;color:var(--navy);font-size:16px}
-  .signed{display:inline-block;margin-top:12px;border:2px solid var(--valley);color:var(--valley);font:600 12px var(--mono);letter-spacing:.12em;padding:5px 10px;border-radius:4px;transform:rotate(-4deg)}
-  .wk{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;font:500 11px var(--mono);color:var(--muted);text-align:center}
-  .wk .d{padding:4px 0}
-  .lane{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:6px;align-items:stretch}
-  .lane .nm{grid-column:1/-1;font-size:12.5px;color:var(--body);margin-top:4px}
-  .job{background:var(--navy);color:#fff;border-radius:4px;padding:7px 8px;font-size:12px;line-height:1.3}
-  .job b{display:block;font-size:12.5px}
-  .rain{border:1.5px dashed #b4321d;border-radius:4px;color:#b4321d;font:500 10.5px var(--mono);display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;min-height:44px}
-  .moved{margin-top:10px;font-size:13px;color:var(--body);background:var(--paper);border-radius:6px;padding:8px 10px}
-  .moved b{color:var(--navy)}
-  .arrow{display:flex;align-items:center;justify-content:center}
-  .arrow svg{width:46px;height:20px}
-  @media (max-width:980px){ .flow{grid-template-columns:1fr;max-width:520px} .arrow{height:46px} .arrow svg{transform:rotate(90deg)} }
+  /* after the measurement: one number per step, one row */
+  .chain{display:grid;grid-template-columns:repeat(4,1fr);margin-top:48px;border-top:2px solid var(--navy)}
+  .chain > div{padding:26px 26px 6px 0;position:relative}
+  .chain > div + div{padding-left:26px;border-left:1px solid var(--line)}
+  .chain > div::before{content:"";position:absolute;top:-7px;left:0;width:12px;height:12px;background:var(--orange);transform:rotate(45deg)}
+  .chain > div + div::before{left:-6px}
+  .chain .k{font:500 12.5px var(--mono);letter-spacing:.14em;color:var(--orange)}
+  .chain .v{display:block;font-weight:800;color:var(--navy);font-size:clamp(34px,3.6vw,46px);letter-spacing:-.02em;line-height:1;margin:14px 0 4px}
+  .chain .u{display:block;font:500 13px var(--mono);color:var(--muted);letter-spacing:.06em}
+  .chain h3{font-size:19px;margin:20px 0 8px}
+  .chain p{margin:0;color:var(--body);line-height:1.6;font-size:15.5px}
+  @media (max-width:900px){ .chain{grid-template-columns:1fr 1fr} .chain > div:nth-child(3){padding-left:0;border-left:0}
+    .chain > div:nth-child(3)::before{left:0} .chain > div:nth-child(n+3){margin-top:22px;border-top:2px solid var(--navy)} }
+  @media (max-width:560px){ .chain{grid-template-columns:1fr;border-top:0} .chain > div,.chain > div + div{padding:22px 0 4px;border-left:0;border-top:2px solid var(--navy);margin-top:18px}
+    .chain > div::before,.chain > div + div::before{left:0} }
 
   /* about */
   .about{display:grid;grid-template-columns:1.25fr .75fr;gap:48px;align-items:start}
@@ -411,42 +394,19 @@
   <div class="wrap">
     <p class="ey">After the measurement</p>
     <h2>Price the job. Put a crew on it.</h2>
-    <p class="lede">The numbers from the sample report above, carried straight through. Highlighted figures are never
-      retyped.</p>
-    <div class="flow">
-      <div>
-        <p class="step-h">01 · ORDER<b>Material order</b></p>
-        <div class="scr"><div class="tb"><i></i><i></i><i></i><span>materials · sample property</span></div><div class="bd">
-          <div class="ln"><span>Shingles</span><b><span class="carry">124</span> bundles</b></div>
-          <div class="ln"><span>Hip &amp; ridge cap</span><b><span class="carry">7</span> bundles</b></div>
-          <div class="ln"><span>Underlayment</span><b><span class="carry">5</span> rolls</b></div>
-          <div class="ln"><span>Drip edge</span><b><span class="carry">32</span> pieces</b></div>
-          <div class="sup"><div class="best">Supplier A<b>$6,291</b></div><div>Supplier B<b>$6,540</b></div></div>
-        </div></div>
-      </div>
-      <div class="arrow" aria-hidden="true"><svg viewBox="0 0 46 20"><path d="M2 10 H38" stroke="#d9653b" stroke-width="2.5" stroke-dasharray="5 4"/><path d="M34 4 L42 10 L34 16" fill="none" stroke="#d9653b" stroke-width="2.5"/></svg></div>
-      <div>
-        <p class="step-h">02 · PRICE<b>Estimate for the homeowner</b></p>
-        <div class="scr"><div class="tb"><i></i><i></i><i></i><span>estimate #1042</span></div><div class="bd">
-          <div class="ln"><span>Materials (Supplier A)</span><b><span class="carry">$6,291</span></b></div>
-          <div class="ln"><span>Tear-off &amp; install, <span class="carry">37.4</span> sq</span><b>$9,724</b></div>
-          <div class="ln"><span>Permit &amp; disposal</span><b>$650</b></div>
-          <div class="tot"><span>Total</span><span>$16,665</span></div>
-          <span class="signed">SIGNED ✓</span>
-        </div></div>
-      </div>
-      <div class="arrow" aria-hidden="true"><svg viewBox="0 0 46 20"><path d="M2 10 H38" stroke="#d9653b" stroke-width="2.5" stroke-dasharray="5 4"/><path d="M34 4 L42 10 L34 16" fill="none" stroke="#d9653b" stroke-width="2.5"/></svg></div>
-      <div>
-        <p class="step-h">03 · SCHEDULE<b>Crew on the board</b></p>
-        <div class="scr"><div class="tb"><i></i><i></i><i></i><span>dispatch · week of the job</span></div><div class="bd">
-          <div class="wk"><div class="d">MON</div><div class="d">TUE</div><div class="d">WED</div><div class="d">THU</div><div class="d">FRI</div></div>
-          <div class="lane"><span class="nm">Crew A</span>
-            <div></div><div class="rain">RAIN<br>80%</div><div class="job" style="grid-column:span 2"><b>Sample property</b><span class="carry" style="background:rgba(255,255,255,.18);color:#fff">37.4</span> sq · 2 days</div><div></div></div>
-          <div class="moved">Rain flagged on Tuesday. <b>Moved to Wed–Thu</b>, the next dry days.</div>
-        </div></div>
-      </div>
+    <p class="lede">Measure once. The same numbers become the order, the estimate and the schedule, so nobody retypes a
+      square.</p>
+    <div class="chain">
+      <div><span class="k">MEASURE</span><span class="v">37.4</span><span class="u">SQUARES</span>
+        <h3>The roof</h3><p>Every plane, pitch and line from the report.</p></div>
+      <div><span class="k">ORDER</span><span class="v">124</span><span class="u">BUNDLES</span>
+        <h3>Material list</h3><p>Waste built in, with supplier prices compared before you order.</p></div>
+      <div><span class="k">PRICE</span><span class="v">$16,665</span><span class="u">ESTIMATE</span>
+        <h3>Homeowner estimate</h3><p>Materials and labor priced in one place, sent for signature.</p></div>
+      <div><span class="k">SCHEDULE</span><span class="v">2 days</span><span class="u">CREW A</span>
+        <h3>On the board</h3><p>Rain days flagged, with the next dry day proposed.</p></div>
     </div>
-    <p class="fine">Sample figures for illustration. Supplier prices and your labor rates come from your own account.</p>
+    <p class="fine">Figures from the sample report above. Your prices and labor rates come from your own account.</p>
   </div>
 </section>
 
