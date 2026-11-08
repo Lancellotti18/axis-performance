@@ -17,10 +17,11 @@
 <meta property="og:description" content="Roof measurement reports in minutes, under your logo. Built in Wilmington, NC.">
 <meta property="og:image" content="https://www.axisroofingperformance.com/v2/og-cover.jpg">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="/favicon.ico">
+<link rel="icon" href="/axis-mark.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
     --navy:#16234a; --navy-2:#24345f; --ink:#1a1f2e; --body:#4a5470; --muted:#6b7490;
@@ -50,17 +51,20 @@
   /* header */
   header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.96);border-bottom:1px solid var(--line)}
   header .wrap{display:flex;align-items:center;gap:22px;height:72px}
-  .logo{display:flex;align-items:center;gap:12px;text-decoration:none}
-  .logo b{font-weight:800;font-size:28px;letter-spacing:.02em;color:var(--navy);transform:scaleX(1.18);transform-origin:left;display:inline-block;margin-right:8px}
-  .logo span{font-size:19px;color:var(--navy-2)}
-  .logo i{width:13px;height:13px;background:var(--orange);transform:rotate(45deg);display:inline-block;margin-left:4px}
+  /* logo: crosshair mark (option 3, picked 2026-11-08) + wide wordmark */
+  .logo{display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--navy)}
+  .logo .mark{width:36px;height:36px;flex:none}
+  .logo b{font-weight:800;font-stretch:125%;font-size:29px;letter-spacing:.04em;line-height:1}
   nav.menu{display:flex;gap:22px;margin-left:auto}
   nav.menu a{text-decoration:none;font-weight:500;color:var(--body);font-size:15px}
   nav.menu a:hover{color:var(--navy)}
   .signin{text-decoration:none;font-weight:600;color:var(--navy);font-size:15px}
   header .btn{padding:13px 18px;font-size:16px}
   @media (max-width:900px){ nav.menu{display:none} .signin{margin-left:auto} }
-  @media (max-width:420px){ .logo span{display:none} }
+  header .btn,.signin{white-space:nowrap}
+  @media (max-width:480px){ header .wrap{gap:14px} .logo{gap:8px} .logo .mark{width:28px;height:28px} .logo b{font-size:21px}
+    .signin{font-size:14px} header .btn{padding:11px 13px;font-size:14px}
+    footer .flogo{flex-wrap:wrap} footer .flogo span{flex-basis:100%;margin:6px 0 0} }
 
   /* hero */
   .hero{padding:64px 0 72px}
@@ -215,6 +219,8 @@
   footer .wrap{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center;justify-content:space-between}
   footer nav{display:flex;flex-wrap:wrap;gap:18px}
   footer a{text-decoration:none;color:#c9d2ea} footer a:hover{color:#fff}
+  footer .flogo{color:#fff} footer .flogo .mark{width:30px;height:30px} footer .flogo b{font-size:22px}
+  footer .flogo span{color:#c9d2ea;font-size:14px;margin-left:6px}
   footer .legal{width:100%;font-size:13px;color:#8e9bc0}
 
   @media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} .btn{transition:none} }
@@ -224,7 +230,7 @@
 
 <header>
   <div class="wrap">
-    <a class="logo" href="/" aria-label="Axis Performance home"><b>AXIS</b><span>Performance</span><i aria-hidden="true"></i></a>
+    <a class="logo" href="/" aria-label="Axis home"><svg class="mark" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="19" fill="none" stroke="currentColor" stroke-width="3.5"/><path d="M24 1 V12 M24 36 V47 M1 24 H12 M36 24 H47" stroke="currentColor" stroke-width="3.5"/><path d="M13 31 L24 18 L35 31" fill="none" stroke="#d9653b" stroke-width="4.5"/></svg><b>AXIS</b></a>
     <nav class="menu" aria-label="Main">
       <a href="#how">How it works</a>
       <a href="#report">The report</a>
@@ -438,7 +444,7 @@
 
 <footer>
   <div class="wrap">
-    <span>Axis Roofing Performance · Wilmington, NC</span>
+    <a class="logo flogo" href="/" aria-label="Axis home"><svg class="mark" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="19" fill="none" stroke="currentColor" stroke-width="3.5"/><path d="M24 1 V12 M24 36 V47 M1 24 H12 M36 24 H47" stroke="currentColor" stroke-width="3.5"/><path d="M13 31 L24 18 L35 31" fill="none" stroke="#d9653b" stroke-width="4.5"/></svg><b>AXIS</b><span>Roofing Performance · Wilmington, NC</span></a>
     <nav aria-label="Footer">
       <a href="#how">How it works</a><a href="#report">The report</a><a href="#about">About</a>
       <a href="/login">Sign in</a><a href="/portal">Homeowner sign in</a>
