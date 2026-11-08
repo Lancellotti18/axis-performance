@@ -76,7 +76,7 @@
   @media (max-width:900px){ .hero{padding:36px 0 48px} .hero .wrap{grid-template-columns:1fr;gap:40px} }
 
   /* report card */
-  .sheet{background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 18px 40px -24px rgba(22,35,74,.35);overflow:hidden}
+  .sheet{margin:0;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 18px 40px -24px rgba(22,35,74,.35);overflow:hidden}
   .sheet .bar{background:var(--navy);color:#fff;display:flex;justify-content:space-between;gap:16px;padding:16px 22px;align-items:center}
   .sheet .bar b{font-weight:800;letter-spacing:.14em;font-size:15px;line-height:1.3}
   .sheet .bar span{font-family:var(--mono);font-size:12.5px;letter-spacing:.1em;text-align:right;opacity:.9}
@@ -89,6 +89,48 @@
   .legend i{display:inline-block;width:22px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}
   .legend .hip{border-top:3px dashed var(--navy)} .legend .rake{border-top:3px dotted var(--navy)}
   .sheet .note{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:12px}
+
+  /* sample report viewer */
+  .rp-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .rp-nav{display:flex;gap:8px}
+  .rp-nav button{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--navy);background:#fff;color:var(--navy);font-size:24px;line-height:1;cursor:pointer;transition:transform .15s}
+  .rp-nav button:hover{transform:scale(1.06)} .rp-nav button:disabled{opacity:.3;cursor:default;transform:none}
+  /* all pages share one grid cell, so the card is always as tall as the tallest page */
+  .rp-view{display:grid;margin-top:10px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+  .rp{grid-area:1/1;animation:rpIn .28s ease both}
+  .rp[hidden]{display:block;visibility:hidden;animation:none}
+  @keyframes rpIn{from{opacity:0;transform:translateX(var(--from,16px))}to{opacity:1;transform:none}}
+  .rp-fig svg{margin-top:4px;max-height:330px}
+  .rp-cap{font-size:13.5px;color:var(--muted);margin:4px 0 6px}
+  .rp-cover{display:flex;gap:14px;align-items:center;margin-bottom:8px}
+  .rp-cover b{display:block;color:var(--navy);font-size:17px} .rp-cover span{color:var(--muted);font-size:13.5px}
+  .rp-logo{flex:none;width:76px;height:44px;border:1.5px dashed var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;font:500 10px var(--mono);letter-spacing:.08em;color:var(--muted)}
+  .rp-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .rp-stats div{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+  .rp-stats b{display:block;color:var(--navy);font-size:18px} .rp-stats span{font-size:12px;color:var(--muted)}
+  .rp-two{display:grid;grid-template-columns:1fr 1.15fr;gap:14px}
+  table.rp-t{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.rp-t th{font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 6px;border-bottom:1.5px solid var(--navy)}
+  table.rp-t td{padding:5px 6px;border-bottom:1px solid var(--line);color:var(--ink)}
+  table.rp-t .r{text-align:right;font-family:var(--mono)} table.rp-t td.m{color:var(--muted);font-size:12px}
+  table.rp-t tr.tot td{font-weight:700;border-bottom:0}
+  .sw{display:inline-block;width:14px;height:0;border-top:3px solid var(--navy);vertical-align:middle;margin-right:7px}
+  .sw.ridge{border-color:var(--orange)} .sw.valley{border-color:var(--valley)} .sw.hip{border-top-style:dashed} .sw.rake{border-top-style:dotted}
+  .legend .blk{width:14px;height:14px;border:1px solid var(--navy);border-top:1px solid var(--navy)}
+  .rp-check{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:10px;font-size:14.5px;color:var(--body);line-height:1.5}
+  .rp-check li{padding-left:26px;position:relative}
+  .rp-check li::before{content:"\2713";position:absolute;left:0;top:0;color:var(--valley);font-weight:800}
+  .rp-check b{color:var(--navy)}
+  .rp-photos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+  .rp-photos div{aspect-ratio:4/3;border-radius:6px;background:linear-gradient(135deg,#dfe4ee,#c9d1e2);display:flex;align-items:flex-end;padding:8px}
+  .rp-photos span{font:500 11px var(--mono);color:var(--navy-2);background:#fff;padding:3px 7px;border-radius:4px}
+  .rp-dots{display:flex;gap:8px;justify-content:center;margin-top:12px}
+  .rp-dots button{width:10px;height:10px;border-radius:50%;border:0;background:var(--line);padding:0;cursor:pointer;transition:transform .15s}
+  .rp-dots button[aria-selected=true]{background:var(--orange);transform:scale(1.3)}
+  .rp{min-width:0}
+  @media (max-width:560px){ .rp-two{grid-template-columns:1fr} .rp-stats{grid-template-columns:1fr 1fr}
+    .rp[hidden]{display:none} .sheet .bar span{font-size:11px} .sheet .in{padding:18px 16px} }
+  @media (prefers-reduced-motion:reduce){ .rp{animation:none} }
 
   section.band{padding:84px 0;border-top:1px solid var(--line)}
   section.white{background:rgba(255,255,255,.88)}
@@ -124,9 +166,13 @@
   table.cmp td{padding:16px;border-top:1px solid var(--line);color:var(--ink)}
   table.cmp td.num{font-family:var(--mono);font-size:15.5px}
   table.cmp td.diff{font-weight:700;color:var(--valley)}
+  table.cmp th.ax{background:var(--orange)}
+  table.cmp td.ax{background:#fbefe9;font-weight:700;color:var(--navy);font-size:17px}
   table.cmp small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
   .fine{color:var(--muted);font-size:14px;line-height:1.6;margin-top:14px}
+  .acc>div{min-width:0}
   @media (max-width:900px){ .acc{grid-template-columns:1fr;gap:28px} table.cmp th,table.cmp td{padding:12px 10px} }
+  @media (max-width:480px){ table.cmp{font-size:14px} table.cmp th{font-size:10.5px;letter-spacing:.06em;padding:10px 7px} table.cmp td{padding:12px 7px} table.cmp td.ax{font-size:15px} table.cmp td.num{font-size:14px} }
 
   /* extras */
   .extras{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:40px}
@@ -210,55 +256,50 @@
       </ul>
     </div>
 
-    <figure class="sheet" style="margin:0" aria-label="Example of the roof diagram page in an Axis report">
-      <div class="bar"><b>AXIS<br>PERFORMANCE</b><span>LENGTH DIAGRAM · PAGE 2 OF 6</span></div>
+<!-- SAMPLE-REPORT:START (generated by scripts/build_sample_report.py — edit the script, not this block) -->
+    <figure class="sheet" id="sample" aria-roledescription="carousel" aria-label="Sample Axis report, 6 pages">
+      <div class="bar"><b>AXIS<br>PERFORMANCE</b><span id="rpTitle">COVER &amp; SUMMARY · PAGE 1 OF 6</span></div>
       <div class="in">
-        <h3>Sample property</h3>
-        <p class="sub">Hip roof with front gable wing · 6/12 pitch</p>
-        <span class="pill">ROOF REPORT</span>
-        <svg viewBox="0 0 520 440" role="img" aria-label="Roof plan with labelled ridge, hips, valleys, eaves and rakes">
-          <g font-family="IBM Plex Mono,monospace" font-size="13" fill="#4a5470">
-            <!-- dimension lines -->
-            <line x1="60" y1="28" x2="460" y2="28" stroke="#6b7490"/><line x1="60" y1="22" x2="60" y2="34" stroke="#6b7490"/><line x1="460" y1="22" x2="460" y2="34" stroke="#6b7490"/>
-            <rect x="238" y="18" width="44" height="18" fill="#fff"/><text x="260" y="32" text-anchor="middle">64'</text>
-            <line x1="30" y1="56" x2="30" y2="286" stroke="#6b7490"/><line x1="24" y1="56" x2="36" y2="56" stroke="#6b7490"/><line x1="24" y1="286" x2="36" y2="286" stroke="#6b7490"/>
-            <rect x="14" y="162" width="32" height="18" fill="#fff"/><text x="30" y="176" text-anchor="middle">36'</text>
-            <line x1="210" y1="410" x2="310" y2="410" stroke="#6b7490"/><line x1="210" y1="404" x2="210" y2="416" stroke="#6b7490"/><line x1="310" y1="404" x2="310" y2="416" stroke="#6b7490"/>
-            <rect x="244" y="401" width="32" height="18" fill="#fff"/><text x="260" y="415" text-anchor="middle">16'</text>
-          </g>
-          <!-- roof body -->
-          <path d="M60 56 H460 V286 H310 V390 H210 V286 H60 Z" fill="#e4e9f4" stroke="#16234a" stroke-width="3" stroke-linejoin="round"/>
-          <!-- hips -->
-          <g stroke="#16234a" stroke-width="2" stroke-dasharray="7 6">
-            <line x1="60" y1="56" x2="175" y2="171"/><line x1="460" y1="56" x2="345" y2="171"/>
-            <line x1="60" y1="286" x2="175" y2="171"/><line x1="460" y1="286" x2="345" y2="171"/>
-          </g>
-          <!-- ridges -->
-          <line x1="175" y1="171" x2="345" y2="171" stroke="#d9653b" stroke-width="4"/>
-          <line x1="260" y1="236" x2="260" y2="390" stroke="#d9653b" stroke-width="4"/>
-          <!-- valleys -->
-          <line x1="210" y1="286" x2="260" y2="236" stroke="#3e8a74" stroke-width="3"/>
-          <line x1="310" y1="286" x2="260" y2="236" stroke="#3e8a74" stroke-width="3"/>
-          <!-- rake (gable end) -->
-          <line x1="210" y1="390" x2="310" y2="390" stroke="#fff" stroke-width="4"/>
-          <line x1="210" y1="390" x2="310" y2="390" stroke="#16234a" stroke-width="3" stroke-dasharray="2 5" stroke-linecap="round"/>
-          <!-- facet letters + a few lengths -->
-          <g font-family="IBM Plex Mono,monospace" font-size="15" fill="#16234a" text-anchor="middle">
-            <text x="260" y="115">B</text><text x="115" y="176">C</text><text x="405" y="176">D</text>
-            <text x="150" y="255">A</text><text x="370" y="255">G</text><text x="236" y="330">E</text><text x="285" y="330">F</text>
-          </g>
-          <g font-family="IBM Plex Mono,monospace" font-size="12" fill="#d9653b" text-anchor="middle">
-            <text x="260" y="163">ridge 28'</text>
-          </g>
-        </svg>
-        <div class="legend">
-          <span><i style="border-color:#d9653b"></i>Ridge</span><span><i class="hip"></i>Hip</span>
-          <span><i style="border-color:#3e8a74"></i>Valley</span><span><i style="border-color:#16234a"></i>Eave</span>
-          <span><i class="rake"></i>Rake</span>
-        </div>
-        <p class="note">Illustration of a report page. Real reports label every line with its measured length.</p>
+        <div class="rp-top"><div><h3>Sample property</h3><p class="sub">Hip roof, front gable, side-gable garage · 37.4 squares</p></div>
+          <div class="rp-nav"><button type="button" id="rpPrev" aria-label="Previous page">&#8249;</button><button type="button" id="rpNext" aria-label="Next page">&#8250;</button></div></div>
+        <div class="rp-view" id="rpView"><article class="rp" data-title="Cover &amp; summary" aria-label="Page 1 of 6: Cover &amp; summary">
+  <div class="rp-cover"><div class="rp-logo">YOUR LOGO</div><div><b>Roof Measurement Report</b><span>Sample property · Wilmington, NC</span></div></div>
+  <div class="rp-fig"><svg viewBox="-7.0 -19.0 98.0 84.0" role="img" aria-label="Aerial view of the sample house" font-family="IBM Plex Mono,monospace"><rect x="-7.0" y="-19.0" width="98.0" height="84.0" fill="#7f9a62"/><rect x="-7.0" y="60.0" width="98.0" height="7" fill="#9a9a94"/><rect x="29" y="58.0" width="8" height="3" fill="#c9c6bd"/><circle cx="-3" cy="-9" r="6" fill="#55703f"/><circle cx="-4.2" cy="-10.2" r="3.5999999999999996" fill="#668452"/><circle cx="78" cy="0" r="7" fill="#55703f"/><circle cx="76.8" cy="-1.2" r="4.2" fill="#668452"/><circle cx="86" cy="46" r="5" fill="#55703f"/><circle cx="84.8" cy="44.8" r="3.0" fill="#668452"/><circle cx="6" cy="46" r="6" fill="#55703f"/><circle cx="4.8" cy="44.8" r="3.5999999999999996" fill="#668452"/><circle cx="60" cy="50" r="4.5" fill="#55703f"/><circle cx="58.8" cy="48.8" r="2.6999999999999997" fill="#668452"/><circle cx="36" cy="-16" r="5" fill="#55703f"/><circle cx="34.8" cy="-17.2" r="3.0" fill="#668452"/><polygon points="0.00,34.00 24.00,34.00 33.00,22.00 42.00,34.00 84.00,34.00 84.00,22.00 52.00,22.00 47.00,17.00 17.00,17.00" fill="rgb(85,81,75)" stroke="#4a4744" stroke-width="0.25" stroke-linejoin="round"/><polygon points="64.00,0.00 26.00,0.00 17.00,9.00 8.00,0.00 0.00,0.00 17.00,17.00 47.00,17.00" fill="rgb(150,146,140)" stroke="#4a4744" stroke-width="0.25" stroke-linejoin="round"/><polygon points="52.00,22.00 84.00,22.00 84.00,10.00 64.00,10.00" fill="rgb(150,146,140)" stroke="#4a4744" stroke-width="0.25" stroke-linejoin="round"/><polygon points="0.00,0.00 0.00,34.00 17.00,17.00" fill="rgb(150,146,140)" stroke="#4a4744" stroke-width="0.25" stroke-linejoin="round"/><polygon points="33.00,22.00 24.00,34.00 24.00,58.00 33.00,58.00" fill="rgb(150,146,140)" stroke="#4a4744" stroke-width="0.25" stroke-linejoin="round"/><polygon points="33.00,58.00 42.00,58.00 42.00,34.00 33.00,22.00" fill="rgb(85,81,75)" stroke="#4a4744" stroke-width="0.25" stroke-linejoin="round"/><polygon points="8.00,-12.00 8.00,0.00 17.00,9.00 17.00,-12.00" fill="rgb(150,146,140)" stroke="#4a4744" stroke-width="0.25" stroke-linejoin="round"/><polygon points="17.00,-12.00 17.00,9.00 26.00,-0.00 26.00,-12.00" fill="rgb(85,81,75)" stroke="#4a4744" stroke-width="0.25" stroke-linejoin="round"/><polygon points="52.00,22.00 64.00,10.00 64.00,-0.00 47.00,17.00" fill="rgb(85,81,75)" stroke="#4a4744" stroke-width="0.25" stroke-linejoin="round"/><line x1="52.0" y1="22.0" x2="84.0" y2="22.0" stroke="#d8d4cc" stroke-width="0.5"/><line x1="47.0" y1="17.0" x2="52.0" y2="22.0" stroke="#d8d4cc" stroke-width="0.5"/><line x1="17.0" y1="17.0" x2="47.0" y2="17.0" stroke="#d8d4cc" stroke-width="0.5"/><line x1="0.0" y1="34.0" x2="17.0" y2="17.0" stroke="#d8d4cc" stroke-width="0.5"/><line x1="0.0" y1="0.0" x2="17.0" y2="17.0" stroke="#d8d4cc" stroke-width="0.5"/><line x1="47.0" y1="17.0" x2="64.0" y2="0.0" stroke="#d8d4cc" stroke-width="0.5"/><line x1="33.0" y1="22.0" x2="33.0" y2="58.0" stroke="#d8d4cc" stroke-width="0.5"/><line x1="17.0" y1="-12.0" x2="17.0" y2="9.0" stroke="#d8d4cc" stroke-width="0.5"/></svg></div>
+  <div class="rp-stats">
+    <div><b>37.4</b><span>squares (3,739 sq ft)</span></div>
+    <div><b>6/12</b><span>main pitch</span></div>
+    <div><b>9</b><span>roof planes</span></div>
+    <div><b>203 ft</b><span>ridges + hips</span></div>
+    <div><b>77 ft</b><span>valleys</span></div>
+    <div><b>317 ft</b><span>eaves + rakes</span></div>
+  </div></article><article class="rp" data-title="Length diagram" aria-label="Page 2 of 6: Length diagram" hidden><p class="rp-cap">Every roof line, labelled with its measured length.</p>
+  <div class="rp-fig"><svg viewBox="-7.0 -19.0 98.0 84.0" role="img" aria-label="Length diagram: every roof line labelled with its length" font-family="IBM Plex Mono,monospace"><polygon points="0.00,34.00 24.00,34.00 33.00,22.00 42.00,34.00 84.00,34.00 84.00,22.00 52.00,22.00 47.00,17.00 17.00,17.00" fill="#e4e9f4" stroke="#fff" stroke-width="0.35" stroke-linejoin="round"/><polygon points="64.00,0.00 26.00,0.00 17.00,9.00 8.00,0.00 0.00,0.00 17.00,17.00 47.00,17.00" fill="#e4e9f4" stroke="#fff" stroke-width="0.35" stroke-linejoin="round"/><polygon points="52.00,22.00 84.00,22.00 84.00,10.00 64.00,10.00" fill="#e4e9f4" stroke="#fff" stroke-width="0.35" stroke-linejoin="round"/><polygon points="0.00,0.00 0.00,34.00 17.00,17.00" fill="#e4e9f4" stroke="#fff" stroke-width="0.35" stroke-linejoin="round"/><polygon points="33.00,22.00 24.00,34.00 24.00,58.00 33.00,58.00" fill="#e4e9f4" stroke="#fff" stroke-width="0.35" stroke-linejoin="round"/><polygon points="33.00,58.00 42.00,58.00 42.00,34.00 33.00,22.00" fill="#e4e9f4" stroke="#fff" stroke-width="0.35" stroke-linejoin="round"/><polygon points="8.00,-12.00 8.00,0.00 17.00,9.00 17.00,-12.00" fill="#e4e9f4" stroke="#fff" stroke-width="0.35" stroke-linejoin="round"/><polygon points="17.00,-12.00 17.00,9.00 26.00,-0.00 26.00,-12.00" fill="#e4e9f4" stroke="#fff" stroke-width="0.35" stroke-linejoin="round"/><polygon points="52.00,22.00 64.00,10.00 64.00,-0.00 47.00,17.00" fill="#e4e9f4" stroke="#fff" stroke-width="0.35" stroke-linejoin="round"/><line x1="0.00" y1="34.00" x2="24.00" y2="34.00" stroke="#16234a" stroke-width="0.9"/><line x1="24.00" y1="34.00" x2="33.00" y2="22.00" stroke="#3e8a74" stroke-width="0.9"/><line x1="33.00" y1="22.00" x2="42.00" y2="34.00" stroke="#3e8a74" stroke-width="0.9"/><line x1="42.00" y1="34.00" x2="84.00" y2="34.00" stroke="#16234a" stroke-width="0.9"/><line x1="84.00" y1="22.00" x2="84.00" y2="34.00" stroke="#16234a" stroke-width="0.9" stroke-dasharray="0.6 1.6" stroke-linecap="round"/><line x1="52.00" y1="22.00" x2="84.00" y2="22.00" stroke="#d9653b" stroke-width="0.9"/><line x1="47.00" y1="17.00" x2="52.00" y2="22.00" stroke="#16234a" stroke-width="0.9" stroke-dasharray="2.2 1.8"/><line x1="17.00" y1="17.00" x2="47.00" y2="17.00" stroke="#d9653b" stroke-width="0.9"/><line x1="0.00" y1="34.00" x2="17.00" y2="17.00" stroke="#16234a" stroke-width="0.9" stroke-dasharray="2.2 1.8"/><line x1="26.00" y1="0.00" x2="64.00" y2="0.00" stroke="#16234a" stroke-width="0.9"/><line x1="17.00" y1="9.00" x2="26.00" y2="0.00" stroke="#3e8a74" stroke-width="0.9"/><line x1="8.00" y1="0.00" x2="17.00" y2="9.00" stroke="#3e8a74" stroke-width="0.9"/><line x1="0.00" y1="0.00" x2="8.00" y2="0.00" stroke="#16234a" stroke-width="0.9"/><line x1="0.00" y1="0.00" x2="17.00" y2="17.00" stroke="#16234a" stroke-width="0.9" stroke-dasharray="2.2 1.8"/><line x1="47.00" y1="17.00" x2="64.00" y2="0.00" stroke="#16234a" stroke-width="0.9" stroke-dasharray="2.2 1.8"/><line x1="84.00" y1="10.00" x2="84.00" y2="22.00" stroke="#16234a" stroke-width="0.9" stroke-dasharray="0.6 1.6" stroke-linecap="round"/><line x1="64.00" y1="10.00" x2="84.00" y2="10.00" stroke="#16234a" stroke-width="0.9"/><line x1="52.00" y1="22.00" x2="64.00" y2="10.00" stroke="#3e8a74" stroke-width="0.9"/><line x1="0.00" y1="0.00" x2="0.00" y2="34.00" stroke="#16234a" stroke-width="0.9"/><line x1="24.00" y1="34.00" x2="24.00" y2="58.00" stroke="#16234a" stroke-width="0.9"/><line x1="24.00" y1="58.00" x2="33.00" y2="58.00" stroke="#16234a" stroke-width="0.9" stroke-dasharray="0.6 1.6" stroke-linecap="round"/><line x1="33.00" y1="22.00" x2="33.00" y2="58.00" stroke="#d9653b" stroke-width="0.9"/><line x1="33.00" y1="58.00" x2="42.00" y2="58.00" stroke="#16234a" stroke-width="0.9" stroke-dasharray="0.6 1.6" stroke-linecap="round"/><line x1="42.00" y1="34.00" x2="42.00" y2="58.00" stroke="#16234a" stroke-width="0.9"/><line x1="8.00" y1="-12.00" x2="8.00" y2="0.00" stroke="#16234a" stroke-width="0.9"/><line x1="17.00" y1="-12.00" x2="17.00" y2="9.00" stroke="#d9653b" stroke-width="0.9"/><line x1="8.00" y1="-12.00" x2="17.00" y2="-12.00" stroke="#16234a" stroke-width="0.9" stroke-dasharray="0.6 1.6" stroke-linecap="round"/><line x1="26.00" y1="-12.00" x2="26.00" y2="-0.00" stroke="#16234a" stroke-width="0.9"/><line x1="17.00" y1="-12.00" x2="26.00" y2="-12.00" stroke="#16234a" stroke-width="0.9" stroke-dasharray="0.6 1.6" stroke-linecap="round"/><line x1="64.00" y1="-0.00" x2="64.00" y2="10.00" stroke="#16234a" stroke-width="0.9"/><text x="12.00" y="36.30" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(0.0 12.00 36.30)" paint-order="stroke" stroke="#fff" stroke-width="0.7">24'</text><text x="29.78" y="29.66" font-size="2.3" fill="#3e8a74" text-anchor="middle" transform="rotate(-53.1 29.78 29.66)" paint-order="stroke" stroke="#fff" stroke-width="0.7">16'</text><text x="36.22" y="29.66" font-size="2.3" fill="#3e8a74" text-anchor="middle" transform="rotate(53.1 36.22 29.66)" paint-order="stroke" stroke="#fff" stroke-width="0.7">16'</text><text x="63.00" y="36.30" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(0.0 63.00 36.30)" paint-order="stroke" stroke="#fff" stroke-width="0.7">42'</text><text x="82.40" y="28.70" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(90.0 82.40 28.70)" paint-order="stroke" stroke="#fff" stroke-width="0.7">13'</text><text x="68.00" y="24.30" font-size="2.3" fill="#d9653b" text-anchor="middle" transform="rotate(0.0 68.00 24.30)" paint-order="stroke" stroke="#fff" stroke-width="0.7">32'</text><text x="32.00" y="19.30" font-size="2.3" fill="#d9653b" text-anchor="middle" transform="rotate(0.0 32.00 19.30)" paint-order="stroke" stroke="#fff" stroke-width="0.7">30'</text><text x="9.63" y="27.33" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(-45.0 9.63 27.33)" paint-order="stroke" stroke="#fff" stroke-width="0.7">26'</text><text x="45.00" y="2.30" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(0.0 45.00 2.30)" paint-order="stroke" stroke="#fff" stroke-width="0.7">38'</text><text x="22.63" y="6.33" font-size="2.3" fill="#3e8a74" text-anchor="middle" transform="rotate(-45.0 22.63 6.33)" paint-order="stroke" stroke="#fff" stroke-width="0.7">14'</text><text x="11.37" y="6.33" font-size="2.3" fill="#3e8a74" text-anchor="middle" transform="rotate(45.0 11.37 6.33)" paint-order="stroke" stroke="#fff" stroke-width="0.7">14'</text><text x="7.37" y="10.33" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(45.0 7.37 10.33)" paint-order="stroke" stroke="#fff" stroke-width="0.7">26'</text><text x="56.63" y="10.33" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(-45.0 56.63 10.33)" paint-order="stroke" stroke="#fff" stroke-width="0.7">26'</text><text x="82.40" y="16.70" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(90.0 82.40 16.70)" paint-order="stroke" stroke="#fff" stroke-width="0.7">13'</text><text x="74.00" y="12.30" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(0.0 74.00 12.30)" paint-order="stroke" stroke="#fff" stroke-width="0.7">20'</text><text x="59.13" y="17.83" font-size="2.3" fill="#3e8a74" text-anchor="middle" transform="rotate(-45.0 59.13 17.83)" paint-order="stroke" stroke="#fff" stroke-width="0.7">18'</text><text x="-1.60" y="17.70" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(90.0 -1.60 17.70)" paint-order="stroke" stroke="#fff" stroke-width="0.7">34'</text><text x="22.40" y="46.70" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(90.0 22.40 46.70)" paint-order="stroke" stroke="#fff" stroke-width="0.7">24'</text><text x="31.40" y="40.70" font-size="2.3" fill="#d9653b" text-anchor="middle" transform="rotate(90.0 31.40 40.70)" paint-order="stroke" stroke="#fff" stroke-width="0.7">36'</text><text x="40.40" y="46.70" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(90.0 40.40 46.70)" paint-order="stroke" stroke="#fff" stroke-width="0.7">24'</text><text x="6.40" y="-5.30" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(90.0 6.40 -5.30)" paint-order="stroke" stroke="#fff" stroke-width="0.7">12'</text><text x="15.40" y="-0.80" font-size="2.3" fill="#d9653b" text-anchor="middle" transform="rotate(90.0 15.40 -0.80)" paint-order="stroke" stroke="#fff" stroke-width="0.7">21'</text><text x="24.40" y="-5.30" font-size="2.3" fill="#16234a" text-anchor="middle" transform="rotate(90.0 24.40 -5.30)" paint-order="stroke" stroke="#fff" stroke-width="0.7">12'</text></svg></div>
+  <div class="legend"><span><i style="border-color:#d9653b"></i>Ridge</span><span><i class="hip"></i>Hip</span>
+  <span><i style="border-color:#3e8a74"></i>Valley</span><span><i style="border-color:#16234a"></i>Eave</span><span><i class="rake"></i>Rake</span></div></article><article class="rp" data-title="Pitch diagram" aria-label="Page 3 of 6: Pitch diagram" hidden><p class="rp-cap">Each roof plane, shaded by steepness and labelled with its pitch.</p>
+  <div class="rp-fig"><svg viewBox="-7.0 -19.0 98.0 84.0" role="img" aria-label="Pitch diagram: each plane shaded by steepness" font-family="IBM Plex Mono,monospace"><polygon points="0.00,34.00 24.00,34.00 33.00,22.00 42.00,34.00 84.00,34.00 84.00,22.00 52.00,22.00 47.00,17.00 17.00,17.00" fill="#cbd5ea" stroke="#16234a" stroke-width="0.45" stroke-linejoin="round"/><polygon points="64.00,0.00 26.00,0.00 17.00,9.00 8.00,0.00 0.00,0.00 17.00,17.00 47.00,17.00" fill="#cbd5ea" stroke="#16234a" stroke-width="0.45" stroke-linejoin="round"/><polygon points="52.00,22.00 84.00,22.00 84.00,10.00 64.00,10.00" fill="#cbd5ea" stroke="#16234a" stroke-width="0.45" stroke-linejoin="round"/><polygon points="0.00,0.00 0.00,34.00 17.00,17.00" fill="#cbd5ea" stroke="#16234a" stroke-width="0.45" stroke-linejoin="round"/><polygon points="33.00,22.00 24.00,34.00 24.00,58.00 33.00,58.00" fill="#7f93c4" stroke="#16234a" stroke-width="0.45" stroke-linejoin="round"/><polygon points="33.00,58.00 42.00,58.00 42.00,34.00 33.00,22.00" fill="#7f93c4" stroke="#16234a" stroke-width="0.45" stroke-linejoin="round"/><polygon points="8.00,-12.00 8.00,0.00 17.00,9.00 17.00,-12.00" fill="#cbd5ea" stroke="#16234a" stroke-width="0.45" stroke-linejoin="round"/><polygon points="17.00,-12.00 17.00,9.00 26.00,-0.00 26.00,-12.00" fill="#cbd5ea" stroke="#16234a" stroke-width="0.45" stroke-linejoin="round"/><polygon points="52.00,22.00 64.00,10.00 64.00,-0.00 47.00,17.00" fill="#cbd5ea" stroke="#16234a" stroke-width="0.45" stroke-linejoin="round"/><text x="60.75" y="27.4" font-size="3" text-anchor="middle" fill="#16234a" font-weight="600">A</text><text x="60.75" y="30.6" font-size="2.3" text-anchor="middle" fill="#16234a">6/12</text><text x="40.5" y="3.9" font-size="3" text-anchor="middle" fill="#16234a" font-weight="600">B</text><text x="40.5" y="7.1" font-size="2.3" text-anchor="middle" fill="#16234a">6/12</text><text x="71.0" y="15.4" font-size="3" text-anchor="middle" fill="#16234a" font-weight="600">C</text><text x="71.0" y="18.6" font-size="2.3" text-anchor="middle" fill="#16234a">6/12</text><text x="4.25" y="24.9" font-size="3" text-anchor="middle" fill="#16234a" font-weight="600">D</text><text x="4.25" y="28.1" font-size="2.3" text-anchor="middle" fill="#16234a">6/12</text><text x="28.5" y="45.4" font-size="3" text-anchor="middle" fill="#16234a" font-weight="600">E</text><text x="28.5" y="48.6" font-size="2.3" text-anchor="middle" fill="#16234a">8/12</text><text x="37.5" y="45.4" font-size="3" text-anchor="middle" fill="#16234a" font-weight="600">F</text><text x="37.5" y="48.6" font-size="2.3" text-anchor="middle" fill="#16234a">8/12</text><text x="12.5" y="-6.6" font-size="3" text-anchor="middle" fill="#16234a" font-weight="600">G</text><text x="12.5" y="-3.4" font-size="2.3" text-anchor="middle" fill="#16234a">6/12</text><text x="21.5" y="-6.6" font-size="3" text-anchor="middle" fill="#16234a" font-weight="600">H</text><text x="21.5" y="-3.4" font-size="2.3" text-anchor="middle" fill="#16234a">6/12</text><text x="55.5" y="12.9" font-size="3" text-anchor="middle" fill="#16234a" font-weight="600">I</text><text x="55.5" y="16.1" font-size="2.3" text-anchor="middle" fill="#16234a">6/12</text></svg></div>
+  <div class="legend"><span><i class="blk" style="background:#cbd5ea"></i>6/12</span><span><i class="blk" style="background:#7f93c4"></i>8/12</span></div></article><article class="rp" data-title="Roof summary &amp; lines" aria-label="Page 4 of 6: Roof summary &amp; lines" hidden>
+  <div class="rp-two"><table class="rp-t"><thead><tr><th>Plane</th><th>Pitch</th><th class=r>Sq ft</th></tr></thead>
+  <tbody><tr><td>A</td><td>6/12</td><td class=r>1,121</td></tr><tr><td>B</td><td>6/12</td><td class=r>803</td></tr><tr><td>C</td><td>6/12</td><td class=r>349</td></tr><tr><td>D</td><td>6/12</td><td class=r>323</td></tr><tr><td>E</td><td>8/12</td><td class=r>324</td></tr><tr><td>F</td><td>8/12</td><td class=r>324</td></tr><tr><td>G</td><td>6/12</td><td class=r>166</td></tr><tr><td>H</td><td>6/12</td><td class=r>166</td></tr><tr><td>I</td><td>6/12</td><td class=r>162</td></tr><tr class="tot"><td>Total</td><td></td><td class=r>3,739</td></tr></tbody></table>
+  <div><table class="rp-t"><thead><tr><th>Line</th><th class=r>Count</th><th class=r>Length</th></tr></thead><tbody><tr><td><i class='sw ridge'></i>Ridges</td><td class=r>4</td><td class=r>119 ft</td></tr><tr><td><i class='sw hip'></i>Hips</td><td class=r>4</td><td class=r>84 ft</td></tr><tr><td><i class='sw valley'></i>Valleys</td><td class=r>5</td><td class=r>77 ft</td></tr><tr><td><i class='sw eave'></i>Eaves</td><td class=r>11</td><td class=r>248 ft</td></tr><tr><td><i class='sw rake'></i>Rakes</td><td class=r>6</td><td class=r>69 ft</td></tr></tbody></table>
+  <table class="rp-t" style="margin-top:12px"><thead><tr><th>Flashing</th><th class=r>Length</th></tr></thead><tbody>
+  <tr><td>Drip edge</td><td class=r>317 ft</td></tr><tr><td>Valley flashing</td><td class=r>77 ft</td></tr>
+  <tr><td>Ridge vent / cap</td><td class=r>203 ft</td></tr></tbody></table></div></div></article><article class="rp" data-title="Penetrations &amp; materials" aria-label="Page 5 of 6: Penetrations &amp; materials" hidden>
+  <table class="rp-t"><thead><tr><th>Penetrations</th><th class=r>Count</th></tr></thead><tbody>
+  <tr><td>Plumbing pipes</td><td class=r>3</td></tr><tr><td>Box vents</td><td class=r>4</td></tr></tbody></table>
+  <table class="rp-t" style="margin-top:12px"><thead><tr><th>Material order</th><th class=r>Qty</th><th>Based on</th></tr></thead><tbody><tr><td>Shingles</td><td class=r><b>124 bundles</b></td><td class=m>41.1 sq incl. 10% waste</td></tr><tr><td>Starter strip</td><td class=r><b>4 bundles</b></td><td class=m>317 ft of eaves + rakes</td></tr><tr><td>Hip &amp; ridge cap</td><td class=r><b>7 bundles</b></td><td class=m>203 ft of ridges + hips</td></tr><tr><td>Synthetic underlayment</td><td class=r><b>5 rolls</b></td><td class=m>10 sq per roll</td></tr><tr><td>Ice &amp; water shield</td><td class=r><b>2 rolls</b></td><td class=m>77 ft of valleys</td></tr><tr><td>Drip edge</td><td class=r><b>32 pieces</b></td><td class=m>10 ft lengths</td></tr><tr><td>Pipe boots</td><td class=r><b>3</b></td><td class=m>from penetrations</td></tr><tr><td>Roof vents</td><td class=r><b>4</b></td><td class=m>from penetrations</td></tr></tbody></table>
+  <p class="rp-cap">Quantities use your waste factor and product choices.</p></article><article class="rp" data-title="Method &amp; photos" aria-label="Page 6 of 6: Method &amp; photos" hidden>
+  <ul class="rp-check">
+   <li><b>Measured from 3D aerial data.</b> Each plane is fitted to Google's 3D surface model; pitch is read from the plane.</li>
+   <li><b>Checked by the contractor.</b> Every line was reviewed before this report was made.</li>
+   <li><b>Measurement completeness: 100%.</b> The whole roof outline is measured; nothing estimated.</li>
+   <li><b>Imagery date</b> is printed on every real report, so you know how recent it is.</li>
+  </ul>
+  <div class="rp-photos"><div><span>Street view</span></div><div><span>Aerial photo</span></div></div></article></div>
+        <div class="rp-dots" role="tablist" aria-label="Report pages"><button type="button" role="tab" aria-label="Page 1" data-i="0" aria-selected=true></button><button type="button" role="tab" aria-label="Page 2" data-i="1"></button><button type="button" role="tab" aria-label="Page 3" data-i="2"></button><button type="button" role="tab" aria-label="Page 4" data-i="3"></button><button type="button" role="tab" aria-label="Page 5" data-i="4"></button><button type="button" role="tab" aria-label="Page 6" data-i="5"></button></div>
+        <p class="note">Sample report for a made-up house. Tap the arrows or swipe to see all 6 pages.</p>
       </div>
     </figure>
+<!-- SAMPLE-REPORT:END -->
   </div>
 </section>
 
@@ -316,10 +357,10 @@
     </div>
     <div>
       <table class="cmp">
-        <thead><tr><th>Roof</th><th>Axis</th><th>Paid report</th><th>Difference</th></tr></thead>
+        <thead><tr><th>Roof</th><th class="ax">Axis measured</th><th>Paid report</th><th>Difference</th></tr></thead>
         <tbody>
-          <tr><td>Roof 1<small>Wilmington area</small></td><td class="num">25.37 sq</td><td class="num">25.37 sq<small>Aspen</small></td><td class="diff">0.0%</td></tr>
-          <tr><td>Roof 2<small>Wilmington area</small></td><td class="num">28.26 sq</td><td class="num">28.08 sq<small>EagleView</small></td><td class="diff">+0.6%</td></tr>
+          <tr><td>Roof 1<small>Wilmington area</small></td><td class="num ax">25.37 sq</td><td class="num">25.37 sq<small>Aspen</small></td><td class="diff">0.0%</td></tr>
+          <tr><td>Roof 2<small>Wilmington area</small></td><td class="num ax">28.26 sq</td><td class="num">28.08 sq<small>EagleView</small></td><td class="diff">+0.6%</td></tr>
         </tbody>
       </table>
       <p class="fine">Total roof area in squares (100 sq ft). Addresses withheld for the homeowners' privacy. Every line
@@ -434,6 +475,33 @@
       say('Couldn’t reach Axis just now. Please try again in a minute.','err');
     }finally{ clearTimeout(t); btn.disabled=false; }
   });
+})();
+// Sample report: arrows, dots, keyboard and swipe. Only transform/opacity animate.
+(() => {
+  const view=document.getElementById('rpView'); if(!view) return;
+  const pages=[...view.querySelectorAll('.rp')], dots=[...document.querySelectorAll('.rp-dots button')];
+  const prev=document.getElementById('rpPrev'), next=document.getElementById('rpNext'), title=document.getElementById('rpTitle');
+  let i=0;
+  const show=(n,dir)=>{
+    if(n<0||n>=pages.length||n===i) return;
+    pages[i].hidden=true; i=n; const p=pages[i];
+    p.style.setProperty('--from',(dir<0?-16:16)+'px'); p.hidden=false;
+    p.style.animation='none'; void p.offsetWidth; p.style.animation='';
+    title.innerHTML=p.dataset.title.toUpperCase()+' \u00b7 PAGE '+(i+1)+' OF '+pages.length;
+    dots.forEach((d,k)=>d.setAttribute('aria-selected',String(k===i)));
+    prev.disabled=i===0; next.disabled=i===pages.length-1;
+  };
+  prev.disabled=true;
+  prev.addEventListener('click',()=>show(i-1,-1)); next.addEventListener('click',()=>show(i+1,1));
+  dots.forEach((d,k)=>d.addEventListener('click',()=>show(k,k<i?-1:1)));
+  document.getElementById('sample').addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight') show(i+1,1); if(e.key==='ArrowLeft') show(i-1,-1); });
+  let x0=null;
+  view.addEventListener('pointerdown',e=>{ x0=e.clientX; try{ view.setPointerCapture(e.pointerId); }catch(_){} });
+  view.addEventListener('pointercancel',()=>{ x0=null; });
+  view.addEventListener('pointerup',e=>{ if(x0===null) return; const dx=e.clientX-x0; x0=null;
+    if(Math.abs(dx)>40) dx<0?show(i+1,1):show(i-1,-1); });
+  view.addEventListener('dragstart',e=>e.preventDefault());
 })();
 // YouTube loads only when the visitor presses play.
 (() => {
