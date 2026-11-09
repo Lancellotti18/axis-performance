@@ -530,17 +530,17 @@
         <p class="ey">Book a demo</p>
         <h2>Let's measure one of your roofs.</h2>
         <p>No sales team, no slideshow. Pick a house you're bidding and I'll make the report with you, start to
-          finish, on a short call.</p>
+          finish, in a short session.</p>
         <ol class="next">
           <li><b>You leave your details</b><span>Takes 20 seconds.</span></li>
-          <li><b>I call you</b><span>We pick a time that suits you.</span></li>
+          <li><b>I'll be in touch</b><span>We set a time that suits you.</span></li>
           <li><b>We measure a real roof</b><span>Yours, live, about 15 minutes.</span></li>
         </ol>
         <div class="who"><span class="mono" aria-hidden="true">RL</span>
           <span><b>You'll talk to Ryan</b>Founder. I built Axis, so I can answer anything.</span></div>
       </div>
       <form id="demoForm" novalidate>
-        <div class="fh"><b>Where should I call you?</b><span>Five boxes. That's it.</span></div>
+        <div class="fh"><b>Request your demo</b><span>Five boxes. That's it.</span></div>
         <label>Name<input name="name" autocomplete="name" required maxlength="80"></label>
         <label>Company<input name="company" autocomplete="organization" required maxlength="120"></label>
         <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>
@@ -548,7 +548,7 @@
         <label class="full">Address of a roof you're bidding<input name="address" autocomplete="street-address" required
           maxlength="200" placeholder="123 Main St, Wilmington, NC"></label>
         <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
-        <button type="submit" class="btn primary">Call me about a demo <span aria-hidden="true">→</span></button>
+        <button type="submit" class="btn primary">Request a demo <span aria-hidden="true">→</span></button>
         <p class="msg" id="demoMsg" role="status" aria-live="polite"></p>
         <p class="priv">I'll only use this to set up your demo.</p>
       </form>
@@ -589,7 +589,7 @@
       const r=await fetch('https://build-backend-jcp9.onrender.com/api/v1/inquiries/trial',{
         method:'POST',headers:{'Content-Type':'application/json'},credentials:'omit',
         body:JSON.stringify(f),signal:ctl&&ctl.signal});
-      if(r.ok){ form.reset(); say('Thank you! I’ll call you soon to set up your demo.','ok'); return; }
+      if(r.ok){ form.reset(); say('Thank you. I’ll be in touch shortly to schedule your demo.','ok'); return; }
       let d=''; try{ const j=await r.json(); d=typeof j.detail==='string'?j.detail:''; }catch(_){}
       say(d||(r.status===422?'Please check your details and try again.':'Something went wrong. Please try again.'),'err');
     }catch(_){

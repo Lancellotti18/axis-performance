@@ -123,7 +123,8 @@ def trial_request_thanks(name: str) -> tuple[str, str]:
     text = (f"Hi {first},\n\n"
             "Thank you for reaching out. We're excited you want to find the axis your "
             "business turns on.\n\n"
-            "Someone will be in touch soon with your free trial code.\n\n"
+            "We've received your request and will be in touch shortly to schedule your "
+            "demo and set up your free tester access.\n\n"
             "Axis Roofing Performance\n"
             f"{_site()}")
     return subject, text
