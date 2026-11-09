@@ -72,14 +72,12 @@
   @media (min-width:901px){ .hero .wrap > div:first-child{padding-top:34px} }
   .hero h1{font-size:clamp(38px,4.5vw,64px);font-weight:800;line-height:1.02}
   @media (min-width:901px){ .hero h1 span,.hero h1 em{white-space:nowrap} }
-  .live{display:inline-flex;align-items:center;gap:10px;margin-bottom:26px;padding:7px 14px 7px 12px;border:1px solid var(--line);border-radius:999px;
-    background:#fff;color:var(--navy);font-size:14px;font-weight:600;text-decoration:none;box-shadow:0 6px 16px -12px rgba(22,35,74,.4)}
-  .live:hover{border-color:var(--orange)}
-  .live i{position:relative;width:8px;height:8px;border-radius:50%;background:var(--valley)}
-  .live i::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--valley);animation:ping 2.4s ease-out infinite}
-  @keyframes ping{from{transform:scale(1);opacity:.6}to{transform:scale(2.8);opacity:0}}
-  @media (prefers-reduced-motion:reduce){ .live i::after{animation:none} }
-  .live b{color:var(--orange);font-weight:700}
+  /* where it is made + the line Axis has used since launch */
+  .made{display:flex;align-items:center;gap:12px;margin:0 0 30px;color:var(--navy)}
+  .made svg{flex:none;width:34px;height:34px}
+  .made span{padding-left:13px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:3px}
+  .made b{font:600 12.5px var(--mono);letter-spacing:.16em;text-transform:uppercase}
+  .made i{font-style:italic;font-size:15.5px;color:var(--body)}
   .hero h1 em{font-style:normal;color:var(--orange);display:block}
   .hero h1 span{display:block}
   .cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:30px}
@@ -334,7 +332,7 @@
 <section class="hero">
   <div class="wrap">
     <div>
-      <a class="live" href="#demo"><i aria-hidden="true"></i>Now taking a small group of winter testers<b aria-hidden="true">→</b></a>
+      <p class="made"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="19" fill="none" stroke="currentColor" stroke-width="3.5"/><path d="M24 1 V12 M24 36 V47 M1 24 H12 M36 24 H47" stroke="currentColor" stroke-width="3.5"/><path d="M13 31 L24 18 L35 31" fill="none" stroke="#d9653b" stroke-width="4.5"/></svg><span><b>Built in Wilmington, NC</b><i>The axis your business turns on.</i></span></p>
       <p class="ey">For roofing contractors</p>
       <h1><span>Measure the roof.</span><span>Price the job.</span><em>Put a crew on it.</em></h1>
       <p class="lede">Make your own roof measurement report in a few simple steps. Type the address, confirm the house,
