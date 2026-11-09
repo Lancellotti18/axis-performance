@@ -252,11 +252,37 @@
   @media (max-width:900px){ .about{grid-template-columns:1fr;gap:28px} }
 
   /* demo form */
-  .demo{max-width:780px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 18px 40px -26px rgba(22,35,74,.35)}
-  .demo .bar{background:var(--navy);color:#fff;padding:26px 28px}
-  .demo .bar h2{color:#fff;font-size:clamp(26px,3.4vw,36px)}
-  .demo .bar p{margin:10px 0 0;color:#c9d2ea;line-height:1.6}
-  form{padding:26px 28px 28px;display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}
+  .demo{max-width:1060px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);background:#fff;
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 26px 60px -30px rgba(22,35,74,.5)}
+  /* navy blueprint panel */
+  .demo .bar{position:relative;background:var(--navy);color:#fff;padding:40px 38px;overflow:hidden;
+    background-image:linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px);
+    background-size:28px 28px}
+  .demo .bar::after{content:"";position:absolute;right:-70px;bottom:-70px;width:240px;height:240px;border:2px solid rgba(255,255,255,.07);border-radius:50%;
+    box-shadow:0 0 0 34px rgba(255,255,255,.025)}
+  .demo .bar .ey{color:#f08a5d}
+  .demo .bar h2{color:#fff;font-size:clamp(28px,3.4vw,40px);max-width:12ch;margin-top:6px}
+  .demo .bar > p:not(.ey){margin:14px 0 0;color:#c9d2ea;line-height:1.65;max-width:40ch}
+  .stamp{position:absolute;top:26px;right:24px;transform:rotate(9deg);border:2.5px solid #f08a5d;color:#f08a5d;border-radius:6px;
+    padding:6px 12px 5px;text-align:center;font:800 26px/1 var(--sans);font-stretch:125%;letter-spacing:.08em;opacity:.92;z-index:1}
+  .stamp small{display:block;font:600 9px/1.4 var(--mono);letter-spacing:.14em;margin-top:3px}
+  .next{list-style:none;margin:28px 0 0;padding:0;counter-reset:n;position:relative;z-index:1}
+  .next li{counter-increment:n;position:relative;padding:0 0 18px 46px}
+  .next li::before{content:counter(n);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;background:var(--orange);color:#fff;
+    font:600 13px/30px var(--mono);text-align:center}
+  .next li:not(:last-child)::after{content:"";position:absolute;left:14px;top:34px;bottom:4px;border-left:2px dotted rgba(255,255,255,.25)}
+  .next b{display:block;font-size:16.5px} .next span{color:#aab4d4;font-size:14.5px}
+  .who{display:flex;gap:14px;align-items:center;margin-top:12px;padding-top:20px;border-top:1px solid rgba(255,255,255,.14);position:relative;z-index:1}
+  .who .mono{flex:none;width:46px;height:46px;border-radius:50%;background:#fff;color:var(--navy);display:flex;align-items:center;justify-content:center;
+    font:700 15px var(--mono)}
+  .who b{display:block;font-size:15.5px} .who span span,.who > span:last-child{color:#aab4d4;font-size:14px;line-height:1.45}
+  .who > span:last-child b{color:#fff}
+  .demo form{align-content:center}
+  .fh{grid-column:1/-1;margin-bottom:6px;padding-bottom:16px;border-bottom:1px dashed var(--line)}
+  .fh b{display:block;font-size:22px;color:var(--navy)} .fh span{color:var(--muted);font:500 13px var(--mono);letter-spacing:.04em}
+  .priv{grid-column:1/-1;margin:-6px 0 0;color:var(--muted);font-size:13.5px}
+  @media (max-width:860px){ .demo{grid-template-columns:1fr} .demo .bar{padding:34px 24px} .stamp{position:static;display:inline-block;transform:rotate(-4deg);margin-bottom:18px;font-size:20px} }
+  form{padding:40px 38px;display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}
   label{display:flex;flex-direction:column;gap:6px;font-weight:600;color:var(--navy);font-size:14.5px}
   input{font:16px var(--sans);padding:13px 14px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink)}
   input:focus{outline:2px solid var(--orange);outline-offset:1px;background:#fff}
@@ -299,15 +325,15 @@
     <div>
       <p class="ey">For roofing contractors</p>
       <h1><span>Measure the roof.</span><span>Price the job.</span><em>Put a crew on it.</em></h1>
-      <p class="lede">Type an address and Axis measures the roof from 3D aerial data. You check every line, then send a
-        branded 6-page report. The same numbers flow into your material list, estimate and crew schedule, so nobody
-        retypes a square.</p>
+      <p class="lede">Make your own roof measurement report in a few simple steps. Type the address, confirm the house,
+        check the lines, and Axis builds a 6-page report under your logo. The same numbers then flow into your material
+        list, estimate and crew schedule.</p>
       <div class="cta">
         <a class="btn primary" href="#demo">Book a demo</a>
         <a class="btn ghost" href="#report">See what's in a report</a>
       </div>
       <ul class="ticks">
-        <li>Roof measurements in minutes</li>
+        <li>Your own report in minutes, no waiting on anyone</li>
         <li>Your logo on every page</li>
         <li>Materials, estimate and schedule in one place</li>
       </ul>
@@ -381,7 +407,7 @@
 <section class="band" id="how">
   <div class="wrap">
     <p class="ey">How it works</p>
-    <h2>From an address to a report in three steps.</h2>
+    <h2>Make your own report in three simple steps.</h2>
     <div class="how">
     <div class="steps">
       <div class="step"><span class="n">01</span><h3>Type the address</h3>
@@ -390,8 +416,8 @@
         <p>Axis outlines the roof it found and asks: is this the house? One tap and it measures every plane from 3D
           aerial data.</p></div>
       <div class="step"><span class="n">03</span><h3>Check it and send it</h3>
-        <p>Every ridge, hip, valley, eave and rake is drawn and labelled. Fix any line with a click, then send the PDF
-          under your logo.</p></div>
+        <p>Every ridge, hip, valley, eave and rake is drawn and labelled. Fix any line with a click, and your report is
+          ready to send under your logo.</p></div>
     </div>
     <figure class="win" style="margin:0">
       <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>axisroofingperformance.com</span></div>
@@ -498,18 +524,29 @@
   <div class="wrap">
     <div class="demo">
       <div class="bar">
-        <h2>Book a demo</h2>
-        <p>Leave your details and I'll call you to set up a time. I'll measure a roof you're bidding while you watch.
-          Roofers testing Axis this winter use it free.</p>
+        <span class="stamp" aria-hidden="true">FREE<small>FOR TESTERS · WINTER 26</small></span>
+        <p class="ey">Book a demo</p>
+        <h2>Let's measure one of your roofs.</h2>
+        <p>No sales team, no slideshow. Pick a house you're bidding and I'll make the report with you, start to
+          finish, on a short call.</p>
+        <ol class="next">
+          <li><b>You leave your details</b><span>Takes 20 seconds.</span></li>
+          <li><b>I call you</b><span>We pick a time that suits you.</span></li>
+          <li><b>We measure a real roof</b><span>Yours, live, about 15 minutes.</span></li>
+        </ol>
+        <div class="who"><span class="mono" aria-hidden="true">RL</span>
+          <span><b>You'll talk to Ryan</b>Founder. I built Axis, so I can answer anything.</span></div>
       </div>
       <form id="demoForm" novalidate>
+        <div class="fh"><b>Where should I call you?</b><span>Four boxes. That's it.</span></div>
         <label>Name<input name="name" autocomplete="name" required maxlength="80"></label>
         <label>Company<input name="company" autocomplete="organization" required maxlength="120"></label>
         <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>
         <label>Phone<input name="phone" type="tel" autocomplete="tel" required maxlength="32"></label>
         <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
-        <button type="submit" class="btn primary">Book my demo</button>
+        <button type="submit" class="btn primary">Call me about a demo <span aria-hidden="true">→</span></button>
         <p class="msg" id="demoMsg" role="status" aria-live="polite"></p>
+        <p class="priv">I'll only use this to set up your demo.</p>
       </form>
     </div>
   </div>
