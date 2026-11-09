@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<!-- Homepage v3 (2026-11-08): light "blueprint" layout from Ryan's Duet preview.
+<!-- Homepage v3 (2026-11-08, live at "/" from 2026-11-09): light "blueprint" layout from Ryan's Duet preview.
+     The previous homepage is public/home-v2.html (rollback: point the "/" rewrite in next.config back at it).
      Prices are deliberately absent while Axis is tested free with local roofers;
      the main call to action is "Book a demo" (a short form that emails Ryan). -->
 <html lang="en">
@@ -7,7 +8,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Axis Roofing Performance — Roof Measurement Reports for Contractors</title>
-<meta name="description" content="Type an address and Axis measures the roof from 3D aerial data. Check every line, then send a branded 6-page report. The same numbers flow into your material list, estimate and crew schedule.">
+<meta name="description" content="Make your own roof measurement report in a few simple steps. Type an address, confirm the house, check the lines, and send a branded 6-page report. Built in Wilmington, NC.">
 <link rel="canonical" href="https://www.axisroofingperformance.com/">
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
 <meta property="og:type" content="website">
@@ -17,6 +18,48 @@
 <meta property="og:description" content="Roof measurement reports in minutes, under your logo. Built in Wilmington, NC.">
 <meta property="og:image" content="https://www.axisroofingperformance.com/v2/og-cover.jpg">
 <meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://www.axisroofingperformance.com/#org",
+      "name": "Axis Roofing Performance",
+      "legalName": "RW AI Infrastructure LLC",
+      "url": "https://www.axisroofingperformance.com/",
+      "description": "Roof measurement reports for roofing contractors, built in Wilmington, NC: measure from 3D aerial data, send a branded 6-page report, then price and schedule the job.",
+      "logo": "https://www.axisroofingperformance.com/axis-mark.svg",
+      "email": "lance@rwinfrastructure.com",
+      "founder": { "@type": "Person", "name": "Ryan Lancellotti" },
+      "address": { "@type": "PostalAddress", "addressLocality": "Wilmington", "addressRegion": "NC", "addressCountry": "US" }
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://www.axisroofingperformance.com/#site",
+      "url": "https://www.axisroofingperformance.com/",
+      "name": "Axis Roofing Performance",
+      "publisher": { "@id": "https://www.axisroofingperformance.com/#org" }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "Axis Roofing Performance",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "url": "https://www.axisroofingperformance.com/",
+      "publisher": { "@id": "https://www.axisroofingperformance.com/#org" },
+      "description": "Make your own roof measurement report in a few simple steps: type the address, confirm the house, check the lines, and send a 6-page report under your logo. The same numbers flow into the material list, estimate and crew schedule.",
+      "featureList": [
+        "Roof measurement from 3D aerial data",
+        "Branded 6-page roof reports",
+        "Material lists built from the report, with supplier pricing compared",
+        "Crew management and scheduling",
+        "Roofing CRM"
+      ]
+    }
+  ]
+}
+</script>
 <link rel="icon" href="/axis-mark.svg" type="image/svg+xml">
 <link rel="alternate icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">

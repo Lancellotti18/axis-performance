@@ -40,5 +40,6 @@ Disallow: /auth/
 # alongside the live one or the two compete for the same brand query.
 Disallow: /home.html
 Disallow: /home-v2.html
+Disallow: /home-v3.html
 
 Sitemap: https://www.axisroofingperformance.com/sitemap.xml

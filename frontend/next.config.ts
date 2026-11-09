@@ -85,13 +85,14 @@ const nextConfig: NextConfig = {
   // ahead of filesystem routing so it wins over the old React landing at
   // app/page.tsx, which stays in place but is dead code.
   //
-  // Two static landings live in public/. home-v2.html is current: the brick-house
-  // "damaged to done" reel. home.html is the previous white-house cut, kept as a
-  // one-line rollback — point destination back at it and redeploy.
+  // Static landings live in public/. home-v3.html is current (2026-11-09): the
+  // light blueprint page with the clickable sample report and Book-a-demo form.
+  // home-v2.html is the previous brick-house reel page, kept as a one-line
+  // rollback — point destination back at it and redeploy. home.html is older.
   async rewrites() {
     return {
       beforeFiles: [
-        { source: "/", destination: "/home-v2.html" },
+        { source: "/", destination: "/home-v3.html" },
       ],
       afterFiles: [],
       fallback: [],
