@@ -36,6 +36,8 @@ class TrialRequest(BaseModel):
     email: str = Field(..., min_length=5, max_length=254)
     company: str = Field(..., min_length=1, max_length=120)
     phone: str = Field(..., min_length=7, max_length=32)
+    # The roof they want measured on the demo call. Optional so older forms still work.
+    address: Optional[str] = Field(None, max_length=200)
     website: Optional[str] = Field(None, max_length=200)   # honeypot: people never see it
 
     @field_validator("name", "company", "phone")
@@ -45,6 +47,11 @@ class TrialRequest(BaseModel):
         if not v:
             raise ValueError("required")
         return v
+
+    @field_validator("address")
+    @classmethod
+    def _address(cls, v: Optional[str]) -> Optional[str]:
+        return _clean(v) or None if v is not None else None
 
     @field_validator("phone")
     @classmethod
@@ -81,7 +88,8 @@ async def request_trial(body: TrialRequest, request: Request) -> dict:
     from app.core.config import settings
     from app.services import email_service as es
 
-    subject, text = es.trial_request_owner(body.name, body.email, body.company, body.phone)
+    subject, text = es.trial_request_owner(body.name, body.email, body.company, body.phone,
+                                           address=body.address)
     # Replying to Ryan's copy goes straight to the person who asked.
     if not es.send(settings.INQUIRY_TO, subject, text, reply_to=body.email):
         logger.warning("trial request NOT delivered to the owner: %s / %s", body.company, body.email)

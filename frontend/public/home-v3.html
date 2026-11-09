@@ -280,6 +280,8 @@
   .demo form{align-content:center}
   .fh{grid-column:1/-1;margin-bottom:6px;padding-bottom:16px;border-bottom:1px dashed var(--line)}
   .fh b{display:block;font-size:22px;color:var(--navy)} .fh span{color:var(--muted);font:500 13px var(--mono);letter-spacing:.04em}
+  label.full{grid-column:1/-1}
+  input::placeholder{color:#9aa3b8}
   .priv{grid-column:1/-1;margin:-6px 0 0;color:var(--muted);font-size:13.5px}
   @media (max-width:860px){ .demo{grid-template-columns:1fr} .demo .bar{padding:34px 24px} .stamp{position:static;display:inline-block;transform:rotate(-4deg);margin-bottom:18px;font-size:20px} }
   form{padding:40px 38px;display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}
@@ -538,11 +540,13 @@
           <span><b>You'll talk to Ryan</b>Founder. I built Axis, so I can answer anything.</span></div>
       </div>
       <form id="demoForm" novalidate>
-        <div class="fh"><b>Where should I call you?</b><span>Four boxes. That's it.</span></div>
+        <div class="fh"><b>Where should I call you?</b><span>Five boxes. That's it.</span></div>
         <label>Name<input name="name" autocomplete="name" required maxlength="80"></label>
         <label>Company<input name="company" autocomplete="organization" required maxlength="120"></label>
         <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>
         <label>Phone<input name="phone" type="tel" autocomplete="tel" required maxlength="32"></label>
+        <label class="full">Address of a roof you're bidding<input name="address" autocomplete="street-address" required
+          maxlength="200" placeholder="123 Main St, Wilmington, NC"></label>
         <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
         <button type="submit" class="btn primary">Call me about a demo <span aria-hidden="true">→</span></button>
         <p class="msg" id="demoMsg" role="status" aria-live="polite"></p>
@@ -575,8 +579,8 @@
   form.addEventListener('submit',async e=>{
     e.preventDefault();
     const f=Object.fromEntries(new FormData(form).entries());
-    for(const k of ['name','company','email','phone']) f[k]=String(f[k]||'').trim();
-    if(!f.name||!f.company||!f.email||!f.phone){ say('Please fill in all four fields.','err'); return; }
+    for(const k of ['name','company','email','phone','address']) f[k]=String(f[k]||'').trim();
+    if(!f.name||!f.company||!f.email||!f.phone||!f.address){ say('Please fill in all five fields.','err'); return; }
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)){ say('Please enter a valid email address.','err'); return; }
     btn.disabled=true; say('Sending…');
     const ctl=('AbortController' in window)?new AbortController():null;

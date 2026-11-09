@@ -84,3 +84,17 @@ def test_an_undelivered_request_tells_the_visitor(monkeypatch):
     with pytest.raises(HTTPException) as e:
         _post()
     assert e.value.status_code == 503
+
+
+def test_the_demo_address_reaches_ryan_with_a_map_link(sent):
+    _post(address="339 Buch Ave, Wilmington, NC\r\nBcc: x@y.com")
+    _, subject, text, _ = sent[0]
+    assert subject.startswith("Axis demo request")
+    assert "Roof to measure: 339 Buch Ave, Wilmington, NC Bcc: x@y.com" in text    # one line, no injection
+    assert "google.com/maps/search/?api=1&query=339+Buch+Ave" in text
+
+
+def test_no_address_keeps_the_old_trial_email(sent):
+    _post()
+    assert sent[0][1].startswith("Axis trial request")
+    assert "Roof to measure" not in sent[0][2]

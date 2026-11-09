@@ -97,11 +97,20 @@ def promo_ended(reports_used: int) -> tuple[str, str]:
     )
 
 
-def trial_request_owner(name: str, email: str, company: str, phone: str) -> tuple[str, str]:
-    """(subject, text) for Ryan: someone asked for a free-trial code."""
-    subject = f"Axis trial request: {company or name}"
+def trial_request_owner(name: str, email: str, company: str, phone: str,
+                        address: str | None = None) -> tuple[str, str]:
+    """(subject, text) for Ryan: someone asked for a demo / free-trial code."""
+    if address:
+        from urllib.parse import quote_plus
+        subject = f"Axis demo request: {company or name}"
+        roof = (f"Roof to measure: {address}\n"
+                f"Map: https://www.google.com/maps/search/?api=1&query={quote_plus(address)}\n\n")
+    else:
+        subject = f"Axis trial request: {company or name}"
+        roof = ""
     text = (f"Someone asked to try Axis from the homepage.\n\n"
             f"Name: {name}\nCompany: {company}\nEmail: {email}\nPhone: {phone}\n\n"
+            f"{roof}"
             f"Create a code for them on {_site()}/founders, then reply to this email "
             f"(it goes straight to them) with the code or its sign-up link.")
     return subject, text
