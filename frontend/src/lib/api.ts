@@ -354,6 +354,26 @@ export interface FounderRow {
   subscribed: boolean
   plan_key: string | null
   reports: { run_id: string; address: string; created_at: string }[]
+  last_sign_in: string | null
+  roofs: FounderRoof[]
+}
+
+/** One roof a tester measured, and what they did with it (Founders page). */
+export interface FounderRoof {
+  run_id: string
+  address: string
+  created_at: string | null
+  last_change: string | null
+  squares: number | null
+  confirmed: boolean
+  planes: number
+  auto_kept: number
+  auto_edited: number
+  hand_drawn: number
+  imagery_date: string | null
+  imagery_quality: string | null
+  report_at: string | null
+  minutes_to_report: number | null
 }
 
 export type EntitlementAction =

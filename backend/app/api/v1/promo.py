@@ -327,7 +327,7 @@ async def founders(admin: dict = Depends(require_admin)) -> dict:
             "redeemed_at": pc.get("redeemed_at"),
             "state": "unused",
             "account_email": None, "promo": None, "subscribed": False, "plan_key": None,
-            "reports": [],
+            "reports": [], "last_sign_in": None, "roofs": [],
         }
         exp = _parse(pc.get("expires_at"))
         if not uid:
@@ -345,9 +345,72 @@ async def founders(admin: dict = Depends(require_admin)) -> dict:
             "plan_key": sub.get("plan_key"),
             "state": "subscribed" if subscribed else ("trial" if promo["active"] else "trial ended"),
             "reports": _reports_for(db, uid),
+            "last_sign_in": _last_sign_in(db, uid),
+            "roofs": _roofs_for(db, uid),
         })
         out.append(entry)
     return {"codes": out, "enforcing": enforcing()}
+
+
+def _last_sign_in(db, uid: str) -> Optional[str]:
+    try:
+        u = db.auth.admin.get_user_by_id(uid)
+        t = getattr(getattr(u, "user", None), "last_sign_in_at", None)
+        return t.isoformat() if hasattr(t, "isoformat") else (str(t) if t else None)
+    except Exception as e:
+        logger.info("no sign-in time for %s: %s", uid, e)
+        return None
+
+
+def _roofs_for(db, uid: str) -> list[dict]:
+    """Every roof this tester measured, newest first, with what they did with it:
+    how much of the auto-measure they kept, whether they confirmed it, whether a
+    report came out, and the age/quality of Google's imagery there. This is what
+    tells a quiet tester ("measured one roof, never came back") apart from a
+    happy one, and whether old imagery is the reason."""
+    try:
+        projs = (db.table("projects").select("id, name, address").eq("user_id", uid)
+                 .order("created_at", desc=True).limit(50).execute().data) or []
+        if not projs:
+            return []
+        addr = {p["id"]: p.get("address") or p.get("name") or "—" for p in projs}
+        runs = (db.table("roof_measurement_runs")
+                .select("id, project_id, created_at, updated_at, confirmed, squares, solar_reference")
+                .in_("project_id", list(addr)).execute().data) or []
+        ids = [r["id"] for r in runs]
+        facets = (db.table("roof_facets").select("run_id, pitch_source, ai_suggested")
+                  .in_("run_id", ids).execute().data) if ids else []
+        ev = (db.table("report_events").select("run_id, created_at").eq("user_id", uid)
+              .eq("kind", "generate").execute().data) if ids else []
+    except Exception as e:
+        logger.info("roof activity failed for %s: %s", uid, e)
+        return []
+    first_report: dict = {}
+    for e in ev or []:
+        rid, t = e.get("run_id"), e.get("created_at")
+        if rid and t and (rid not in first_report or t < first_report[rid]):
+            first_report[rid] = t
+    out = []
+    for r in sorted(runs, key=lambda r: r.get("created_at") or "", reverse=True):
+        fs = [f for f in facets or [] if f.get("run_id") == r["id"]]
+        auto = [f for f in fs if f.get("ai_suggested")]
+        edited = sum(1 for f in auto if f.get("pitch_source") == "solar_3d_edited")
+        ref = r.get("solar_reference") if isinstance(r.get("solar_reference"), dict) else {}
+        made = first_report.get(r["id"])
+        mins = None
+        a, b = _parse(r.get("created_at")), _parse(made)
+        if a and b:
+            mins = max(0, round((b - a).total_seconds() / 60))
+        out.append({
+            "run_id": r["id"], "address": addr.get(r.get("project_id"), "—"),
+            "created_at": r.get("created_at"), "last_change": r.get("updated_at"),
+            "squares": r.get("squares"), "confirmed": bool(r.get("confirmed")),
+            "planes": len(fs),
+            "auto_kept": len(auto) - edited, "auto_edited": edited, "hand_drawn": len(fs) - len(auto),
+            "imagery_date": ref.get("imagery_date"), "imagery_quality": ref.get("imagery_quality"),
+            "report_at": made, "minutes_to_report": mins,
+        })
+    return out
 
 
 def _reports_for(db, uid: str) -> list[dict]:

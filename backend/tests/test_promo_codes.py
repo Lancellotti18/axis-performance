@@ -288,3 +288,31 @@ def test_denials_are_logged_once_an_hour_not_per_request(db):
     for _ in range(5):
         entitlement._record_denial(db, U1["id"], "access_app", d)
     assert len(db.tables["entitlement_denials"]) == 1
+
+
+def test_founders_view_shows_what_a_tester_did_with_each_roof(db):
+    _code(db, "ROOFPRO", "Roof Pro NC")
+    _redeem("ROOFPRO", U1)
+    db.tables["projects"] = [{"id": "p1", "user_id": U1["id"], "name": "Bern St", "address": "733 Bern St, New Bern, NC"},
+                             {"id": "p2", "user_id": U1["id"], "name": "Oak", "address": "12 Oak St, Leland, NC"}]
+    db.tables["roof_measurement_runs"] = [
+        {"id": "r1", "project_id": "p1", "created_at": "2026-10-29T18:42:00+00:00", "confirmed": False,
+         "squares": 19.25, "solar_reference": {"imagery_date": "2019-03-12", "imagery_quality": "MEDIUM"}},
+        {"id": "r2", "project_id": "p2", "created_at": "2026-10-30T10:00:00+00:00", "confirmed": True,
+         "squares": 30.1, "solar_reference": {"imagery_date": "2023-10-01", "imagery_quality": "HIGH"}}]
+    db.tables["roof_facets"] = (
+        [{"run_id": "r1", "pitch_source": "solar_3d", "ai_suggested": True}] * 8
+        + [{"run_id": "r2", "pitch_source": "solar_3d", "ai_suggested": True}] * 5
+        + [{"run_id": "r2", "pitch_source": "solar_3d_edited", "ai_suggested": True}] * 2
+        + [{"run_id": "r2", "pitch_source": "user", "ai_suggested": False}])
+    db.tables["report_events"] = [{"user_id": U1["id"], "run_id": "r2", "kind": "generate",
+                                   "created_at": "2026-10-30T10:12:00+00:00"}]
+    out = asyncio.run(promo.founders({"id": "admin"}))
+    roofs = {r["run_id"]: r for r in out["codes"][0]["roofs"]}
+    quiet, used = roofs["r1"], roofs["r2"]
+    assert quiet["address"] == "733 Bern St, New Bern, NC" and quiet["report_at"] is None
+    assert quiet["auto_kept"] == 8 and quiet["confirmed"] is False
+    assert quiet["imagery_date"] == "2019-03-12" and quiet["imagery_quality"] == "MEDIUM"
+    assert (used["auto_kept"], used["auto_edited"], used["hand_drawn"]) == (5, 2, 1)
+    assert used["minutes_to_report"] == 12
+    assert out["codes"][0]["last_sign_in"] is None           # fake DB has no auth: fails soft
