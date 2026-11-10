@@ -69,7 +69,7 @@ function RegisterForm() {
   // they just typed, so they cannot resend and have nothing to act on.
   const [awaitingEmail, setAwaitingEmail] = useState(false)
   const [resent, setResent] = useState(false)
-  // The 6-digit code printed in the email: a way in that does not depend on
+  // The one-time code printed in the email (Supabase sends 8 digits on this project): a way in that does not depend on
   // the button, for when a mail app hides or mangles the link.
   const [otp, setOtp] = useState('')
   const [verifying, setVerifying] = useState(false)
@@ -195,7 +195,7 @@ function RegisterForm() {
         <form className="mt-6 space-y-2" onSubmit={async e => {
           e.preventDefault()
           const token = otp.replace(/\D/g, '')
-          if (token.length !== 6) { setError('Enter the 6-digit code from the email.'); return }
+          if (token.length < 6 || token.length > 10) { setError('Enter the code from the email.'); return }
           setVerifying(true); setError('')
           const { data, error: ve } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
           setVerifying(false)
@@ -206,10 +206,10 @@ function RegisterForm() {
           await seedProfileFromSignup(data.user)
           router.replace(postAuthDestination(data.user))
         }}>
-          <Label htmlFor="otp">Or type the 6-digit code from the email</Label>
+          <Label htmlFor="otp">Or type the code from the email</Label>
           <div className="flex gap-2">
-            <Input id="otp" inputMode="numeric" autoComplete="one-time-code" maxLength={7}
-                   value={otp} onChange={e => setOtp(e.target.value)} placeholder="123456" />
+            <Input id="otp" inputMode="numeric" autoComplete="one-time-code" maxLength={12}
+                   value={otp} onChange={e => setOtp(e.target.value)} placeholder="12345678" />
             <Button type="submit" disabled={verifying}>{verifying ? 'Checking…' : 'Confirm'}</Button>
           </div>
         </form>
