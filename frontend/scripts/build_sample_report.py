@@ -174,3 +174,5 @@ else:
     s = re.sub(r'    <figure class="sheet".*?</figure>', lambda m: viewer, s, count=1, flags=re.S)
 p.write_text(s)
 print(f"sample report: {sq:.2f} sq, {len(F)} planes, totals {T}")
+# home-v4.html copies this block out of home-v3.html, so rebuild it to keep the two in step.
+subprocess.run([sys.executable, str(here / "build_home_v4.py")], check=True)
