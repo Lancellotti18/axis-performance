@@ -70,9 +70,9 @@
   /* hero slideshow: crossfade + slow push-in, opacity/transform only. A slide keeps its push-in
      running while it fades out (.off), so nothing snaps back mid-fade. */
   .hero-bg .slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:var(--op,50% 50%);
-    opacity:0;transform:scaleX(var(--fx,1));transition:opacity 1.8s ease;will-change:opacity,transform}
+    opacity:0;transform:scaleX(var(--fx,1));transition:opacity 1.2s ease;will-change:opacity,transform}
   .hero-bg .slide.on{opacity:1}
-  .hero-bg .slide.on,.hero-bg .slide.off{animation:kb 8.6s linear forwards}
+  .hero-bg .slide.on,.hero-bg .slide.off{animation:kb 5.7s linear forwards}
   @keyframes kb{from{transform:scaleX(var(--fx,1)) scale(1)}to{transform:scaleX(var(--fx,1)) scale(1.07)}}
   .hero-foot{position:relative}
   .hero-dots{display:inline-flex;align-items:center;gap:14px;position:absolute;right:0;bottom:calc(100% + 18px)}
@@ -82,7 +82,7 @@
   .hero-dots i{display:block;width:26px;height:2px;background:rgba(255,255,255,.25);overflow:hidden}
   .hero-dots i::after{content:"";display:block;height:100%;background:var(--orange);transform:scaleX(0);transform-origin:left}
   .hero-dots i.done::after{transform:scaleX(1)}
-  .hero-dots i.on::after{animation:bar var(--dwell,6.8s) linear forwards}
+  .hero-dots i.on::after{animation:bar var(--dwell,4.5s) linear forwards}
   @keyframes bar{to{transform:scaleX(1)}}
   @media (prefers-reduced-motion:reduce){ .hero-bg .slide.on,.hero-bg .slide.off{animation:none} .hero-dots{display:none} }
   .hero-bg::after{content:"";position:absolute;inset:0;
@@ -421,7 +421,7 @@
   const slides=[...document.querySelectorAll('.hero-bg .slide')], hero=document.getElementById('top');
   const bars=[...document.querySelectorAll('.hero-dots i')], lbl=document.querySelector('.hero-dots .lbl');
   if(slides.length<2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const DWELL=6800, FADE=1800;
+  const DWELL=4500, FADE=1200;
   let i=0, timer=null, visible=true;
   const ready=s=>s.complete && s.naturalWidth>0;
   addEventListener('load',()=>slides.forEach(s=>{ if(s.dataset.src){ s.src=s.dataset.src; s.removeAttribute('data-src'); } }),{once:true});
